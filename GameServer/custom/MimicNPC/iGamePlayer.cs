@@ -7,12 +7,13 @@ using DOL.GS.PropertyCalc;
 using DOL.GS.Utils;
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using static DOL.GS.GameObject;
 using static DOL.GS.GamePlayer;
 
 namespace DOL.GS.Scripts
 {
-    public interface IGamePlayer
+    public interface IGamePlayer : IGameStaticItemOwner
     {
         public IPacketLib Out { get; }
         public GameClient Client { get; }
@@ -23,6 +24,7 @@ namespace DOL.GS.Scripts
         public int GetModified(eProperty property);
 
         public int ChangeHealth(GameObject changeSource, eHealthChangeType healthChangeType, int changeAmount);
+        public int ChangeMana(GameObject changeSource, eManaChangeType manaChangeType, int changeAmount);
         public int CalculateMaxHealth(int level, int constitution);
         public int CalculateMaxMana(int level, int manaStat);
 
@@ -39,7 +41,7 @@ namespace DOL.GS.Scripts
         public int GetModifiedSpecLevel(string keyName);
         public void DisableSkill(Skill skill, int duration);
 
-        public IPropertyIndexer AbilityBonus { get; }
+        public PropertyIndexer AbilityBonus { get; }
 
         public eArmorSlot CalculateArmorHitLocation(AttackData ad);
         public double WeaponDamageWithoutQualityAndCondition(DbInventoryItem weapon);
@@ -52,7 +54,9 @@ namespace DOL.GS.Scripts
         public void Stealth(bool goStealth);
         public void StartStealthUncoverAction();
         public void StopStealthUncoverAction();
+        public bool CanDetect(GameObject enemy);
         public bool Sprint(bool state);
+        public void UpdateWaterBreathState(eWaterBreath state);
         public void StopCurrentSpellcast();
         public void StartInterruptTimer(int duration, AttackData.eAttackType attackType, GameLiving attacker);
 
@@ -62,17 +66,30 @@ namespace DOL.GS.Scripts
         public bool IsDuelPartner(GameLiving living);
         public bool IsDuelReady { get; set; }
 
-        public void AddXPGainer(GameObject xpGainer, float damageAmount);
         public void GainRealmPoints(long amount, bool modify);
+        public void GainRealmPoints(long amount);
+        public void GainBountyPoints(long amount);
+        public void GainExperience(GainedExperienceEventArgs arguments, bool notify = true);
+        public void GainExperience(eXPSource xpSource, long exp, bool allowMultiply = false);
         public int GetDistanceTo(IPoint3D point);
+        public int GetDistance(IPoint2D point);
         public bool IsWithinRadius(GameObject obj, int radius);
         public bool IsWithinRadius(IPoint3D point, int radius, bool ignoreZ);
         public List<GamePlayer> GetPlayersInRadius(ushort radiusToCheck);
         public List<GameNPC> GetNPCsInRadius(ushort radiusToCheck);
+        public bool CanSeeObject(GameObject obj);
         public int GetConLevel(GameObject compare);
 
+        public void InitControlledBrainArray(int num);
         public bool IsControlledNPC(GameNPC npc);
         public void CommandNpcRelease();
+
+        public bool AutoSplitLoot { get; set; }
+        public void AddMoney(long money);
+        public void AddMoney(long money, string messageFormat);
+        public long ApplyGuildDues(long money);
+
+        public void UpdateKillStatsOnPlayerKill(eRealm killedPlayerRealm, bool deathBlow, bool soloKill, int realmPointsEarned);
 
         public RangeAttackComponent RangeAttackComponent { get; }
         public AttackComponent AttackComponent { get; }
@@ -80,11 +97,10 @@ namespace DOL.GS.Scripts
         public EffectListComponent EffectListComponent { get; }
         public GameEffectList EffectList { get; }
         public PropertyCollection TempProperties { get; }
-        public IPropertyIndexer ItemBonus { get; }
-        public IPropertyIndexer BaseBuffBonusCategory { get; }
-        public IPropertyIndexer SpecBuffBonusCategory { get; }
-        public IPropertyIndexer DebuffCategory { get; }
-        public IPropertyIndexer BuffBonusCategory4 { get; }
+        public PropertyIndexer ItemBonus { get; }
+        public PropertyIndexer BaseBuffBonusCategory { get; }
+        public PropertyIndexer SpecBuffBonusCategory { get; }
+        public PropertyIndexer DebuffCategory { get; }
 
         public GameObject TargetObject { get; set; }
 
@@ -93,7 +109,11 @@ namespace DOL.GS.Scripts
 
         public IGameInventory Inventory { get; set; }
         public DbInventoryItem ActiveWeapon { get; }
+        public  DbInventoryItem ActiveLeftWeapon { get; }
         public eActiveWeaponSlot ActiveWeaponSlot { get; }
+        public bool CanUseCrossRealmItems { get; }
+        public int OutOfClassROGPercent { get; set; }
+        public GameNPC Steed { get; set; }
 
         public IControlledBrain ControlledBrain { get; set; }
 
@@ -111,10 +131,27 @@ namespace DOL.GS.Scripts
         public byte Level { get; set; }
         public byte MaxLevel { get; }
         public int RealmLevel { get; set; }
+        public long RealmPoints { get; set; }
+        public long BountyPoints { get; set; }
         public int MLLevel { get; set; }
         public eRealm Realm { get; set; }
         public bool Champion { get; set; }
         public int ChampionLevel { get; set; }
+
+        public long Experience { get; set; }
+        public long ExperienceForCurrentLevel { get; }
+        public long ExperienceValue { get; }
+        public long MoneyValue { get; }
+        public int RealmPointsValue { get; }
+        public int BountyPointsValue { get; }
+
+        public long ExperienceForNextLevel { get; }
+        public eXPLogState XPLogState { get; set; }
+        public bool UseDetailedCombatLog { get; set; }
+        public Dictionary<GameLiving, double> XPGainers { get; }
+        public Lock XpGainersLock { get; }
+        public long DeathTime { get; set; }
+        public long PlayedTime { get; }
 
         public double Effectiveness { get; set; }
         public double SpecLock { get; set; }
@@ -124,9 +161,8 @@ namespace DOL.GS.Scripts
         public bool IsAttacking { get; }
         public bool IsCasting { get; }
         public bool IsStealthed { get; }
-        public int Encumberance { get; }
-        public int MaxEncumberance { get; }
-        public bool IsOverencumbered { get; set; }
+        public bool IsEncumbered { get; set; }
+        public double MaxSpeedModifierFromEncumbrance { get; set; }
         public bool IsIncapacitated { get; }
         public bool IsStunned { get; set; }
         public bool IsMezzed { get; set; }
@@ -134,15 +170,15 @@ namespace DOL.GS.Scripts
         public bool IsSprinting { get; }
         public bool IsSitting { get; set; }
         public bool IsStrafing { get; set; }
+        public bool IsUnderwater { get; }
         public bool CanBreathUnderWater { get; set; }
 
         public ControlledHorse ActiveHorse { get; }
         public bool IsOnHorse { get; set; }
 
         public void Shade(bool state);
-        public ShadeECSGameEffect ShadeEffect { get; set; }
-        public bool IsShade { get; }
         public ushort ShadeModel { get; }
+        public bool HasShadeModel { get; }
         public ushort Model { get; set; }
         public ushort CreationModel { get; }
 
@@ -155,6 +191,7 @@ namespace DOL.GS.Scripts
         public byte ManaPercent { get; }
 
         public int Endurance { get; set; }
+        public int MaxEndurance { get; set; }
         public short MaxSpeedBase { get; set; }
 
         public int Strength { get; }
@@ -166,5 +203,9 @@ namespace DOL.GS.Scripts
         public Region CurrentRegion { get; set; }
         public ushort CurrentRegionID { get; set; }
         public int Z { get; }
+
+        public PlayerStatistics Statistics { get; }
+        public long LastDeathRealmPoints { get; set; }
+        public int DeathsPvP { get; set; }
     }
 }

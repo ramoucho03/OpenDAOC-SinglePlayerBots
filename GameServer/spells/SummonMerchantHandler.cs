@@ -5,7 +5,7 @@ using DOL.GS.PacketHandler;
 
 namespace DOL.GS.Spells
 {
-    [SpellHandler("SummonMerchant")]
+    [SpellHandler(eSpellType.SummonMerchant)]
     public class SummonMerchantSpellHandler : SpellHandler
     {
         protected GameMerchant Npc;
@@ -88,7 +88,6 @@ namespace DOL.GS.Spells
             Npc.AddToWorld();
            // SummonedTick = GameLoop.GameLoopTime;
             //EndTick = GameLoop.GameLoopTime + Spell.Duration * 1000;
-            //Console.WriteLine($"Summoned merchant summon {SummonedTick} end {EndTick} duration {Spell.Duration}");
             timer = new ECSGameTimer(Npc, new ECSGameTimer.ECSTimerCallback(OnEffectExpires), Spell.Duration);
             timer.Start();
         }

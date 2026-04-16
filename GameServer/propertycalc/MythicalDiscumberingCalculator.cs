@@ -18,6 +18,7 @@
  */
 
 
+using DOL.GS.Scripts;
 using System;
 
 namespace DOL.GS.PropertyCalc
@@ -30,7 +31,7 @@ namespace DOL.GS.PropertyCalc
     {
         public override int CalcValue(GameLiving living, eProperty property)
         {
-            if (living is GamePlayer)
+            if (living is IGamePlayer)
             {
                 return living.ItemBonus[(int)property];
             }

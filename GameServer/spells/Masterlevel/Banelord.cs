@@ -7,7 +7,7 @@ namespace DOL.GS.Spells
     //http://www.camelotherald.com/masterlevels/ma.php?ml=Banelord
     //shared timer 1
     #region Banelord-1
-    [SpellHandlerAttribute("CastingSpeedDebuff")]
+    [SpellHandler(eSpellType.CastingSpeedDebuff)]
     public class CastingSpeedDebuff : MasterlevelDebuffHandling
     {
         public override eProperty Property1 { get { return eProperty.CastingSpeed; } }
@@ -25,7 +25,7 @@ namespace DOL.GS.Spells
 
     //shared timer 5 for ml2 - shared timer 3 for ml8
     #region Banelord-2/8
-    [SpellHandlerAttribute("PBAEDamage")]
+    [SpellHandler(eSpellType.PBAEDamage)]
     public class PBAEDamage : MasterlevelHandling
     {
         // constructor
@@ -103,7 +103,7 @@ namespace DOL.GS.Spells
 
     //shared timer 3
     #region Banelord-3
-    [SpellHandlerAttribute("Oppression")]
+    [SpellHandler(eSpellType.Oppression)]
     public class OppressionSpellHandler : MasterlevelHandling
     {
         public override bool IsOverwritable(ECSGameSpellEffect compare)
@@ -125,7 +125,7 @@ namespace DOL.GS.Spells
         {
             base.OnEffectStart(effect);
             if (effect.Owner is GamePlayer)
-                ((GamePlayer)effect.Owner).UpdateEncumberance();
+                ((GamePlayer)effect.Owner).UpdateEncumbrance();
 			effect.Owner.StartInterruptTimer(effect.Owner.SpellInterruptDuration, AttackData.eAttackType.Spell, Caster);
         }
 
@@ -140,7 +140,7 @@ namespace DOL.GS.Spells
         public override int OnEffectExpires(GameSpellEffect effect, bool noMessages)
         {
             if (effect.Owner is GamePlayer)
-                ((GamePlayer)effect.Owner).UpdateEncumberance();
+                ((GamePlayer)effect.Owner).UpdateEncumbrance();
             return base.OnEffectExpires(effect, noMessages);
         }
         public OppressionSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
@@ -149,7 +149,7 @@ namespace DOL.GS.Spells
 
     //shared timer 1
     #region Banelord-4
-    [SpellHandler("MLFatDebuff")]
+    [SpellHandler(eSpellType.MLFatDebuff)]
     public class MLFatDebuffHandler : MasterlevelDebuffHandling
     {
         public override eProperty Property1 { get { return eProperty.FatigueConsumption; } }	
@@ -183,7 +183,7 @@ namespace DOL.GS.Spells
 
     //shared timer 5
     #region Banelord-5
-    [SpellHandlerAttribute("MissHit")]
+    [SpellHandler(eSpellType.MissHit)]
     public class MissHit : MasterlevelBuffHandling
     {
         public override eProperty Property1 { get { return eProperty.MissHit; } }
@@ -196,7 +196,7 @@ namespace DOL.GS.Spells
     //shared timer 1
     #region Banelord-6
     #region ML6Snare
-    [SpellHandler("MLUnbreakableSnare")]
+    [SpellHandler(eSpellType.MLUnbreakableSnare)]
     public class MLUnbreakableSnare : BanelordSnare
     {
         protected override int CalculateEffectDuration(GameLiving target)
@@ -221,7 +221,7 @@ namespace DOL.GS.Spells
     }
     #endregion
     #region ML6Stun
-    [SpellHandler("UnrresistableNonImunityStun")]
+    [SpellHandler(eSpellType.UnrresistableNonImunityStun)]
     public class UnrresistableNonImunityStun : MasterlevelHandling
     {
         public override void FinishSpellCast(GameLiving target)
@@ -333,7 +333,7 @@ namespace DOL.GS.Spells
 
     //shared timer 3
     #region Banelord-7
-    [SpellHandlerAttribute("BLToHit")]
+    [SpellHandler(eSpellType.BLToHit)]
     public class BLToHit : MasterlevelBuffHandling
     {
         public override eProperty Property1 { get { return eProperty.ToHitBonus; } }
@@ -345,7 +345,7 @@ namespace DOL.GS.Spells
 
     //shared timer 5
     #region Banelord-9
-    [SpellHandlerAttribute("EffectivenessDebuff")]
+    [SpellHandler(eSpellType.EffectivenessDebuff)]
     public class EffectivenessDeBuff : MasterlevelHandling
     {
         /// <summary>
@@ -399,7 +399,7 @@ namespace DOL.GS.Spells
 
     //no shared timer
     #region Banelord-10
-    [SpellHandlerAttribute("Banespike")]
+    [SpellHandler(eSpellType.Banespike)]
     public class BanespikeHandler : MasterlevelBuffHandling
     {
         public override eProperty Property1 { get { return eProperty.MeleeDamage; } }
@@ -431,7 +431,7 @@ namespace DOL.GS.PropertyCalc
                 +living.BaseBuffBonusCategory[(int)property]
                 + living.SpecBuffBonusCategory[(int)property]
                 - living.DebuffCategory[(int)property]
-                + living.BuffBonusCategory4[(int)property]);
+                + living.OtherBonus[(int)property]);
         }
     }
 }

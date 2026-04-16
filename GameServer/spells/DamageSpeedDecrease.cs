@@ -5,31 +5,21 @@ using DOL.Language;
 
 namespace DOL.GS.Spells
 {
-    /// <summary>
-    /// Damages target and decreases speed after
-    /// </summary>
-    [SpellHandlerAttribute("DamageSpeedDecrease")]
-    public class DamageSpeedDecreaseSpellHandler : SpeedDecreaseSpellHandler
-    {
-        public override void ApplyEffectOnTarget(GameLiving target)
-        {
-            // do damage even if immune to duration effect
-            OnDirectEffect(target);
+	/// <summary>
+	/// Damages target and decreases speed after
+	/// </summary>
+	[SpellHandler(eSpellType.DamageSpeedDecrease)]
+	public class DamageSpeedDecreaseSpellHandler : SpeedDecreaseSpellHandler
+	{
+		protected override bool IsDualComponentSpell => true;
 
-            if ((target is Keeps.GameKeepDoor) == false && (target is Keeps.GameKeepComponent == false))
-            {
-                /*
-				if (Caster.HasAbilityType(typeof(AtlasOF_WildArcanaAbility)))
-				{
-					if (Util.Chance(Caster.SpellCriticalChance))
-					{
-						effectiveness *= 2;
-						if(Caster is GamePlayer c) c.Out.SendMessage($"Your {Spell.Name} critically hits the enemy for 100% additional effect!", eChatType.CT_SpellResisted, eChatLoc.CL_SystemWindow);
-					}
-				}*/
-                base.ApplyEffectOnTarget(target);
-            }
-        }
+		public DamageSpeedDecreaseSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
+
+		public override void ApplyEffectOnTarget(GameLiving target)
+		{
+			OnDirectEffect(target);
+			base.ApplyEffectOnTarget(target);
+		}
 
         public override void OnDirectEffect(GameLiving target)
         {
@@ -51,24 +41,14 @@ namespace DOL.GS.Spells
             if (ad == null) 
                 return;
 
-            if (!m_caster.IsAlive) 
-                return;
-
-            if (ad.Target is Keeps.GameKeepDoor || ad.Target is Keeps.GameKeepComponent)
-                return;
-
-            int heal = (ad.Damage + ad.CriticalDamage) * m_spell.LifeDrainReturn / 100;
-
-            if (m_caster.IsDiseased)
-            {
-                MessageToCaster("You are diseased!", eChatType.CT_SpellResisted);
-                heal >>= 1;
-            }
-
-            if (heal <= 0) 
-                return;
-
-            heal = m_caster.ChangeHealth(m_caster, eHealthChangeType.Spell, heal);
+			int heal = (ad.Damage + ad.CriticalDamage) * m_spell.LifeDrainReturn/100;
+			if (m_caster.IsDiseased)
+			{
+				MessageToCaster("You are diseased!", eChatType.CT_SpellResisted);
+				heal >>= 1;
+			}
+			if(heal <= 0) return;
+			heal = m_caster.ChangeHealth(m_caster, eHealthChangeType.Spell, heal);
 
             if (heal > 0)
             {
@@ -165,10 +145,7 @@ namespace DOL.GS.Spells
                     list.Add(LanguageMgr.GetTranslation((Caster as GamePlayer).Client, "DelveInfo.Damage", GlobalConstants.DamageTypeToName(Spell.DamageType)));
 
                 return list;
-            }
-        }
-
-        // counstructor
-        public DamageSpeedDecreaseSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
-    }
+			}
+		}
+	}
 }

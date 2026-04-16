@@ -1,15 +1,14 @@
 using System;
 using System.Collections;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
 using System.Threading;
+using System.Threading.Tasks;
 using DOL.Database;
 using DOL.Events;
 using DOL.GS.Keeps;
 using DOL.GS.ServerProperties;
-using log4net;
 
 namespace DOL.GS
 {
@@ -22,7 +21,7 @@ namespace DOL.GS
     /// </summary>
     public class Region
     {
-        private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
         #region Region Variables
 
@@ -42,7 +41,7 @@ namespace DOL.GS
         /// <summary>
         /// Object to lock when changing objects in the array
         /// </summary>
-        public readonly object ObjectsSyncLock = new object();
+        public readonly Lock ObjectsSyncLock = new();
 
         /// <summary>
         /// This holds a counter with the absolute count of all objects that are actually in this region
@@ -75,13 +74,14 @@ namespace DOL.GS
         /// Player unique id(string) -> GameGraveStone
         /// </summary>
         protected readonly Hashtable m_graveStones;
+        private readonly Lock _graveStonesLock = new();
 
         /// <summary>
         /// Holds all the Zones inside this Region
         /// </summary>
         protected readonly List<Zone> m_zones;
 
-        protected object m_lockAreas = new object();
+        protected readonly Lock _lockAreas = new();
 
         /// <summary>
         /// Holds all the Areas inside this Region
@@ -707,7 +707,7 @@ namespace DOL.GS
 
             if (mobObjs.Length > 0)
             {
-                foreach (DbMob mob in mobObjs)
+                Parallel.ForEach(mobObjs, (mob) =>
                 {
                     GameNPC myMob = null;
                     string error = string.Empty;
@@ -742,7 +742,6 @@ namespace DOL.GS
                         }
                     }
 
-  
                     if (myMob == null)
                     {
                     	if(template != null && template.ClassType != null && template.ClassType.Length > 0 && template.ClassType != DbMob.DEFAULT_NPC_CLASSTYPE && template.ReplaceMobValues)
@@ -800,11 +799,11 @@ namespace DOL.GS
 
                             if (myMob is GameMerchant)
                             {
-                                myMerchantCount++;
+                                Interlocked.Increment(ref myMerchantCount);
                             }
                             else
                             {
-                                myMobCount++;
+                                Interlocked.Increment(ref myMobCount);
                             }
                         }
                         catch (Exception e)
@@ -816,12 +815,12 @@ namespace DOL.GS
 
                         myMob.AddToWorld();
                     }
-                }
+                });
             }
 
             if (staticObjs.Count > 0)
             {
-                foreach (DbWorldObject item in staticObjs)
+                Parallel.ForEach(staticObjs, (item) =>
                 {
                     GameStaticItem myItem;
                     if (!string.IsNullOrEmpty(item.ClassType))
@@ -850,13 +849,11 @@ namespace DOL.GS
                     myItem.AddToWorld();
                     //						if (!myItem.AddToWorld())
                     //							log.ErrorFormat("Failed to add the item to the world: {0}", myItem.ToString());
-                }
+                });
             }
 
-            foreach (DbBindPoint point in bindPoints)
-            {
-                AddArea(new Area.BindArea("bind point", point));
-            }
+            foreach (DbBindPoint bindPoint in bindPoints)
+                AddArea(new Area.BindArea("bind point", bindPoint));
 
             if (myMobCount + myItemCount + myMerchantCount + myBindCount > 0)
             {
@@ -867,9 +864,8 @@ namespace DOL.GS
 
                 if (allErrors != string.Empty)
                     log.Error("Error loading the following NPC ClassType(s), GameNPC used instead:" + allErrors.TrimEnd(','));
-
-                Thread.Sleep(0);  // give up remaining thread time to other resources
             }
+
             Interlocked.Add(ref mobCount, myMobCount);
             Interlocked.Add(ref merchantCount, myMerchantCount);
             Interlocked.Add(ref itemCount, myItemCount);
@@ -1027,7 +1023,7 @@ namespace DOL.GS
                     {
                         if (obj is GameGravestone)
                         {
-                            lock (m_graveStones.SyncRoot)
+                            lock (_graveStonesLock)
                             {
                                 m_graveStones[obj.InternalID] = obj;
                             }
@@ -1069,7 +1065,7 @@ namespace DOL.GS
                 {
                     if (obj is GameGravestone)
                     {
-                        lock (m_graveStones.SyncRoot)
+                        lock (_graveStonesLock)
                         {
                             m_graveStones.Remove(obj.InternalID);
                         }
@@ -1112,7 +1108,7 @@ namespace DOL.GS
         /// <returns>the found gravestone or null</returns>
         public GameGravestone FindGraveStone(GamePlayer player)
         {
-            lock (m_graveStones.SyncRoot)
+            lock (_graveStonesLock)
             {
                 return (GameGravestone)m_graveStones[player.InternalID];
             }
@@ -1233,7 +1229,7 @@ namespace DOL.GS
         /// <returns></returns>
         public virtual IArea AddArea(IArea area)
         {
-            lock (m_lockAreas)
+            lock (_lockAreas)
             {
                 ushort nextAreaID = 0;
 
@@ -1266,7 +1262,7 @@ namespace DOL.GS
         /// <param name="area"></param>
         public virtual void RemoveArea(IArea area)
         {
-            lock (m_lockAreas)
+            lock (_lockAreas)
             {
                 if (m_Areas.ContainsKey(area.ID) == false)
                 {
@@ -1332,7 +1328,7 @@ namespace DOL.GS
         /// <returns></returns>
         public virtual IList<IArea> GetAreasOfZone(Zone zone, IPoint3D p, bool checkZ)
         {
-            lock (m_lockAreas)
+            lock (_lockAreas)
             {
                 int zoneIndex = Zones.IndexOf(zone);
                 var areas = new List<IArea>();
@@ -1362,7 +1358,7 @@ namespace DOL.GS
 
         public virtual IList<IArea> GetAreasOfZone(Zone zone, int x, int y, int z)
         {
-            lock (m_lockAreas)
+            lock (_lockAreas)
             {
                 int zoneIndex = Zones.IndexOf(zone);
                 var areas = new List<IArea>();

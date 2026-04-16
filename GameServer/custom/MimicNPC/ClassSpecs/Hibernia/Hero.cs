@@ -26,7 +26,7 @@ namespace DOL.GS.Scripts
 
             DamageType = 0;
 
-            if (Util.RandomBool())
+            if (Util.Random(1) > 0)
                 WeaponTwoType = eObjectType.CelticSpear;
             else
                 WeaponTwoType = eObjectType.LargeWeapons;

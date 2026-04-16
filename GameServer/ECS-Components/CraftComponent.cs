@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Threading;
 
 namespace DOL.GS
 {
@@ -7,9 +8,9 @@ namespace DOL.GS
         public GamePlayer Owner { get; }
         public CraftAction CraftAction { get; set; }
         public bool CraftState { get; set; }
-        public EntityManagerId EntityManagerId { get; set; } = new(EntityManager.EntityType.CraftComponent, false);
+        public EntityManagerId EntityManagerId { get; set; } = new(EntityManager.EntityType.CraftComponent);
         public List<Recipe> Recipes { get; } = new();
-        private object _recipesLock = new();
+        private readonly Lock _recipesLock = new();
 
         public CraftComponent(GamePlayer owner)
         {

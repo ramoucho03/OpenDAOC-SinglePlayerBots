@@ -7,13 +7,12 @@ using DOL.Database;
 using DOL.GS.PacketHandler;
 using DOL.GS.ServerProperties;
 using DOL.Language;
-using log4net;
 
 namespace DOL.GS.Housing
 {
 	public class HouseMgr
 	{
-		public static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		public static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		private static ECSGameTimer CheckRentTimer = null;
 		private static Dictionary<ushort, Dictionary<int, House>> _houseList;
@@ -25,7 +24,6 @@ namespace DOL.GS.Housing
 			Marker,
 			House
 		}
-
 
 		public static bool Start(GameClient client = null)
 		{
@@ -559,34 +557,32 @@ namespace DOL.GS.Housing
 		/// <summary>
 		/// Get the house object from the owner player
 		/// </summary>
-		/// <param name="p">The player owner</param>
-		/// <returns>The house object</returns>
-		public static House GetHouseByPlayer(GamePlayer p)
+		public static House GetHouseByPlayer(GamePlayer player)
 		{
-			List<String> acctObjectIds = new List<string>();
-			foreach (var character in p.Client.Account.Characters)
-			{
-				if (character.Realm == (int)p.Realm)
-				{
-					acctObjectIds.Add(character.ObjectId);	
-				}
-			}
-			
-			// check every house in every region until we find
-			// a house that belongs to this player
-			foreach (var regs in _houseList.ToList())
-			{
-				foreach (var entry in regs.Value.ToList())
-				{
-					var house = entry.Value;
+			HashSet<string> characterIds = new();
 
-					if (acctObjectIds.Contains(house.OwnerID))
+			foreach (DbCoreCharacter character in player.Client.Account.Characters)
+			{
+				if ((eRealm) character.Realm == player.Realm)
+					characterIds.Add(character.ObjectId);
+			}
+
+			return GetHouseByCharacterIds(characterIds);
+		}
+
+		public static House GetHouseByCharacterIds(HashSet<string> characterIds)
+		{
+			foreach (var housesInWorld in _houseList.ToList())
+			{
+				foreach (var housesInRegion in housesInWorld.Value.ToList())
+				{
+					House house = housesInRegion.Value;
+
+					if (characterIds.Contains(house.OwnerID))
 						return house;
 				}
 			}
 
-			// didn't find a house that belonged to the player,
-			// so return null
 			return null;
 		}
 
@@ -700,7 +696,6 @@ namespace DOL.GS.Housing
 
 			// save the guild and broadcast updates
 			player.Guild.SaveIntoDatabase();
-			player.Guild.UpdateGuildWindow();
 
 			// save the house and broadcast updates
 			playerHouse.SaveIntoDatabase();
@@ -731,8 +726,6 @@ namespace DOL.GS.Housing
 		{
 			if (Properties.RENT_DUE_DAYS == 0)
 				return 0;
-
-			Console.WriteLine("[Housing] Starting timed rent check");
 
 			TimeSpan diff;
 			var houseRemovalList = new List<House>();

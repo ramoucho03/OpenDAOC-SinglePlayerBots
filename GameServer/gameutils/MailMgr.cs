@@ -10,7 +10,6 @@ using System.Xml;
 
 using DOL.Config;
 using DOL.GS;
-using log4net;
 
 namespace DOL.Mail
 {
@@ -32,7 +31,7 @@ namespace DOL.Mail
 				//let's not try and compress already compressed files
 				if (file.EndsWith(".gz"))
 					continue;
-				Console.WriteLine(file);
+
 				if (!compressFile(file, file + ".gz"))
 					return false;
 			}
@@ -89,6 +88,7 @@ namespace DOL.Mail
 		private static int m_mailFrequency = 5 * 60 * 1000;
 
 		private static Queue m_mailQueue = new Queue();
+		private readonly static Lock _lock = new();
 		private static volatile Timer m_timer = null;
 
 		private static SmtpClient SmtpClient = null;
@@ -96,7 +96,7 @@ namespace DOL.Mail
 		/// <summary>
 		/// Defines a logger for this class.
 		/// </summary>
-		public static readonly ILog Logger = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		public static readonly Logging.Logger Logger = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		public static bool Init()
 		{
@@ -182,7 +182,7 @@ namespace DOL.Mail
 				mail.BodyEncoding = System.Text.Encoding.ASCII;
 				mail.SubjectEncoding = System.Text.Encoding.ASCII;
 
-				lock (m_mailQueue.SyncRoot)
+				lock (_lock)
 				{
 					m_mailQueue.Enqueue(mail);
 				}
@@ -332,7 +332,7 @@ namespace DOL.Mail
 		{
 			MailMessage mailMessage = null;
 			Logger.Info("Starting mail queue");
-			lock (m_mailQueue.SyncRoot)
+			lock (_lock)
 			{
 				while (m_mailQueue.Count > 0)
 				{

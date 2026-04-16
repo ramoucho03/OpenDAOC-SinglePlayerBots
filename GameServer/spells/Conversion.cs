@@ -1,32 +1,12 @@
-/*
- * DAWN OF LIGHT - The first free open source DAoC server emulator
- * 
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- * 
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
- *
- */
-
 using System;
 using System.Collections.Generic;
-using DOL.AI.Brain;
 using DOL.Events;
 using DOL.GS.Effects;
 using DOL.GS.PacketHandler;
 
 namespace DOL.GS.Spells
 {
-	[SpellHandlerAttribute("Conversion")]
+	[SpellHandler(eSpellType.Conversion)]
 	public class ConversionSpellHandler : SpellHandler
 	{
 		public const string ConvertDamage = "Conversion";
@@ -89,19 +69,6 @@ namespace DOL.GS.Spells
 			{
 				MessageToCaster("You convert " + damageConverted + " damage into health.", eChatType.CT_Spell);
 				Caster.Health = Caster.Health + damageConverted;
-
-                #region PVP DAMAGE
-
-                if (ad.Target is NecromancerPet &&
-                    ((ad.Target as NecromancerPet).Brain as IControlledBrain).GetPlayerOwner() != null
-                    || ad.Target is GamePlayer)
-                {
-                    if (ad.Target.DamageRvRMemory > 0)
-                        ad.Target.DamageRvRMemory -= (long)Math.Max(damageConverted, 0);
-                }
-
-                #endregion PVP DAMAGE
-
 			}
 			else
 			{
@@ -155,7 +122,7 @@ namespace DOL.GS.Spells
 		public ConversionSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
 	}
 	
-	[SpellHandlerAttribute("MagicConversion")]
+	[SpellHandler(eSpellType.MagicConversion)]
 	public class MagicConversionSpellHandler : ConversionSpellHandler
 	{
 		//public const string ConvertDamage = "Conversion";

@@ -11,18 +11,15 @@ namespace DOL.GS
 {
     public class MimicAttackAction : AttackAction
     {
-        private const int MIN_HEALTH_PERCENT_FOR_MELEE_SWITCH_ON_INTERRUPT = 80;
-        private const double TIME_TO_TARGET_THRESHOLD_BEFORE_MELEE_SWITCH = 250; // NPCs will switch to melee if within melee range + (this * maxSpeed * 0.001).
-        private const double TIME_TO_TARGET_THRESHOLD_BEFORE_RANGED_SWITCH = 1000; // NPCs will switch to ranged if further than melee range + (this * maxSpeed * 0.001).
+        private const double TIME_TO_TARGET_THRESHOLD_BEFORE_RANGED_SWITCH = 500; // NPCs will switch to ranged if further than melee range + (this * maxSpeed * 0.001).
 
         private MimicNPC _mimicOwner;
         private bool _hasLos;
         private CheckLosTimer _checkLosTimer;
         private GameObject _losCheckTarget;
+        private bool _wasMeleeWeaponSwitchForced; // Used to prevent NPCs from switching to their ranged weapon automatically if they explicitly switched to a melee weapon during combat.
 
         private static int LosCheckInterval => Properties.CHECK_LOS_DURING_RANGED_ATTACK_MINIMUM_INTERVAL;
-        private bool HasLosOnCurrentTarget => _losCheckTarget == _target && _hasLos;
-
 
         public MimicAttackAction(MimicNPC owner) : base(owner)
         {
@@ -32,29 +29,53 @@ namespace DOL.GS
         protected override bool PrepareMeleeAttack()
         {
             int meleeAttackRange = _mimicOwner.MeleeAttackRange;
-            int offsetMeleeAttackRange = meleeAttackRange;
             int maxSpeed = _mimicOwner.MaxSpeed;
 
             if (maxSpeed > 0)
-                offsetMeleeAttackRange += (int)(TIME_TO_TARGET_THRESHOLD_BEFORE_RANGED_SWITCH * maxSpeed * 0.001);
+                meleeAttackRange = meleeAttackRange + (int)(TIME_TO_TARGET_THRESHOLD_BEFORE_RANGED_SWITCH * maxSpeed * 0.001);
 
-            if (StyleComponent.NextCombatStyle == null)
-                _combatStyle = StyleComponent.NPCGetStyleToUse();
-            else
-                _combatStyle = StyleComponent.NextCombatStyle;
+            // NPCs try to switch to their ranged weapon whenever possible.
+            if ((_mimicOwner.CharacterClass.ID == (int)eCharacterClass.Scout ||
+                _mimicOwner.CharacterClass.ID == (int)eCharacterClass.Hunter  ||
+                _mimicOwner.CharacterClass.ID == (int)eCharacterClass.Ranger) &&
+                !_mimicOwner.IsBeingInterrupted &&
+                _mimicOwner.Inventory?.GetItem(eInventorySlot.DistanceWeapon) != null &&
+                !_mimicOwner.IsWithinRadius(_target, meleeAttackRange) &&
+                !_wasMeleeWeaponSwitchForced)
+            {
+                // But only if there is no timer running or if it has LoS on its current target.
+                // If the timer is running, it'll check for LoS continuously.
+                if (!Properties.CHECK_LOS_BEFORE_NPC_RANGED_ATTACK || _checkLosTimer == null || !_checkLosTimer.IsAlive)
+                {
+                    SwitchToRangedAndTick();
+                    return false;
+                }
+
+                if (_losCheckTarget != _target)
+                {
+                    _hasLos = false;
+                    _checkLosTimer.ChangeTarget(_target);
+                }
+                else if (_hasLos)
+                {
+                    SwitchToRangedAndTick();
+                    return false;
+                }
+            }
+
+            _combatStyle = StyleComponent.MimicGetStyleToUse();
 
             if (!base.PrepareMeleeAttack())
                 return false;
 
-            int attackRange = AttackComponent.AttackRange;
-
             // The target isn't in melee range yet. Check if another target is in range to attack on the way to the main target.
             if (!_mimicOwner.IsWithinRadius(_target, meleeAttackRange) &&
-                 _mimicOwner.Brain is MimicBrain mimicBrain)
+                _mimicOwner.Brain is not IControlledBrain &&
+                _mimicOwner.Brain is StandardMobBrain npcBrain)
             {
-                _target = mimicBrain.LastHighestThreatInAttackRange;
+                _target = npcBrain.LastHighestThreatInAttackRange;
 
-                if (_target == null || !_mimicOwner.IsWithinRadius(_target, attackRange))
+                if (_target == null || !_mimicOwner.IsWithinRadius(_target, meleeAttackRange))
                 {
                     _interval = TICK_INTERVAL_FOR_NON_ATTACK;
                     return false;
@@ -68,31 +89,25 @@ namespace DOL.GS
         {
             // TODO: Fix archer LOS
             //if (Properties.CHECK_LOS_BEFORE_NPC_RANGED_ATTACK)
+            //{
+            //    if (_checkLosTimer == null)
+            //        _checkLosTimer = new CheckLosTimer(_mimicOwner, _target, LosCheckCallback);
+            //    else if (_losCheckTarget != _target)
             //    {
-            //        if (_checkLosTimer == null)
-            //            _checkLosTimer = new CheckLosTimer(_mimicOwner, _target, LosCheckCallback);
-            //        else
-            //            _checkLosTimer.ChangeTarget(_target);
-
-            //        if (!HasLosOnCurrentTarget)
-            //        {
-            //            _interval = TICK_INTERVAL_FOR_NON_ATTACK;
-            //            return false;
-            //        }
+            //        _hasLos = false;
+            //        _checkLosTimer.ChangeTarget(_target);
             //    }
-            //    else
-                    _hasLos = true;
 
-            if (base.PrepareRangedAttack())
-            {
-                // This is also done in weaponAction.Execute(), but we must unstealth immediately if the call is delayed.
-                if (_ticksToTarget > 0)
-                    _mimicOwner.Stealth(false);
+            //    if (!_hasLos)
+            //    {
+            //        _interval = TICK_INTERVAL_FOR_NON_ATTACK;
+            //        return false;
+            //    }
+            //}
+            //else
+                _hasLos = true;
 
-                return true;
-            }
-
-            return false;
+            return base.PrepareRangedAttack();
         }
 
         protected override void PerformRangedAttack()
@@ -101,39 +116,30 @@ namespace DOL.GS
             base.PerformRangedAttack();
         }
 
-        protected override bool FinalizeRangedAttack()
-        {
-            int offsetMeleeAttackRange = _mimicOwner.MeleeAttackRange;
-            int maxSpeed = _mimicOwner.MaxSpeed;
-
-            if (maxSpeed > 0)
-                offsetMeleeAttackRange += (int)(TIME_TO_TARGET_THRESHOLD_BEFORE_MELEE_SWITCH * maxSpeed * 0.001);
-
-            // Switch to melee if range to target is less than 200.
-            if (_mimicOwner != null &&
-                _mimicOwner.TargetObject != null &&
-                _mimicOwner.IsWithinRadius(_target, 200))
-            {
-                SwitchToMeleeAndTick();
-                return false;
-            }
-
-            if (_mimicOwner.Endurance < RangeAttackComponent.DEFAULT_ENDURANCE_COST)
-            {
-                AttackComponent.StopAttack();
-                CleanUp();
-                return false;
-            }
-
-            return base.FinalizeRangedAttack();
-        }
-
         public override void OnAimInterrupt(GameObject attacker)
         {
             if (attacker is GameLiving livingAttacker &&
                 livingAttacker.ActiveWeaponSlot is not eActiveWeaponSlot.Distance &&
                 livingAttacker.IsWithinRadius(_mimicOwner, livingAttacker.attackComponent.AttackRange))
                 SwitchToMeleeAndTick();
+        }
+
+        public override void OnForcedWeaponSwitch()
+        {
+            switch (_mimicOwner.ActiveWeaponSlot)
+            {
+                case eActiveWeaponSlot.Standard:
+                case eActiveWeaponSlot.TwoHanded:
+                {
+                    _wasMeleeWeaponSwitchForced = true;
+                    break;
+                }
+                case eActiveWeaponSlot.Distance:
+                {
+                    _wasMeleeWeaponSwitchForced = false;
+                    break;
+                }
+            }
         }
 
         public override bool OnOutOfRangeOrNoLosRangedAttack()
@@ -152,7 +158,7 @@ namespace DOL.GS
             if (_mimicOwner.ActiveWeaponSlot is not eActiveWeaponSlot.Distance)
                 return;
 
-            _mimicOwner.SwitchToMelee(_target);
+            _mimicOwner.StartAttackWithMeleeWeapon(_target);
         }
 
         private void SwitchToRangedAndTick()
@@ -160,50 +166,49 @@ namespace DOL.GS
             if (_mimicOwner.ActiveWeaponSlot is eActiveWeaponSlot.Distance)
                 return;
 
-            _mimicOwner.SwitchToRanged(_target);
+            _mimicOwner.StartAttackWithRangedWeapon(_target);
         }
 
-        protected override void CleanUp()
+        public override void CleanUp()
         {
-            if (_mimicOwner.Brain is NecromancerPetBrain necromancerPetBrain)
-                necromancerPetBrain.ClearAttackSpellQueue();
-
             if (_checkLosTimer != null)
             {
                 _checkLosTimer.Stop();
                 _checkLosTimer = null;
             }
 
+            _wasMeleeWeaponSwitchForced = false;
             base.CleanUp();
         }
 
         private void LosCheckCallback(GamePlayer player, eLosCheckResponse response, ushort sourceOID, ushort targetOID)
         {
-            _hasLos = response is eLosCheckResponse.TRUE;
             _losCheckTarget = _mimicOwner.CurrentRegion.GetObject(targetOID);
 
-            if (_losCheckTarget == null)
-                return;
+            if (_losCheckTarget == null || _losCheckTarget != _target)
+                _hasLos = false;
+            else
+                _hasLos = response is eLosCheckResponse.TRUE;
 
-            if (_hasLos)
+            if (!_hasLos)
             {
-                _mimicOwner.TurnTo(_losCheckTarget);
+                OnOutOfRangeOrNoLosRangedAttack();
                 return;
             }
 
-            OnOutOfRangeOrNoLosRangedAttack();
+            _mimicOwner.TurnTo(_losCheckTarget);
         }
 
         public class CheckLosTimer : ECSGameTimerWrapperBase
         {
-            private GameNPC _npcOwner;
+            private GameNPC _mimicOwner;
             private GameObject _target;
             private CheckLosResponse _callback;
             private GamePlayer _losChecker;
 
             public CheckLosTimer(GameObject owner, GameObject target, CheckLosResponse callback) : base(owner)
             {
-                _npcOwner = owner as GameNPC;
+                _mimicOwner = owner as GameNPC;
                 _callback = callback;
                 ChangeTarget(target);
             }
@@ -229,7 +234,7 @@ namespace DOL.GS
                 // Don't bother starting the timer if there's no one to perform the LoS check.
                 if (_losChecker == null)
                 {
-                    _callback(null, eLosCheckResponse.TRUE, 0, 0);
+                    //_callback(null, eLosCheckResponse.TRUE, 0, 0);
                     return;
                 }
 
@@ -243,10 +248,10 @@ namespace DOL.GS
             protected override int OnTick(ECSGameTimer timer)
             {
                 // We normally rely on `AttackActon.CleanUp()` to stop this timer.
-                if (!_npcOwner.attackComponent.AttackState || _npcOwner.ObjectState is not eObjectState.Active)
+                if (!_mimicOwner.attackComponent.AttackState || _mimicOwner.ObjectState is not eObjectState.Active)
                     return 0;
 
-                _losChecker.Out.SendCheckLos(_npcOwner, _target, new CheckLosResponse(_callback));
+                _losChecker.Out.SendCheckLos(_mimicOwner, _target, new CheckLosResponse(_callback));
                 return LosCheckInterval;
             }
         }

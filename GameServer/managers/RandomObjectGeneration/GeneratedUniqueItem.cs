@@ -4795,7 +4795,6 @@ namespace DOL.GS
             if (this.ProcSpellID != 0 || this.ProcSpellID1 != 0)
                 cap = (int)Math.Floor(cap * .7); //proc items generate with lower utility
 
-            //Console.WriteLine($"Cap: {cap} floor {utilityMinimum} startUti: {startUti}");
             //bring uti up to floor first
             if (GetTotalUtility() < utilityMinimum)
             {
@@ -4806,7 +4805,6 @@ namespace DOL.GS
                 {
                     //find highest utility line on the item
                     worstline = GetLowestUtilitySingleLine();
-                    //Console.WriteLine($"TotalUti: {GetTotalUtility()} worstline {worstline} ");
                     numAttempts++;
 
                     //lower the value of it by
@@ -4871,7 +4869,6 @@ namespace DOL.GS
                 {
                     //find highest utility line on the item
                     bestline = GetHighestUtilitySingleLine();
-                    //Console.WriteLine($"TotalUti: {GetTotalUtility()} bestline {bestline} ");
 
                     //lower the value of it by
                     //1-5% for resist
@@ -4927,13 +4924,10 @@ namespace DOL.GS
                 }
             }
 
-            //Console.WriteLine($"Capped Uti: {GetTotalUtility()}");
             //write name of item based off of capped lines
             int utiLine = GetHighestUtilitySingleLine();
             eProperty bonus = GetPropertyFromBonusLine(utiLine);
-            //Console.WriteLine($"HighUti: {utiLine} bonus: {bonus}");
             WriteMagicalName(bonus);
-            //Console.WriteLine($"Item name: {Name}");
         }
 
         public int GetHighestUtilitySingleLine()
@@ -5082,7 +5076,6 @@ namespace DOL.GS
 
         private int ReduceSingleLineUtility(int BonusType, int Bonus)
         {
-            //Console.WriteLine($"Reducing utility for {this.Name}. Total bonus before: {Bonus}");
             //based off of eProperty
             //1-8 == stats = *.6667
             //9 == power cap = *2
@@ -5126,13 +5119,12 @@ namespace DOL.GS
                     Bonus = 0; //no +all skills on rogs
                 }
             }
-            //Console.WriteLine($"Total bonus after: {Bonus}");
+
             return Bonus;
         }
 
         private int IncreaseSingleLineUtility(int BonusType, int Bonus)
         {
-            //Console.WriteLine($"Increasing utility for {this.Name}. Total bonus before: {Bonus} bonustype {BonusType}");
             //based off of eProperty
             //1-8 == stats = *.6667
             //9 == power cap = *2
@@ -5176,7 +5168,7 @@ namespace DOL.GS
                     Bonus = 0; //no +all skills on rogs
                 }
             }
-            //Console.WriteLine($"Total bonus after: {Bonus}");
+
             return Bonus;
         }
 
@@ -6906,12 +6898,10 @@ namespace DOL.GS
         {
             if (hPropertyToMagicPrefix.TryGetValue(property, out string prefix) && !m_named)
             {
-                //Console.WriteLine($"Str: {str}");
                 if (!string.IsNullOrEmpty(prefix))
                     Name = $"{prefix} {Name}";
 
                 m_named = true;
-                //Console.WriteLine("Named = true, name = " + this.Name);
                 return true;
             }
 

@@ -10,7 +10,6 @@ using DOL.GS.Keeps;
 using DOL.GS.Quests;
 using DOL.GS.Spells;
 using DOL.Language;
-using log4net;
 
 namespace DOL.GS.PacketHandler
 {
@@ -20,7 +19,7 @@ namespace DOL.GS.PacketHandler
 		/// <summary>
 		/// Defines a logger for this class.
 		/// </summary>
-		private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		/// <summary>
 		/// Constructs a new PacketLib for Version 1.73 clients
@@ -99,12 +98,7 @@ namespace DOL.GS.PacketHandler
 				pak.WriteInt(0);
 
 				foreach (GamePlayer plr in player.GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
-				{
-					if (player != plr)
-						plr.Client.PacketProcessor.SendTCP(pak);
-				}
-
-				SendTCP(pak);
+					plr.Out.SendTCP(pak);
 			}
 		}
 
@@ -237,8 +231,6 @@ namespace DOL.GS.PacketHandler
 								if (ip == "any" || ip == "0.0.0.0" || ip == "127.0.0.1" || ip.StartsWith("10.13.") || ip.StartsWith("192.168."))
 									ip = ((IPEndPoint)m_gameClient.Socket.LocalEndPoint).Address.ToString();
 								pak.FillString(ip, 20);
-
-								//							DOLConsole.WriteLine(string.Format(" ip={3}; fromPort={1}; toPort={2}; num={4}; id={0}; region name={5}", entries[index].id, entries[index].fromPort, entries[index].toPort, entries[index].ip, num, entries[index].name));
 								index++;
 							}
 						}

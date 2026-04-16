@@ -9,7 +9,6 @@ using DOL.Events;
 using DOL.GS.Behaviour;
 using DOL.GS.PacketHandler;
 using DOL.Language;
-using log4net;
 
 namespace DOL.GS.Quests
 {
@@ -22,7 +21,7 @@ namespace DOL.GS.Quests
         /// <summary>
         /// Defines a logger for this class.
         /// </summary>
-        private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
         /// <summary>
         /// The level of the quest.
@@ -355,7 +354,7 @@ namespace DOL.GS.Quests
                 return;
             }
 
-            lock (player.Inventory.LockObject)
+            lock (player.Inventory.Lock)
             {
                 DbInventoryItem item = player.Inventory.GetFirstItemByID(itemTemplate.Id_nb, eInventorySlot.FirstBackpack, eInventorySlot.LastBackpack);
 
@@ -380,7 +379,7 @@ namespace DOL.GS.Quests
                 return;
             }
 
-            lock (player.Inventory.LockObject)
+            lock (player.Inventory.Lock)
             {
                 if (item != null)
                 {
@@ -405,7 +404,7 @@ namespace DOL.GS.Quests
                 return 0;
             }
 
-            lock (player.Inventory.LockObject)
+            lock (player.Inventory.Lock)
             {
                 DbInventoryItem item = player.Inventory.GetFirstItemByID(itemTemplate.Id_nb, eInventorySlot.FirstBackpack, eInventorySlot.LastBackpack);
 

@@ -1,10 +1,9 @@
-using DOL.GS.Keeps;
 using DOL.GS.PacketHandler;
 using DOL.GS.Scripts;
 
 namespace DOL.GS.Spells
 {
-    [SpellHandlerAttribute("Bolt")]
+    [SpellHandler(eSpellType.Bolt)]
     public class BoltSpellHandler : SpellHandler
     {
         private bool _combatBlock;
@@ -14,13 +13,6 @@ namespace DOL.GS.Spells
         public override void FinishSpellCast(GameLiving target)
         {
             Caster.Mana -= PowerCost(target);
-
-            if ((target is GameKeepDoor || target is GameKeepComponent) && Spell.SpellType != eSpellType.SiegeArrow && Spell.SpellType != eSpellType.SiegeDirectDamage)
-            {
-                MessageToCaster($"Your spell has no effect on the {target.Name}!", eChatType.CT_SpellResisted);
-                return;
-            }
-
             base.FinishSpellCast(target);
         }
 
@@ -28,7 +20,7 @@ namespace DOL.GS.Spells
         {
             foreach (GameLiving livingTarget in SelectTargets(target))
             {
-                if (livingTarget is GamePlayer playerTarget && Spell.Target == eSpellTarget.CONE)
+                if (livingTarget is GamePlayer playerTarget && Spell.Target is eSpellTarget.CONE)
                     playerTarget.Out.SendCheckLos(Caster, playerTarget, LosCheckCallback);
                 else
                     LaunchBolt(livingTarget);
@@ -73,7 +65,7 @@ namespace DOL.GS.Spells
 
                 // We need a fake weapon skill for the target's armor to have something to be compared with.
                 // Since 'damage' is already modified by intelligence, power relics, spell variance, and everything else; we can use a constant only modified by the caster's level.
-                double weaponSkill = Caster.attackComponent.CalculateWeaponSkill(Caster.Level * 2.5, 1.0, 1.0);
+                double weaponSkill = Caster.Level * 2.5 + AttackComponent.INHERENT_WEAPON_SKILL;
                 double targetArmor = AttackComponent.CalculateTargetArmor(ad.Target, ad.ArmorHitLocation, out _, out _);
                 damage += weaponSkill / targetArmor * halfBaseDamage;
             }
@@ -89,9 +81,6 @@ namespace DOL.GS.Spells
 
         public override double CalculateToHitChance(GameLiving target)
         {
-            if (target is GameKeepDoor)
-                return 0;
-
             double hitChance = base.CalculateToHitChance(target);
 
             if (Caster is IGamePlayer && target is IGamePlayer && target.InCombat)

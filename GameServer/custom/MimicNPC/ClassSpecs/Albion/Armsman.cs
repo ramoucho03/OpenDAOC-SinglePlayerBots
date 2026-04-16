@@ -38,7 +38,7 @@ namespace DOL.GS.Scripts
                 break;
             }
 
-            bool rand2H = Util.RandomBool();
+            bool rand2H = Util.Random(1) > 0;
 
             if (rand2H)
                 WeaponTwoType = eObjectType.PolearmWeapon;

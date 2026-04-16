@@ -20,7 +20,7 @@ namespace DOL.GS.Spells
 	/// </summary>
 	public abstract class SummonSpellHandler : SpellHandler
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		protected GameSummonedPet m_pet = null;
 
@@ -87,7 +87,7 @@ namespace DOL.GS.Spells
 
 		protected virtual void SetBrainToOwner(IControlledBrain brain)
 		{
-			Caster.SetControlledBrain(brain);
+			Caster.AddControlledBrain(brain);
 		}
 
 		protected virtual void AddHandlers() { }
@@ -144,17 +144,12 @@ namespace DOL.GS.Spells
 				m_pet.IsSilent = true;
 
 			m_pet.AddToWorld();
-			
-			// Check for buffs
-			if (brain is ControlledMobBrain)
-				(brain as ControlledMobBrain).CheckSpells(StandardMobBrain.eCheckSpellType.Defensive);
-
 			AddHandlers();
-			SetBrainToOwner(brain);
 
 			m_pet.Health = m_pet.MaxHealth;
 			m_pet.Spells = template.Spells; // Have to sort spells again now that the pet level has been assigned.
 
+			SetBrainToOwner(brain);
 			CreateECSEffect(new ECSGameEffectInitParams(m_pet, CalculateEffectDuration(target), CasterEffectiveness, this));
 			Caster.OnPetSummoned(m_pet);
 		}
@@ -165,15 +160,7 @@ namespace DOL.GS.Spells
 				return;
 
 			GameLiving petOwner = petBrain.Owner;
-
-			if (petOwner.ControlledBrain == petBrain)
-				petOwner.SetControlledBrain(null);
-
-			foreach (ECSGameAbilityEffect ability in pet.effectListComponent.GetAbilityEffects())
-			{
-				if (ability is InterceptECSGameEffect interceptEffect && interceptEffect.Source == pet && interceptEffect.Target == petOwner)
-					EffectService.RequestCancelEffect(interceptEffect);
-			}
+			petOwner.RemoveControlledBrain(petBrain);
 		}
 
 		public override double CalculateSpellResistChance(GameLiving target)

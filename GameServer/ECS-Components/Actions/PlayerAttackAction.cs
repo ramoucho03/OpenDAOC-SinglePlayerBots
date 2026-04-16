@@ -1,4 +1,5 @@
-﻿using DOL.GS.PacketHandler;
+﻿using DOL.Database;
+using DOL.GS.PacketHandler;
 using DOL.Language;
 
 namespace DOL.GS
@@ -51,6 +52,9 @@ namespace DOL.GS
         {
             _playerOwner.rangeAttackComponent.RemoveEnduranceAndAmmoOnShot();
             base.PerformRangedAttack();
+
+            if (_playerOwner.rangeAttackComponent.Ammo.Count == 0)
+                _playerOwner.rangeAttackComponent.UpdateAmmo(_playerOwner.ActiveWeapon);
         }
 
         protected override bool FinalizeMeleeAttack()
@@ -60,6 +64,8 @@ namespace DOL.GS
                 if (_playerOwner.UseDetailedCombatLog)
                     _playerOwner.Out.SendMessage($"Attack Speed: {_interval / 1000.0}s", eChatType.CT_DamageAdd, eChatLoc.CL_SystemWindow);
 
+                StyleComponent.NextCombatStyle = null;
+                StyleComponent.NextCombatBackupStyle = null;
                 return true;
             }
 
@@ -70,12 +76,19 @@ namespace DOL.GS
         {
             bool stopAttack = false;
 
-            if (_playerOwner.rangeAttackComponent.RangedAttackState is not eRangedAttackState.AimFireReload || _playerOwner.rangeAttackComponent.Ammo.Count == 0)
+            if (_playerOwner.rangeAttackComponent.RangedAttackState is not eRangedAttackState.AimFireReload)
                 stopAttack = true;
             else if (_playerOwner.Endurance < RangeAttackComponent.DEFAULT_ENDURANCE_COST)
             {
                 stopAttack = true;
                 _playerOwner.Out.SendMessage(LanguageMgr.GetTranslation(_playerOwner.Client.Account.Language, "GamePlayer.StartAttack.TiredUse", _weapon.Name), eChatType.CT_YouHit, eChatLoc.CL_SystemWindow);
+            }
+            else
+            {
+                DbInventoryItem ammo = _playerOwner.rangeAttackComponent.Ammo;
+
+                if (ammo == null || ammo.Count == 0)
+                    stopAttack = true;
             }
 
             if (stopAttack)

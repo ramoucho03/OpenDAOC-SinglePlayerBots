@@ -1,7 +1,6 @@
 using DOL.GS.PacketHandler;
 using DOL.Language;
 using JNogueira.Discord.Webhook.Client;
-using log4net;
 
 namespace DOL.GS.Keeps
 {
@@ -29,7 +28,7 @@ namespace DOL.GS.Keeps
 	/// </summary>
 	public class PlayerMgr
 	{
-		private static readonly ILog log = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
 		/// <summary>
 		/// Sends a message to all players to notify them of the keep capture
@@ -294,24 +293,19 @@ namespace DOL.GS.Keeps
 		/// <param name="lord">The lord object</param>
 		public static void UpdateStats(GuardLord lord)
 		{
-			lock (lord.XPGainers.SyncRoot)
+			lock (lord.XpGainersLock)
 			{
-				foreach (System.Collections.DictionaryEntry de in lord.XPGainers)
+				foreach (var pair in lord.XPGainers)
 				{
-					GameObject obj = (GameObject)de.Key;
-					if (obj is GamePlayer)
+					if (pair.Key is GamePlayer player)
 					{
-						GamePlayer player = obj as GamePlayer;
 						if (lord.Component.Keep != null && lord.Component.Keep is GameKeep)
 						{
 							player.CapturedKeeps++;
 							player.Achieve(AchievementUtils.AchievementNames.Keeps_Taken);
 						}
-							
+
 						else player.CapturedTowers++;
-						
-						if(player.CapturedKeeps % 25 == 0)
-							player.RaiseRealmLoyaltyFloor(1);
 					}
 				}
 			}

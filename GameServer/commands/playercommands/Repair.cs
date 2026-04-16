@@ -31,7 +31,7 @@ namespace DOL.GS.Commands
 		"/repair")]
 	public class RepairCommandHandler : AbstractCommandHandler, ICommandHandler
 	{
-		private static log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 		private static readonly string[] woodNames = { "rowan", "elm", "oak", "oaken", "ironwood", "heartwood", "runewood", "stonewood", "ebonwood", "dyrwood", "duskwood" };
 		private const int repairDuration = 20;
 
@@ -77,11 +77,11 @@ namespace DOL.GS.Commands
 			if (obj == null)
 				return false;
 
-			if (player.Realm != obj.Realm)
-				return false;
-
 			if (player.Client.Account.PrivLevel > (int)ePrivLevel.Player)
 				return true;
+
+			if (player.Realm != obj.Realm)
+				return false;
 
 			// if ((obj as GameLiving).InCombat)
 			// {

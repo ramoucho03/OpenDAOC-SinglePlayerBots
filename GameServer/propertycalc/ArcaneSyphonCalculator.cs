@@ -18,6 +18,7 @@
  */
 namespace DOL.GS.PropertyCalc
 {
+    using DOL.GS.Scripts;
     using System;
 
     /// <summary>
@@ -35,7 +36,8 @@ namespace DOL.GS.PropertyCalc
     {
         public override int CalcValue(GameLiving living, eProperty property)
         {
-            GamePlayer player = living as GamePlayer;
+            IGamePlayer player = living as IGamePlayer;
+
             if(player == null)
             {
                 return 0;

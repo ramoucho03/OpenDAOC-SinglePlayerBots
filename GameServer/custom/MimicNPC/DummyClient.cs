@@ -6,12 +6,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Net.Sockets;
+using DOL.GS.PacketHandler;
 
 namespace DOL.GS.Scripts
 {
     public class DummyClient : GameClient
     {
-        public DummyClient(BaseServer srvr) : base(srvr)
+        public DummyClient(Socket socket) : base(socket)
         {
             Account = new DbAccount();
             Account.Language = "EN";

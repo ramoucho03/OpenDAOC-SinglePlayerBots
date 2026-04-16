@@ -151,7 +151,7 @@ namespace DOL.AI.Brain
 {
 	public class SummonerLossrenBrain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 		public SummonerLossrenBrain() : base()
 		{
 			AggroLevel = 100;
@@ -380,9 +380,7 @@ namespace DOL.GS
 			++TorturedSoulKilled;
             base.Die(killer);
         }
-        public override void DropLoot(GameObject killer)//dont drop loot
-        {
-        }
+		public override bool CanDropLoot => false;
         List<string> soul_names = new List<string>()
 		{
 			"Aphryx's Tortured Soul","Arus's Tortured Soul","Briandina's Tortured Soul","Dwuanne's Tortured Soul",
@@ -429,7 +427,7 @@ namespace DOL.AI.Brain
 			AggroLevel = 100;
 			AggroRange = 800;
 		}
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 		public static bool IsKilled = false;
 		public static bool SetAggroAmount = false;
 		public override void Think()
@@ -547,9 +545,7 @@ namespace DOL.GS
 			RandomTarget = null;
 			base.Die(killer);
 		}
-        public override void DropLoot(GameObject killer)//dont drop loot
-        {
-        }
+        public override bool CanDropLoot => false;
         public static GamePlayer randomtarget = null;
 		public static GamePlayer RandomTarget
 		{

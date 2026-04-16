@@ -4,6 +4,7 @@ using System.Linq;
 using DOL.AI.Brain;
 using DOL.Database;
 using DOL.GS.PacketHandler;
+using DOL.GS.Scripts;
 
 namespace DOL.GS
 {
@@ -16,8 +17,7 @@ namespace DOL.GS
     /// </summary>
     public class LootGeneratorTemplate : LootGeneratorBase
     {
-        private static readonly log4net.ILog log =
-            log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         /// <summary>
         /// Map holding a list of ItemTemplateIDs for each TemplateName
@@ -245,11 +245,11 @@ namespace DOL.GS
 
             try
             {
-                GamePlayer player = null;
+                IGamePlayer player = null;
 
-                if (killer is GamePlayer)
+                if (killer is IGamePlayer)
                 {
-                    player = killer as GamePlayer;
+                    player = killer as IGamePlayer;
                 }
                 else if (killer is GameNPC && (killer as GameNPC).Brain is IControlledBrain)
                 {
@@ -259,7 +259,7 @@ namespace DOL.GS
                 // allow the leader to decide the loot realm
                 if (player != null && player.Group != null)
                 {
-                    player = player.Group.Leader;
+                    player = (IGamePlayer)player.Group.LivingLeader;
                 }
 
                 if (player != null)
@@ -331,7 +331,7 @@ namespace DOL.GS
                                             timedDrops[
                                                 Util.Random(timedDrops.Count - 1)]; //randomly pick one available drop
 
-                                    lock (player._xpGainersLock)
+                                    lock (player.XpGainersLock)
                                     {
                                         DbItemTemplate drop =
                                             GameServer.Database.FindObjectByKey<DbItemTemplate>(lootTemplate
@@ -345,7 +345,7 @@ namespace DOL.GS
                                                 .GetProperty<List<string>>(
                                                     XPItemDroppersKey); //check our list of dropped monsters
                                         if (itemsDropped == null) itemsDropped = new List<string>();
-                                        GamePlayer GroupedTimerToUse = null;
+                                        IGamePlayer GroupedTimerToUse = null;
 
                                         if (player.Group != null)
                                             GroupedTimerToUse =
@@ -356,23 +356,6 @@ namespace DOL.GS
                                             tempProp + dropCooldown < GameLoop.GameLoopTime)
                                         {
                                             long nextDropTime = GameLoop.GameLoopTime;
-
-                                            /*
-                                            AccountXRealmLoyalty realmLoyalty =
-                                                DOLDB<AccountXRealmLoyalty>.SelectObject(DB.Column("AccountID")
-                                                    .IsEqualTo(player.Client.Account.ObjectId)
-                                                    .And(DB.Column("Realm").IsEqualTo(player.Realm)));*/
-                                            var realmLoyalty = LoyaltyManager.GetPlayerRealmLoyalty(player);
-                                            if (realmLoyalty != null && realmLoyalty.Days > 0)
-                                            {
-                                                int tmpLoyal = realmLoyalty.Days > 30
-                                                    ? 30
-                                                    : realmLoyalty.Days;
-                                                nextDropTime -=
-                                                    tmpLoyal *
-                                                    1000; //reduce cooldown by 1s per loyalty day up to 30s cap
-                                            }
-
                                             var numRelics = RelicMgr.GetRelicCount(player.Realm);
                                             if (numRelics > 0) nextDropTime -= 10000 * numRelics;
 
@@ -385,22 +368,6 @@ namespace DOL.GS
                                         else if (GroupedTimerToUse != null)
                                         {
                                             long nextDropTime = GameLoop.GameLoopTime;
-                                            /*
-                                            AccountXRealmLoyalty realmLoyalty =
-                                                DOLDB<AccountXRealmLoyalty>.SelectObject(DB.Column("AccountID")
-                                                    .IsEqualTo(GroupedTimerToUse.Client.Account.ObjectId)
-                                                    .And(DB.Column("Realm").IsEqualTo(player.Realm)));*/
-                                            var realmLoyalty = LoyaltyManager.GetPlayerRealmLoyalty(GroupedTimerToUse);
-                                            if (realmLoyalty != null && realmLoyalty.Days > 0)
-                                            {
-                                                int tmpLoyal = realmLoyalty.Days > 30
-                                                    ? 30
-                                                    : realmLoyalty.Days;
-                                                nextDropTime -=
-                                                    tmpLoyal *
-                                                    1000; //reduce cooldown by 1s per loyalty day up to 30s cap
-                                            }
-
                                             loot.AddFixed(drop, lootTemplate.Count);
                                             GroupedTimerToUse.TempProperties.SetProperty(XPItemKey, nextDropTime);
 
@@ -481,7 +448,7 @@ namespace DOL.GS
                                             timedDrops[
                                                 Util.Random(timedDrops.Count - 1)]; //randomly pick one available drop
 
-                                    lock (player._xpGainersLock)
+                                    lock (player.XpGainersLock)
                                     {
                                         DbItemTemplate drop =
                                             GameServer.Database.FindObjectByKey<DbItemTemplate>(lootTemplate
@@ -494,7 +461,7 @@ namespace DOL.GS
                                             player.TempProperties
                                                 .GetProperty<List<string>>(
                                                     XPItemDroppersKey); //check our list of dropped monsters
-                                        GamePlayer GroupedTimerToUse = null;
+                                        IGamePlayer GroupedTimerToUse = null;
                                         if (itemsDropped == null) itemsDropped = new List<string>();
 
                                         if (player.Group != null)
@@ -506,22 +473,6 @@ namespace DOL.GS
                                             tempProp + dropCooldown < GameLoop.GameLoopTime)
                                         {
                                             long nextDropTime = GameLoop.GameLoopTime;
-                                            /*
-                                            AccountXRealmLoyalty realmLoyalty =
-                                                DOLDB<AccountXRealmLoyalty>.SelectObject(DB.Column("AccountID")
-                                                    .IsEqualTo(player.Client.Account.ObjectId)
-                                                    .And(DB.Column("Realm").IsEqualTo(player.Realm)));*/
-                                            var realmLoyalty = LoyaltyManager.GetPlayerRealmLoyalty(player);
-                                            if (realmLoyalty != null && realmLoyalty.Days > 0)
-                                            {
-                                                int tmpLoyal = realmLoyalty.Days > 30
-                                                    ? 30
-                                                    : realmLoyalty.Days;
-                                                nextDropTime -=
-                                                    tmpLoyal *
-                                                    1000; //reduce cooldown by 1s per loyalty day up to 30s cap
-                                            }
-                                            
                                             var numRelics = RelicMgr.GetRelicCount(player.Realm);
                                             if (numRelics > 0) nextDropTime -= 10000 * numRelics;
 
@@ -534,21 +485,6 @@ namespace DOL.GS
                                         else if (GroupedTimerToUse != null)
                                         {
                                             long nextDropTime = GameLoop.GameLoopTime;
-                                            /*AccountXRealmLoyalty realmLoyalty =
-                                                DOLDB<AccountXRealmLoyalty>.SelectObject(DB.Column("AccountID")
-                                                    .IsEqualTo(GroupedTimerToUse.Client.Account.ObjectId)
-                                                    .And(DB.Column("Realm").IsEqualTo(player.Realm)));*/
-                                            var realmLoyalty = LoyaltyManager.GetPlayerRealmLoyalty(GroupedTimerToUse);
-                                            if (realmLoyalty != null && realmLoyalty.Days > 0)
-                                            {
-                                                int tmpLoyal = realmLoyalty.Days > 30
-                                                    ? 30
-                                                    : realmLoyalty.Days;
-                                                nextDropTime -=
-                                                    tmpLoyal *
-                                                    1000; //reduce cooldown by 1s per loyalty day up to 30s cap
-                                            }
-
                                             loot.AddFixed(drop, lootTemplate.Count);
                                             GroupedTimerToUse.TempProperties.SetProperty(XPItemKey, nextDropTime);
 
@@ -599,14 +535,14 @@ namespace DOL.GS
             return loot;
         }
 
-        private GamePlayer CheckGroupForValidXpTimer(String xpItemKey, int dropCooldown, GamePlayer player)
+        private IGamePlayer CheckGroupForValidXpTimer(String xpItemKey, int dropCooldown, IGamePlayer player)
         {
             //check if any group member has a valid timer to use
-            foreach (GamePlayer groupMember in player.Group.GetNearbyPlayersInTheGroup(player))
+            foreach (IGamePlayer groupMember in player.Group.GetIPlayersInTheGroup())
             {
                 if ((player.CurrentZone != groupMember.CurrentZone) ||
                     player.CurrentRegion != groupMember.CurrentRegion) continue;
-                if (player.GetDistance(groupMember) > WorldMgr.MAX_EXPFORKILL_DISTANCE) continue;
+                if (player.GetDistance((GameLiving)groupMember) > WorldMgr.MAX_EXPFORKILL_DISTANCE) continue;
                 long tempProp = groupMember.TempProperties.GetProperty<long>(xpItemKey);
                 if (tempProp == 0 || tempProp + dropCooldown < GameLoop.GameLoopTime)
                     return groupMember;
@@ -625,7 +561,7 @@ namespace DOL.GS
         /// <param name="player">Player used to determine realm</param>
         /// <returns>lootList (for readability)</returns>
         private LootList GenerateLootFromMobXLootTemplates(DbMobXLootTemplate mobXLootTemplates,
-            List<DbLootTemplate> lootTemplates, LootList lootList, GamePlayer player)
+            List<DbLootTemplate> lootTemplates, LootList lootList, IGamePlayer player)
         {
             if (mobXLootTemplates == null || lootTemplates == null || player == null)
                 return lootList;

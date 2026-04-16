@@ -4,15 +4,15 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using ECS.Debug;
-using log4net;
 
 namespace DOL.GS
 {
     public static class ZoneService
     {
-        private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
         private const string SERVICE_NAME = nameof(ZoneService);
         private static List<ObjectChangingSubZone> _list;
+        private static int _entityCount;
 
         public static void Tick()
         {
@@ -20,6 +20,10 @@ namespace DOL.GS
             Diagnostics.StartPerfCounter(SERVICE_NAME);
             _list = EntityManager.UpdateAndGetAll<ObjectChangingSubZone>(EntityManager.EntityType.ObjectChangingSubZone, out int lastValidIndex);
             Parallel.For(0, lastValidIndex + 1, TickInternal);
+
+            if (Diagnostics.CheckEntityCounts)
+                Diagnostics.PrintEntityCount(SERVICE_NAME, ref _entityCount, _list.Count);
+
             Diagnostics.StopPerfCounter(SERVICE_NAME);
         }
 
@@ -29,6 +33,9 @@ namespace DOL.GS
 
             if (objectChangingSubZone?.EntityManagerId.IsSet != true)
                 return;
+
+            if (Diagnostics.CheckEntityCounts)
+                Interlocked.Increment(ref _entityCount);
 
             EntityManager.Remove(objectChangingSubZone);
             SubZoneObject subZoneObject = null;
@@ -117,11 +124,12 @@ namespace DOL.GS
         public SubZoneObject SubZoneObject { get; private set; }
         public Zone DestinationZone { get; private set; }
         public SubZone DestinationSubZone { get; private set; }
-        public EntityManagerId EntityManagerId { get; set; } = new(EntityManager.EntityType.ObjectChangingSubZone, true);
+        public EntityManagerId EntityManagerId { get; set; }
 
         private ObjectChangingSubZone(SubZoneObject subZoneObject, Zone destinationZone, SubZone destinationSubZone)
         {
             Initialize(subZoneObject, destinationZone, destinationSubZone);
+            EntityManagerId = new EntityManagerId(EntityManager.EntityType.ObjectChangingSubZone, CleanUp);
         }
 
         public static void Create(SubZoneObject subZoneObject, Zone destinationZone, SubZone destinationSubZone)
@@ -143,6 +151,13 @@ namespace DOL.GS
             SubZoneObject = subZoneObject;
             DestinationZone = destinationZone;
             DestinationSubZone = destinationSubZone;
+        }
+
+        private void CleanUp()
+        {
+            SubZoneObject = null;
+            DestinationZone = null;
+            DestinationSubZone = null;
         }
     }
 }

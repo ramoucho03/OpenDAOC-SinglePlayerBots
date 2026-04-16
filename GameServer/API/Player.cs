@@ -186,7 +186,6 @@ public class Player
     public static bool GetDiscord(string accountName)
     {
         var account = DOLDB<DbAccount>.SelectObject(DB.Column("Name").IsEqualTo(accountName));
-        Console.WriteLine(account.DiscordID);
         return account.DiscordID is not (null or "");
     }
 
@@ -262,7 +261,7 @@ public class Player
         if (_cache.TryGetValue(_allPlayersCacheKey, out List<PlayerInfo> allPlayers)) return allPlayers;
         var dayLimit = DateTime.Now.Subtract(TimeSpan.FromDays(31));
             
-        var players = GameServer.Database.SelectObjects<DbCoreCharacter>(DB.Column("LastPlayed").IsGreatherThan(dayLimit));
+        var players = GameServer.Database.SelectObjects<DbCoreCharacter>(DB.Column("LastPlayed").IsGreaterThan(dayLimit));
 
         allPlayers = new List<PlayerInfo>(players.Count);
 

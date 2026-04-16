@@ -26,7 +26,7 @@ namespace DOL.GS
         public int Range(ECSGameTimer timer)
         {
             this.Strength = 250;
-            this.SwitchToRanged(this.TargetObject);
+            this.StartAttackWithRangedWeapon(this.TargetObject);
             new ECSGameTimer(this, new ECSGameTimer.ECSTimerCallback(RangeEnd), 9500);
             IsRanged = true;
             return 0;
@@ -220,8 +220,7 @@ namespace DOL.AI.Brain
 {
     public class SergeantEddisonBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log =
-            log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public SergeantEddisonBrain()
             : base()

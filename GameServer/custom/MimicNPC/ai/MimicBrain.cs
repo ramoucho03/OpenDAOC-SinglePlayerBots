@@ -1,5 +1,6 @@
 using DOL.Database;
 using DOL.GS;
+using DOL.GS.API;
 using DOL.GS.Effects;
 using DOL.GS.Keeps;
 using DOL.GS.PacketHandler;
@@ -9,7 +10,6 @@ using DOL.GS.ServerProperties;
 using DOL.GS.SkillHandler;
 using DOL.GS.Spells;
 using DOL.Language;
-using log4net;
 using Microsoft.VisualBasic;
 using System;
 using System.Collections;
@@ -17,6 +17,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using static DOL.AI.Brain.StandardMobBrain;
@@ -26,26 +27,16 @@ namespace DOL.AI.Brain
 {
     public class MimicBrain : ABrain, IOldAggressiveBrain
     {
-        public static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        protected static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
         public override bool IsActive => Body != null && Body.IsAlive && Body.ObjectState == GameObject.eObjectState.Active;
 
         public bool IsHealer = false;
-
-        public bool IsMainPuller
-        { get { return Body.Group?.MimicGroup.MainPuller == Body; } }
-
-        public bool IsMainTank
-        { get { return Body.Group?.MimicGroup.MainTank == Body; } }
-
-        public bool IsMainLeader
-        { get { return Body.Group?.MimicGroup.MainLeader == Body; } }
-
-        public bool IsMainCC
-        { get { return Body.Group?.MimicGroup.MainCC == Body; } }
-
-        public bool IsMainAssist
-        { get { return Body.Group?.MimicGroup.MainAssist == Body; } }
+        public bool IsMainPuller { get { return Body.Group?.MimicGroup.MainPuller == Body; } }
+        public bool IsMainTank { get { return Body.Group?.MimicGroup.MainTank == Body; } }
+        public bool IsMainLeader { get { return Body.Group?.MimicGroup.MainLeader == Body; } }
+        public bool IsMainCC { get { return Body.Group?.MimicGroup.MainCC == Body; } }
+        public bool IsMainAssist { get { return Body.Group?.MimicGroup.MainAssist == Body; } }
 
         private MimicNPC _mimicBody;
 
@@ -57,7 +48,10 @@ namespace DOL.AI.Brain
 
         public const int MAX_AGGRO_DISTANCE = 3600;
         public const int MAX_AGGRO_LIST_DISTANCE = 6000;
-        private const int EFFECTIVE_AGGRO_AMOUNT_CALCULATION_DISTANCE_THRESHOLD = 500;
+
+        // Effective aggro reduction is calculated using an exponential decay function, starting from the distance threshold. A reduction of 2/3rd is ensured at 1500.
+        private const int EFFECTIVE_AGGRO_DISTANCE_THRESHOLD = 250; // Should be higher than players' melee range.
+        private static readonly double EFFECTIVE_AGGRO_EXPONENT = Math.Log(1 / 3.0) / (1500 - EFFECTIVE_AGGRO_DISTANCE_THRESHOLD);
 
         public bool PreventCombat;
         public bool PvPMode;
@@ -92,8 +86,6 @@ namespace DOL.AI.Brain
             FSM.Add(new MimicState_Camp(this));
             FSM.Add(new MimicState_Duel(this));
             FSM.Add(new MimicState_Dead(this));
-
-            FSM.SetCurrentState(eFSMStateType.WAKING_UP);
         }
 
         /// <summary>
@@ -165,7 +157,7 @@ namespace DOL.AI.Brain
                 case eAttackResult.HitUnstyled:
                 case eAttackResult.Missed:
                 case eAttackResult.Parried:
-                AddToAggroList(ad.Attacker, ad.Attacker.EffectiveLevel + ad.Damage + ad.CriticalDamage);
+                AddToAggroList(ad.Attacker, 1);
                 break;
             }
 
@@ -175,10 +167,13 @@ namespace DOL.AI.Brain
 
         public virtual bool CheckProximityAggro(int aggroRange)
         {
-            FireAmbientSentence();
+            //FireAmbientSentence();
 
-            CheckPlayerAggro();
-            CheckNPCAggro(aggroRange);
+            if (PvPMode || AggroLevel > 0 && AggroRange > 0 && !HasAggro && Body.CurrentSpellHandler == null)
+            {
+                CheckPlayerAggro();
+                CheckNPCAggro(aggroRange);
+            }
 
             // Some calls rely on this method to return if there's something in the aggro list, not necessarily to perform a proximity aggro check.
             // But this doesn't necessarily return whether or not the check was positive, only the current state (LoS checks take time).
@@ -206,7 +201,7 @@ namespace DOL.AI.Brain
                 if (!CanAggroTarget(player))
                     continue;
 
-                if (player.IsStealthed || player.Steed != null)
+                if (player.Steed != null)
                     continue;
 
                 if (player.effectListComponent.ContainsEffectForEffectType(eEffect.Shade))
@@ -230,9 +225,6 @@ namespace DOL.AI.Brain
             foreach (GameNPC npc in Body.GetNPCsInRadius((ushort)aggroRange))
             {
                 if (!CanAggroTarget(npc))
-                    continue;
-
-                if (npc is IGamePlayer player && player.IsStealthed && !MimicBody.CanDetect(player))
                     continue;
 
                 if (npc is GameTaxi or GameTrainingDummy)
@@ -272,10 +264,10 @@ namespace DOL.AI.Brain
                     currentPlayersSeen.Add(player);
                 }
 
-                for (int i = 0; i < PlayersSeen.Count; i++)
+                for (int i = PlayersSeen.Count - 1; i >= 0; i--)
                 {
                     if (!currentPlayersSeen.Contains(PlayersSeen[i]))
-                        PlayersSeen.RemoveAt(i);
+                        PlayersSeen.SwapRemoveAt(i);
                 }
             }
         }
@@ -779,6 +771,7 @@ namespace DOL.AI.Brain
         private ConcurrentDictionary<GameLiving, AggroAmount> _tempAggroList = new();
         protected ConcurrentDictionary<GameLiving, AggroAmount> AggroList { get; private set; } = new();
         protected List<(GameLiving, long)> OrderedAggroList { get; private set; } = [];
+        protected readonly Lock _orderedAggroListLock = new();
         public GameLiving LastHighestThreatInAttackRange { get; private set; }
 
         public class AggroAmount(long @base = 0)
@@ -901,7 +894,7 @@ namespace DOL.AI.Brain
         public List<(GameLiving, long)> GetOrderedAggroList()
         {
             // Potentially slow, so we cache the result.
-            lock (((ICollection)OrderedAggroList).SyncRoot)
+            lock (_orderedAggroListLock)
             {
                 if (OrderedAggroList.Any())
                     OrderedAggroList = AggroList.OrderByDescending(x => x.Value.Effective).Select(x => (x.Key, x.Value.Effective)).ToList();
@@ -951,7 +944,7 @@ namespace DOL.AI.Brain
         {
             AggroList.Clear();
 
-            lock (((ICollection)OrderedAggroList).SyncRoot)
+            lock (_orderedAggroListLock)
             {
                 OrderedAggroList.Clear();
             }
@@ -974,6 +967,9 @@ namespace DOL.AI.Brain
 
             if (Body.TargetObject != null)
             {
+                if (Body.ControlledBrain != null)
+                    Body.ControlledBrain.Attack(Body.TargetObject);
+
                 if (!IsFleeing && CheckSpells(eCheckSpellType.Offensive))
                 {
                     Body.StopAttack();
@@ -981,9 +977,6 @@ namespace DOL.AI.Brain
                 else
                 {
                     CheckOffensiveAbilities();
-
-                    if (Body.ControlledBrain != null)
-                        Body.ControlledBrain.Attack(Body.TargetObject);
 
                     if (MimicBody.CharacterClass.ClassType == eClassType.ListCaster && MimicBody.CharacterClass.ID != (int)eCharacterClass.Valewalker)
                     {
@@ -1017,7 +1010,7 @@ namespace DOL.AI.Brain
                                     IsFleeing = false;
                                     TargetFleePosition = null;
 
-                                    if (Body.IsWithinRadius(Body.TargetObject, 500))
+                                    if (Body.IsWithinRadius(Body.TargetObject, 400))
                                     {
                                         Flee(1800);
                                         return;
@@ -1087,10 +1080,19 @@ namespace DOL.AI.Brain
 
         private void Flee(int distance)
         {
-            IsFleeing = true;
-            MimicBody.Sprint(true);
             TargetFleePosition = GetFleePoint(distance);
-            Body.PathTo(TargetFleePosition, Body.MaxSpeed);
+
+            if (TargetFleePosition != null)
+            {
+                IsFleeing = true;
+                MimicBody.Sprint(true);
+
+                Body.PathTo(TargetFleePosition, Body.MaxSpeed);
+            }
+            else
+            {
+                IsFleeing = false;
+            }
         }
 
         public void ResetFlanking()
@@ -1127,20 +1129,59 @@ namespace DOL.AI.Brain
 
         private Point3D GetFleePoint(int fleeDistance)
         {
-            float diffx = (long)Body.TargetObject.X - Body.X;
-            float diffy = (long)Body.TargetObject.Y - Body.Y;
+            ushort heading;
 
-            float distance = (float)Math.Sqrt(diffx * diffx + diffy * diffy);
+            if (Body.IsObjectInFront(Body.TargetObject, 120))
+                heading = (ushort)(Body.Heading - 2048);
+            else
+                heading = Body.Heading;
 
-            diffx = (diffx / distance) * fleeDistance;
-            diffy = (diffy / distance) * fleeDistance;
+            if (heading < 0)
+                heading += 4096;
 
-            int newX = (int)(Body.TargetObject.X - diffx);
-            int newY = (int)(Body.TargetObject.Y - diffy);
+            if (heading > 4096)
+                heading -= 4096;
 
-            Vector3? target = PathingMgr.Instance.GetClosestPointAsync(Body.CurrentZone, new Vector3(newX, newY, 0));
+            Point2D point = Body.GetPointFromHeading(heading, fleeDistance);
 
-            return new Point3D((int)target?.X, (int)target?.Y, (int)target?.Z);
+            if (Body.CurrentRegion.GetZone(point.X, point.Y) == null)
+            {
+                log.Warn(Body.Name + "Tried to flee to null zone.");
+
+                Point2D validPoint = null;
+
+                for (int i = 0; i < 8; i++)
+                {
+                    heading += 512;
+
+                    if (heading > 4096)
+                        heading -= 4096;
+
+                    validPoint = Body.GetPointFromHeading(heading, fleeDistance);
+
+                    if (Body.CurrentRegion.GetZone(validPoint.X, validPoint.Y) != null)
+                    {
+                        point = validPoint;
+                        break;
+                    }
+                }
+
+                if (point == null)
+                {
+                    log.Warn(Body.Name + "Could not get valid flee point for " + Body.Name);
+                    return null;
+                }
+            }
+
+            if (PathingMgr.Instance.HasNavmesh(Body.CurrentZone))
+            {
+                Vector3? target = PathingMgr.Instance.GetClosestPointAsync(Body.CurrentZone, new Vector3(point.X, point.Y, Body.Z));
+
+                if (target.HasValue)
+                    return new Point3D(target.Value.X, target.Value.Y, target.Value.Z);
+            }
+
+            return new Point3D(point.X, point.Y, Body.Z);
         }
 
         private eOpeningPosition GetPositional()
@@ -1149,7 +1190,7 @@ namespace DOL.AI.Brain
 
             if (MimicBody.CanUseSideStyles && MimicBody.CanUseBackStyles)
             {
-                if (Util.RandomBool())
+                if (Util.Random(1) == 0)
                     positional = eOpeningPosition.Back;
                 else
                     positional = eOpeningPosition.Side;
@@ -1169,7 +1210,7 @@ namespace DOL.AI.Brain
             switch (positional)
             {
                 case eOpeningPosition.Side:
-                if (Util.RandomBool())
+                if (Util.Random(1) == 0)
                     heading = (ushort)(living.Heading - 1024);
                 else
                     heading = (ushort)(living.Heading + 1024);
@@ -1195,37 +1236,32 @@ namespace DOL.AI.Brain
             return point;
         }
 
-        private long _isHandlingAdditionToAggroListFromLosCheck;
-        private int _losCheckCount;
-        private bool StartAddToAggroListFromLosCheck => Interlocked.Exchange(ref _isHandlingAdditionToAggroListFromLosCheck, 1) == 0; // Returns true the first time it's called.
-        private bool IsWaitingForLosCheck => Interlocked.CompareExchange(ref _losCheckCount, 0, 0) > 0;
+        private int _pendingLosCheckCount;
+        public int PendingLosCheckCount => _pendingLosCheckCount;
+        public bool IsWaitingForLosCheck => Interlocked.CompareExchange(ref _pendingLosCheckCount, 0, 0) > 0;
         protected virtual bool CanAddToAggroListFromMultipleLosChecks => false;
 
         protected void SendLosCheckForAggro(GamePlayer player, GameObject target)
         {
             if (player.Out.SendCheckLos(Body, target, new CheckLosResponse(LosCheckForAggroCallback)))
-                Interlocked.Increment(ref _losCheckCount);
+                Interlocked.Increment(ref _pendingLosCheckCount);
         }
 
         protected void LosCheckForAggroCallback(GamePlayer player, eLosCheckResponse response, ushort sourceOID, ushort targetOID)
         {
-            // Make sure only one thread can enter this block to prevent multiple entities from being added to the aggro list.
-            // Otherwise mobs could kill one player and immediately go for another one.
             // This method should not be allowed to be executed at the same time as `CheckPlayerAggro` or `CheckNPCAggro`.
-            if (response is eLosCheckResponse.TRUE && (CanAddToAggroListFromMultipleLosChecks || StartAddToAggroListFromLosCheck))
+            if (response is eLosCheckResponse.TRUE)
             {
-                if (!HasAggro)
+                if (!HasAggro || CanAddToAggroListFromMultipleLosChecks)
                 {
                     GameObject gameObject = Body.CurrentRegion.GetObject(targetOID);
 
                     if (gameObject is GameLiving gameLiving)
                         AddToAggroList(gameLiving, 1);
                 }
-
-                _isHandlingAdditionToAggroListFromLosCheck = 0;
             }
 
-            Interlocked.Decrement(ref _losCheckCount);
+            Interlocked.Decrement(ref _pendingLosCheckCount);
         }
 
         protected virtual bool ShouldBeRemovedFromAggroList(GameLiving living)
@@ -1277,9 +1313,12 @@ namespace DOL.AI.Brain
                 // Using `Math.Ceiling` helps differentiate between 0 and 1 base aggro amount.
                 AggroAmount aggroAmount = pair.Value;
                 double distance = Body.GetDistanceTo(living);
-                aggroAmount.Effective = distance > EFFECTIVE_AGGRO_AMOUNT_CALCULATION_DISTANCE_THRESHOLD ?
-                                        (long)Math.Ceiling(aggroAmount.Base * (EFFECTIVE_AGGRO_AMOUNT_CALCULATION_DISTANCE_THRESHOLD / distance)) :
-                                        aggroAmount.Base;
+                double distanceOverThreshold = distance - EFFECTIVE_AGGRO_DISTANCE_THRESHOLD;
+
+                if (distanceOverThreshold <= 0)
+                    aggroAmount.Effective = aggroAmount.Base;
+                else
+                    aggroAmount.Effective = (long)Math.Ceiling(aggroAmount.Base * Math.Exp(EFFECTIVE_AGGRO_EXPONENT * distanceOverThreshold));
 
                 if (aggroAmount.Effective > highestEffectiveAggroInAttackRange)
                 {
@@ -1328,15 +1367,35 @@ namespace DOL.AI.Brain
             if (!GameServer.ServerRules.IsAllowedToAttack(Body, target, true))
                 return false;
 
+            if (target.IsStealthed && !MimicBody.CanDetect(target))
+            {
+                RemoveFromAggroList(target);
+                return false;
+            }
+
             // Get owner if target is pet or subpet
             GameLiving realTarget = target;
 
             if (realTarget is GameNPC npcTarget && npcTarget.Brain is IControlledBrain npcTargetBrain)
                 realTarget = npcTargetBrain.GetLivingOwner();
 
-            // Only attack if green+ to target
-            if (realTarget.IsObjectGreyCon(Body))
+            /// Only attack if target is green+
+            if (Body.IsObjectGreyCon(realTarget))
                 return false;
+
+            if (!PvPMode && FSM.GetCurrentState() == FSM.GetState(eFSMStateType.ROAMING))
+            {
+                ConColor conLimit = (ConColor)Body.GetConLevel(realTarget);
+
+                if (conLimit >= ConColor.PURPLE)
+                    return false;
+
+                if (Body.Group == null && conLimit >= ConColor.ORANGE)
+                    return false;
+
+                if (realTarget is GameNPC npc && npc.Brain is StandardMobBrain brain && brain.HasAggro)
+                    return false;
+            }
 
             if (realTarget is IGamePlayer && realTarget.Realm != Body.Realm)
                 return true;
@@ -1353,19 +1412,20 @@ namespace DOL.AI.Brain
 
         public virtual void OnAttackedByEnemy(AttackData ad)
         {
-            if (!Body.IsAlive || Body.ObjectState != GameObject.eObjectState.Active || FSM.GetCurrentState() == FSM.GetState(eFSMStateType.PASSIVE))
-                return;
-
-            if (ad.GeneratesAggro)
-                ConvertDamageToAggroAmount(ad.Attacker, Math.Max(1, ad.Damage + ad.CriticalDamage));
+            ConvertAttackToAggroAmount(ad);
         }
 
-        /// <summary>
-        /// Converts a damage amount into an aggro amount, and splits it between the pet and its owner if necessary.
-        /// Assumes damage to be superior than 0.
+        // <summary>
+        /// Converts an amount into an aggro amount, and splits it between the pet and its owner if necessary.
         /// </summary>
-        protected virtual void ConvertDamageToAggroAmount(GameLiving attacker, int damage)
+        protected void ConvertAttackToAggroAmount(AttackData ad)
         {
+            if (!ad.GeneratesAggro || !Body.IsAlive || Body.ObjectState is not GameObject.eObjectState.Active || FSM.GetCurrentState() == FSM.GetState(eFSMStateType.PASSIVE))
+                return;
+
+            int damage = Math.Max(1, ad.Damage + ad.CriticalDamage);
+            GameLiving attacker = ad.Attacker;
+
             if (attacker is GameNPC NpcAttacker && NpcAttacker.Brain is ControlledMobBrain controlledBrain)
             {
                 damage = controlledBrain.ModifyDamageWithTaunt(damage);
@@ -1388,7 +1448,18 @@ namespace DOL.AI.Brain
                 }
             }
             else
+            {
                 AddToAggroList(attacker, damage);
+
+                if (Body.Group != null)
+                {
+                    foreach (GameLiving groupMember in Body.Group.GetMembersInTheGroup())
+                    {
+                        if (groupMember is MimicNPC mimic && groupMember != Body)
+                            ((MimicBrain)mimic.Brain).OnGroupMemberAttacked(ad);
+                    }
+                }
+            }
         }
 
         #endregion Aggro
@@ -2311,6 +2382,7 @@ namespace DOL.AI.Brain
                 case eSpellType.BodyResistBuff:
                 case eSpellType.MatterResistBuff:
                 case eSpellType.AllMagicResistBuff:
+                case eSpellType.AllSecondaryMagicResistsBuff:
                 case eSpellType.EnduranceRegenBuff:
                 case eSpellType.PowerRegenBuff:
                 case eSpellType.AblativeArmor:

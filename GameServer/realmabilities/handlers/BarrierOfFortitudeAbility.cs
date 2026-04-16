@@ -70,21 +70,13 @@ namespace DOL.GS.RealmAbilities
 			m_dbspell.Frequency = 0;
 			m_dbspell.Range = 1500;
 			m_spell = new Spell(m_dbspell, 0); // make spell level 0 so it bypasses the spec level adjustment code
-			m_spellline = new SpellLine("RAs", "RealmAbilities", "RealmAbilities", true);
-			return new SpellHandler(caster, m_spell, m_spellline);
+			m_spellline = GlobalSpellsLines.RealmSpellsSpellLine;
+			return ScriptMgr.CreateSpellHandler(caster, m_spell, m_spellline) as SpellHandler;
 		}
-    
+
 		private DbSpell m_dbspell;
 		private Spell m_spell = null;
 		private SpellLine m_spellline;
-		
-		private byte CastSuccess(bool success)
-		{
-			if (success)
-				return 1;
-			else
-				return 0;
-		}
 
 		public override int GetReUseDelay(int level)
 		{

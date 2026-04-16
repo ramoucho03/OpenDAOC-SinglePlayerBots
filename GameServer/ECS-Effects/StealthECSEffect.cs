@@ -11,16 +11,15 @@ namespace DOL.GS
 {
     public class StealthECSGameEffect : ECSGameAbilityEffect
     {
-        public StealthECSGameEffect(ECSGameEffectInitParams initParams)
-            : base(initParams)
+        public StealthECSGameEffect(ECSGameEffectInitParams initParams) : base(initParams)
         {
             EffectType = eEffect.Stealth;
             EffectService.RequestStartEffect(this);
         }
 
-        public override ushort Icon { get { return 0x193; } }
-        public override string Name { get { return LanguageMgr.GetTranslation(OwnerPlayer?.Client, "Effects.StealthEffect.Name"); } }
-        public override bool HasPositiveEffect { get { return true; } }
+        public override ushort Icon => 0x193;
+        public override string Name => LanguageMgr.GetTranslation(OwnerPlayer?.Client, "Effects.StealthEffect.Name");
+        public override bool HasPositiveEffect => true;
 
         public override void OnStartEffect()
         {
@@ -29,13 +28,13 @@ namespace DOL.GS
                 if (gamePlayer is MimicNPC mimicNPC)
                     mimicNPC.Flags |= eFlags.STEALTH;
 
-                gamePlayer.StartStealthUncoverAction();
+                if (gamePlayer is GamePlayer)
+                {
+                    if (gamePlayer.ObjectState is GameObject.eObjectState.Active)
+                        gamePlayer.Out.SendMessage(LanguageMgr.GetTranslation(OwnerPlayer.Client.Account.Language, "GamePlayer.Stealth.NowHidden"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
 
-                if (gamePlayer.ObjectState == GameObject.eObjectState.Active)
-                    gamePlayer.Out.SendMessage(LanguageMgr.GetTranslation(gamePlayer.Client.Account.Language, "GamePlayer.Stealth.NowHidden"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
-
-                
-                gamePlayer.Out.SendPlayerModelTypeChange(OwnerPlayer, 3);
+                    gamePlayer.Out.SendPlayerModelTypeChange(OwnerPlayer, 3);
+                }
 
                 if (gamePlayer.EffectListComponent.ContainsEffectForEffectType(eEffect.MovementSpeedBuff))
                 {
@@ -48,17 +47,14 @@ namespace DOL.GS
                 // Cancel pulse effects.
                 List<ECSPulseEffect> effects = gamePlayer.EffectListComponent.GetAllPulseEffects();
 
-                for (int i = 0; i < effects.Count; i++)
-                    EffectService.RequestImmediateCancelConcEffect(effects[i]);
+            for (int i = 0; i < effects.Count; i++)
+                EffectService.RequestCancelConcEffect(effects[i]);
 
-                gamePlayer.Sprint(false);
+            gamePlayer.Sprint(false);
 
             foreach (GamePlayer player in Owner.GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
             {
-                if (player == Owner)
-                    continue;
-
-                if (!player.CanDetect((IGamePlayer)Owner))
+                if (player != OwnerPlayer && !player.CanDetect(Owner))
                     player.Out.SendObjectDelete(Owner);
             }
 
@@ -78,33 +74,15 @@ namespace DOL.GS
                 if (gamePlayer.ObjectState == GameObject.eObjectState.Active)
                     gamePlayer.Out.SendMessage(LanguageMgr.GetTranslation(gamePlayer.Client.Account.Language, "GamePlayer.Stealth.NoLongerHidden"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
 
-                gamePlayer.Out.SendPlayerModelTypeChange(OwnerPlayer, 2);
-
-                //GameEventMgr.RemoveHandler(this, GameLivingEvent.AttackedByEnemy, new DOLEventHandler(GamePlayer.Unstealth));
-                foreach (GamePlayer otherPlayer in gamePlayer.GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
+                if (OwnerPlayer != null)
                 {
-                    if (otherPlayer == null || otherPlayer == gamePlayer) 
-                        continue;
-
-                    /// [Atlas - Takii] This commented code from DOL causes a large (1-2 seconds) delay before the target unstealths.
-                    /// It does not seem to cause any issues related to targeting despite the comments.
-                    //if a player could see us stealthed, we just update our model to avoid untargetting.
-                    // 					if (player.CanDetect(this))
-                    // 						player.Out.SendPlayerModelTypeChange(this, 2);
-                    // 					else
-                    // 						player.Out.SendPlayerCreate(this);
-
-                    if (gamePlayer is GamePlayer)
+                    foreach (GamePlayer otherPlayer in OwnerPlayer.GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
                     {
-                        if (Owner is GamePlayer)
-                        {
-                            otherPlayer.Out.SendPlayerCreate(OwnerPlayer);
-                            otherPlayer.Out.SendLivingEquipmentUpdate(OwnerPlayer);
-                        }
-                        else if (Owner is MimicNPC mimic)
-                        {
-                            otherPlayer.Out.SendNPCCreate(mimic);
-                        }
+                        if (otherPlayer == OwnerPlayer)
+                            continue;
+
+                        otherPlayer.Out.SendPlayerCreate(OwnerPlayer);
+                        otherPlayer.Out.SendLivingEquipmentUpdate(OwnerPlayer);
                     }
                 }
 
@@ -119,15 +97,9 @@ namespace DOL.GS
                     }
                 }
 
+                EffectService.RequestCancelEffect(EffectListService.GetEffectOnTarget(Owner, eEffect.Vanish));
+                EffectService.RequestCancelEffect(EffectListService.GetEffectOnTarget(Owner, eEffect.Camouflage));
                 StealthStateChanged();
-
-                // This needs to be restored if we have the Camouflage ability on this server.
-                //             if (Owner.HasAbility(Abilities.Camouflage))
-                //             {
-                //                 IGameEffect camouflage = m_player.EffectList.GetOfType<CamouflageEffect>();
-                //                 if (camouflage != null)
-                //                     camouflage.Cancel(false);
-                //             }
             }
         }
 

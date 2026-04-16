@@ -1,4 +1,5 @@
-﻿using DOL.GS.ServerProperties;
+﻿using DOL.GS.PacketHandler;
+using DOL.GS.ServerProperties;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -14,12 +15,11 @@ namespace DOL.GS.Scripts
         public GameLiving MainTank { get; private set; }
         public GameLiving MainCC { get; private set; }
         public GameLiving MainPuller { get; private set; }
+        public GameLiving Healer { get; private set; }
         public Point3D CampPoint { get; private set; }
         public Point2D PullFromPoint {get; private set; }
-           
-        public Queue<QueueRequest> GroupQueue = new Queue<QueueRequest>();
 
-        public List<GameLiving> CCTargets = new List<GameLiving>();
+        public List<GameLiving> CCTargets { get; set; }
 
         public int ConLevelFilter = -2;
 
@@ -35,33 +35,7 @@ namespace DOL.GS.Scripts
             MainTank = leader;
             MainCC = leader;
             MainPuller = leader;
-        }
-
-        public void AddToQueue(QueueRequest request)
-        {
-            GroupQueue.Enqueue(request);
-        }
-
-        public QueueRequest ProcessQueue(eMimicGroupRole role)
-        {
-            lock (GroupQueue)
-            {
-                return GroupQueue.FirstOrDefault(x => x.Role == role);
-            }
-        }
-
-        public void RespondQueue(eQueueMessageResult result)
-        {
-            switch (result)
-            {
-            }
-        }
-
-        private void RemoveQueue(QueueRequest request)
-        {
-            lock(GroupQueue)
-            {
-            }
+            CCTargets = new List<GameLiving>();
         }
 
         public bool SetLeader(GameLiving living)
@@ -127,6 +101,31 @@ namespace DOL.GS.Scripts
             }
 
             return true;
+        }
+
+        public bool SetHealer(GameLiving living)
+        {
+            if (living == null)
+                return false;
+
+            if (living is MimicNPC mimic)
+            {
+                if (!mimic.CanCastHealSpells && !mimic.CanCastInstantHealSpells)
+                    mimic.Group.SendMessageToGroupMembers(mimic, "I cannot cast healing spells.", eChatType.CT_Group, eChatLoc.CL_ChatWindow);
+                else
+                {
+                    mimic.MimicBrain.IsHealer = !mimic.MimicBrain.IsHealer;
+
+                    if (mimic.MimicBrain.IsHealer)
+                        mimic.Group.SendMessageToGroupMembers(mimic, "I will stay out of combat and focus on healing", eChatType.CT_Group, eChatLoc.CL_ChatWindow);
+                    else
+                        mimic.Group.SendMessageToGroupMembers(mimic, "I will engage in combat", eChatType.CT_Group, eChatLoc.CL_ChatWindow);
+                }
+            }
+            else
+                return false;
+
+                return true;
         }
 
         public void SetCampPoint(Point3D point)

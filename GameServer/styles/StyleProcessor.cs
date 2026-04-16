@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using DOL.Database;
 using DOL.GS.API;
 using DOL.GS.Effects;
-using DOL.GS.Keeps;
 using DOL.GS.PacketHandler;
 using DOL.GS.Scripts;
 using DOL.GS.ServerProperties;
@@ -12,28 +11,28 @@ using DOL.Language;
 
 namespace DOL.GS.Styles
 {
-    /// <summary>
-    /// Processes styles and style related stuff.
-    /// </summary>
-    public class StyleProcessor
-    {
-        /// <summary>
-        /// Returns wether this player can use a particular style
-        /// right now. Tests for all preconditions like prerequired
-        /// styles, previous attack result, ...
-        /// </summary>
-        /// <param name="living">The living wanting to execute a style</param>
-        /// <param name="style">The style to execute</param>
-        /// <param name="weapon">The weapon used to execute the style</param>
-        /// <returns>true if the player can execute the style right now, false if not</returns>
-        public static bool CanUseStyle(AttackData lastAttackData, GameLiving living, Style style, DbInventoryItem weapon)
-        {
-            // First thing in processors, lock the objects you modify.
-            // This way it makes sure the objects are not modified by several different threads at the same time!
-            lock (living)
-            {
-                if (living.TargetObject is not GameLiving target)
-                    return false;
+	/// <summary>
+	/// Processes styles and style related stuff.
+	/// </summary>
+	public class StyleProcessor
+	{
+		/// <summary>
+		/// Returns whether this player can use a particular style
+		/// right now. Tests for all preconditions like prerequired
+		/// styles, previous attack result, ...
+		/// </summary>
+		/// <param name="living">The living wanting to execute a style</param>
+		/// <param name="style">The style to execute</param>
+		/// <param name="weapon">The weapon used to execute the style</param>
+		/// <returns>true if the player can execute the style right now, false if not</returns>
+		public static bool CanUseStyle(AttackData lastAttackData, GameLiving living, Style style, DbInventoryItem weapon)
+		{
+			// First thing in processors, lock the objects you modify.
+			// This way it makes sure the objects are not modified by several different threads at the same time!
+			lock (living)
+			{
+				if (living.TargetObject is not GameLiving target)
+					return false;
 
                 // Required attack result.
                 eAttackResult requiredAttackResult = eAttackResult.Any;
@@ -106,35 +105,35 @@ namespace DOL.GS.Styles
                     if (!living.IsObjectInFront(target, 120))
                         return false;
 
-                    // You can't use positional styles on keep doors or walls.
-                    if ((target is GameKeepComponent || target is GameKeepDoor) && (Style.eOpeningPosition)style.OpeningRequirementValue != Style.eOpeningPosition.Front)
-                        return false;
+						float angle = target.GetAngle(living);
 
-                    float angle = target.GetAngle(living);
+						switch ((Style.eOpeningPosition) style.OpeningRequirementValue)
+						{
+							case Style.eOpeningPosition.Back:
+							{
+								// Back Styles. 60 degree since 1.62.
+								if (angle is not (> 150 and < 210))
+									return false;
 
-                    switch ((Style.eOpeningPosition)style.OpeningRequirementValue)
-                    {
-                        //Back Styles
-                        //60 degree since 1.62 patch
-                        case Style.eOpeningPosition.Back:
-                        if (!(angle > 150 && angle < 210))
-                            return false;
-                        break;
-                        // Side Styles
-                        //105 degree since 1.62 patch
-                        // Atlas change: 90 degrees
-                        case Style.eOpeningPosition.Side:
-                        if (!(angle >= 60 && angle <= 150) && !(angle >= 210 && angle <= 300))
-                            return false;
-                        break;
-                        // Front Styles
-                        // 90 degree
-                        // Atlas change: 120 degrees
-                        case Style.eOpeningPosition.Front:
-                        if (!(angle > 300 || angle < 60))
-                            return false;
-                        break;
-                    }
+								break;
+							}
+							case Style.eOpeningPosition.Side:
+							{
+								// Side Styles. 105 degree since 1.62.
+								if (angle is not (>= 45 and <= 150) and not (>= 210 and <= 315))
+									return false;
+
+								break;
+							}
+							case Style.eOpeningPosition.Front:
+							{
+								// Front Styles. 90 degrees.
+								if (angle is not (> 315 or < 45))
+									return false;
+
+								break;
+							}
+						}
 
                     break;
                 }
@@ -194,7 +193,7 @@ namespace DOL.GS.Styles
                     return;
                 }
 
-                DbInventoryItem weapon = (style.WeaponTypeRequirement == (int)eObjectType.Shield) ? player.Inventory.GetItem(eInventorySlot.LeftHandWeapon) : player.ActiveWeapon;
+				DbInventoryItem weapon = (eObjectType) style.WeaponTypeRequirement is eObjectType.Shield ? player.ActiveLeftWeapon : player.ActiveWeapon;
 
                 if (!CheckWeaponType(style, player, weapon))
                 {
@@ -558,51 +557,57 @@ namespace DOL.GS.Styles
 			if (living is GameNPC && living is not MimicNPC)
 				return true;
 
-            IGamePlayer player = living as IGamePlayer;
-
-			if (player == null)
+			if (living is not IGamePlayer player)
 				return false;
 
-            switch (style.WeaponTypeRequirement)
-            {
-                case Style.SpecialWeaponType.DualWield:
-                // both weapons are needed to use style,
-                // shield is not a weapon here
-                DbInventoryItem rightHand = living.ActiveWeapon;
-                DbInventoryItem leftHand = living.Inventory.GetItem(eInventorySlot.LeftHandWeapon);
+			switch (style.WeaponTypeRequirement)
+			{
+				case Style.SpecialWeaponType.DualWield:
+				{
+					// both weapons are needed to use style,
+					// shield is not a weapon here
+					DbInventoryItem rightHand = player.ActiveWeapon;
+					DbInventoryItem leftHand = player.ActiveLeftWeapon;
 
-                if (rightHand == null || leftHand == null || (rightHand.Item_Type != Slot.RIGHTHAND && rightHand.Item_Type != Slot.LEFTHAND))
-                    return false;
+					if (rightHand == null || leftHand == null || (rightHand.Item_Type is not Slot.RIGHTHAND and not Slot.LEFTHAND))
+						return false;
 
-                if (style.Spec == Specs.HandToHand && (rightHand.Object_Type != (int)eObjectType.HandToHand || leftHand.Object_Type != (int)eObjectType.HandToHand))
-                    return false;
-                else if (style.Spec == Specs.Fist_Wraps && (rightHand.Object_Type != (int)eObjectType.FistWraps || leftHand.Object_Type != (int)eObjectType.FistWraps))
-                    return false;
+					if (style.Spec == Specs.HandToHand && ((eObjectType) rightHand.Object_Type is not eObjectType.HandToHand || (eObjectType) leftHand.Object_Type is not eObjectType.HandToHand))
+						return false;
+					else if (style.Spec == Specs.Fist_Wraps && ((eObjectType) rightHand.Object_Type is not eObjectType.FistWraps || (eObjectType) leftHand.Object_Type is not eObjectType.FistWraps))
+						return false;
 
-                return leftHand.Object_Type != (int)eObjectType.Shield;
+					return (eObjectType) leftHand.Object_Type is not eObjectType.Shield;
+				}
+				case Style.SpecialWeaponType.AnyWeapon:
+				{
+					// TODO: style can be used with any weapon type,
+					// shield is not a weapon here
+					return weapon != null;
+				}
+				default:
+				{
+					if (weapon == null)
+						return false;
 
-                case Style.SpecialWeaponType.AnyWeapon:
-                // TODO: style can be used with any weapon type,
-                // shield is not a weapon here
-                return weapon != null;
+					eObjectType weaponTypeRequirement = (eObjectType) style.WeaponTypeRequirement;
 
-                default:
-                // WeaponTypeRequirement holds eObjectType of weapon needed for style
-                // no weapon = can't use style
-                if (weapon == null)
-                    return false;
+					// Can't use shield styles if no active weapon.
+					if (weaponTypeRequirement is eObjectType.Shield &&
+						(player.ActiveWeapon == null || (player.ActiveWeapon.Item_Type is not Slot.RIGHTHAND and not Slot.LEFTHAND)))
+						return false;
 
-                // can't use shield styles if no active weapon
-                if (style.WeaponTypeRequirement == (int)eObjectType.Shield
-                    && (living.ActiveWeapon == null || (living.ActiveWeapon.Item_Type != Slot.RIGHTHAND && living.ActiveWeapon.Item_Type != Slot.LEFTHAND)))
-                    return false;
+					eObjectType objectType = (eObjectType) weapon.Object_Type;
 
-                // weapon type check
-                return GameServer.ServerRules.IsObjectTypesEqual(
-                        (eObjectType)style.WeaponTypeRequirement,
-                        (eObjectType)weapon.Object_Type);
-            }
-        }
+					// Treat a left axe as a normal axe.
+					if ((eObjectType) weapon.Object_Type is eObjectType.LeftAxe)
+						objectType = eObjectType.Axe;
+
+					// Weapon type check.
+					return GameServer.ServerRules.IsObjectTypesEqual(weaponTypeRequirement, objectType);
+				}
+			}
+		}
 
 		/// <summary>
 		/// Add the magical effect to target
@@ -619,17 +624,9 @@ namespace DOL.GS.Styles
 
 			// We have to scale style procs when cast.
 			if (caster is GameSummonedPet pet)
-				pet.ScalePetSpell(spell);
+				pet.ScaleSpell(spell, pet.Level, Properties.PET_SCALE_SPELL_MAX_LEVEL);
 
-			ISpellHandler spellHandler = ScriptMgr.CreateSpellHandler(caster, spell, SkillBase.GetSpellLine(GlobalSpellsLines.Combat_Styles_Effect));
-
-			if (spellHandler == null)
-				return null;
-
-			if ((target is GameKeepComponent || target is GameDoorBase) && !spellHandler.HasPositiveEffect)
-				return null;
-
-			return spellHandler;
+			return ScriptMgr.CreateSpellHandler(caster, spell, SkillBase.GetSpellLine(GlobalSpellsLines.Combat_Styles_Effect));
 		}
 
 		/// <summary>

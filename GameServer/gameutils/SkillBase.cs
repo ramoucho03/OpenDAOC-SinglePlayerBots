@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 using System.Threading;
@@ -9,7 +8,6 @@ using DOL.Database;
 using DOL.GS.RealmAbilities;
 using DOL.GS.Styles;
 using DOL.Language;
-using log4net;
 
 namespace DOL.GS
 {
@@ -18,7 +16,7 @@ namespace DOL.GS
 		/// <summary>
 		/// Defines a logger for this class.
 		/// </summary>
-		private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		/// <summary>
 		/// Flag to Check if SkillBase has been pre-loaded.
@@ -26,7 +24,7 @@ namespace DOL.GS
 		private static bool m_loaded = false;
 
 		private static ReaderWriterLockSlim m_syncLockUpdates = new();
-		private static object m_loadingLock = new();
+		private static readonly Lock _loadingLock = new();
 
 		#region caches and static indexes
 
@@ -89,7 +87,7 @@ namespace DOL.GS
 
 		public static void LoadSkills()
 		{
-			lock (m_loadingLock)
+			lock (_loadingLock)
 			{
 				if (!m_loaded)
 				{
@@ -103,6 +101,7 @@ namespace DOL.GS
 					LoadClassSpecializations();
 					LoadAbilityHandlers();
 					LoadSkillHandlers();
+					ScriptMgr.CacheSpellHandlerConstructors();
 					m_loaded = true;
 				}
 			}
@@ -227,7 +226,6 @@ namespace DOL.GS
 						{
 							if (log.IsErrorEnabled)
 								log.ErrorFormat("LineXSpell Spell Adding Error : {0}, Line {1}, Spell {2}, Level {3}", e.Message, lxs.LineName, lxs.SpellID, lxs.Level);
-
 						}
 					}
 
@@ -252,7 +250,7 @@ namespace DOL.GS
 		/// Useful to load new spells added in preperation for ReloadSpellLine(linename) to update a spell line live
 		/// We want to add any new spells in the DB to the global spell list, m_spells, but not remove any added by scripts
 		/// </summary>
-		public static void ReloadDBSpells()
+		public static void ReloadSpells()
 		{
 			// lock skillbase for writes
 			m_syncLockUpdates.EnterWriteLock();
@@ -260,47 +258,45 @@ namespace DOL.GS
 			{
 				//load all spells
 				if (log.IsInfoEnabled)
-					log.Info("Reloading DB spells...");
+					log.Info("Reloading spells...");
 
 				IList<DbSpell> spelldb = GameServer.Database.SelectAllObjects<DbSpell>();
 
 				if (spelldb != null)
 				{
-
-					int count = 0;
-
 					foreach (DbSpell spell in spelldb)
 					{
-						if (m_spellIndex.ContainsKey(spell.SpellID) == false)
+						try
 						{
-							// Add new spell
-							m_spellIndex.Add(spell.SpellID, new Spell(spell, 1));
-							count++;
-						}
-						else
-						{
-							// Replace Spell
-							m_spellIndex[spell.SpellID] = new Spell(spell, 1);
-						}
-
-						// Update tooltip index
-						if (spell.TooltipId != 0)
-						{
-							if (m_spellToolTipIndex.ContainsKey(spell.TooltipId))
-								m_spellToolTipIndex[spell.TooltipId] = spell.SpellID;
+							if (m_spellIndex.ContainsKey(spell.SpellID) == false)
+							{
+								// Add new spell
+								m_spellIndex.Add(spell.SpellID, new Spell(spell, 1));
+							}
 							else
 							{
-								m_spellToolTipIndex.Add(spell.TooltipId, spell.SpellID);
-								count++;
+								// Replace Spell
+								m_spellIndex[spell.SpellID] = new Spell(spell, 1);
 							}
+
+							// Update tooltip index
+							if (spell.TooltipId != 0)
+							{
+								if (m_spellToolTipIndex.ContainsKey(spell.TooltipId))
+									m_spellToolTipIndex[spell.TooltipId] = spell.SpellID;
+								else
+									m_spellToolTipIndex.Add(spell.TooltipId, spell.SpellID);
+							}
+						}
+						catch (Exception e)
+						{
+							if (log.IsErrorEnabled)
+								log.ErrorFormat("{0} with spellid = {1} spell.TS= {2}", e.Message, spell.SpellID, spell.ToString());
 						}
 					}
 
 					if (log.IsInfoEnabled)
-					{
-						log.Info("Spells loaded from DB: " + spelldb.Count);
-						log.Info("Spells added to global spell list: " + count);
-					}
+						log.Info("Spells loaded: " + spelldb.Count);
 				}
 			}
 			finally
@@ -316,9 +312,8 @@ namespace DOL.GS
 		/// <param name="lineName"></param>
 		/// <returns></returns>
 		[RefreshCommandAttribute]
-		public static int ReloadSpellLines()
+		public static void ReloadSpellLines()
 		{
-			int count = 0;
 			// lock skillbase for writes
 			m_syncLockUpdates.EnterWriteLock();
 			try
@@ -358,16 +353,12 @@ namespace DOL.GS
 
 								// no replacement then add this
 								if (!added)
-								{
 									m_lineSpells[lineName].Add(spl);
-									count++;
-								}
 							}
 							catch (Exception e)
 							{
 								if (log.IsErrorEnabled)
 									log.ErrorFormat("LineXSpell Adding Error : {0}, Line {1}, Spell {2}, Level {3}", e.Message, lxs.LineName, lxs.SpellID, lxs.Level);
-
 							}
 						}
 
@@ -380,8 +371,6 @@ namespace DOL.GS
 			{
 				m_syncLockUpdates.ExitWriteLock();
 			}
-
-			return count;
 		}
 
 		/// <summary>
@@ -751,7 +740,7 @@ namespace DOL.GS
 				foreach (KeyValuePair<string, Type> entry in ht)
 				{
 					if (log.IsDebugEnabled)
-						log.DebugFormat("\tFound ability handler for {0}", entry.Key);
+						log.DebugFormat("Found ability handler for {0}", entry.Key);
 
 					if (m_abilityActionHandler.ContainsKey(entry.Key))
 					{
@@ -787,16 +776,16 @@ namespace DOL.GS
 						try
 						{
 							if (m_abilityActionHandler.ContainsKey(entry.Key))
-								message = "\tFound new ability handler for " + entry.Key;
+								message = "Found new ability handler for " + entry.Key;
 							else
-								message = "\tFound ability handler for " + entry.Key;
+								message = "Found ability handler for " + entry.Key;
 
 							m_abilityActionHandler[entry.Key] = GetNewAbilityActionHandlerConstructor(entry.Value);
 						}
 						catch (Exception ex)
 						{
 							if (log.IsErrorEnabled)
-								log.ErrorFormat("Error While instantiacting IAbilityHandler {0} using {1} in GameServerScripts : {2}", entry.Key, entry.Value, ex);
+								log.ErrorFormat("Error while instantiating IAbilityHandler {0} using {1} in GameServerScripts : {2}", entry.Key, entry.Value, ex);
 						}
 
 						if (log.IsDebugEnabled)
@@ -834,7 +823,7 @@ namespace DOL.GS
 				foreach (KeyValuePair<string, Type> entry in ht)
 				{
 					if (log.IsDebugEnabled)
-						log.Debug("\tFound skill handler for " + entry.Key);
+						log.Debug("Found skill handler for " + entry.Key);
 
 					if (m_specActionHandler.ContainsKey(entry.Key))
 					{
@@ -872,9 +861,9 @@ namespace DOL.GS
 						try
 						{
 							if (m_specActionHandler.ContainsKey(entry.Key))
-								message = "\tFound new spec handler for " + entry.Key;
+								message = "Found new spec handler for " + entry.Key;
 							else
-								message = "\tFound spec handler for " + entry.Key;
+								message = "Found spec handler for " + entry.Key;
 
 							m_specActionHandler[entry.Key] = GetNewSpecActionHandlerConstructor(entry.Value);
 						}
@@ -1923,9 +1912,6 @@ namespace DOL.GS
 				return 0;
 
 			const int realmBits = DAMAGETYPE_BITCOUNT + ARMORTYPE_BITCOUNT;
-
-			//Console.WriteLine($"Realm {realm} armorType {armorType} damage {damage} input {(realm << realmBits) | (armorType << DAMAGETYPE_BITCOUNT) | damage} resistoutput {m_armorResists[(realm << realmBits) | (armorType << DAMAGETYPE_BITCOUNT) | damage]}");
-
 			return m_armorResists[(realm << realmBits) | (armorType << DAMAGETYPE_BITCOUNT) | damage];
 		}
 
@@ -2896,6 +2882,33 @@ namespace DOL.GS
 		}
 
 		/// <summary>
+		/// Will attempt to find either in the spell line given or in the list of all spells
+		/// </summary>
+		/// <param name="spellID"></param>
+		/// <param name="line"></param>
+		/// <returns></returns>
+		public static Spell FindSpell(int spellID, SpellLine line)
+		{
+			Spell spell = null;
+
+			if (line != null)
+			{
+				List<Spell> spells = GetSpellList(line.KeyName);
+				foreach (Spell lineSpell in spells)
+				{
+					if (lineSpell.ID == spellID)
+					{
+						spell = lineSpell;
+						break;
+					}
+				}
+			}
+
+			spell ??= GetSpellByID(spellID);
+			return spell;
+		}
+
+		/// <summary>
 		/// Get display name of property
 		/// </summary>
 		/// <param name="prop"></param>
@@ -2987,14 +3000,32 @@ namespace DOL.GS
 
 		private static Func<ISpecActionHandler> GetNewSpecActionHandlerConstructor(Type type)
 		{
-			ConstructorInfo constructor = type.GetConstructor(Type.EmptyTypes);
-			return Expression.Lambda<Func<ISpecActionHandler>>(Expression.New(constructor, null), null).Compile();
+			try
+			{
+				return CompiledConstructorFactory.CompileConstructor(type, []) as Func<ISpecActionHandler>;
+			}
+			catch (Exception e)
+			{
+				if (log.IsErrorEnabled)
+					log.Error(e);
+			}
+
+			return null;
 		}
 
 		private static Func<IAbilityActionHandler> GetNewAbilityActionHandlerConstructor(Type type)
 		{
-			ConstructorInfo constructor = type.GetConstructor(Type.EmptyTypes);
-			return Expression.Lambda<Func<IAbilityActionHandler>>(Expression.New(constructor, null), null).Compile();
+			try
+			{
+				return CompiledConstructorFactory.CompileConstructor(type, []) as Func<IAbilityActionHandler>;
+			}
+			catch (Exception e)
+			{
+				if (log.IsErrorEnabled)
+					log.Error(e);
+			}
+
+			return null;
 		}
 
 		private static Ability GetNewAbilityInstance(string keyname, int level)

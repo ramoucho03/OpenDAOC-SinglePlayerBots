@@ -6,7 +6,6 @@ using DOL.Events;
 using DOL.GS.Effects;
 using DOL.GS.PacketHandler;
 using DOL.Language;
-using log4net;
 
 namespace DOL.GS.Spells
 {
@@ -18,7 +17,7 @@ namespace DOL.GS.Spells
 		/// <summary>
 		/// Defines a logger for this class.
 		/// </summary>
-		private static readonly ILog log = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
 		public override ECSGameSpellEffect CreateECSEffect(ECSGameEffectInitParams initParams)
 		{
@@ -242,10 +241,10 @@ namespace DOL.GS.Spells
 	/// <summary>
 	/// This class contains data for OffensiveProc spells
 	/// </summary>
-	[SpellHandler("OffensiveProc")]
+	[SpellHandler(eSpellType.OffensiveProc)]
 	public class OffensiveProcSpellHandler : BaseProcSpellHandler
 	{
-		private static readonly ILog log = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
 		/// <summary>
 		/// The event type to hook on
@@ -284,9 +283,6 @@ namespace DOL.GS.Spells
 
             int baseChance = Spell.Frequency / 100;
 
-            if (ad.AttackType == AttackData.eAttackType.MeleeDualWield)
-                baseChance /= 2;
-
             if (baseChance < 1)
                 baseChance = 1;
 
@@ -322,7 +318,7 @@ namespace DOL.GS.Spells
 	/// <summary>
 	/// This class contains data for DefensiveProc spells
 	/// </summary>
-	[SpellHandler("DefensiveProc")]
+	[SpellHandler(eSpellType.DefensiveProc)]
 	public class DefensiveProcSpellHandler : BaseProcSpellHandler
 	{
 		/// <summary>
@@ -361,9 +357,6 @@ namespace DOL.GS.Spells
 
 			int baseChance = Spell.Frequency / 100;
 
-			if (ad.AttackType == AttackData.eAttackType.MeleeDualWield)
-				baseChance /= 2;
-
 			if (baseChance < 1)
 				baseChance = 1;
 
@@ -394,7 +387,7 @@ namespace DOL.GS.Spells
 		public DefensiveProcSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
 	}
 	
-	[SpellHandler( "OffensiveProcPvE" )]
+	[SpellHandler(eSpellType.OffensiveProcPvE)]
 	public class OffensiveProcPvESpellHandler : OffensiveProcSpellHandler
 	{
 		/// <summary>

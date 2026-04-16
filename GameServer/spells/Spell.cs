@@ -42,7 +42,6 @@ namespace DOL.GS
 		protected readonly bool m_uninterruptible = false;
 		protected readonly bool m_isfocus = false;
         protected readonly bool m_minotaurspell = false;
-        private bool scaledToPetLevel = false;
         // warlocks
         protected readonly bool m_isprimary = false;
 		protected readonly bool m_issecondary = false;
@@ -313,8 +312,12 @@ namespace DOL.GS
 		/// </summary>
 		public bool IsHealing => SpellType switch
 		{
-			eSpellType.CurePoison or
+			eSpellType.CureAll or
 			eSpellType.CureDisease or
+			eSpellType.CureMezz or
+			eSpellType.CureNearsight or
+			eSpellType.CureNearsightCustom or
+			eSpellType.CurePoison or
 			eSpellType.CombatHeal or
 			eSpellType.Heal or
 			eSpellType.HealOverTime or
@@ -751,9 +754,8 @@ namespace DOL.GS
 			}
 		}
 
-        public bool ScaledToPetLevel { get => scaledToPetLevel; set => scaledToPetLevel = value; }
+		public bool ScaledToNpcLevel { get; set; }
 
-        #endregion
-    }
-	
+		#endregion
+	}
 }

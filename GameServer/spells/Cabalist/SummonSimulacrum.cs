@@ -31,15 +31,15 @@ using DOL.GS.Scripts;
 
 namespace DOL.GS.Spells
 {
-    /// <summary>
-    /// Spell handler to summon a bonedancer pet.
-    /// </summary>
-    /// <author>IST</author>
-    [SpellHandler("SummonSimulacrum")]
-    public class SummonSimulacrum : SummonSpellHandler
-    {
-        public SummonSimulacrum(GameLiving caster, Spell spell, SpellLine line)
-            : base(caster, spell, line) { }
+	/// <summary>
+	/// Spell handler to summon a bonedancer pet.
+	/// </summary>
+	/// <author>IST</author>
+	[SpellHandler(eSpellType.SummonSimulacrum)]
+	public class SummonSimulacrum : SummonSpellHandler
+	{
+		public SummonSimulacrum(GameLiving caster, Spell spell, SpellLine line)
+			: base(caster, spell, line) { }
 
         public override bool CheckEndCast(GameLiving selectedTarget)
         {

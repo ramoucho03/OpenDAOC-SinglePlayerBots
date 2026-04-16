@@ -4,20 +4,20 @@ using DOL.GS.Scripts;
 
 namespace DOL.GS.Spells
 {
-    /// <summary>
-    /// Summary description for TauntSpellHandler.
-    /// </summary>
-    [SpellHandler("Taunt")]
-    public class TauntSpellHandler : SpellHandler
-    {
-        /// <summary>
-        /// called after normal spell cast is completed and effect has to be started
-        /// </summary>
-        public override void FinishSpellCast(GameLiving target)
-        {
-            Caster.Mana -= PowerCost(target);
-            base.FinishSpellCast(target);
-        }
+	/// <summary>
+	/// Summary description for TauntSpellHandler.
+	/// </summary>
+	[SpellHandler(eSpellType.Taunt)]
+	public class TauntSpellHandler : SpellHandler
+	{
+		/// <summary>
+		/// called after normal spell cast is completed and effect has to be started
+		/// </summary>
+		public override void FinishSpellCast(GameLiving target)
+		{
+			Caster.Mana -= PowerCost(target);
+			base.FinishSpellCast(target);
+		}
 
 		public override void OnDirectEffect(GameLiving target)
 		{

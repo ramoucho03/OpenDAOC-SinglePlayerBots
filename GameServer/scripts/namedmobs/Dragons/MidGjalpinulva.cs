@@ -263,7 +263,7 @@ namespace DOL.AI.Brain
 {
 	public class MidGjalpinulvaBrain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 		public MidGjalpinulvaBrain()
 			: base()
 		{
@@ -1051,9 +1051,7 @@ namespace DOL.GS
 			base.AddToWorld();
 			return true;
 		}
-		public override void DropLoot(GameObject killer) //no loot
-		{
-		}
+		public override bool CanDropLoot => false;
 		public override long ExperienceValue => 0;
 	}
 }
@@ -1062,7 +1060,7 @@ namespace DOL.AI.Brain
 {
 	public class GjalpinulvaMessengerBrain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
 		public GjalpinulvaMessengerBrain()
 		{
@@ -1341,9 +1339,7 @@ namespace DOL.GS
 			// 85% ABS is cap.
 			return 0.15;
 		}
-		public override void DropLoot(GameObject killer) //no loot
-		{
-		}
+		public override bool CanDropLoot => false;
 		public override void ReturnToSpawnPoint(short speed)
 		{
 			return;
@@ -1390,7 +1386,7 @@ namespace DOL.AI.Brain
 {
 	public class GjalpinulvaSpawnedAdBrain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
 		public GjalpinulvaSpawnedAdBrain() : base()
 		{

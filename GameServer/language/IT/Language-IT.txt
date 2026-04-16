@@ -367,8 +367,8 @@ GamePlayer.SwitchQuiver.ShootWith:			Colpirai con: {0}.
 GamePlayer.SwitchQuiver.NoMoreAmmo:			Non hai piu' colpi nella tua faretra!
 GamePlayer.SwitchQuiver.NotUseQuiver:		Non usi piu' la tua faretra.
 GamePlayer.SwitchWeapon.SpellCancelled:		Il tuo incantesimo e' stato annullato!
-GamePlayer.UpdateEncumberance.Encumbered:	Sei sovrappeso!
-GamePlayer.UpdateEncumberance.EncumberedMoveSlowly:		Sei sovrappeso e ti muovi piu' lentamente.
+PlayerMovementComponent.Encumbered:			Sei sovrappeso!
+GamePlayer.UpdateEncumbrance.EncumberedMoveSlowly:		Sei sovrappeso e ti muovi piu' lentamente.
 GamePlayer.UpdateSpellLine.GainPower:		Acquisisci potere negli incantesimi {0} !
 GamePlayer.UseSlot.AttemptToUse:			Cerchi di usare {0}.
 GamePlayer.UseSlot.AutoReleaseShot:			Rilasci automaticamente il colpo.
@@ -757,9 +757,9 @@ Scripts.Players.Chatgroup.Usage:				Utilizzo: /c <text>
 Scripts.Players.Chatgroup.UsageInvite:			Utilizzo: /cg invite <playername>"
 
 # /Cmdhelp
-Scripts.Players.Cmdhelp.NoCommand:				Il comando {0} non esiste.
-Scripts.Players.Cmdhelp.PlvlCommands:			<----------Comandi disponibili per plvl {0}---------->
-Scripts.Players.Cmdhelp.Usage:				>----------Utilizzo di {0}----------<
+Scripts.Players.Cmdhelp.NoCommand:			Il comando {0} non esiste.
+Scripts.Players.Cmdhelp.PlvlCommands:		Comandi disponibili per plvl {0}
+Scripts.Players.Cmdhelp.Usage:				Utilizzo di {0}
 
 # /Disband
 Scripts.Players.Disband.Disbanded:			{o} e' stato espulso dal gruppo.

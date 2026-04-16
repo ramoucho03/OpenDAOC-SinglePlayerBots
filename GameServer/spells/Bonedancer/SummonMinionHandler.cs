@@ -29,10 +29,10 @@ namespace DOL.GS.Spells
     /// 4 = Buffer
     /// 5 = Range
     /// </summary>
-    [SpellHandler("SummonMinion")]
+    [SpellHandler(eSpellType.SummonMinion)]
     public class SummonMinionHandler : SummonSpellHandler
     {
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public SummonMinionHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
 
@@ -106,7 +106,7 @@ namespace DOL.GS.Spells
         public override int OnEffectExpires(GameSpellEffect effect, bool noMessages)
         {
             if (effect.Owner is BdPet bdPetOwner && bdPetOwner.Brain is IControlledBrain brain && brain.Owner is CommanderPet commander)
-                commander.RemoveControlledNpc(brain);
+                commander.RemoveControlledBrain(brain);
 
             return base.OnEffectExpires(effect, noMessages);
         }
@@ -150,7 +150,7 @@ namespace DOL.GS.Spells
 
         protected override void SetBrainToOwner(IControlledBrain brain)
         {
-            Caster.ControlledBrain.Body.AddControlledNpc(brain);
+            Caster.ControlledBrain.Body.AddControlledBrain(brain);
         }
 
         public override IList<string> DelveInfo

@@ -108,7 +108,7 @@ namespace DOL.AI.Brain
 {
 	public class SpiritmasterArosBrain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
 		public SpiritmasterArosBrain() : base()
 		{
@@ -452,9 +452,7 @@ namespace DOL.GS
 			--ArosPetCount;
             base.Die(killer);
         }
-        public override void DropLoot(GameObject killer) //no loot
-		{
-		}
+        public override bool CanDropLoot => false;
 		public override long ExperienceValue => 0;
 		private Spell m_SpiritChampion_stun;
 		private Spell SpiritChampion_stun
@@ -489,7 +487,7 @@ namespace DOL.AI.Brain
 {
 	public class SpiritmasterArosPetBrain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
 		public SpiritmasterArosPetBrain()
 		{

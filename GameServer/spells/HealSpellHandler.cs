@@ -6,12 +6,12 @@ using DOL.GS.Scripts;
 
 namespace DOL.GS.Spells
 {
-    [SpellHandlerAttribute("Heal")]
+    [SpellHandler(eSpellType.Heal)]
     public class HealSpellHandler : SpellHandler
     {
         public HealSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
 
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public override bool StartSpell(GameLiving target)
         {
@@ -56,9 +56,6 @@ namespace DOL.GS.Spells
                 return false;
 
             if (GameServer.ServerRules.IsAllowedToAttack(Caster, target, true))
-                return false;
-
-            if (target is Keeps.GameKeepComponent or Keeps.GameKeepDoor)
                 return false;
 
             if (!target.IsAlive)
@@ -112,6 +109,9 @@ namespace DOL.GS.Spells
             if (Caster is GamePlayer spellCaster && spellCaster.UseDetailedCombatLog && effectiveness != 1)
                 spellCaster.Out.SendMessage($"heal effectiveness: {effectiveness:0.##}", eChatType.CT_DamageAdd, eChatLoc.CL_SystemWindow);
 
+            amount *= 1.0 + RelicMgr.GetRelicBonusModifier(Caster.Realm, eRelicType.Magic);
+            amount *= effectiveness;
+
             /*if (playerTarget != null)
             {
                 GameSpellEffect HealEffect = SpellHandler.FindEffectOnTarget(playerTarget, "EfficientHealing");
@@ -146,7 +146,7 @@ namespace DOL.GS.Spells
             if (Util.Chance(criticalChance))
             {
                 double min = 0.1;
-                double max = 0.5;
+                double max = 1.0;
                 double criticalModifier = min + Util.RandomDoubleIncl() * (max - min);
                 criticalAmount = amount * criticalModifier;
                 amount += criticalAmount;
@@ -173,68 +173,6 @@ namespace DOL.GS.Spells
                 return false;
             }
 
-            #region PVP DAMAGE
-
-            long healedRp = 0;
-
-            if (target.DamageRvRMemory > 0 && (playerTarget != null || target is NecromancerPet))
-            {
-                healedRp = Math.Max(effectiveAmount, 0);
-                target.DamageRvRMemory -= healedRp;
-
-                // If we heal a target that is in RvR, the healer will get rewards from their heal target's target.
-                if (target.TargetObject is IGamePlayer enemy && enemy.Realm != target.Realm)
-                    enemy.AddXPGainer(m_caster, healedRp);
-            }
-
-            /*if (healedRp > 0)
-            {
-                if (playerCaster != null && (playerTarget != null || target is NecromancerPet))
-                {
-                    if (m_caster.Group == null || !m_caster.Group.IsInTheGroup(target))
-                    {
-                        if (m_spell.Pulse == 0 &&
-                            m_caster.CurrentRegionID != 242 &&
-                            target != m_caster &&
-                            m_spell.SpellType is not eSpellType.SpreadHeal &&
-                            m_spellLine.KeyName is not
-                            GlobalSpellsLines.Item_Spells and not
-                            GlobalSpellsLines.Potions_Effects and not
-                            GlobalSpellsLines.Combat_Styles_Effect and not
-                            GlobalSpellsLines.Reserved_Spells)
-                        {
-                            if (playerCaster != null)
-                            {
-                                long rpFromHeal = Convert.ToInt64((double) healedRp * ServerProperties.Properties.HEAL_PVP_DAMAGE_VALUE_RP / 100.0);
-
-                                if (rpFromHeal >= 1)
-                                {
-                                    if (playerCaster.Statistics is PlayerStatistics stats)
-                                    {
-                                        stats.RPEarnedFromHitPointsHealed += (uint) rpFromHeal;
-                                        stats.HitPointsHealed += (uint) healedRp;
-                                    }
-
-                                    playerCaster.GainRealmPoints(rpFromHeal, false);
-                                    playerCaster.Out.SendMessage($"You gain {rpFromHeal} realm points for healing a member of your Realm", eChatType.CT_Important, eChatLoc.CL_SystemWindow);
-                                }
-                            }
-                        }
-                    }
-                }
-            }*/
-
-            #endregion PVP DAMAGE
-
-            if (effectiveAmount < amount)
-            {
-                if (playerTarget != null || target is NecromancerPet)
-                {
-                    if (target.DamageRvRMemory > 0)
-                        target.DamageRvRMemory = 0;
-                }
-            }
-
             if (ShouldSendMessageAsSelfHeal(Caster, target))
             {
                 MessageToCaster($"You heal yourself for {preCriticalAmount:0} hit points.", eChatType.CT_Spell);
@@ -253,13 +191,6 @@ namespace DOL.GS.Spells
 
             if (effectiveAmount > 0 && criticalAmount > 0)
                 MessageToCaster($"You heal for an extra {criticalAmount:0} hit points! ({criticalChance:0.##}%)", eChatType.CT_Spell);
-
-            // Check for conquest activity.
-            if (playerTarget is GamePlayer)
-            {
-                if (ConquestService.ConquestManager.IsPlayerInConquestArea((GamePlayer)playerTarget))
-                    ConquestService.ConquestManager.AddContributor((GamePlayer)playerTarget);
-            }
 
             foreach (GameLiving attacker in target.attackComponent.Attackers.Keys)
             {
@@ -285,6 +216,7 @@ namespace DOL.GS.Spells
                 }
             }
 
+            playerCaster?.Statistics.AddToHitPointsHealed((uint) effectiveAmount);
             return true;
         }
 

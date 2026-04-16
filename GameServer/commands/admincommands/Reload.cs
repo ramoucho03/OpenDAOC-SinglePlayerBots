@@ -21,7 +21,6 @@ using System;
 using System.Reflection;
 using DOL.Database;
 using DOL.GS.PacketHandler;
-using log4net;
 
 namespace DOL.GS.Commands
 {
@@ -32,7 +31,7 @@ namespace DOL.GS.Commands
 		)]
 	public class ReloadCommandHandler : ICommandHandler
 	{
-		private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		private static void SendSystemMessageBase(GameClient client)
 		{
@@ -183,10 +182,10 @@ namespace DOL.GS.Commands
 
 			if (args[1].ToLower() == "spells")
 			{
-				SkillBase.ReloadDBSpells();
-				int loaded = SkillBase.ReloadSpellLines();
-				if (client != null) ChatUtil.SendSystemMessage(client, string.Format("Reloaded db spells and {0} spells for all lines !", loaded));
-				log.Info(string.Format("Reloaded db spells and {0} spells for all spell lines !", loaded));
+				SkillBase.ReloadSpells();
+				SkillBase.ReloadSpellLines();
+				if (client != null) client.Out.SendMessage("Spells and spell lines reloaded", eChatType.CT_Important, eChatLoc.CL_SystemWindow);
+				log.Info("Spells and spell lines reloaded.");
 				return;
 			}
 

@@ -4,7 +4,6 @@ using System.Reflection;
 using System.Threading;
 using DOL.Database;
 using DOL.Language;
-using log4net;
 
 namespace DOL.GS
 {
@@ -15,7 +14,7 @@ namespace DOL.GS
     {
         #region Fields and Properties
 
-        private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
         private const ushort SUBZONE_NBR_ON_ZONE_SIDE = 32; // MUST BE A POWER OF 2 (current implementation limit is 128 inclusive).
         private const ushort SUBZONE_NBR = SUBZONE_NBR_ON_ZONE_SIDE * SUBZONE_NBR_ON_ZONE_SIDE;
         private const ushort SUBZONE_SIZE = 65536 / SUBZONE_NBR_ON_ZONE_SIDE;
@@ -215,7 +214,6 @@ namespace DOL.GS
 
         private SubZone[] _subZones = new SubZone[SUBZONE_NBR];
         private int _objectCount;
-        private bool _initialized = false;
 
         #endregion Fields and Properties
 
@@ -250,6 +248,9 @@ namespace DOL.GS
             BonusBountypoints = bpBonus;
             BonusCoin = coinBonus;
             Realm = (eRealm)realm;
+
+            for (int i = 0; i < SUBZONE_NBR; i++)
+                _subZones[i] = new SubZone(this);
         }
 
         public void Delete()
@@ -259,18 +260,7 @@ namespace DOL.GS
             Events.GameEventMgr.RemoveAllHandlersForObject(this);
         }
 
-        private void InitializeZone()
-        {
-            if (_initialized)
-                return;
-
-            for (int i = 0; i < SUBZONE_NBR; i++)
-                _subZones[i] = new SubZone(this);
-
-            _initialized = true;
-        }
-
-        #endregion Constructor
+        #endregion
 
         #region Subzone Management
 
@@ -309,9 +299,6 @@ namespace DOL.GS
 
         public bool AddObject(GameObject gameObject)
         {
-            if (!_initialized)
-                InitializeZone();
-
             SubZone subZone = GetSubZone(GetSubZoneIndex(gameObject.X, gameObject.Y));
 
             if (subZone == null)
@@ -360,10 +347,7 @@ namespace DOL.GS
         /// <param name="partialList">a non-null list</param>
         public void GetObjectsInRadius<T>(int x, int y, int z, eGameObjectType objectType, ushort radius, List<T> partialList) where T : GameObject
         {
-            if (!_initialized)
-                InitializeZone();
-
-            uint sqRadius = (uint)radius * radius;
+            uint sqRadius = (uint) radius * radius;
             int referenceSubZoneIndex = GetSubZoneIndex(x, y);
 
             int xInZone = x - XOffset; // x in zone coordinates.
@@ -679,9 +663,6 @@ namespace DOL.GS
         /// </summary>
         public List<GameNPC> GetNPCsOfZone(eRealm[] realms, int minLevel, int maxLevel, int compareLevel, int conLevel, bool firstOnly)
         {
-            if (!_initialized)
-                InitializeZone();
-
             List<GameNPC> list = new();
             GameNPC currentNPC;
             bool addToList;

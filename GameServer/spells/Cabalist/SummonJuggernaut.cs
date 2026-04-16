@@ -4,7 +4,7 @@ using DOL.GS.Scripts;
 
 namespace DOL.GS.Spells
 {
-	[SpellHandler("SummonJuggernaut")]
+	[SpellHandler(eSpellType.SummonJuggernaut)]
 	public class SummonJuggernaut : SummonSimulacrum
 	{
 		public SummonJuggernaut(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }

@@ -1,6 +1,5 @@
 using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.Linq;
 using DOL.AI.Brain;
 using DOL.Database;
@@ -16,7 +15,7 @@ namespace DOL.GS.Keeps
 	/// </summary>
 	public class GameKeepGuard : GameNPC, IKeepItem
 	{
-		private static new readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
 		private Patrol m_Patrol = null;
 		public Patrol PatrolGroup
@@ -58,16 +57,6 @@ namespace DOL.GS.Keeps
 		{
 			get { return m_modelRealm; }
 			set { m_modelRealm = value; }
-		}
-
-		public override void ProcessDeath(GameObject killer)
-		{
-			if (killer is GamePlayer p && ConquestService.ConquestManager.IsPlayerNearConquestObjective(p))
-			{
-				ConquestService.ConquestManager.AddContributors(this.XPGainers.Keys.OfType<GamePlayer>().ToList());
-			}
-
-			base.ProcessDeath(killer);
 		}
 
 		public bool IsTowerGuard
@@ -229,69 +218,6 @@ namespace DOL.GS.Keeps
 				HealTarget = target;
 				LOSChecker.Out.SendCheckLos(this, target, new CheckLosResponse(GuardStartSpellHealCheckLos));
 			}
-		}
-
-		public void CheckForNuke()
-		{
-			GameLiving target = TargetObject as GameLiving;
-			if (target == null) return;
-			if (!target.IsAlive) return;
-			if (target is GamePlayer && !GameServer.KeepManager.IsEnemy(this, target as GamePlayer, true)) return;
-			if (!IsWithinRadius(target, WorldMgr.VISIBILITY_DISTANCE)) { TargetObject = null; return; }
-			GamePlayer LOSChecker = null;
-			if (target is GamePlayer) LOSChecker = target as GamePlayer;
-			else
-			{
-				foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
-				{
-					LOSChecker = player;
-					break;
-				}
-			}
-			if (LOSChecker == null) return;
-			LOSChecker.Out.SendCheckLos(this, target, new CheckLosResponse(GuardStartSpellNukeCheckLos));
-		}
-
-		public void GuardStartSpellNukeCheckLos(GamePlayer player, eLosCheckResponse response, ushort sourceOID, ushort targetOID)
-		{
-			if (response is eLosCheckResponse.TRUE)
-			{
-				switch (Realm)
-				{
-					case eRealm.None:
-					case eRealm.Albion: LaunchSpell(47, "Pyromancy"); break;
-					case eRealm.Midgard: LaunchSpell(48, "Runecarving"); break;
-					case eRealm.Hibernia: LaunchSpell(47, "Way of the Eclipse"); break;
-				}
-			}
-		}
-
-		private void LaunchSpell(int spellLevel, string spellLineName)
-		{
-			if (TargetObject == null)
-				return;
-
-			Spell castSpell = null;
-			SpellLine castLine = SkillBase.GetSpellLine(spellLineName);
-			List<Spell> spells = SkillBase.GetSpellList(castLine.KeyName);
-
-			foreach (Spell spell in spells)
-			{
-				if (spell.Level == spellLevel)
-				{
-					castSpell = spell;
-					break;
-				}
-			}
-
-			if (attackComponent.AttackState)
-				attackComponent.StopAttack();
-
-			if (IsMoving)
-				StopFollowing();
-
-			TurnTo(TargetObject);
-			CastSpell(castSpell, castLine);
 		}
 
 		/// <summary>
@@ -579,11 +505,13 @@ namespace DOL.GS.Keeps
 					Component = new GameKeepComponent();
 					Component.Keep = keep;
 					m_dataObjectID = mobobject.ObjectId;
+
 					// mob reload command might be reloading guard, so check to make sure it isn't already added
-					if (Component.Keep.Guards.ContainsKey(m_dataObjectID) == false)
+					lock (Component.Keep.Guards)
 					{
-						Component.Keep.Guards.Add(m_dataObjectID, this);
+						Component.Keep.Guards[m_dataObjectID] = this;
 					}
+
 					break;
 				}
 			}
@@ -711,7 +639,7 @@ namespace DOL.GS.Keeps
 			int emblem = 0;
 			if (guild != null)
 				emblem = guild.Emblem;
-			DbInventoryItem lefthand = Inventory.GetItem(eInventorySlot.LeftHandWeapon);
+			DbInventoryItem lefthand = ActiveLeftWeapon;
 			if (lefthand != null)
 				lefthand.Emblem = emblem;
 
@@ -776,6 +704,7 @@ namespace DOL.GS.Keeps
 			SetBrain();
 			SetSpeed();
 			SetLevel();
+			SetSpells();
 			SetResists();
 			AutoSetStats();
 			SetAggression();
@@ -836,6 +765,8 @@ namespace DOL.GS.Keeps
 				MaxSpeedBase = 575;
 			}
 		}
+
+		public virtual void SetSpells() { }
 
 		private void SetResists()
 		{

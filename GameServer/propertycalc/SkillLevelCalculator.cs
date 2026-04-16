@@ -16,6 +16,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  *
  */
+using DOL.GS.Scripts;
 using System;
 
 namespace DOL.GS.PropertyCalc
@@ -36,10 +37,9 @@ namespace DOL.GS.PropertyCalc
 
 		public override int CalcValue(GameLiving living, eProperty property) 
 		{
-//			DOLConsole.WriteSystem("calc skill prop "+property+":");
-			if (living is GamePlayer) 
+			if (living is IGamePlayer) 
 			{
-				GamePlayer player = (GamePlayer)living;
+				IGamePlayer player = (IGamePlayer)living;
 
 				int itemCap = player.Level/5+1;
 
@@ -59,14 +59,9 @@ namespace DOL.GS.PropertyCalc
 				if (itemBonus > itemCap)
 					itemBonus = itemCap;
 				int buffs = player.BaseBuffBonusCategory[(int)property]; // one buff category just in case..
-
-//				DOLConsole.WriteLine("item bonus="+itemBonus+"; buffs="+buffs+"; realm="+player.RealmLevel/10);
 				return itemBonus + buffs + player.RealmLevel/10;
-			} 
-			else 
-			{
-				// TODO other living types
 			}
+
 			return 0;
 		}
 	}

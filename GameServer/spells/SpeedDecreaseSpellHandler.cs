@@ -8,16 +8,33 @@ namespace DOL.GS.Spells
 	/// <summary>
 	/// Spell handler for speed decreasing spells
 	/// </summary>
-	[SpellHandler("SpeedDecrease")]
+	[SpellHandler(eSpellType.SpeedDecrease)]
 	public class SpeedDecreaseSpellHandler : UnbreakableSpeedDecreaseSpellHandler
 	{
-		private bool crit = false;
 		public override ECSGameSpellEffect CreateECSEffect(ECSGameEffectInitParams initParams)
 		{
-			if (crit)
-				initParams.Effectiveness *= 2; //critical hit effectiveness needs to be set after duration is calculated to prevent double duration
-
 			return new StatDebuffECSEffect(initParams);
+		}
+
+		protected override double GetDebuffEffectivenessCriticalModifier()
+		{
+			int criticalChance = Caster.DebuffCriticalChance;
+
+			if (criticalChance <= 0)
+				return 1.0;
+
+			double randNum = Util.RandomDouble() * 100;
+			int critCap = Math.Min(50, criticalChance);
+			GamePlayer playerCaster = Caster as GamePlayer;
+
+			if (playerCaster?.UseDetailedCombatLog == true && critCap > 0)
+				playerCaster.Out.SendMessage($"Debuff crit chance: {critCap:0.##} random: {randNum:0.##}", eChatType.CT_DamageAdd, eChatLoc.CL_SystemWindow);
+
+			if (critCap <= randNum)
+				return 1.0;
+
+			playerCaster?.Out.SendMessage($"Your snare is doubly effective!", eChatType.CT_YouHit, eChatLoc.CL_SystemWindow);
+			return 2.0;
 		}
 
 		public override void ApplyEffectOnTarget(GameLiving target)
@@ -31,7 +48,6 @@ namespace DOL.GS.Spells
 				OnSpellResisted(target);
 				return;
 			}
-
 
 			//check for existing effect
 			// var debuffs = target.effectListComponent.GetSpellEffects(eEffect.MovementSpeedDebuff);
@@ -49,24 +65,6 @@ namespace DOL.GS.Spells
 			// 	}
 			// }
 
-			int criticalChance = Caster.DebuffCriticalChance;
-
-			if (criticalChance > 0)
-			{
-				int randNum = Util.CryptoNextInt(0, 100);
-				int critCap = Math.Min(50, criticalChance);
-				GamePlayer playerCaster = Caster as GamePlayer;
-
-				if (playerCaster?.UseDetailedCombatLog == true && critCap > 0)
-					playerCaster.Out.SendMessage($"Debuff crit chance: {critCap} random: {randNum}", eChatType.CT_DamageAdd, eChatLoc.CL_SystemWindow);
-
-				if (critCap > randNum)
-				{
-					crit = true;
-					playerCaster?.Out.SendMessage($"Your snare is doubly effective!", eChatType.CT_YouHit, eChatLoc.CL_SystemWindow);
-				}
-			}
-			
 			base.ApplyEffectOnTarget(target);
 		}
 
@@ -89,21 +87,21 @@ namespace DOL.GS.Spells
 			//GameSpellEffect mezz = SpellHandler.FindEffectOnTarget(effect.Owner, "Mesmerize");
 			ECSGameEffect mezz = EffectListService.GetEffectOnTarget(effect.Owner, eEffect.Mez);
 			if (mezz != null)
-				EffectService.RequestImmediateCancelEffect(mezz);
-			//mezz.Cancel(false);
+				EffectService.RequestCancelEffect(mezz);
+            //mezz.Cancel(false);
 
-			if (Spell.Value == 99)
-				effect.Owner.IsRooted = true;
-		}
+            if (Spell.Value == 99)
+                effect.Owner.IsRooted = true;
+        }
 
-		/// <summary>
-		/// When an applied effect expires.
-		/// Duration spells only.
-		/// </summary>
-		/// <param name="effect">The expired effect</param>
-		/// <param name="noMessages">true, when no messages should be sent to player and surrounding</param>
-		/// <returns>immunity duration in milliseconds</returns>
-		public override int OnEffectExpires(GameSpellEffect effect, bool noMessages)
+        /// <summary>
+        /// When an applied effect expires.
+        /// Duration spells only.
+        /// </summary>
+        /// <param name="effect">The expired effect</param>
+        /// <param name="noMessages">true, when no messages should be sent to player and surrounding</param>
+        /// <returns>immunity duration in milliseconds</returns>
+        public override int OnEffectExpires(GameSpellEffect effect, bool noMessages)
 		{
 			if (effect.Owner.IsRooted)
 				effect.Owner.IsRooted = false;
@@ -132,7 +130,7 @@ namespace DOL.GS.Spells
 					//GameSpellEffect effect = FindEffectOnTarget(living, this);
 					ECSGameEffect effect = EffectListService.GetEffectOnTarget(living, eEffect.MovementSpeedDebuff);
 					if (effect != null)
-						EffectService.RequestImmediateCancelEffect(effect);
+						EffectService.RequestCancelEffect(effect);
 						//effect.Cancel(false);
 					break;
 			}

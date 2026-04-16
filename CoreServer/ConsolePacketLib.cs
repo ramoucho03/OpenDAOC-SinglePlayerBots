@@ -9,9 +9,8 @@ using DOL.GS.Housing;
 using DOL.GS.Keeps;
 using DOL.GS.PacketHandler;
 using DOL.GS.Quests;
-using log4net;
 
-namespace DOLGameServerConsole
+namespace DOL.GameServerConsole
 {
 	/// <summary>
 	/// The packetlib for dummy console clients for /commands
@@ -21,7 +20,7 @@ namespace DOLGameServerConsole
 		/// <summary>
 		/// Defines a logger for this class.
 		/// </summary>
-		private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		public void SendMessage(string msg, eChatType type, eChatLoc loc)
 		{
@@ -50,12 +49,8 @@ namespace DOLGameServerConsole
 
 		public byte GetPacketCode(eServerPackets packetCode) { return 0; }
 		public void SendTCP(GSTCPPacketOut packet) { }
-		public void SendWarlockChamberEffect(GamePlayer player) { }
-		public void SendTCP(byte[] buf) { }
-		public void SendTCPRaw(GSTCPPacketOut packet) { }
 		public void SendUDP(GSUDPPacketOut packet) { }
-		public void SendUDP(byte[] buf) { }
-		public void SendUDPRaw(GSUDPPacketOut packet) { }
+		public void SendWarlockChamberEffect(GamePlayer player) { }
 		public void SendVersionAndCryptKey() { }
 		public void SendLoginDenied(eLoginError et) { }
 		public void SendLoginGranted() { }
@@ -113,7 +108,7 @@ namespace DOLGameServerConsole
 		public void SendGroupMemberUpdate(bool updateIcons, bool updateMap, GameLiving living) { }
 		public void SendGroupMembersUpdate(bool updateIcons, bool updateMap) { }
 		public void SendInventoryItemsUpdate(ICollection<DbInventoryItem> itemsToUpdate) { }
-		public void SendInventorySlotsUpdate(ICollection<int> slots) { }
+		public void SendInventorySlotsUpdate(ICollection<eInventorySlot> slots) { }
 		public void SendInventoryItemsUpdate(eInventoryWindowType windowType, ICollection<DbInventoryItem> itemsToUpdate) { }
 		public void SendInventoryItemsUpdate(IDictionary<int, DbInventoryItem> updateItems, eInventoryWindowType windowType) { }
 		public void SendInventoryItemsPartialUpdate(IDictionary<int, DbInventoryItem> items, eInventoryWindowType windowType) { }
@@ -124,10 +119,10 @@ namespace DOLGameServerConsole
 		public void SendPlayerDied(GamePlayer killedPlayer, GameObject killer) { }
 		public void SendPlayerRevive(GamePlayer revivedPlayer) { }
 		public void SendUpdatePlayer() { }
-		public void SendUpdatePlayerSkills() { }
+		public void SendUpdatePlayerSkills(bool updateInternalCache) { }
 		public void SendUpdateWeaponAndArmorStats() { }
 		public void SendCustomTextWindow(string caption, IList<string> text) { }
-		public void SendEncumberance() { }
+		public void SendEncumbrance() { }
 		public void SendAddFriends(string[] friendNames) { }
 		public void SendRemoveFriends(string[] friendNames) { }
 		public void SendTimerWindow(string title, int seconds) { }
@@ -148,7 +143,7 @@ namespace DOLGameServerConsole
 		public void SendPlayerModelTypeChange(GamePlayer player, byte modelType) { }
 		public void SendObjectDelete(GameObject obj) { }
 		public void SendObjectDelete(ushort oid) { }
-		public void SendObjectUpdate(GameObject obj) { }
+		public void SendObjectUpdate(GameObject obj, bool udp = true) { }
 		public void SendObjectRemove(GameObject obj) { }
 		public void SendObjectCreate(GameObject obj) { }
 		public void SendQuestListUpdate() { }

@@ -71,7 +71,7 @@ namespace DOL.AI.Brain
 {
 	public class UlfketillBrain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 		public UlfketillBrain() : base()
 		{
 			AggroLevel = 100;
@@ -184,9 +184,7 @@ namespace DOL.GS
 			--JotunsCount;
             base.Die(killer);
         }
-		public override void DropLoot(GameObject killer) //no loot
-		{
-		}
+		public override bool CanDropLoot => false;
 		public override long ExperienceValue => 0;
 	}
 }
@@ -194,7 +192,7 @@ namespace DOL.AI.Brain
 {
 	public class UlfketillAddsBrain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 		public UlfketillAddsBrain() : base()
 		{
 			AggroLevel = 100;

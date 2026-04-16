@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using DOL.AI.Brain;
 using DOL.Database;
 using DOL.GS.PacketHandler;
+using DOL.GS.Scripts;
 
 namespace DOL.GS
 {
@@ -12,7 +13,7 @@ namespace DOL.GS
 	/// </summary>
 	public class LootGeneratorOneTimeDrop : LootGeneratorBase
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
 		/// <summary>
 		///
@@ -144,22 +145,22 @@ namespace DOL.GS
 
 				if (lootOTDs != null)
 				{
-					lock (mob.XPGainers.SyncRoot)
+					lock (mob.XpGainersLock)
 					{
 						foreach (GameObject gainer in mob.XPGainers.Keys)
 						{
-							GamePlayer player = null;
+							IGamePlayer player = null;
 
-							if (gainer is GamePlayer)
+							if (gainer is IGamePlayer)
 							{
-								player = gainer as GamePlayer;
+								player = gainer as IGamePlayer;
 							}
 							else if (gainer is GameNPC)
 							{
 								IControlledBrain brain = ((GameNPC)gainer).Brain as IControlledBrain;
 								if (brain != null)
 								{
-									player = brain.GetPlayerOwner();
+									player = brain.GetIPlayerOwner();
 								}
 							}
 
@@ -169,7 +170,9 @@ namespace DOL.GS
 								{
 									if (drop.MinLevel <= player.Level)
 									{
-										var hasDrop = DOLDB<DbCharacterXOneTimeDrop>.SelectObject(DB.Column("CharacterID").IsEqualTo(player.QuestPlayerID).And(DB.Column("ItemTemplateID").IsEqualTo(drop.ItemTemplateID)));
+										GamePlayer gPlayer = player as GamePlayer;
+
+										var hasDrop = gPlayer != null ? DOLDB<DbCharacterXOneTimeDrop>.SelectObject(DB.Column("CharacterID").IsEqualTo(gPlayer.QuestPlayerID).And(DB.Column("ItemTemplateID").IsEqualTo(drop.ItemTemplateID))) : null;
 
 										if (hasDrop == null)
 										{
@@ -179,13 +182,16 @@ namespace DOL.GS
 											{
 												if (player.Inventory.AddItem(eInventorySlot.FirstEmptyBackpack, GameInventoryItem.Create(item)))
 												{
-													DbCharacterXOneTimeDrop charXDrop = new DbCharacterXOneTimeDrop();
-													charXDrop.CharacterID = player.QuestPlayerID;
-													charXDrop.ItemTemplateID = drop.ItemTemplateID;
-													GameServer.Database.AddObject(charXDrop);
+													if (gPlayer != null)
+													{
+														DbCharacterXOneTimeDrop charXDrop = new DbCharacterXOneTimeDrop();
+														charXDrop.CharacterID = gPlayer.QuestPlayerID;
+														charXDrop.ItemTemplateID = drop.ItemTemplateID;
+														GameServer.Database.AddObject(charXDrop);
 
-													player.Out.SendMessage(string.Format("You receive {0} from {1}!", item.GetName(1, false), mob.GetName(1, false)), eChatType.CT_Loot, eChatLoc.CL_SystemWindow);
-													InventoryLogging.LogInventoryAction(mob, player, eInventoryActionType.Loot, item);
+                                                        gPlayer.Out.SendMessage(string.Format("You receive {0} from {1}!", item.GetName(1, false), mob.GetName(1, false)), eChatType.CT_Loot, eChatLoc.CL_SystemWindow);
+														InventoryLogging.LogInventoryAction(mob, gPlayer, eInventoryActionType.Loot, item);
+													}
 												}
 												else
 												{

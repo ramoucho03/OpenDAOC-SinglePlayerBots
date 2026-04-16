@@ -1,8 +1,10 @@
 ﻿using DOL.AI.Brain;
+using DOL.Database;
+using DOL.GS.Scripts;
+using log4net;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using DOL.Database;
 
 namespace DOL.GS {
 
@@ -11,7 +13,7 @@ namespace DOL.GS {
     /// At the moment this generator only adds ROGs to the loot
     /// </summary>
     public class ROGMobGenerator : LootGeneratorBase {
-
+        private static readonly ILog log = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         //base chance in %
         public static ushort BASE_ROG_CHANCE = 14;
 
@@ -28,10 +30,11 @@ namespace DOL.GS {
 
             try
             {
-                GamePlayer player = killer as GamePlayer;
+                IGamePlayer player = killer as IGamePlayer;
+
                 if (killer is GameNPC && ((GameNPC)killer).Brain is IControlledBrain)
                 {
-                    player = ((ControlledMobBrain)((GameNPC)killer).Brain).GetPlayerOwner();
+                    player = ((ControlledMobBrain)((GameNPC)killer).Brain).GetIPlayerOwner();
                 }
 
                 if (player == null)
@@ -48,6 +51,7 @@ namespace DOL.GS {
                 }
 
                 eCharacterClass classForLoot = (eCharacterClass)player.CharacterClass.ID;
+
                 // allow the leader to decide the loot realm
                 if (player.Group != null)
                 {
@@ -70,9 +74,9 @@ namespace DOL.GS {
                     chance = 2;
 
                     int numDrops = 0;
-                    foreach (GamePlayer bgMember in bg.Members.Keys)
+                    foreach (IGamePlayer bgMember in bg.Members.Keys)
                     {
-                        if(bgMember.GetDistance(player) > WorldMgr.VISIBILITY_DISTANCE)
+                        if(bgMember.GetDistance((GameLiving)player) > WorldMgr.VISIBILITY_DISTANCE)
                             continue;
                         
                         if (Util.Chance(chance) && numDrops < maxDropCap)
@@ -102,14 +106,15 @@ namespace DOL.GS {
 
                     int numDrops = 0;
                     //roll for an item for each player in the group
-                    foreach (var groupPlayer in player.Group.GetNearbyPlayersInTheGroup(player))
+                    foreach (var groupPlayer in player.Group.GetIPlayersInTheGroup())
                     {
-                        if(groupPlayer.GetDistance(player) > WorldMgr.VISIBILITY_DISTANCE)
+                        if (groupPlayer.GetDistance((GameLiving)player) > WorldMgr.VISIBILITY_DISTANCE)
                             continue;
                         
                         if (Util.Chance(chance) && numDrops < MaxDropCap)
                         {
                             classForLoot = GetRandomClassFromGroup(player.Group);
+
                             var item = GenerateItemTemplate(player, classForLoot, (byte)(mob.Level + 1), killedcon);
                             loot.AddFixed(item, 1);
                             numDrops++;
@@ -124,7 +129,7 @@ namespace DOL.GS {
                         loot.AddFixed(item, 1);
                     }
 
-                    if(player.Level < 50 || mob.Level < 50)
+                    if (player.Level < 50 || mob.Level < 50)
                     {
                         var item = AtlasROGManager.GenerateBeadOfRegeneration();
                         loot.AddRandom(2, item, 1);
@@ -186,12 +191,10 @@ namespace DOL.GS {
             return loot;
         }
 
-
-        private DbItemTemplate GenerateItemTemplate(GamePlayer player, eCharacterClass classForLoot, byte lootLevel, int killedcon)
+        private DbItemTemplate GenerateItemTemplate(IGamePlayer player, eCharacterClass classForLoot, byte lootLevel, int killedcon)
         {
             DbItemTemplate item = null;
-                
-                
+                              
             GeneratedUniqueItem tmp = AtlasROGManager.GenerateMonsterLootROG(player.Realm, classForLoot, lootLevel, player.CurrentZone?.IsOF ?? false);
             tmp.GenerateItemQuality(killedcon);
             //tmp.CapUtility(mob.Level + 1);
@@ -205,7 +208,7 @@ namespace DOL.GS {
         {
             List<eCharacterClass> validClasses = new List<eCharacterClass>();
 
-            foreach (GamePlayer player in group.GetMembersInTheGroup())
+            foreach (IGamePlayer player in group.GetIPlayersInTheGroup())
             {
                 validClasses.Add((eCharacterClass)player.CharacterClass.ID);
             }
@@ -218,7 +221,7 @@ namespace DOL.GS {
         {
             List<eCharacterClass> validClasses = new List<eCharacterClass>();
 
-            foreach (GamePlayer player in battlegroup.Members.Keys)
+            foreach (IGamePlayer player in battlegroup.Members.Keys)
             {
                 validClasses.Add((eCharacterClass)player.CharacterClass.ID);
             }

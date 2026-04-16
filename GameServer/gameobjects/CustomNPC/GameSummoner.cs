@@ -9,7 +9,7 @@ namespace DOL.GS
     /// </summary>
     public abstract class GameSummoner : GameNPC
     {
-        private static new readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         /// <summary>
         /// Percent health remaining to summon pet
@@ -138,7 +138,6 @@ namespace DOL.GS
                     m_pet.LoadedFromScript = true;
                     m_pet.TetherRange = PetTetherRange;
                     m_pet.RespawnInterval = -1;
-                    m_pet.IsWorthReward = false;
 
                     if (PetSize > 0)
                         m_pet.Size = PetSize;

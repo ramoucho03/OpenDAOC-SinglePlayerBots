@@ -26,10 +26,10 @@ using DOL.GS.PacketHandler;
 
 namespace DOL.GS.Spells
 {
-    [SpellHandlerAttribute("DmgReductionAndPowerReturn")]
-    public class DamageReductionAndPowerReturnSpellHandler : SpellHandler
-    {
-        public const string Damage_Reduction = "damage reduction";
+	[SpellHandler(eSpellType.DmgReductionAndPowerReturn)]
+	public class DamageReductionAndPowerReturnSpellHandler : SpellHandler
+	{
+		public const string Damage_Reduction = "damage reduction";
 
         public override void OnEffectStart(GameSpellEffect effect)
         {

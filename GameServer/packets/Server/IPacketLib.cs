@@ -1,25 +1,6 @@
-/*
- * DAWN OF LIGHT - The first free open source DAoC server emulator
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
- *
- */
 using System;
 using System.Collections;
 using System.Collections.Generic;
-
 using DOL.AI.Brain;
 using DOL.Database;
 using DOL.GS.Housing;
@@ -629,12 +610,7 @@ namespace DOL.GS.PacketHandler
 
 		byte GetPacketCode(eServerPackets packetCode);
 		void SendTCP(GSTCPPacketOut packet);
-		void SendTCP(byte[] buf);
-		void SendTCPRaw(GSTCPPacketOut packet);
 		void SendUDP(GSUDPPacketOut packet);
-		void SendUDP(byte[] buf);
-		void SendUDPRaw(GSUDPPacketOut packet);
-		// warlock
 		void SendWarlockChamberEffect(GamePlayer player);
 		void SendVersionAndCryptKey();
 		void SendLoginDenied(eLoginError et);
@@ -707,7 +683,7 @@ namespace DOL.GS.PacketHandler
 		void SendGroupMemberUpdate(bool updateIcons, bool updateMap, GameLiving living);
 		void SendGroupMembersUpdate(bool updateIcons, bool updateMap);
 		void SendInventoryItemsUpdate(ICollection<DbInventoryItem> itemsToUpdate);
-		void SendInventorySlotsUpdate(ICollection<int> slots);
+		void SendInventorySlotsUpdate(ICollection<eInventorySlot> slots);
 		void SendInventoryItemsUpdate(eInventoryWindowType windowType, ICollection<DbInventoryItem> itemsToUpdate);
 		void SendInventoryItemsUpdate(IDictionary<int, DbInventoryItem> updateItems, eInventoryWindowType windowType);
 		void SendDoorState(Region region, GameDoorBase door);
@@ -717,12 +693,12 @@ namespace DOL.GS.PacketHandler
 		void SendPlayerDied(GamePlayer killedPlayer, GameObject killer);
 		void SendPlayerRevive(GamePlayer revivedPlayer);
 		void SendUpdatePlayer();
-		void SendUpdatePlayerSkills();
+		void SendUpdatePlayerSkills(bool updateInternalCache);
 		void SendUpdateWeaponAndArmorStats();
 		void SendCustomTextWindow(string caption, IList<string> text);
 		void SendPlayerTitles();
 		void SendPlayerTitleUpdate(GamePlayer player);
-		void SendEncumberance();
+		void SendEncumbrance();
 		void SendAddFriends(string[] friendNames);
 		void SendRemoveFriends(string[] friendNames);
 		void SendTimerWindow(string title, int seconds);
@@ -742,7 +718,7 @@ namespace DOL.GS.PacketHandler
 		void SendPlayerModelTypeChange(GamePlayer player, byte modelType);
 		void SendObjectDelete(GameObject obj);
 		void SendObjectDelete(ushort oid);
-		void SendObjectUpdate(GameObject obj);
+		void SendObjectUpdate(GameObject obj, bool udp = true);
 		void SendQuestListUpdate();
 		void SendQuestUpdate(AbstractQuest quest);
 		void SendQuestRemove(byte index);

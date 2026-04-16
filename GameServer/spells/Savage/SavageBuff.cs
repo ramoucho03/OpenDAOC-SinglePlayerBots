@@ -101,7 +101,7 @@ namespace DOL.GS.Spells
             {
                 player.Out.SendCharStatsUpdate();
                 player.Out.SendUpdateWeaponAndArmorStats();
-                player.UpdateEncumberance();
+                player.UpdateEncumbrance();
                 player.UpdatePlayerStatus();
             }
         }
@@ -121,7 +121,7 @@ namespace DOL.GS.Spells
         }
     }
  
-    [SpellHandlerAttribute("SavageParryBuff")]
+    [SpellHandler(eSpellType.SavageParryBuff)]
     public class SavageParryBuff : AbstractSavageStatBuff
     {
         public override eProperty Property1 => eProperty.ParryChance;
@@ -129,7 +129,7 @@ namespace DOL.GS.Spells
         public SavageParryBuff(GameLiving caster, Spell spell, SpellLine spellLine) : base(caster, spell, spellLine) { }
     }
 
-    [SpellHandlerAttribute("SavageEvadeBuff")]
+    [SpellHandler(eSpellType.SavageEvadeBuff)]
     public class SavageEvadeBuff : AbstractSavageStatBuff
     {
         public override eProperty Property1 => eProperty.EvadeChance;
@@ -137,7 +137,7 @@ namespace DOL.GS.Spells
         public SavageEvadeBuff(GameLiving caster, Spell spell, SpellLine spellLine) : base(caster, spell, spellLine) { }
     }
 
-    [SpellHandlerAttribute("SavageCombatSpeedBuff")]
+    [SpellHandler(eSpellType.SavageCombatSpeedBuff)]
     public class SavageCombatSpeedBuff : AbstractSavageStatBuff
     {
         public override eProperty Property1 => eProperty.MeleeSpeed;
@@ -145,7 +145,7 @@ namespace DOL.GS.Spells
         public SavageCombatSpeedBuff(GameLiving caster, Spell spell, SpellLine spellLine) : base(caster, spell, spellLine) {}
     }
 
-    [SpellHandlerAttribute("SavageDPSBuff")]
+    [SpellHandler(eSpellType.SavageDPSBuff)]
     public class SavageDPSBuff : AbstractSavageStatBuff
     {
         public override eProperty Property1 => eProperty.MeleeDamage;
@@ -153,7 +153,7 @@ namespace DOL.GS.Spells
         public SavageDPSBuff(GameLiving caster, Spell spell, SpellLine spellLine) : base(caster, spell, spellLine) { }
     }
 
-    [SpellHandlerAttribute("SavageSlashResistanceBuff")]
+    [SpellHandler(eSpellType.SavageSlashResistanceBuff)]
     public class SavageSlashResistanceBuff : AbstractSavageResistBuff
     {
         public override eProperty Property1 => eProperty.Resist_Slash;
@@ -161,7 +161,7 @@ namespace DOL.GS.Spells
         public SavageSlashResistanceBuff(GameLiving caster, Spell spell, SpellLine spellLine) : base(caster, spell, spellLine) { }
     }
 
-    [SpellHandlerAttribute("SavageThrustResistanceBuff")]
+    [SpellHandler(eSpellType.SavageThrustResistanceBuff)]
     public class SavageThrustResistanceBuff : AbstractSavageResistBuff
     {
         public override eProperty Property1 => eProperty.Resist_Thrust;
@@ -169,7 +169,7 @@ namespace DOL.GS.Spells
         public SavageThrustResistanceBuff(GameLiving caster, Spell spell, SpellLine spellLine) : base(caster, spell, spellLine) { }
     }
 
-    [SpellHandlerAttribute("SavageCrushResistanceBuff")]
+    [SpellHandler(eSpellType.SavageCrushResistanceBuff)]
     public class SavageCrushResistanceBuff : AbstractSavageResistBuff
     {
         public override eProperty Property1 => eProperty.Resist_Crush;

@@ -1,17 +1,18 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using ECS.Debug;
-using log4net;
 
 namespace DOL.GS
 {
     public class ReaperService
     {
-        private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
         private const string SERVICE_NAME = nameof(ReaperService);
         private static List<LivingBeingKilled> _list;
+        private static int _entityCount;
 
         public static void Tick()
         {
@@ -19,6 +20,10 @@ namespace DOL.GS
             Diagnostics.StartPerfCounter(SERVICE_NAME);
             _list = EntityManager.UpdateAndGetAll<LivingBeingKilled>(EntityManager.EntityType.LivingBeingKilled, out int lastValidIndex);
             Parallel.For(0, lastValidIndex + 1, TickInternal);
+
+            if (Diagnostics.CheckEntityCounts)
+                Diagnostics.PrintEntityCount(SERVICE_NAME, ref _entityCount, _list.Count);
+
             Diagnostics.StopPerfCounter(SERVICE_NAME);
         }
 
@@ -28,6 +33,9 @@ namespace DOL.GS
 
             if (livingBeingKilled?.EntityManagerId.IsSet != true)
                 return;
+
+            if (Diagnostics.CheckEntityCounts)
+                Interlocked.Increment(ref _entityCount);
 
             try
             {
@@ -51,11 +59,12 @@ namespace DOL.GS
     {
         public GameLiving Killed { get; private set; }
         public GameObject Killer { get; private set; }
-        public EntityManagerId EntityManagerId { get; set; } = new(EntityManager.EntityType.LivingBeingKilled, true);
+        public EntityManagerId EntityManagerId { get; set; }
 
         private LivingBeingKilled(GameLiving killed, GameObject killer)
         {
             Initialize(killed, killer);
+            EntityManagerId = new EntityManagerId(EntityManager.EntityType.LivingBeingKilled, CleanUp);
         }
 
         public static void Create(GameLiving killed, GameObject killer)
@@ -67,7 +76,7 @@ namespace DOL.GS
             }
             else
             {
-                livingBeingKilled = new(killed, killer);
+                livingBeingKilled = new LivingBeingKilled(killed, killer);
                 EntityManager.Add(livingBeingKilled);
             }
         }
@@ -76,6 +85,12 @@ namespace DOL.GS
         {
             Killed = killed;
             Killer = killer;
+        }
+
+        private void CleanUp()
+        {
+            Killed = null;
+            Killer = null;
         }
     }
 }

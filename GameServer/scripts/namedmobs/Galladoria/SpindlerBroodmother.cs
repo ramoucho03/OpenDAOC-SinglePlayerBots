@@ -9,8 +9,7 @@ namespace DOL.GS
 {
     public class SpindlerBroodmother : GameEpicBoss
     {
-        private static new readonly log4net.ILog log =
-            log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public SpindlerBroodmother()
             : base()
@@ -158,8 +157,7 @@ namespace DOL.AI.Brain
 {
     public class SpindlerBroodmotherBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log =
-            log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public SpindlerBroodmotherBrain()
             : base()
@@ -463,9 +461,7 @@ namespace DOL.GS
             return true;
         }
 
-        public override void DropLoot(GameObject killer) //no loot
-        {
-        }
+        public override bool CanDropLoot => false;
         public override void Die(GameObject killer)
         {
             base.Die(killer); //null to not gain experience
@@ -477,8 +473,7 @@ namespace DOL.AI.Brain
 {
     public class SBAddsBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log =
-            log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public SBAddsBrain()
             : base()
@@ -489,7 +484,6 @@ namespace DOL.AI.Brain
 
         public override void Think()
         {
-            Body.IsWorthReward = false;
             foreach (GamePlayer player in Body.GetPlayersInRadius(2000))
             {
                 if (player != null && player.IsAlive)
@@ -558,7 +552,6 @@ namespace DOL.GS
             MeleeDamageType = eDamageType.Slash;
             RespawnInterval = -1;
             Strength = 100;
-            IsWorthReward = false; //worth no reward
             Size = (byte) Util.Random(30, 40);
             Level = 50;
             Faction = FactionMgr.GetFactionByID(96);
@@ -576,8 +569,7 @@ namespace DOL.AI.Brain
 {
     public class SBDeadAddsBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log =
-            log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public SBDeadAddsBrain()
             : base()

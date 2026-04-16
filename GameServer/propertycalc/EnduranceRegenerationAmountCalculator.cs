@@ -1,3 +1,4 @@
+using DOL.GS.Scripts;
 using System;
 
 namespace DOL.GS.PropertyCalc
@@ -40,7 +41,7 @@ namespace DOL.GS.PropertyCalc
             if (!living.InCombat)
             {
 
-                if (living is not GamePlayer player || !player.IsSprinting)
+                if (living is not IGamePlayer player || !player.IsSprinting)
                     regen += 5;
             }
 

@@ -1,14 +1,13 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using DOL.Database;
 
 namespace DOL.GS
 {
-	public abstract class GameLivingInventory : IGameInventory
+    public abstract class GameLivingInventory : IGameInventory
 	{
-		private static readonly log4net.ILog Log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger Log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
 		public static readonly eInventorySlot[] EQUIP_SLOTS =
 		{
@@ -55,6 +54,9 @@ namespace DOL.GS
 			eInventorySlot.LegsArmor,
 			eInventorySlot.ArmsArmor
 		};
+
+		private readonly Lock _inventoryLock = new();
+		public Lock Lock => _inventoryLock;
 
 		#region Constructor/Declaration/LoadDatabase/SaveDatabase
 
@@ -119,7 +121,7 @@ namespace DOL.GS
 
 			int result = 0;
 
-			lock (LockObject)
+			lock (Lock)
 			{
 				for (eInventorySlot i = minSlot; i <= maxSlot; i++)
 				{
@@ -148,7 +150,7 @@ namespace DOL.GS
 		/// <returns>number of matched items found</returns>
 		public int CountItemTemplate(string itemtemplateID, eInventorySlot minSlot, eInventorySlot maxSlot)
 		{
-			lock (LockObject)
+			lock (Lock)
 			{
 				int count = 0;
 
@@ -194,7 +196,7 @@ namespace DOL.GS
 				maxSlot = tmp;
 			}
 
-			lock (LockObject)
+			lock (Lock)
 			{
 				for (eInventorySlot i = minSlot; i <= maxSlot; i++)
 				{
@@ -298,7 +300,7 @@ namespace DOL.GS
 					throw new ArgumentException($"If {nameof(searchPartiallyFull)} is true, {nameof(item)} must not be null.");
 			}
 
-			lock (LockObject)
+			lock (Lock)
 			{
 				first = GetValidInventorySlot(first);
 				last = GetValidInventorySlot(last);
@@ -388,7 +390,7 @@ namespace DOL.GS
 
 			var items = new List<DbInventoryItem>();
 
-			lock (LockObject)
+			lock (Lock)
 			{
 				DbInventoryItem item;
 
@@ -427,7 +429,7 @@ namespace DOL.GS
 				maxSlot = tmp;
 			}
 
-			lock (LockObject)
+			lock (Lock)
 			{
 				DbInventoryItem item;
 
@@ -467,7 +469,7 @@ namespace DOL.GS
 				maxSlot = tmp;
 			}
 
-			lock (LockObject)
+			lock (Lock)
 			{
 				DbInventoryItem item;
 
@@ -507,7 +509,7 @@ namespace DOL.GS
 				maxSlot = tmp;
 			}
 
-			lock (LockObject)
+			lock (Lock)
 			{
 				DbInventoryItem item;
 
@@ -539,7 +541,7 @@ namespace DOL.GS
 			if (item == null)
 				return false;
 
-			lock (LockObject)
+			lock (Lock)
 			{
 				slot = GetValidInventorySlot(slot);
 				if (slot == eInventorySlot.Invalid) return false;
@@ -600,7 +602,7 @@ namespace DOL.GS
 		/// <returns>true if successfull</returns>
 		public virtual bool RemoveItem(DbInventoryItem item)
 		{
-			lock (LockObject)
+			lock (Lock)
 			{
 				if (item == null)
 					return false;
@@ -643,7 +645,7 @@ namespace DOL.GS
 			if (count <= 0)
 				return false;
 
-			lock (LockObject)
+			lock (Lock)
 			{
 				var slot = (eInventorySlot) item.SlotPosition;
 
@@ -680,7 +682,7 @@ namespace DOL.GS
 			if (count <= 0)
 				return false;
 
-			lock (LockObject)
+			lock (Lock)
 			{
 				var slot = (eInventorySlot) item.SlotPosition;
 
@@ -721,7 +723,7 @@ namespace DOL.GS
 			if (slot == eInventorySlot.Invalid)
 				return null;
 
-			lock (LockObject)
+			lock (Lock)
 			{
 				DbInventoryItem item;
 				m_items.TryGetValue(slot, out item);
@@ -733,7 +735,7 @@ namespace DOL.GS
 
 		public virtual bool MoveItem(eInventorySlot fromSlot, eInventorySlot toSlot, int itemCount)
 		{
-			lock (LockObject)
+			lock (Lock)
 			{
 				fromSlot = GetValidInventorySlot(fromSlot);
 				toSlot = GetValidInventorySlot(toSlot);
@@ -747,7 +749,7 @@ namespace DOL.GS
 				m_items.TryGetValue(toSlot, out toItem);
 
 				if (!CombineItems(fromItem, toItem) && !StackItems(fromSlot, toSlot, itemCount))
-					ExchangeItems(fromSlot, toSlot);
+					SwapItems(fromSlot, toSlot);
 
 				if (!m_changedSlots.Contains(fromSlot))
 					m_changedSlots.Add(fromSlot);
@@ -778,7 +780,7 @@ namespace DOL.GS
 			{
 				var items = new List<DbInventoryItem>(VISIBLE_SLOTS.Length);
 
-				lock (LockObject)
+				lock (Lock)
 				{
 					foreach (eInventorySlot slot in VISIBLE_SLOTS)
 					{
@@ -804,7 +806,7 @@ namespace DOL.GS
 			{
 				var items = new List<DbInventoryItem>(EQUIP_SLOTS.Length);
 
-				lock (LockObject)
+				lock (Lock)
 				{
 					foreach (eInventorySlot slot in EQUIP_SLOTS)
 					{
@@ -868,7 +870,7 @@ namespace DOL.GS
 			if (maxSlot > eInventorySlot.Max_Inv)
 				return false;
 
-			lock (LockObject)
+			lock (Lock)
 			{
 				var changedSlots = new Dictionary<eInventorySlot, int>(); // value: <0 = new item count; >0 = add to old
 				bool fits = false;
@@ -1045,7 +1047,7 @@ namespace DOL.GS
 			if (minSlot < eInventorySlot.Min_Inv) return false;
 			if (maxSlot > eInventorySlot.Max_Inv) return false;
 
-			lock (LockObject)
+			lock (Lock)
 			{
 				var changedSlots = new Dictionary<DbInventoryItem, int>();
 				// value: null = remove item completely; >0 = remove count from stack
@@ -1152,7 +1154,7 @@ namespace DOL.GS
 		/// <param name="fromSlot">First SlotPosition</param>
 		/// <param name="toSlot">Second SlotPosition</param>
 		/// <returns>true if items exchanged successfully</returns>
-		protected virtual bool ExchangeItems(eInventorySlot fromSlot, eInventorySlot toSlot)
+		protected virtual bool SwapItems(eInventorySlot fromSlot, eInventorySlot toSlot)
 		{
 			DbInventoryItem newFromItem;
 			DbInventoryItem newToItem;
@@ -1194,35 +1196,13 @@ namespace DOL.GS
 		#endregion Combine/Exchange/Stack Items
 
 		#region Encumberance
-		/// <summary>
-		/// Gets the inventory weight
-		/// </summary>
-		public virtual int InventoryWeight
+
+		public virtual int InventoryWeight => 0;
+
+		public virtual bool UpdateInventoryWeight()
 		{
-			get
-			{
-				var weight = 0;
-				IList<DbInventoryItem> items;
-
-				lock (LockObject)
-				{
-					items = new List<DbInventoryItem>(m_items.Values);
-				}
-				
-				foreach (var item in items)
-				{
-					if (!EQUIP_SLOTS.Contains((eInventorySlot)item.SlotPosition))
-						continue;
-					if ((eInventorySlot) item.SlotPosition is eInventorySlot.FirstQuiver or eInventorySlot.SecondQuiver or eInventorySlot.ThirdQuiver or eInventorySlot.FourthQuiver)
-						continue;
-					weight += item.Weight;
-				}
-
-				return weight/10;
-			}
+			return false;
 		}
-
-		public object LockObject { get; } = new();
 
 		#endregion
 
@@ -1259,7 +1239,7 @@ namespace DOL.GS
 			}
 		}
 
-		public object InventorySlotLock = new object();
+		public readonly Lock InventorySlotLock = new();
 		/// <summary>
 		/// Updates changed slots, inventory is already locked
 		/// </summary>

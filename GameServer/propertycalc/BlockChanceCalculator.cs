@@ -17,6 +17,8 @@
  *
  */
 
+using DOL.GS.Scripts;
+
 namespace DOL.GS.PropertyCalc
 {
     /// <summary>
@@ -35,7 +37,7 @@ namespace DOL.GS.PropertyCalc
         {
             int chance = 0;
 
-            if (living is GamePlayer player)
+            if (living is IGamePlayer player)
             {
                 chance += (player.Dexterity * 2 - 100) / 4 + (player.GetModifiedSpecLevel(Specs.Shields) - 1) * (10 / 2) + 50;
                 chance += player.AbilityBonus[(int) property] * 10;

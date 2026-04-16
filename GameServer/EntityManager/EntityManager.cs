@@ -1,13 +1,14 @@
+using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Threading;
 using DOL.AI;
-using log4net;
 
 namespace DOL.GS
 {
     public static class EntityManager
     {
-        private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
         public enum EntityType
         {
@@ -16,7 +17,6 @@ namespace DOL.GS
             Effect,
             AttackComponent,
             CastingComponent,
-            EffectListComponent,
             CraftComponent,
             ObjectChangingSubZone,
             LivingBeingKilled,
@@ -30,7 +30,6 @@ namespace DOL.GS
             { EntityType.Effect, new EntityArray<ECSGameEffect>(250) },
             { EntityType.AttackComponent, new EntityArray<AttackComponent>(1250) },
             { EntityType.CastingComponent, new EntityArray<CastingComponent>(1250) },
-            { EntityType.EffectListComponent, new EntityArray<EffectListComponent>(3000) },
             { EntityType.CraftComponent, new EntityArray<CraftComponent>(100) },
             { EntityType.ObjectChangingSubZone, new EntityArray<ObjectChangingSubZone>(ServerProperties.Properties.MAX_ENTITIES) },
             { EntityType.LivingBeingKilled, new EntityArray<LivingBeingKilled>(200) },
@@ -60,7 +59,7 @@ namespace DOL.GS
             EntityManagerId id = entity.EntityManagerId;
 
             // Return false if the entity is absent and not being added.
-            if (!id.IsSet && !id.IsPendingAddition)
+            if (!id.IsSet && !id.IsPendingAddition) 
                 return false;
 
             (_entityArrays[entity.EntityManagerId.Type] as EntityArray<T>).Remove(entity);
@@ -70,9 +69,9 @@ namespace DOL.GS
         // Applies pending additions and removals then returns the list alongside the last valid index.
         // Thread unsafe. The returned list should not be modified.
         // Elements should be null checked alongside the value returned by `ManagedEntityId.IsSet`.
-        public static List<T> UpdateAndGetAll<T>(EntityType type, out int lastValidIndex) where T : IManagedEntity
+        public static List<T> UpdateAndGetAll<T>(EntityType type, out int lastValidIndex) where T : class, IManagedEntity
         {
-            dynamic array = _entityArrays[type];
+            EntityArray<T> array = _entityArrays[type] as EntityArray<T>;
             lastValidIndex = array.Update();
             return array.Entities;
         }
@@ -82,9 +81,9 @@ namespace DOL.GS
             private SortedSet<int> _invalidIndexes = new();
             private Stack<T> _entitiesToAdd  = new();
             private Stack<T> _entitiesToRemove = new();
-            private object _updateLock = new();
-            private object _entitiesToAddLock = new();
-            private object _entitiesToRemoveLock = new();
+            private readonly Lock _updateLock = new();
+            private readonly Lock _entitiesToAddLock = new();
+            private readonly Lock _entitiesToRemoveLock = new();
             private int _lastValidIndex = -1;
 
             public List<T> Entities { get; }
@@ -215,9 +214,12 @@ namespace DOL.GS
                 EntityManagerId entityManagerId = entity.EntityManagerId;
                 entityManagerId.Unset();
                 _invalidIndexes.Add(id);
+                Action cleanUpForReuseAction = entityManagerId.CleanupForReuseAction;
 
-                if (!entityManagerId.AllowReuseByEntityManager)
+                if (cleanUpForReuseAction == null)
                     Entities[id] = null;
+                else
+                    cleanUpForReuseAction();
             }
         }
     }
@@ -238,15 +240,15 @@ namespace DOL.GS
             }
         }
         public EntityManager.EntityType Type { get; }
-        public bool AllowReuseByEntityManager { get; }
+        public Action CleanupForReuseAction { get; }
         public bool IsSet => _value > UNSET_ID;
         public bool IsPendingAddition => _pendingState == PendingState.ADDITION;
         public bool IsPendingRemoval => _pendingState == PendingState.REMOVAL;
 
-        public EntityManagerId(EntityManager.EntityType type, bool allowReuseByEntityManager)
+        public EntityManagerId(EntityManager.EntityType type, Action cleanupAction = null)
         {
             Type = type;
-            AllowReuseByEntityManager = allowReuseByEntityManager;
+            CleanupForReuseAction = cleanupAction;
         }
 
         public void OnPreAdd()

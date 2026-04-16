@@ -8,10 +8,10 @@ namespace DOL.GS.Spells
     /// <summary>
     /// Spell handler for speed decreasing spells.  Special for vampiirs
     /// </summary>
-    [SpellHandler("VampSpeedDecrease")]
+    [SpellHandler(eSpellType.VampSpeedDecrease)]
     public class VampMaintainedSpeedDecrease : SpeedDecreaseSpellHandler
     {
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
 		protected GameLiving m_originalTarget = null;
 		protected bool m_isPulsing = false;

@@ -5,7 +5,6 @@ using DOL.Database;
 using DOL.GS.Keeps;
 using DOL.GS.Quests;
 using DOL.Language;
-using log4net;
 
 namespace DOL.GS.PacketHandler
 {
@@ -15,7 +14,7 @@ namespace DOL.GS.PacketHandler
 		/// <summary>
 		/// Defines a logger for this class.
 		/// </summary>
-		private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		/// <summary>
 		/// Constructs a new PacketLib for Version 1.71 clients
@@ -114,7 +113,7 @@ namespace DOL.GS.PacketHandler
 				if (obj is GameDoorBase door)
 				{
 					pak.WriteByte(4);
-					pak.WriteInt((uint) door.DoorID);
+					pak.WriteInt((uint) door.DoorId);
 				}
 				else pak.WriteByte(0x00);
 				SendTCP(pak);
@@ -196,7 +195,7 @@ namespace DOL.GS.PacketHandler
 					if (m_gameClient.Account.PrivLevel > 1) add += "-NON"; // indicates NON flag for GMs
 				else flags2 |= 0x02;
 
-				if( ( npc.Flags & GameNPC.eFlags.STEALTH ) > 0 )
+				if (npc.IsStealthed)
 					flags2 |= 0x04;
 
 				eQuestIndicator questIndicator = npc.GetQuestIndicator(m_gameClient.Player);

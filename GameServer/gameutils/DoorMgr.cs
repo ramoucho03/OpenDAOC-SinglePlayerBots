@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Threading;
 using DOL.Database;
 using DOL.GS.Keeps;
-using log4net;
 
 namespace DOL.GS
 {
@@ -12,9 +12,9 @@ namespace DOL.GS
 	/// </summary>
 	public sealed class DoorMgr
 	{
-		private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
-        private static readonly object Lock = new object();
+		private static readonly Lock Lock = new();
 
 		private static Dictionary<int, List<GameDoorBase>> m_doors = new Dictionary<int, List<GameDoorBase>>();
 
@@ -49,7 +49,9 @@ namespace DOL.GS
 					{
 						foreach (GameDoorBase door in doorList)
 						{
-							if (door is GameKeepDoor keepDoor && keepDoor.IsAttackableDoor)
+							if (door.DbDoor != null &&
+								door is GameKeepDoor keepDoor &&
+								keepDoor.IsAttackableDoor)
 							{
 								keepDoor.SaveIntoDatabase();
 								count++;
@@ -106,10 +108,10 @@ namespace DOL.GS
 		{
 			lock (Lock)
 			{
-				if (!m_doors.TryGetValue(door.DoorID, out List<GameDoorBase> doorsOfId))
+				if (!m_doors.TryGetValue(door.DoorId, out List<GameDoorBase> doorsOfId))
 				{
 					doorsOfId = [];
-					m_doors.Add(door.DoorID, doorsOfId);
+					m_doors.Add(door.DoorId, doorsOfId);
 				}
 
 				doorsOfId.Add(door);
@@ -125,7 +127,7 @@ namespace DOL.GS
 		/// This function get the door object by door index
 		/// </summary>
 		/// <returns>return the door with the index</returns>
-		public static List<GameDoorBase> getDoorByID(int id)
+		public static List<GameDoorBase> GetDoorByID(int id)
 		{
 			return m_doors.TryGetValue(id, out List<GameDoorBase> value) ? value : [];
 		}

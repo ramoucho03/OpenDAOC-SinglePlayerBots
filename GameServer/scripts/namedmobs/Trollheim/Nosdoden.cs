@@ -362,7 +362,7 @@ namespace DOL.AI.Brain
 {
 	public class NosdodenBrain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 		public NosdodenBrain()
 			: base()
 		{
@@ -759,7 +759,7 @@ namespace DOL.AI.Brain
 {
 	public class NosdodenGhostAddBrain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 		public NosdodenGhostAddBrain()
 			: base()
 		{
@@ -2768,9 +2768,7 @@ namespace DOL.GS
 			base.AddToWorld();
 			return true;
 		}
-		public override void DropLoot(GameObject killer) //no loot
-		{
-		}
+		public override bool CanDropLoot => false;
 		public override long ExperienceValue => 0;
 		private Spell m_SpiritChampion_stun;
 		private Spell SpiritChampion_stun
@@ -2805,7 +2803,7 @@ namespace DOL.AI.Brain
 {
 	public class GhostSpiritChampionBrain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
 		public GhostSpiritChampionBrain()
 		{
@@ -2907,9 +2905,7 @@ namespace DOL.GS
 			}
 			base.Die(killer);
         }
-        public override void DropLoot(GameObject killer) //no loot
-		{
-		}
+        public override bool CanDropLoot => false;
         public override long ExperienceValue => 0;
 	}
 }
@@ -2918,7 +2914,7 @@ namespace DOL.AI.Brain
 {
 	public class GhostSkeletalCommanderBrain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
 		public GhostSkeletalCommanderBrain()
 		{
@@ -3036,9 +3032,7 @@ namespace DOL.GS
 			base.AddToWorld();
 			return true;
 		}
-		public override void DropLoot(GameObject killer) //no loot
-		{
-		}
+		public override bool CanDropLoot => false;
 		public override long ExperienceValue => 0;
 	}
 }
@@ -3047,7 +3041,7 @@ namespace DOL.AI.Brain
 {
 	public class SkeletalCommanderHealerBrain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
 		public SkeletalCommanderHealerBrain()
 		{
@@ -3191,9 +3185,7 @@ namespace DOL.GS
 			base.AddToWorld();
 			return true;
 		}
-		public override void DropLoot(GameObject killer) //no loot
-		{
-		}
+		public override bool CanDropLoot => false;
 		public override long ExperienceValue => 0;
 	}
 }
@@ -3202,7 +3194,7 @@ namespace DOL.AI.Brain
 {
 	public class NosdodenSummonedAddsBrain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
 		public NosdodenSummonedAddsBrain()
 		{

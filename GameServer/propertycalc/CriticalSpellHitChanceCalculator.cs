@@ -1,5 +1,6 @@
 using System;
 using DOL.AI.Brain;
+using DOL.GS.Scripts;
 
 namespace DOL.GS.PropertyCalc
 {
@@ -22,7 +23,7 @@ namespace DOL.GS.PropertyCalc
         {
             int chance = living.AbilityBonus[(int) property];
 
-            if (living is GamePlayer player)
+            if (living is IGamePlayer player)
             {
                 if (player.CharacterClass.ClassType is eClassType.ListCaster)
                     chance += 10;
@@ -36,7 +37,7 @@ namespace DOL.GS.PropertyCalc
             // Summoned or Charmed pet.
             else if (living is GameNPC npc && ServerProperties.Properties.EXPAND_WILD_MINION)
             {
-                if (npc.Brain is IControlledBrain petBrain && petBrain.GetPlayerOwner() is GamePlayer playerOwner)
+                if (npc.Brain is IControlledBrain petBrain && petBrain.GetIPlayerOwner() is IGamePlayer playerOwner)
                     chance += playerOwner.GetAbility<RealmAbilities.AtlasOF_WildMinionAbility>()?.Amount ?? 0;
             }
 

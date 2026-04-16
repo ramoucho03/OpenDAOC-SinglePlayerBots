@@ -19,7 +19,6 @@
 using System.Reflection;
 using DOL.GS.PacketHandler;
 using DOL.GS.Effects;
-using log4net;
 using DOL.Language;
 
 namespace DOL.GS.SkillHandler
@@ -33,7 +32,7 @@ namespace DOL.GS.SkillHandler
 		/// <summary>
 		/// Defines a logger for this class.
 		/// </summary>
-		private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		/// <summary>
 		/// The reuse time in milliseconds for berserk ability
@@ -89,7 +88,7 @@ namespace DOL.GS.SkillHandler
 			//}
 			ECSGameEffect berserk = EffectListService.GetEffectOnTarget(player, eEffect.Berserk);
 			if (berserk != null)
-				EffectService.RequestImmediateCancelEffect(berserk);
+				EffectService.RequestCancelEffect(berserk);
 
 			player.DisableSkill(ab, REUSE_TIMER);
 

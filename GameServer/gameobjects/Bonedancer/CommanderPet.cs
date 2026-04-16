@@ -1,24 +1,5 @@
-/*
- * DAWN OF LIGHT - The first free open source DAoC server emulator
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
- *
- */
-
-using System;
 using System.Collections.Generic;
+using System.Threading;
 using DOL.AI.Brain;
 using DOL.Database;
 using DOL.GS.PacketHandler;
@@ -28,21 +9,23 @@ namespace DOL.GS
 {
 	public class CommanderPet : BdPet
 	{
-		private static new readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
-        public enum eCommanderType
-        {
-            ReturnedCommander,
-            DecayedCommander,
-            SkeletalCommander,
-            BoneCommander,
-            DreadCommander,
-            DreadArcher,
-            DreadGuardian,
-            DreadLich,
-            DreadLord,
-            Unknown
-        }
+		public readonly Lock ControlledNpcListLock = new();
+
+		public enum eCommanderType
+		{
+			ReturnedCommander,
+			DecayedCommander,
+			SkeletalCommander,
+			BoneCommander,
+			DreadCommander,
+			DreadArcher,
+			DreadGuardian,
+			DreadLich,
+			DreadLord,
+			Unknown
+		}
 
         public eCommanderType CommanderType { get; protected set; }
 
@@ -853,86 +836,70 @@ namespace DOL.GS
 
         #endregion Spells
 
-        /// <summary>
-        /// Adds a pet to the current array of pets
-        /// </summary>
-        /// <param name="controlledNpc">The brain to add to the list</param>
-        /// <returns>Whether the pet was added or not</returns>
-        public override bool AddControlledNpc(IControlledBrain controlledNpc)
-        {
-            IControlledBrain[] brainlist = ControlledNpcList;
+		/// <summary>
+		/// Adds a pet to the current array of pets
+		/// </summary>
+		/// <param name="controlledBrain">The brain to add to the list</param>
+		/// <returns>Whether the pet was added or not</returns>
+		public override bool AddControlledBrain(IControlledBrain controlledBrain)
+		{
+			lock (ControlledNpcListLock)
+			{
+				if (ControlledNpcList == null)
+					return false;
 
-            if (brainlist == null)
-                return false;
+				bool foundSpot = false;
 
-            foreach (IControlledBrain icb in brainlist)
-            {
-                if (icb == controlledNpc)
-                    return false;
-            }
-
-            if (controlledNpc.Owner != this)
-                throw new ArgumentException("ControlledNpc with wrong owner is set (player=" + Name + ", owner=" + controlledNpc.Owner.Name + ")", "controlledNpc");
-
-            //Find the next spot for this new pet
-            int i = 0;
-
-            for (; i < brainlist.Length; i++)
-            {
-                if (brainlist[i] == null)
-                    break;
-            }
-
-            //If we didn't find a spot return false
-            if (i >= m_controlledBrain.Length)
-                return false;
-
-            m_controlledBrain[i] = controlledNpc;
-            UpdatePetCount(true);
-
-            return base.AddControlledNpc(controlledNpc);
-        }
-
-        /// <summary>
-        /// Removes the brain from
-        /// </summary>
-        /// <param name="controlledNpc">The brain to find and remove</param>
-        /// <returns>Whether the pet was removed</returns>
-        public override bool RemoveControlledNpc(IControlledBrain controlledNpc)
-        {
-            bool found = false;
-
-            lock (ControlledNpcList)
-            {
-                if (controlledNpc == null) return false;
-                IControlledBrain[] brainlist = ControlledNpcList;
-                int i = 0;
-
-                //Try to find the minion in the list
-                for (; i < brainlist.Length; i++)
-                {
-                    //Found it
-                    if (brainlist[i] == controlledNpc)
-                    {
-                        found = true;
-                        break;
-                    }
-                }
-
-				//Found it, lets remove it
-				if (found)
+				for (int i = 0; i < ControlledNpcList.Length; i++)
 				{
-					if (controlledNpc.Body.Brain is ControlledMobBrain controlledNpcBrain)
-						controlledNpcBrain.StripCastedBuffs();
+					if (ControlledNpcList[i] == null)
+					{
+						foundSpot = true;
+						ControlledNpcList[i] = controlledBrain;
 
-                    m_controlledBrain[i] = null;
-                    UpdatePetCount(false);
+						if (Brain is IControlledBrain commanderBrain)
+							controlledBrain.SetAggressionState(commanderBrain.AggressionState);
 
-                    return base.RemoveControlledNpc(controlledNpc);
-                }
-            }
+						UpdatePetCount(true);
+						break;
+					}
+				}
 
-            return found;
-        }
-    }
+				return foundSpot;
+			}
+		}
+
+		/// <summary>
+		/// Removes the brain from
+		/// </summary>
+		/// <param name="controlledBrain">The brain to find and remove</param>
+		/// <returns>Whether the pet was removed</returns>
+		public override bool RemoveControlledBrain(IControlledBrain controlledBrain)
+		{
+			bool foundBrain = false;
+
+			lock (ControlledNpcListLock)
+			{
+				if (controlledBrain == null)
+					return false;
+
+				for (int i = 0; i < ControlledNpcList.Length; i++)
+				{
+					if (ControlledNpcList[i] == controlledBrain)
+					{
+						foundBrain = true;
+
+						if (controlledBrain is ControlledMobBrain controlledNpcBrain)
+							controlledNpcBrain.StripCastedBuffs();
+
+						ControlledNpcList[i] = null;
+						UpdatePetCount(false);
+						break;
+					}
+				}
+			}
+
+			return foundBrain;
+		}
+	}
 }

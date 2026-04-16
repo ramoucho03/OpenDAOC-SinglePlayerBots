@@ -1,6 +1,7 @@
 using System;
 using DOL.GS.Keeps;
 using DOL.GS.RealmAbilities;
+using DOL.GS.Scripts;
 using DOL.GS.ServerProperties;
 
 namespace DOL.GS.PropertyCalc
@@ -37,10 +38,39 @@ namespace DOL.GS.PropertyCalc
                     hpBase = (int) (hpBase * (100 + levelBonus) * 0.01);
                 }
 
-                int abilityBonus = player.AbilityBonus[(int) property];
-                AtlasOF_ToughnessAbility toughness = player.GetAbility<AtlasOF_ToughnessAbility>();
-                double toughnessMod = toughness != null ? 1 + toughness.GetAmountForLevel(toughness.Level) * 0.01 : 1;
-                return Math.Max((int) (hpBase * toughnessMod) + itemBonus + buffBonus + abilityBonus, 1);
+                int flatAbilityBonus = living.AbilityBonus[(int) property]; // New Toughness.
+                int multiplicativeAbilityBonus = living.AbilityBonus[(int) eProperty.Of_Toughness]; // Old Toughness.
+
+                double result = hpBase;
+                result *= 1 + multiplicativeAbilityBonus * 0.01;
+                result += itemBonus + buffBonus + flatAbilityBonus;
+                return (int) result;
+            }
+            else if (living is MimicNPC mimic && mimic.Level > 1)
+            {
+                int hpBase = mimic.CalculateMaxHealth(mimic.Level, mimic.GetModified(eProperty.Constitution));
+                int buffBonus = mimic.BaseBuffBonusCategory[(int)property];
+
+                if (buffBonus < 0)
+                    buffBonus = (int)((1 + buffBonus / -100.0) * hpBase) - hpBase;
+
+                int itemBonus = mimic.ItemBonus[(int)property];
+                int cap = GetItemBonusCap(mimic) + GetItemBonusCapIncrease(mimic);
+                itemBonus = Math.Min(itemBonus, cap);
+
+                if (mimic.HasAbility(Abilities.ScarsOfBattle) && mimic.Level >= 40)
+                {
+                    int levelBonus = Math.Min(mimic.Level - 40, 10);
+                    hpBase = (int)(hpBase * (100 + levelBonus) * 0.01);
+                }
+
+                int flatAbilityBonus = living.AbilityBonus[(int)property]; // New Toughness.
+                int multiplicativeAbilityBonus = living.AbilityBonus[(int)eProperty.Of_Toughness]; // Old Toughness.
+
+                double result = hpBase;
+                result *= 1 + multiplicativeAbilityBonus * 0.01;
+                result += itemBonus + buffBonus + flatAbilityBonus;
+                return (int)result;
             }
             else if (living is GameKeepComponent keepComponent)
             {
@@ -49,7 +79,7 @@ namespace DOL.GS.PropertyCalc
                 if (gameKeep != null)
                 {
                     int baseHealth = gameKeep.BaseLevel * Properties.KEEP_COMPONENTS_BASE_HEALTH;
-                    baseHealth += (int) (baseHealth * (gameKeep.Level - 1) * Properties.KEEP_COMPONENTS_HEALTH_UPGRADE_MODIFIER);
+                    baseHealth += (int)(baseHealth * (gameKeep.Level - 1) * Properties.KEEP_COMPONENTS_HEALTH_UPGRADE_MODIFIER);
                     return baseHealth;
                 }
 
@@ -65,16 +95,40 @@ namespace DOL.GS.PropertyCalc
                         return Properties.RELIC_DOORS_HEALTH;
 
                     int baseHealth = gameKeep.BaseLevel * Properties.KEEP_DOORS_BASE_HEALTH;
-                    baseHealth += (int) (baseHealth * (gameKeep.Level - 1) * Properties.KEEP_DOORS_HEALTH_UPGRADE_MODIFIER);
+                    baseHealth += (int)(baseHealth * (gameKeep.Level - 1) * Properties.KEEP_DOORS_HEALTH_UPGRADE_MODIFIER);
                     return baseHealth;
                 }
 
                 return 0;
             }
+            else if (living is NecromancerPet necromancerPet)
+            {
+                double baseHp = 32.5 * necromancerPet.Level;
+                GameLiving livingOwner = necromancerPet.Owner;
+
+                if (livingOwner == null)
+                    return (int)baseHp;
+
+                int conFromRa = AtlasRAHelpers.GetStatEnhancerAmountForLevel(AtlasRAHelpers.GetAugConLevel(livingOwner));
+                int conFromItems = livingOwner.GetModifiedFromItems(eProperty.Constitution);
+
+                int itemBonus = livingOwner.ItemBonus[(int)property];
+                int itemCap = GetItemBonusCap(livingOwner) + GetItemBonusCapIncrease(livingOwner);
+                itemBonus = Math.Min(itemBonus, itemCap);
+
+                int flatAbilityBonus = livingOwner.AbilityBonus[(int)property]; // New Toughness.
+                int multiplicativeAbilityBonus = livingOwner.AbilityBonus[(int)eProperty.Of_Toughness]; // Old Toughness.
+
+                double result = baseHp;
+                result += (conFromItems + conFromRa) * 3;
+                result *= 1 + multiplicativeAbilityBonus * 0.01;
+                result += itemBonus + flatAbilityBonus;
+                return (int)result;
+            }
             else if (living is GameSummonedPet pet)
-                return CalculateNpcMaxHealth(pet, 17, 0.535, pet.GetBaseStat(eStat.CON), 25, 3, pet.BaseBuffBonusCategory[(int) property]);
+                return CalculateNpcMaxHealth(pet, 17, 0.535, pet.GetBaseStat(eStat.CON), 25, 3, pet.BaseBuffBonusCategory[(int)property]);
             else if (living is GameNPC npc)
-                return CalculateNpcMaxHealth(npc, 11, 0.6, npc.GetBaseStat(eStat.CON), 25, 1.8, npc.BaseBuffBonusCategory[(int) property]);
+                return CalculateNpcMaxHealth(npc, 11, 0.6, npc.GetBaseStat(eStat.CON), 25, 1.8, npc.BaseBuffBonusCategory[(int)property]);
 
             // Old formula. No idea if it's being used by anything. Leaving it here in case some people want to experiment with it.
             if (living.Level < 10)

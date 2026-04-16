@@ -26,19 +26,20 @@ using DOL.GS.SkillHandler;
 
 namespace DOL.GS.Spells
 {
-    /// <summary>
-    /// Damage Over Time spell handler
-    /// </summary>
-    [SpellHandlerAttribute("HealthToEndurance")]
-    public class HealthToEndurance : SpellHandler
-    {
-        public override bool CheckBeginCast(GameLiving selectedTarget)
-        {
-            if (m_caster.Endurance == m_caster.MaxEndurance)
-            {
-                MessageToCaster("You already have full endurance!", eChatType.CT_Spell);
-                return false;
-            }
+	/// <summary>
+	/// Damage Over Time spell handler
+	/// </summary>
+	[SpellHandler(eSpellType.HealthToEndurance)]
+	public class HealthToEndurance : SpellHandler
+	{
+
+		public override bool CheckBeginCast(GameLiving selectedTarget)
+		{
+			if (m_caster.Endurance == m_caster.MaxEndurance)
+			{
+				MessageToCaster("You already have full endurance!", eChatType.CT_Spell);
+				return false;
+			}
 
             return base.CheckBeginCast(selectedTarget);
         }

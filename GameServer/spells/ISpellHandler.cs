@@ -22,16 +22,10 @@ namespace DOL.GS.Spells
         /// </summary>
         bool StartSpell(GameLiving target, DbInventoryItem item);
 
-        /// <summary>
-        /// Whenever the current casting sequence is to be interrupted
-        /// this callback is called
-        /// </summary>
-        void InterruptCasting();
-
-        /// <summary>
-        /// Has to be called when the caster moves
-        /// </summary>
-        void CasterMoves();
+		/// <summary>
+		/// Has to be called when the caster moves
+		/// </summary>
+		void CasterMoves();
 
         /// <summary>
         /// Has to be called when the caster is attacked by enemy
@@ -197,18 +191,19 @@ namespace DOL.GS.Spells
         /// </summary>
         byte DelveInfoDepth { get; set; }
 
-        DbPlayerXEffect GetSavedEffect(GameSpellEffect e);
-        void OnEffectRestored(GameSpellEffect effect, int[] RestoreVars);
-        int OnRestoredEffectExpires(GameSpellEffect effect, int[] RestoreVars, bool noMessages);
-        bool CheckBeginCast(GameLiving selectedTarget);
+		DbPlayerXEffect GetSavedEffect(GameSpellEffect e);
+		void OnEffectRestored(GameSpellEffect effect, int[] RestoreVars);
+		int OnRestoredEffectExpires(GameSpellEffect effect, int[] RestoreVars, bool noMessages);
+		bool CheckBeginCast(GameLiving selectedTarget);
+		bool CheckConcentrationCost(bool quiet);
 
-        /// <summary>
-        /// Calculates the range to target needed to cast the spell
-        /// </summary>
-        /// <returns>Modified Spell Range</returns>
-        int CalculateSpellRange();
-        void TooltipDelve(ref DOL.GS.PacketHandler.MiniDelveWriter dw);
-    }
+		/// <summary>
+		/// Calculates the range to target needed to cast the spell
+		/// </summary>
+		/// <returns>Modified Spell Range</returns>
+		int CalculateSpellRange();
+		void TooltipDelve(ref DOL.GS.PacketHandler.MiniDelveWriter dw);
+	}
 
     /// <summary>
     /// Callback when spell handler has done its cast work

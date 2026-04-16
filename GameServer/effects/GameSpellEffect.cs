@@ -1,30 +1,11 @@
-/*
- * DAWN OF LIGHT - The first free open source DAoC server emulator
- * 
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- * 
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
- *
- */
-
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Threading;
 using DOL.Database;
 using DOL.GS.PacketHandler;
 using DOL.GS.Spells;
 using DOL.Language;
-using log4net;
 
 namespace DOL.GS.Effects
 {
@@ -38,12 +19,12 @@ namespace DOL.GS.Effects
 		/// <summary>
 		/// Lock object for thread access
 		/// </summary>
-		private readonly object m_LockObject = new object(); // dummy object for thread sync - Mannen
+		private readonly Lock _lock = new(); // dummy object for thread sync - Mannen
 
 		/// <summary>
 		/// Defines a logger for this class.
 		/// </summary>
-		private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 		
 		#endregion
 
@@ -297,7 +278,7 @@ namespace DOL.GS.Effects
 		{
 			// Check if need enabling
 			bool canEnable = false;
-			lock (m_LockObject)
+			lock (_lock)
 			{
 				if (IsDisabled && !IsExpired)
 				{
@@ -325,7 +306,7 @@ namespace DOL.GS.Effects
 		{
 			// Check if need disabling.
 			bool canDisable = false;
-			lock (m_LockObject)
+			lock (_lock)
 			{
 				if (!IsDisabled)
 				{
@@ -345,7 +326,7 @@ namespace DOL.GS.Effects
 				UpdateEffect();
 
 				// Save Immunity Duration returned.
-				lock (m_LockObject)
+				lock (_lock)
 				{
 					ImmunityDuration = immunityDuration;
 				}
@@ -358,7 +339,7 @@ namespace DOL.GS.Effects
 		/// <param name="noMessages"></param>
 		protected virtual void RemoveEffect(bool noMessages)
 		{
-			//lock (m_LockObject)
+			//lock (_lock)
 			//{
 			//	StopTimers();
 				
@@ -388,7 +369,7 @@ namespace DOL.GS.Effects
 			bool commitChange = false;
 			try
 			{
-				lock (m_LockObject)
+				lock (_lock)
 				{
 					// already started ?
 					if (!IsExpired)
@@ -499,7 +480,7 @@ namespace DOL.GS.Effects
 		/// <param name="playerCanceled">true if canceled by the player</param>
 		public virtual void Cancel(bool playerCanceled)
 		{
-			lock (m_LockObject)
+			lock (_lock)
 			{
 				// Player can't remove negative effect or Effect in Immunity State
 				if (playerCanceled && ((SpellHandler != null && !SpellHandler.HasPositiveEffect) || ImmunityState))
@@ -525,7 +506,7 @@ namespace DOL.GS.Effects
 			{
 				DisableEffect(false);
 				SpellHandler.OnEffectRemove(this, false);
-				lock (m_LockObject)
+				lock (_lock)
 				{
 					if (m_immunityDuration > 0)
 					{
@@ -561,7 +542,7 @@ namespace DOL.GS.Effects
 			}
 						
 			// Prevent further change to this effect.
-			lock (m_LockObject)
+			lock (_lock)
 			{
 				StopTimers();
 				IsExpired = true;
@@ -570,7 +551,7 @@ namespace DOL.GS.Effects
 			DisableEffect(true);
 			SpellHandler.OnEffectRemove(this, true);
 			
-			lock (m_LockObject)
+			lock (_lock)
 			{
 				if (!IsDisabled)
 				{
@@ -653,7 +634,7 @@ namespace DOL.GS.Effects
 		protected virtual void ExpiredCallback()
 		{
 			bool removeEffect = false;
-			lock (m_LockObject)
+			lock (_lock)
 			{
 				StopTimers();
 				removeEffect = IsExpired;
@@ -671,7 +652,7 @@ namespace DOL.GS.Effects
 		protected virtual void PulseCallback()
 		{
 			bool canPulse = false;
-			lock (m_LockObject)
+			lock (_lock)
 			{
 				if (!IsDisabled && !IsExpired && PulseFreq > 0)
 					canPulse = true;

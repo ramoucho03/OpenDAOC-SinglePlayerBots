@@ -9,10 +9,7 @@ using System;
 
 namespace DOL.GS.Spells
 {
-    /// <summary>
-    /// Effect that stays on target and does additional damage after each melee attack.
-    /// </summary>
-    [SpellHandler("DamageAdd")]
+    [SpellHandler(eSpellType.DamageAdd)]
     public class DamageAddSpellHandler(GameLiving caster, Spell spell, SpellLine spellLine) : AbstractDamageAddSpellHandler(caster, spell, spellLine)
     {
         public override ECSGameSpellEffect CreateECSEffect(ECSGameEffectInitParams initParams)
@@ -26,24 +23,18 @@ namespace DOL.GS.Spells
                 return;
 
             double damage;
-            double damageResisted;
 
             if (Spell.Damage > 0)
             {
                 CalculateDamageVariance(target, out double minVariance, out double maxVariance);
-                double dps = Caster == Target ? Spell.Damage : Math.Min(Spell.Damage, (1.2 + 0.3 * attacker.Level) * 0.7);
+                double variance = minVariance + Util.RandomDoubleIncl() * (maxVariance - minVariance);
                 effectiveness *= 1 + Caster.GetModified(eProperty.BuffEffectiveness) * 0.01;
-                damage = dps * effectiveness * attackData.Interval * 0.001;
-                damage = Util.Random((int) (damage * minVariance), (int) (damage * maxVariance));
-                damageResisted = damage * target.GetResist(Spell.DamageType) * -0.01;
+                damage = Spell.Damage * variance * effectiveness * attackData.Interval * 0.001;
             }
             else
-            {
                 damage = attackData.Damage * Spell.Damage / -100.0;
-                damageResisted = damage * target.GetResist(Spell.DamageType) * -0.01;
-            }
 
-            AttackData ad = CreateAttackData(damage, damageResisted, attacker, target);
+            AttackData ad = CreateAttackData(damage, attacker, target);
 
             if (ad.Attacker is GameNPC npcAttacker && npcAttacker.Brain is IControlledBrain brain)
             {
@@ -66,10 +57,7 @@ namespace DOL.GS.Spells
         }
     }
 
-    /// <summary>
-    /// Effect that stays on target and does addition damage on every attack against this target.
-    /// </summary>
-    [SpellHandler("DamageShield")]
+    [SpellHandler(eSpellType.DamageShield)]
     public class DamageShieldSpellHandler(GameLiving caster, Spell spell, SpellLine spellLine) : AbstractDamageAddSpellHandler(caster, spell, spellLine)
     {
         public override ECSGameSpellEffect CreateECSEffect(ECSGameEffectInitParams initParams)
@@ -83,29 +71,19 @@ namespace DOL.GS.Spells
             if (!AreArgumentsValid(attackData, out GameLiving target, out GameLiving attacker))
                 return;
 
-            IGamePlayer player2 = null;
-
-            if (attacker is GameNPC npcT && npcT.Brain is IControlledBrain b)
-                player2 = b.GetIPlayerOwner();
-
             double damage;
-            double damageResisted;
 
             if (Spell.Damage > 0)
             {
                 CalculateDamageVariance(target, out double minVariance, out double maxVariance);
+                double variance = minVariance + Util.RandomDoubleIncl() * (maxVariance - minVariance);
                 effectiveness *= 1 + Caster.GetModified(eProperty.BuffEffectiveness) * 0.01;
-                damage = Spell.Damage * effectiveness * attackData.Interval * 0.001;
-                damage = Util.Random((int) (damage * minVariance), (int) (damage * maxVariance));
-                damageResisted = damage * target.GetResist(Spell.DamageType) * -0.01;
+                damage = Spell.Damage * variance * effectiveness * attackData.Interval * 0.001;
             }
             else
-            {
                 damage = attackData.Damage * Spell.Damage / -100.0;
-                damageResisted = damage * target.GetResist(Spell.DamageType) * -0.01;
-            }
 
-            AttackData ad = CreateAttackData(damage, damageResisted, attacker, target);
+            AttackData ad = CreateAttackData(damage, attacker, target);
 
             if (attacker is GamePlayer playerAttacker)
                 MessageToLiving(attacker, string.Format(LanguageMgr.GetTranslation(playerAttacker.Client, "DamageAddAndShield.EventHandlerDS.YouHitFor"), target.GetName(0, false), ad.Damage), eChatType.CT_Spell);
@@ -129,6 +107,20 @@ namespace DOL.GS.Spells
     {
         public abstract void Handle(AttackData attackData, double effectiveness);
 
+        public override void CalculateDamageVariance(GameLiving target, out double min, out double max)
+        {
+            // Placeholder. According to live tests, this should be (or close to) the best variance possible.
+            // Damage adds are supposed to scale with weaponskill / armor, but independently from the attack's damage.
+            // Damage shields are supposed to scale with spec to some extent.
+            // Lower bound is supposed to be allowed to be below 1 for both.
+            // Upper bound is equal to lower*(5/3) most of the time.
+            // A similar effectiveness bonus as buffs may be used.
+            // In practice, a damage add generally does less damage than a damage shield of the same value.
+            // We may want to take level difference into account despite not being live like.
+            min = 1;
+            max = min * (5 / 3.0);
+        }
+
         protected static bool AreArgumentsValid(AttackData attackData, out GameLiving attacker, out GameLiving target)
         {
             attacker = null;
@@ -139,40 +131,34 @@ namespace DOL.GS.Spells
 
             target = attackData.Target;
 
-            if (target == null)
+            if (target == null ||
+                target.ObjectState is not GameObject.eObjectState.Active ||
+                !target.IsAlive ||
+                target is GameKeepComponent or GameKeepDoor)
+            {
                 return false;
-
-            if (target.ObjectState is not GameObject.eObjectState.Active)
-                return false;
-
-            if (target.IsAlive == false)
-                return false;
-
-            if (target is GameKeepComponent or GameKeepDoor)
-                return false;
+            }
 
             attacker = attackData.Attacker;
 
-            if (attacker == null)
+            if (attacker == null ||
+                attacker.ObjectState is not GameObject.eObjectState.Active ||
+                !attacker.IsAlive)
+            {
                 return false;
-
-            if (attacker.ObjectState is not GameObject.eObjectState.Active)
-                return false;
-
-            if (!attacker.IsAlive)
-                return false;
+            }
 
             return true;
         }
 
-        protected AttackData CreateAttackData(double damage, double resistedDamage, GameLiving attacker, GameLiving target)
+        protected AttackData CreateAttackData(double damage, GameLiving attacker, GameLiving target)
         {
+            // Damage adds and shields are unaffected by resistances.
             return new()
             {
                 Attacker = attacker,
                 Target = target,
-                Damage = (int) (damage + resistedDamage),
-                Modifier = (int) resistedDamage,
+                Damage = (int) damage,
                 DamageType = Spell.DamageType,
                 SpellHandler = this,
                 AttackType = AttackData.eAttackType.Spell,

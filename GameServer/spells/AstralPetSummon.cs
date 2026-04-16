@@ -2,7 +2,7 @@
 
 namespace DOL.GS.Spells
 {
-    [SpellHandler("AstralPetSummon")]
+    [SpellHandler(eSpellType.AstralPetSummon)]
     public class AstralPetSummon : SummonSpellHandler
     {
         public AstralPetSummon(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
@@ -34,8 +34,6 @@ namespace DOL.GS.Spells
         }
 
         protected override void SetBrainToOwner(IControlledBrain brain) { }
-
-
 
         protected override void GetPetLocation(out int x, out int y, out int z, out ushort heading, out Region region)
         {

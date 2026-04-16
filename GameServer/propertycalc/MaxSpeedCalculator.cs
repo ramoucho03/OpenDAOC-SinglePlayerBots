@@ -2,6 +2,7 @@ using System.Linq;
 using DOL.AI.Brain;
 using DOL.GS.Effects;
 using DOL.GS.RealmAbilities;
+using DOL.GS.Scripts;
 
 namespace DOL.GS.PropertyCalc
 {
@@ -29,7 +30,7 @@ namespace DOL.GS.PropertyCalc
 
             double speed = living.BuffBonusMultCategory1.Get((int)property);
 
-            if (living is GamePlayer player)
+            if (living is IGamePlayer player)
             {
                 // Since Dark Age of Camelot's launch, we have heard continuous feedback from our community about the movement speed in our game. The concerns over how slow
                 // our movement is has continued to grow as we have added more and more areas in which to travel. Because we believe these concerns are valid, we have decided
@@ -53,19 +54,15 @@ namespace DOL.GS.PropertyCalc
                         speed *= 1.25; // New run speed is 125% when no buff.
                 }
 
-                if (player.IsOverencumbered && player.Client.Account.PrivLevel == 1 && ServerProperties.Properties.ENABLE_ENCUMBERANCE_SPEED_LOSS)
+                if (player is GamePlayer)
                 {
-                    double Enc = player.Encumberance; // Calculating player.Encumberance is a bit slow with all those locks, don't call it much.
-
-                    if (Enc > player.MaxEncumberance)
+                    if (player.IsEncumbered && player.Client.Account.PrivLevel == 1 && ServerProperties.Properties.ENABLE_ENCUMBERANCE_SPEED_LOSS)
                     {
-                        speed *= (((player.MaxSpeedBase * 1.0 / GamePlayer.PLAYER_BASE_SPEED) * (-Enc)) / (player.MaxEncumberance * 0.35f)) + (player.MaxSpeedBase / GamePlayer.PLAYER_BASE_SPEED) + ((player.MaxSpeedBase / GamePlayer.PLAYER_BASE_SPEED) * player.MaxEncumberance / (player.MaxEncumberance * 0.35));
+                        speed *= player.MaxSpeedModifierFromEncumbrance;
 
                         if (speed <= 0)
                             speed = 0;
                     }
-                    else
-                        player.IsOverencumbered = false;
                 }
 
                 if (player.IsStealthed && player.Client.Account.PrivLevel == 1)
@@ -89,17 +86,18 @@ namespace DOL.GS.PropertyCalc
                     //if (bloodrage != null)
                     //    speed *= 1 + (bloodrage.Spell.Value * 0.01); // 25 * 0.01 = 0.25 (a.k 25%) value should be 25.5
 
-                    if (player.effectListComponent.ContainsEffectForEffectType(eEffect.ShadowRun))
+                    if (player.EffectListComponent.ContainsEffectForEffectType(eEffect.ShadowRun))
                         speed *= 2;
                 }
 
-                if (GameRelic.IsPlayerCarryingRelic(player))
-                {
-                    if (speed > 1.0)
-                        speed = 1.0;
+                if (player is GamePlayer gPlayer)
+                    if (GameRelic.IsPlayerCarryingRelic(gPlayer))
+                    {
+                        if (speed > 1.0)
+                            speed = 1.0;
 
-                    horseSpeed = 1.0;
-                }
+                        horseSpeed = 1.0;
+                    }
 
                 if (player.IsSprinting)
                     speed *= 1.3;
@@ -108,20 +106,29 @@ namespace DOL.GS.PropertyCalc
             }
             else if (living is GameNPC npc)
             {
-                if (npc.Brain is IControlledBrain brain)
+                if (!living.InCombat && npc.Brain is IControlledBrain brain)
                 {
                     GameLiving owner = brain.Owner;
 
                     if (owner != null && owner == brain.Body.FollowTarget)
                     {
-                        GamePlayer playerOwner = brain.GetPlayerOwner();
+                        IGamePlayer playerOwner = brain.GetIPlayerOwner();
 
                         if (!living.InCombat)
                         {
-                            if (playerOwner != null)
-                                owner = playerOwner;
+                            if (playerOwner != null && playerOwner is GamePlayer)
+                            {
+                                owner = (GameLiving)playerOwner;
+                                GameNPC ownerSteed = ((GamePlayer)playerOwner).Steed;
+
+                                if (ownerSteed != null)
+                                    return ownerSteed.MaxSpeed;
+                            }
 
                             int distance = brain.Body.GetDistanceTo(owner);
+
+                            if (playerOwner != null && playerOwner.IsSprinting)
+                                speed *= 1.3;
 
                             if (distance > 20)
                                 speed *= 1.25;
@@ -133,18 +140,7 @@ namespace DOL.GS.PropertyCalc
 
                             if (ownerSpeedAdjust > 1.0)
                                 speed *= ownerSpeedAdjust;
-
-                            if (playerOwner != null)
-                            {
-                                if (playerOwner.IsOnHorse)
-                                    speed *= 3.0;
-
-                                if (playerOwner.IsSprinting)
-                                    speed *= 1.4;
-                            }
                         }
-                        else if (playerOwner != null && playerOwner.IsSprinting)
-                            speed *= 1.3;
                     }
                 }
 

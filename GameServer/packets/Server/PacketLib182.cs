@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using System.Reflection;
 using DOL.Database;
-using log4net;
 
 namespace DOL.GS.PacketHandler
 {
@@ -11,7 +10,7 @@ namespace DOL.GS.PacketHandler
 		/// <summary>
 		/// Defines a logger for this class.
 		/// </summary>
-		private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		/// <summary>
 		/// Constructs a new PacketLib for Version 1.82 clients
@@ -22,7 +21,7 @@ namespace DOL.GS.PacketHandler
 		{
 		}
 
-		protected override void SendInventorySlotsUpdateRange(ICollection<int> slots, eInventoryWindowType windowType)
+		protected override void SendInventorySlotsUpdateRange(ICollection<eInventorySlot> slots, eInventoryWindowType windowType)
 		{
 			using (GSTCPPacketOut pak = new GSTCPPacketOut(GetPacketCode(eServerPackets.InventoryUpdate)))
 			{
@@ -147,25 +146,29 @@ namespace DOL.GS.PacketHandler
 						string spell_name2 = string.Empty;
 						if (item.Object_Type != (int)eObjectType.AlchemyTincture)
 						{
-							if (item.SpellID > 0/* && item.Charges > 0*/)
-							{
-								Spell spell = SkillBase.GetSpellByID(item.SpellID);
-								if (spell != null)
-								{
-									flag |= 0x08;
-									icon1 = spell.Icon;
-									spell_name1 = spell.Name; // or best spl.Name ?
-								}
-							}
+							SpellLine chargeEffectsLine = SkillBase.GetSpellLine(GlobalSpellsLines.Item_Effects);
 
-							if (item.SpellID1 > 0/* && item.Charges > 0*/)
+							if (chargeEffectsLine != null)
 							{
-								Spell spell = SkillBase.GetSpellByID(item.SpellID1);
-								if (spell != null)
+								if (item.SpellID > 0/* && item.Charges > 0*/)
 								{
-									flag |= 0x10;
-									icon2 = spell.Icon;
-									spell_name2 = spell.Name; // or best spl.Name ?
+									Spell spell = SkillBase.FindSpell(item.SpellID, chargeEffectsLine);
+									if (spell != null)
+									{
+										flag |= 0x08;
+										icon1 = spell.Icon;
+										spell_name1 = spell.Name; // or best spl.Name ?
+									}
+								}
+								if (item.SpellID1 > 0/* && item.Charges > 0*/)
+								{
+									Spell spell = SkillBase.FindSpell(item.SpellID1, chargeEffectsLine);
+									if (spell != null)
+									{
+										flag |= 0x10;
+										icon2 = spell.Icon;
+										spell_name2 = spell.Name; // or best spl.Name ?
+									}
 								}
 							}
 						}

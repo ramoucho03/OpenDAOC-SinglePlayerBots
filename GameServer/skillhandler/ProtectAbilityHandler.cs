@@ -2,14 +2,13 @@ using System.Linq;
 using System.Reflection;
 using DOL.GS.PacketHandler;
 using DOL.Language;
-using log4net;
 
 namespace DOL.GS.SkillHandler
 {
     [SkillHandlerAttribute(Abilities.Protect)]
     public class ProtectAbilityHandler : IAbilityActionHandler
     {
-        private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
         public const int PROTECT_DISTANCE = 1000;
 
@@ -28,7 +27,7 @@ namespace DOL.GS.SkillHandler
                 foreach (ProtectECSGameEffect protect in player.effectListComponent.GetAbilityEffects().Where(e => e.EffectType is eEffect.Protect))
                 {
                     if (protect.Source == player)
-                        EffectService.RequestImmediateCancelEffect(protect);
+                        EffectService.RequestCancelEffect(protect);
                 }
 
                 player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "Skill.Ability.Protect.CancelTargetNull"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
@@ -75,7 +74,7 @@ namespace DOL.GS.SkillHandler
                     foundOurEffect = true;
 
                     if (cancelOurs)
-                        EffectService.RequestImmediateCancelEffect(protect);
+                        EffectService.RequestCancelEffect(protect);
                 }
 
                 if (protect.Target == target)
@@ -88,7 +87,7 @@ namespace DOL.GS.SkillHandler
             foreach (ProtectECSGameEffect protect in source.effectListComponent.GetAbilityEffects().Where(e => e.EffectType is eEffect.Protect))
             {
                 if (protect.Source == source)
-                    EffectService.RequestImmediateCancelEffect(protect);
+                    EffectService.RequestCancelEffect(protect);
             }
 
             new ProtectECSGameEffect(new ECSGameEffectInitParams(source, 0, 1, null), source, target);

@@ -31,16 +31,14 @@ using DOL.GS.Scripts;
 
 namespace DOL.GS.Spells
 {
-    /// <summary>
-    /// Spell handler to summon a bonedancer pet.
-    /// </summary>
-    /// <author>IST</author>
-    [SpellHandler("SummonUnderhill")]
-    public class SummonUnderhill : SummonSpellHandler
-    {
-        public SummonUnderhill(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line)
-        {
-        }
+	/// <summary>
+	/// Spell handler to summon a bonedancer pet.
+	/// </summary>
+	/// <author>IST</author>
+	[SpellHandler(eSpellType.SummonUnderhill)]
+	public class SummonUnderhill : SummonSpellHandler
+	{
+		public SummonUnderhill(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
 
         public override bool CheckEndCast(GameLiving selectedTarget)
         {

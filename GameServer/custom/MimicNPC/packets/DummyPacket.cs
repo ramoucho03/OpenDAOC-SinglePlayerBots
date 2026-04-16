@@ -161,7 +161,7 @@ namespace DOL.GS.Scripts
         {
         }
 
-        public void SendEncumberance()
+        public void SendEncumbrance()
         {
         }
 
@@ -248,7 +248,7 @@ namespace DOL.GS.Scripts
         {
         }
 
-        public void SendInventoryItemsUpdate(ICollection<DbInventoryItem> itemsToUpdate)
+        public void SendInventoryItemsUpdate(ICollection<eInventorySlot> itemsToUpdate)
         {
         }
 
@@ -260,7 +260,11 @@ namespace DOL.GS.Scripts
         {
         }
 
-        public void SendInventorySlotsUpdate(ICollection<int> slots)
+        public void SendInventoryItemsUpdate(ICollection<DbInventoryItem> itemsToUpdate)
+        { 
+        }
+
+        public void SendInventorySlotsUpdate(ICollection<eInventorySlot> slots)
         {
         }
 
@@ -412,7 +416,7 @@ namespace DOL.GS.Scripts
         {
         }
 
-        public void SendObjectUpdate(GameObject obj)
+        public void SendObjectUpdate(GameObject obj, bool udp = true)
         {
         }
 
@@ -608,14 +612,6 @@ namespace DOL.GS.Scripts
         {
         }
 
-        public void SendTCP(byte[] buf)
-        {
-        }
-
-        public void SendTCPRaw(GSTCPPacketOut packet)
-        {
-        }
-
         public void SendTime()
         {
         }
@@ -640,15 +636,7 @@ namespace DOL.GS.Scripts
         {
         }
 
-        public void SendUDP(byte[] buf)
-        {
-        }
-
         public void SendUDPInitReply()
-        {
-        }
-
-        public void SendUDPRaw(GSUDPPacketOut packet)
         {
         }
 
@@ -672,7 +660,7 @@ namespace DOL.GS.Scripts
         {
         }
 
-        public void SendUpdatePlayerSkills()
+        public void SendUpdatePlayerSkills(bool updateInternalCache)
         {
         }
 

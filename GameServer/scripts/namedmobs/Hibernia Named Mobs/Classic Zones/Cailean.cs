@@ -120,7 +120,7 @@ namespace DOL.AI.Brain
 {
 	public class CaileanBrain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 		public CaileanBrain() : base()
 		{
 			AggroLevel = 100;
@@ -389,7 +389,7 @@ namespace DOL.AI.Brain
 {
 	public class WalkingTreeBrain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 		public WalkingTreeBrain() : base()
 		{
 			AggroLevel = 100;
@@ -531,7 +531,7 @@ namespace DOL.AI.Brain
 {
 	public class WalkingTree2Brain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 		public WalkingTree2Brain() : base()
 		{
 			AggroLevel = 100;
@@ -549,7 +549,7 @@ namespace DOL.AI.Brain
                     {
 						var effect = EffectListService.GetEffectOnTarget(target, eEffect.SnareImmunity);
 						if(effect != null)
-							EffectService.RequestImmediateCancelEffect(effect);//remove snare immunity here
+							EffectService.RequestCancelEffect(effect);//remove snare immunity here
 					}
 					if(!target.effectListComponent.ContainsEffectForEffectType(eEffect.SnareImmunity) && !target.effectListComponent.ContainsEffectForEffectType(eEffect.MovementSpeedDebuff) && target != null && target.IsAlive)
 						Body.CastSpell(TreeRoot2, SkillBase.GetSpellLine(GlobalSpellsLines.Mob_Spells), false);

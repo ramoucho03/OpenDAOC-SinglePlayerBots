@@ -8,20 +8,20 @@ using DOL.GS.PacketHandler;
 
 namespace DOL.GS.Spells
 {
-    /// <summary>
-    /// Increases the target's movement speed.
-    /// </summary>
-    [SpellHandlerAttribute("SpeedEnhancement")]
-    public class SpeedEnhancementSpellHandler : SpellHandler
-    {
-        /// <summary>
-        /// called after normal spell cast is completed and effect has to be started
-        /// </summary>
-        public override void FinishSpellCast(GameLiving target)
-        {
-            Caster.Mana -= PowerCost(target);
-            base.FinishSpellCast(target);
-        }
+	/// <summary>
+	/// Increases the target's movement speed.
+	/// </summary>
+	[SpellHandler(eSpellType.SpeedEnhancement)]
+	public class SpeedEnhancementSpellHandler : SpellHandler
+	{
+		/// <summary>
+		/// called after normal spell cast is completed and effect has to be started
+		/// </summary>
+		public override void FinishSpellCast(GameLiving target)
+		{
+			Caster.Mana -= PowerCost(target);
+			base.FinishSpellCast(target);
+		}
 
         public override ECSGameSpellEffect CreateECSEffect(ECSGameEffectInitParams initParams)
         {
@@ -123,15 +123,15 @@ namespace DOL.GS.Spells
                 return;
             }
 
-            if (living.effectListComponent.GetAllEffects().FirstOrDefault(x => x.GetType() == typeof(SpeedOfSoundECSEffect)) != null)
-                return;
-
-            //GameSpellEffect speed = SpellHandler.FindEffectOnTarget(living, this);
-            ECSGameEffect speed = EffectListService.GetEffectOnTarget(living, eEffect.MovementSpeedBuff);
-            if (speed != null)
-                EffectService.RequestImmediateCancelEffect(speed);
-            //speed.Cancel(false);
-        }
+			if (living.effectListComponent.GetAllEffects().FirstOrDefault(x => x.GetType() == typeof(SpeedOfSoundECSEffect)) != null)
+				return;
+			
+			//GameSpellEffect speed = SpellHandler.FindEffectOnTarget(living, this);
+			ECSGameEffect speed = EffectListService.GetEffectOnTarget(living, eEffect.MovementSpeedBuff);
+			if (speed != null)
+				EffectService.RequestCancelEffect(speed);
+				//speed.Cancel(false);
+		}
 
 		/// <summary>
 		/// Delve Info

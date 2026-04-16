@@ -1,6 +1,6 @@
 ﻿using System;
-using log4net;
 using System.Reflection;
+using System.Threading;
 
 namespace DOL.GS
 {
@@ -8,7 +8,7 @@ namespace DOL.GS
     // This timer updates `CurrentTime` every `UPDATE_INTERVAL` and resyncs clients every `CLIENT_RESYNC_INTERVAL`.
     public class DayNightCycleTimer(GameObject owner) : ECSGameTimerWrapperBase(owner)
     {
-        private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
         private const uint DAY = 24 * 60 * 60 * 1000; // This shouldn't be changed.
         private const uint HALF_OF_A_DAY = DAY / 2;
@@ -19,7 +19,7 @@ namespace DOL.GS
         private uint _nightIncrement;
         private long _dayStartTime;
         private long _nextClientResync;
-        private object _lock = new();
+        private readonly Lock _lock = new();
         public uint CurrentGameTime { get; private set; }
         public uint DayIncrement { get; private set; }
 

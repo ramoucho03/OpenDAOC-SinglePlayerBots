@@ -5,8 +5,8 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using DOL.Database;
 using DOL.Events;
+using DOL.GS.Housing;
 using DOL.GS.ServerProperties;
-using log4net;
 
 namespace DOL.GS.PacketHandler.Client.v168
 {
@@ -20,7 +20,7 @@ namespace DOL.GS.PacketHandler.Client.v168
         /// <summary>
         /// Defines a logger for this class.
         /// </summary>
-        private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
         /// <summary>
         /// Max Points to allow on player creation
@@ -416,11 +416,6 @@ namespace DOL.GS.PacketHandler.Client.v168
                 ch.HairStyle = (byte)pdata.HairStyle;
                 ch.MoodType = (byte)pdata.MoodType;
                 ch.CustomisationStep = 2; // disable config button
-
-                if (log.IsDebugEnabled)
-                {
-                    log.Debug("Disable Config Button");
-                }
             }
 
             ch.Level = 1;
@@ -872,134 +867,68 @@ namespace DOL.GS.PacketHandler.Client.v168
         public static bool CheckForDeletedCharacter(string accountName, GameClient client, int slot)
         {
             int charSlot = slot;
-            if (client.Version > GameClient.eClientVersion.Version1124) // 1125 support
-            {
+
+            if (client.Version > GameClient.eClientVersion.Version1124)
                 charSlot = client.Account.Realm * 100 + (slot - (client.Account.Realm - 1) * 10);
-            }
-            else // 1124
+            else
             {
                 if (accountName.EndsWith("-S"))
-                {
                     charSlot = 100 + slot;
-                }
                 else if (accountName.EndsWith("-N"))
-                {
                     charSlot = 200 + slot;
-                }
                 else if (accountName.EndsWith("-H"))
-                {
                     charSlot = 300 + slot;
-                }
-            }            
-
-            DbCoreCharacter[] allChars = client.Account.Characters;
-
-            if (allChars != null)
-            {
-                foreach (DbCoreCharacter character in allChars.ToArray())
-                {
-                    if (character.AccountSlot == charSlot && client.ClientState == GameClient.eClientState.CharScreen)
-                    {
-                        if (log.IsWarnEnabled)
-                        {
-                            log.Warn($"DB Character Delete:  Account {accountName}, Character: {character.Name}, slot position: {character.AccountSlot}, client slot {slot}");
-                        }
-
-                        if (allChars.Length < client.ActiveCharIndex && client.ActiveCharIndex > -1 && allChars[client.ActiveCharIndex] == character)
-                        {
-                            client.ActiveCharIndex = -1;
-                        }
-
-                        GameEventMgr.Notify(DatabaseEvent.CharacterDeleted, null, new CharacterEventArgs(character, client));
-
-                        if (Properties.BACKUP_DELETED_CHARACTERS)
-                        {
-                            var backupCharacter = new DbCoreCharacterBackup(character);
-
-                            foreach (DbCoreCharacterBackupXCustomParam customParam in backupCharacter.CustomParams)
-                                GameServer.Database.AddObject(customParam);
-
-                            GameServer.Database.AddObject(backupCharacter);
-
-                            if (log.IsWarnEnabled)
-                            {
-                                log.Warn($"DB Character {character.ObjectId} backed up to DOLCharactersBackup and no associated content deleted.");
-                            }
-                        }
-                        else
-                        {
-                            // delete associated data
-                            try
-                            {
-                                var objs = GameServer.Database.SelectObjects<DbInventoryItem>(DB.Column("OwnerID").IsEqualTo(character.ObjectId));
-                                GameServer.Database.DeleteObject(objs);
-                            }
-                            catch (Exception e)
-                            {
-                                if (log.IsErrorEnabled)
-                                {
-                                    log.Error($"Error deleting char items, char OID={character.ObjectId}, Exception:{e}");
-                                }
-                            }
-
-                            // delete quests
-                            try
-                            {
-                                var objs = GameServer.Database.SelectObjects<DbQuest>(DB.Column("Character_ID").IsEqualTo(character.ObjectId));
-                                GameServer.Database.DeleteObject(objs);
-                            }
-                            catch (Exception e)
-                            {
-                                if (log.IsErrorEnabled)
-                                {
-                                    log.Error($"Error deleting char quests, char OID={character.ObjectId}, Exception:{e}");
-                                }
-                            }
-
-                            // delete ML steps
-                            try
-                            {
-                                var objs = GameServer.Database.SelectObjects<DbCharacterXMasterLevel>(DB.Column("Character_ID").IsEqualTo(character.ObjectId));
-                                GameServer.Database.DeleteObject(objs);
-                            }
-                            catch (Exception e)
-                            {
-                                if (log.IsErrorEnabled)
-                                {
-                                    log.Error($"Error deleting char ml steps, char OID={character.ObjectId}, Exception:{e}");
-                                }
-                            }
-                        }
-
-                        string deletedChar = character.Name;
-
-                        GameServer.Database.DeleteObject(character);
-                        client.Account.Characters = null;
-                        client.Player = null;
-                        GameServer.Database.FillObjectRelations(client.Account);
-
-                        if (client.Account.Characters == null || client.Account.Characters.Length == 0)
-                        {
-                            if (log.IsInfoEnabled)
-                            {
-                                log.Info($"Account {client.Account.Name} has no more chars. Realm reset!");
-                            }
-
-                            // Client has no more characters, so the client can choose the realm again!
-                            client.Account.Realm = 0;
-                        }
-
-                        GameServer.Database.SaveObject(client.Account);
-
-                        // Log deletion
-                        AuditMgr.AddAuditEntry(client, AuditType.Character, AuditSubtype.CharacterDelete, string.Empty, deletedChar);
-
-                        return true;
-                    }
-                }
             }
 
-            return false;
+            DbCoreCharacter[] allChars = client.Account.Characters.ToArray();
+
+            if (allChars == null)
+                return false;
+
+            if (client.ClientState is not GameClient.eClientState.CharScreen)
+                return false;
+
+            foreach (DbCoreCharacter character in allChars)
+            {
+                if (character.AccountSlot != charSlot)
+                    continue;
+
+                // If this character had a house, prevent deletion.
+                // Eventually we should change the owner ID, house name, and update items in consignment merchant and vault slots if possible.
+                if (HouseMgr.GetHouseByCharacterIds([character.ObjectId]) != null)
+                {
+                    if (log.IsWarnEnabled)
+                        log.Warn($"Character deletion prevented because the character has a house. (Account {accountName}) (Character: {character.Name}) (Slot position: {character.AccountSlot}) (Client slot {slot})");
+
+                    return false;
+                }
+
+                if (log.IsInfoEnabled)
+                    log.Info($"Character deletion. (Account {accountName}) (Character: {character.Name}) (Slot position: {character.AccountSlot}) (Client slot {slot})");
+
+                if (allChars.Length < client.ActiveCharIndex && client.ActiveCharIndex > -1 && allChars[client.ActiveCharIndex] == character)
+                    client.ActiveCharIndex = -1;
+
+                GameEventMgr.Notify(DatabaseEvent.CharacterDeleted, null, new CharacterEventArgs(character, client));
+                DbCoreCharacterBackup backupCharacter = new(character);
+
+                foreach (DbCoreCharacterBackupXCustomParam customParam in backupCharacter.CustomParams)
+                    GameServer.Database.AddObject(customParam);
+
+                GameServer.Database.AddObject(backupCharacter);
+                GameServer.Database.DeleteObject(character);
+                client.Account.Characters = null;
+                GameServer.Database.FillObjectRelations(client.Account);
+
+                // The client has no more characters, so we let it choose the realm again.
+                if (client.Account.Characters == null || client.Account.Characters.Length == 0)
+                    client.Account.Realm = 0;
+
+                GameServer.Database.SaveObject(client.Account);
+                AuditMgr.AddAuditEntry(client, AuditType.Character, AuditSubtype.CharacterDelete, string.Empty, character.Name);
+            }
+
+            return true;
         }
 
         /// <summary>

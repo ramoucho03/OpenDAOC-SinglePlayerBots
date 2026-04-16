@@ -9,7 +9,6 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using DOL.Database;
 using DOL.GS.ServerProperties;
-using log4net;
 
 namespace DOL.GS.PacketHandler.Client.v168
 {
@@ -52,7 +51,7 @@ namespace DOL.GS.PacketHandler.Client.v168
 		/// <summary>
 		/// Defines a logger for this class.
 		/// </summary>
-		private static readonly ILog Log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger Log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		private static DateTime m_lastAccountCreateTime;
 		private readonly Dictionary<string, LockCount> m_locks = new Dictionary<string, LockCount>();
@@ -193,32 +192,32 @@ namespace DOL.GS.PacketHandler.Client.v168
 					Log.Error("Error shutting down Client after IsAllowedToConnect failed!", e);
 			}
 
-			// Handle connection
+			// Handle connection.
 			EnterLock(userName);
 
 			try
 			{
 				DbAccount playerAccount;
-				// Make sure that client won't quit
+
+				// Make sure that client won't quit.
 				lock (client)
 				{
 					GameClient.eClientState state = client.ClientState;
-					if (state != GameClient.eClientState.NotConnected)
+
+					if (state is not GameClient.eClientState.NotConnected)
 					{
-						Log.DebugFormat("wrong client state on connect {0} {1}", userName, state.ToString());
+						Log.DebugFormat($"wrong client state on connect {userName} {state}");
 						return;
 					}
 
 					if (Log.IsInfoEnabled)
-						Log.Info(string.Format("({0})User {1} logging on! ({2} type:{3} add:{4})", ipAddress, userName, client.Version,
-											   (client.ClientType), client.ClientAddons.ToString("G")));
-					// check client already connected
+						Log.Info(string.Format($"({ipAddress}) User {userName} logging on! ({client.Version} type:{client.ClientType} add:{client.ClientAddons:G})"));
 
 					GameClient otherClient = ClientService.GetClientFromAccountName(userName);
 
 					if (otherClient != null)
 					{
-						if (otherClient.ClientState == GameClient.eClientState.Connecting)
+						if (otherClient.ClientState is GameClient.eClientState.Connecting)
 						{
 							if (Log.IsInfoEnabled)
 								Log.Info("User is already connecting, ignored.");
@@ -226,9 +225,10 @@ namespace DOL.GS.PacketHandler.Client.v168
 							client.Out.SendLoginDenied(eLoginError.AccountAlreadyLoggedIn);
 							client.IsConnected = false;
 							return;
-						} // in login
+						}
 
-						if (otherClient.ClientState == GameClient.eClientState.Linkdead)
+						// Check link death timer instead of client state to account for soft link deaths.
+						if (otherClient.Player?.IsLinkDeathTimerRunning == true)
 						{
 							if (Log.IsInfoEnabled)
 								Log.Info("User is still being logged out from linkdeath!");
@@ -365,7 +365,7 @@ namespace DOL.GS.PacketHandler.Client.v168
 							if (!CryptPassword(password).Equals(playerAccount.Password))
 							{
 								if (Log.IsInfoEnabled)
-									Log.Info("(" + client.TcpEndpoint + ") Wrong password!");
+									Log.Info("(" + client.TcpEndpointAddress + ") Wrong password!");
 
 								client.Out.SendLoginDenied(eLoginError.WrongPassword);
 								client.IsConnected = false;
@@ -430,7 +430,6 @@ namespace DOL.GS.PacketHandler.Client.v168
 
 					client.Out.SendLoginGranted();
 					client.ClientState = GameClient.eClientState.Connecting;
-					
 					GameServer.Database.FillObjectRelations(client.Account);
 
 					// var clIP = ((IPEndPoint) client.Socket.RemoteEndPoint)?.Address.ToString();
@@ -467,7 +466,7 @@ namespace DOL.GS.PacketHandler.Client.v168
 			}
 			finally
 			{
-				client.PacketProcessor?.ProcessTcpQueue();
+				client.PacketProcessor?.SendPendingPackets();
 
 				if (client.IsConnected == false)
 					client.Disconnect();
@@ -478,27 +477,23 @@ namespace DOL.GS.PacketHandler.Client.v168
 
 		public static string CryptPassword(string password)
 		{
-			MD5 md5 = new MD5CryptoServiceProvider();
-
 			char[] pw = password.ToCharArray();
+			byte[] res = new byte[pw.Length * 2];
 
-			var res = new byte[pw.Length * 2];
 			for (int i = 0; i < pw.Length; i++)
 			{
-				res[i * 2] = (byte)(pw[i] >> 8);
-				res[i * 2 + 1] = (byte)(pw[i]);
+				res[i * 2] = (byte) (pw[i] >> 8);
+				res[i * 2 + 1] = (byte) pw[i];
 			}
 
-			byte[] bytes = md5.ComputeHash(res);
+			byte[] hash = MD5.HashData(res);
+			StringBuilder stringBuilder = new();
+			stringBuilder.Append("##");
 
-			var crypted = new StringBuilder();
-			crypted.Append("##");
-			for (int i = 0; i < bytes.Length; i++)
-			{
-				crypted.Append(bytes[i].ToString("X"));
-			}
+			for (int i = 0; i < hash.Length; i++)
+				stringBuilder.Append(hash[i].ToString("X"));
 
-			return crypted.ToString();
+			return stringBuilder.ToString();
 		}
 
 		/// <summary>

@@ -5,7 +5,6 @@ using DOL.Events;
 using DOL.GS;
 using DOL.GS.Effects;
 using DOL.GS.Scripts;
-using log4net;
 
 namespace DOL.AI.Brain
 {
@@ -14,7 +13,7 @@ namespace DOL.AI.Brain
         /// <summary>
         /// Defines a logger for this class.
         /// </summary>
-        private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
         /// <summary>
         /// Create a new ArosBrain.
@@ -30,7 +29,6 @@ namespace DOL.AI.Brain
             FSM.Add(new ArosState_IDLE(this));
             FSM.Add(new ArosState_AGGRO(this));
             FSM.Add(new ArosState_RETURN_TO_SPAWN(this));
-            FSM.SetCurrentState(eFSMStateType.WAKING_UP);
         }
 
         /// <summary>

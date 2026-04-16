@@ -12,10 +12,10 @@ namespace DOL.GS.Spells
     ///
     /// Caster.GetModifiedSpecLevel * 1.1 is used for hard NPC level cap
     /// </summary>
-    [SpellHandlerAttribute("Charm")]
+    [SpellHandler(eSpellType.Charm)]
     public class CharmSpellHandler : SpellHandler
     {
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public CharmSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
 
@@ -41,6 +41,11 @@ namespace DOL.GS.Spells
         public override bool StartSpell(GameLiving target)
         {
             // The argument is null when the effect is pulsing.
+            // In which case we don't call base, since pulses are technically offensive spells applied on friendly NPCs.
+
+            if (target != null)
+                return base.StartSpell(target);
+
             target ??= Target;
 
             if (Util.ChanceDouble(CalculateSpellResistChance(target)))
@@ -333,7 +338,7 @@ namespace DOL.GS.Spells
                 ECSPulseEffect song = EffectListService.GetPulseEffectOnTarget(Caster, Spell);
 
                 if (song != null)
-                    EffectService.RequestImmediateCancelConcEffect(song);
+                    EffectService.RequestCancelConcEffect(song);
 
                 return;
             }

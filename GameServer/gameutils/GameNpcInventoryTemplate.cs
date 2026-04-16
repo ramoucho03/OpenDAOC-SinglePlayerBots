@@ -6,7 +6,6 @@ using System.Reflection;
 using System.Text;
 using System.Threading;
 using DOL.Database;
-using log4net;
 
 namespace DOL.GS
 {
@@ -15,17 +14,19 @@ namespace DOL.GS
 		/// <summary>
 		/// Defines a logger for this class.
 		/// </summary>
-		private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		/// <summary>
 		/// Holds inventory item instances already used in inventory templates
 		/// </summary>
 		protected static readonly Hashtable m_usedInventoryItems = new Hashtable(1024);
+		protected static readonly Lock _usedInventoryItems = new();
 
 		/// <summary>
 		/// Holds already used inventory template instances
 		/// </summary>
 		protected static readonly Hashtable m_usedInventoryTemplates = new Hashtable(256);
+		protected static readonly Lock _usedInventoryTemplates = new();
 
 		/// <summary>
 		/// Holds an empty invenotory template instance
@@ -117,9 +118,9 @@ namespace DOL.GS
 		/// <returns>true if added</returns>
 		public bool AddNPCEquipment(eInventorySlot slot, int model, int color, int effect, int extension, int emblem = 0)
 		{
-			lock (LockObject)
+			lock (Lock)
 			{
-				lock (m_usedInventoryItems.SyncRoot)
+				lock (_usedInventoryItems)
 				{
 					if (m_isClosed)
 						return false;
@@ -167,7 +168,7 @@ namespace DOL.GS
 		/// <returns>true if removed</returns>
 		public bool RemoveNPCEquipment(eInventorySlot slot)
 		{
-			lock (LockObject)
+			lock (Lock)
 			{
 				slot = GetValidInventorySlot(slot);
 
@@ -193,11 +194,11 @@ namespace DOL.GS
 		/// <returns>Invetory template instance that should be used</returns>
 		public GameNpcInventoryTemplate CloseTemplate()
 		{
-			lock (LockObject)
+			lock (Lock)
 			{
-				lock (m_usedInventoryTemplates.SyncRoot)
+				lock (_usedInventoryTemplates)
 				{
-					lock (m_usedInventoryItems.SyncRoot)
+					lock (_usedInventoryItems)
 					{
 						m_isClosed = true;
 						StringBuilder templateID = new StringBuilder(m_items.Count * 16);
@@ -232,7 +233,7 @@ namespace DOL.GS
 		/// <returns>Open copy of this template</returns>
 		public GameNpcInventoryTemplate CloneTemplate()
 		{
-			lock (LockObject)
+			lock (Lock)
 			{
 				var clone = new GameNpcInventoryTemplate();
 				clone.m_changedSlots = new List<eInventorySlot>(m_changedSlots);
@@ -278,7 +279,7 @@ namespace DOL.GS
 			if (string.IsNullOrEmpty(templateID))
 				return false;
 
-			lock (LockObject)
+			lock (Lock)
 			{
 				if (!m_npcEquipmentCache.TryGetValue(templateID, out List<DbNpcEquipment> npcEquip))
 					npcEquip = DOLDB<DbNpcEquipment>.SelectObjects(DB.Column("templateID").IsEqualTo(templateID)).ToList();
@@ -338,7 +339,7 @@ namespace DOL.GS
 		/// <returns>success</returns>
 		public override bool SaveIntoDatabase(string templateID)
 		{
-			lock (LockObject)
+			lock (Lock)
 			{
 				try
 				{
@@ -492,7 +493,7 @@ namespace DOL.GS
 		/// <param name="fromSlot">First SlotPosition</param>
 		/// <param name="toSlot">Second SlotPosition</param>
 		/// <returns>false</returns>
-		protected override bool ExchangeItems(eInventorySlot fromSlot, eInventorySlot toSlot)
+		protected override bool SwapItems(eInventorySlot fromSlot, eInventorySlot toSlot)
 		{
 			return false;
 		}

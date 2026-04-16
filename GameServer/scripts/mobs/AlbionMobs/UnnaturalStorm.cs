@@ -85,7 +85,7 @@ namespace DOL.AI.Brain
 {
     public class UnnaturalStormBrain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 		public UnnaturalStormBrain() : base()
 		{
 			AggroLevel = 100;
@@ -196,7 +196,7 @@ namespace DOL.AI.Brain
 {
     public class UnnaturalStormAddsBrain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 		public UnnaturalStormAddsBrain() : base()
 		{
 			AggroLevel = 0;
@@ -241,7 +241,7 @@ namespace DOL.AI.Brain
 {
     public class UnnaturalStormControllerBrain : APlayerVicinityBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
 		public UnnaturalStormControllerBrain()
 			: base()
@@ -252,26 +252,28 @@ namespace DOL.AI.Brain
 		{
 			uint hour = WorldMgr.GetCurrentGameTime() / 1000 / 60 / 60;
 			uint minute = WorldMgr.GetCurrentGameTime() / 1000 / 60 % 60;
-			//log.Warn("Current time: " + hour + ":" + minute);
-			foreach (GameNPC npc in Body.GetNPCsInRadius(8000))
-			{
-				if (npc != null && npc.IsAlive && npc.Brain is UnnaturalStormBrain brain)
-				{
-					if (!brain.HasAggro && hour >= 7 && hour < 18)
-					{
-						npc.RemoveFromWorld();
 
-						foreach (GameNPC adds in Body.GetNPCsInRadius(8000))
+			if (hour >= 7 && hour < 18)
+			{
+				foreach (GameNPC npc in Body.GetNPCsInRadius(WorldMgr.VISIBILITY_DISTANCE))
+				{
+					if (npc.IsAlive && npc.Brain is UnnaturalStormBrain brain)
+					{
+						if (!brain.HasAggro)
 						{
-							if (adds != null && adds.IsAlive && adds.Brain is UnnaturalStormAddsBrain)
-								adds.RemoveFromWorld();
+							npc.RemoveFromWorld();
+
+							foreach (GameNPC adds in Body.GetNPCsInRadius(WorldMgr.VISIBILITY_DISTANCE))
+							{
+								if (adds.IsAlive && adds.Brain is UnnaturalStormAddsBrain)
+									adds.RemoveFromWorld();
+							}
 						}
 					}
 				}
 			}
-			if (hour == 18 && minute == 30)
+			else if (hour == 18 && minute == 30)
 				SpawnUnnaturalStorm();
-			
 		}
 
 		public override void KillFSM()

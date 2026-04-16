@@ -24,7 +24,6 @@ using System.Reflection;
 using DOL.Database;
 using DOL.GS.PacketHandler;
 using DOL.GS.Scripts;
-using log4net;
 
 namespace DOL.GS.Keeps
 {
@@ -48,7 +47,7 @@ namespace DOL.GS.Keeps
 	/// </summary>
 	public interface IKeepManager
 	{
-		log4net.ILog Log { get; }
+		Logging.Logger Log { get; }
 		Hashtable Keeps { get; }
 		List<uint> FrontierRegionsList { get; }
 

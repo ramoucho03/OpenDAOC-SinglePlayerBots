@@ -8,14 +8,12 @@ using DOL.Events;
 using DOL.GS;
 using DOL.GS.PacketHandler;
 using DOL.GS.ServerProperties;
-using log4net;
 
 namespace DOL.GS.Scripts
 {
     public class Legion : GameEpicBoss
     {
-        private static new readonly log4net.ILog log =
-            log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         private static IArea legionArea = null;
 
@@ -286,7 +284,6 @@ namespace DOL.GS.Scripts
             {
                 player.KillsLegion++;
                 player.Achieve(AchievementUtils.AchievementNames.Legion_Kills);
-                player.RaiseRealmLoyaltyFloor(1);
                 count++;
             }
             return count;
@@ -304,7 +301,7 @@ namespace DOL.AI.Brain
 {
     public class LegionBrain : EpicBossBrain
     {
-        private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
         
         public LegionBrain()
             : base()
@@ -566,7 +563,7 @@ namespace DOL.AI.Brain
                         var effect = EffectListService.GetEffectOnTarget(target, eEffect.Bladeturn);
                         if (effect != null)
                         {
-                            EffectService.RequestImmediateCancelEffect(effect);//remove bladeturn effect here
+                            EffectService.RequestCancelEffect(effect);//remove bladeturn effect here
                             bladeturnConsumed++;
                             if(target is GamePlayer player)
                             {
@@ -625,7 +622,6 @@ namespace DOL.AI.Brain
                     add.Y = Body.Y + Util.Random(-150, 150);
                     add.Z = Body.Z;
                     add.CurrentRegionID = 249;
-                    add.IsWorthReward = false;
                     add.Level = (byte)level;
                     add.AddToWorld();
                 }
@@ -725,8 +721,7 @@ namespace DOL.GS
 {
     public class LegionAdd : GameNPC
     {
-        private static new readonly log4net.ILog log =
-            log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public LegionAdd()
             : base()
@@ -738,9 +733,7 @@ namespace DOL.GS
         }
 
         public override int MeleeAttackRange => 450;
-        public override void DropLoot(GameObject killer)
-        {
-        }
+        public override bool CanDropLoot => false;
         public override long ExperienceValue => 0;
         public override double GetArmorAF(eArmorSlot slot)
         {
@@ -786,8 +779,7 @@ namespace DOL.AI.Brain
 {
     public class LegionAddBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log =
-            log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public LegionAddBrain()
             : base()
@@ -813,8 +805,7 @@ namespace DOL.GS
 {
     public class Behemoth : GameEpicBoss
     {
-        private static new readonly log4net.ILog log =
-            log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public Behemoth()
             : base()
@@ -883,8 +874,7 @@ namespace DOL.AI.Brain
 {
     public class BehemothBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log =
-            log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public BehemothBrain()
             : base()

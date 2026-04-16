@@ -6,7 +6,7 @@ namespace DOL.GS
 {
     public class BdSubPet : BdPet
     {
-        private static new readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         /// <summary>
         /// Holds the different subpet ids
@@ -114,12 +114,7 @@ namespace DOL.GS
             }
         }
 
-        /// <summary>
-        /// Scale the passed spell according to PET_SCALE_SPELL_MAX_LEVEL, capping by BD spec if appropriate
-        /// </summary>
-        /// <param name="spell">The spell to scale</param>
-        /// <param name="casterLevel">The level to scale the pet spell to, 0 to use pet level</param>
-        public override void ScalePetSpell(Spell spell, int casterLevel = 0)
+        public override void ScaleSpell(Spell spell, int casterLevel, double baseLineLevel)
         {
             if (Properties.PET_SCALE_SPELL_MAX_LEVEL < 1 || spell == null || Level < 1)
                 return;
@@ -138,15 +133,12 @@ namespace DOL.GS
                         casterLevel = spec;
                 }
             }
-
-            //base.ScalePetSpell(spell, casterLevel);
         }
 
         public override void Die(GameObject killer)
         {
             CommanderPet commander = (this.Brain as IControlledBrain).Owner as CommanderPet;
-            commander.RemoveControlledNpc(this.Brain as IControlledBrain);
-
+            commander.RemoveControlledBrain(this.Brain as IControlledBrain);
             base.Die(killer);
         }
     }

@@ -7,19 +7,21 @@ using System;
 
 namespace DOL.GS.Spells
 {
-    /// <summary>
-    /// Damage Over Time spell handler
-    /// </summary>
-    [SpellHandlerAttribute("DamageOverTime")]
-    public class DoTSpellHandler : SpellHandler
-    {
-        public int CriticalDamage { get; protected set; } = 0;
-        private bool firstTick = true;
+	/// <summary>
+	/// Damage Over Time spell handler
+	/// </summary>
+	[SpellHandler(eSpellType.DamageOverTime)]
+	public class DoTSpellHandler : SpellHandler
+	{
+		public int CriticalDamage { get; protected set; } = 0;
+		private bool firstTick = true;
 
-        public override ECSGameSpellEffect CreateECSEffect(ECSGameEffectInitParams initParams)
-        {
-            return new DamageOverTimeECSGameEffect(initParams);
-        }
+		public DoTSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
+
+		public override ECSGameSpellEffect CreateECSEffect(ECSGameEffectInitParams initParams)
+		{
+			return new DamageOverTimeECSGameEffect(initParams);
+		}
 
         /// <summary>
         /// Execute damage over time spell
@@ -31,10 +33,10 @@ namespace DOL.GS.Spells
             base.FinishSpellCast(target);
         }
 
-        public override double GetLevelModFactor()
-        {
-            return 0;
-        }
+		public override double CalculateDamageVarianceOffsetFromLevelDifference(GameLiving caster, GameLiving target)
+		{
+			return 0;
+		}
 
         protected override double CalculateDistanceFallOff(int distance, int radius)
         {
@@ -56,87 +58,28 @@ namespace DOL.GS.Spells
         public override AttackData CalculateDamageToTarget(GameLiving target)
         {
             AttackData ad = base.CalculateDamageToTarget(target);
-            if (this.SpellLine.KeyName == GlobalSpellsLines.Mundane_Poisons)
-            {
-                RealmAbilities.L3RAPropertyEnhancer ra = Caster.GetAbility<RealmAbilities.ViperAbility>();
-                if (ra != null)
-                {
-                    int additional = (int)((float)ad.Damage * ((float)ra.Amount / 100));
-                    ad.Damage += additional;
-                }
-            }
 
-            //dots can only crit through Wild Arcana RA, which is handled elsewhere
-            //if (ad.CriticalDamage > 0) ad.CriticalDamage = 0;
+            if (SpellLine.KeyName is GlobalSpellsLines.Mundane_Poisons && Caster.effectListComponent.ContainsEffectForEffectType(eEffect.Viper))
+                ad.Damage *= 2;
 
-            //GameSpellEffect iWarLordEffect = SpellHandler.FindEffectOnTarget(target, "CleansingAura");
-            //if (iWarLordEffect != null)
-            //	ad.Damage *= (int)(1.00 - (iWarLordEffect.Spell.Value * 0.01));
+            /* GameSpellEffect iWarLordEffect = FindEffectOnTarget(target, "CleansingAura");
+            if (iWarLordEffect != null)
+                ad.Damage *= (int) (1.00 - iWarLordEffect.Spell.Value * 0.01);*/
 
             return ad;
         }
 
-        /// <summary>
-        /// Calculates min damage variance %
-        /// </summary>
-        /// <param name="target">spell target</param>
-        /// <param name="min">returns min variance</param>
-        /// <param name="max">returns max variance</param>
-        public override void CalculateDamageVariance(GameLiving target, out double min, out double max)
-        {
-            int speclevel = 1;
-            min = 1;
-            max = 1;
-
-            if (m_caster is IGamePlayer)
-            {
-                if (m_spellLine.KeyName == GlobalSpellsLines.Mundane_Poisons)
-                {
-                    speclevel = ((IGamePlayer)m_caster).GetModifiedSpecLevel(Specs.Envenom);
-                    min = 1;
-                    max = 1;
-
-                    if (target.Level > 0)
-                    {
-                        min = 0.25 + (speclevel - 1) / (double)target.Level;
-                    }
-                }
-
-                if (m_spellLine.KeyName == GlobalSpellsLines.Item_Effects)
-                {
-                    min = .75;
-                    max = 1;
-                }
-                else
-                {
-                    speclevel = ((IGamePlayer)m_caster).GetModifiedSpecLevel(m_spellLine.Spec);
-
-                    if (target.Level > 0)
-                    {
-                        min = 0.25 + (speclevel - 1) / (double)target.Level;
-                    }
-                }
-            }
-
-            // no overspec bonus for dots
-
-            if (min > max) min = max;
-            if (min < 0) min = 0;
-        }
-
-        /// <summary>
-        /// Sends damage text messages but makes no damage
-        /// </summary>
-        /// <param name="ad"></param>
-        public override void SendDamageMessages(AttackData ad)
-        {
-            // Graveen: only GamePlayer should receive messages :p
-            GamePlayer PlayerReceivingMessages = null;
-
-            if (m_caster is GamePlayer)
-                PlayerReceivingMessages = m_caster as GamePlayer;
-
-            if (m_caster is GameSummonedPet)
+		/// <summary>
+		/// Sends damage text messages but makes no damage
+		/// </summary>
+		/// <param name="ad"></param>
+		public override void SendDamageMessages(AttackData ad)
+		{
+			// Graveen: only GamePlayer should receive messages :p
+			GamePlayer PlayerReceivingMessages = null;
+			if (m_caster is GamePlayer)
+				PlayerReceivingMessages = m_caster as GamePlayer;
+            if ( m_caster is GameSummonedPet)
                 if ((m_caster as GameSummonedPet).Brain is IControlledBrain)
                     PlayerReceivingMessages = ((m_caster as GameSummonedPet).Brain as IControlledBrain).GetPlayerOwner();
 
@@ -304,54 +247,21 @@ namespace DOL.GS.Spells
             DamageTarget(ad, false);
         }
 
-        public override double CalculateDamageBase(GameLiving target)
-        {
-            double spellDamage = Spell.Damage;
-            IGamePlayer player = null;
-
-            if (m_caster is IGamePlayer)
-                player = m_caster as IGamePlayer;
-
-            if (m_spellLine.KeyName != GlobalSpellsLines.Mundane_Poisons && m_spellLine.KeyName != GlobalSpellsLines.Item_Effects && m_spellLine.KeyName != GlobalSpellsLines.Item_Spells)
-            {
-                if (player != null && player.CharacterClass.ManaStat != eStat.UNDEFINED)
-                {
-                    int manaStatValue = player.GetModified((eProperty)player.CharacterClass.ManaStat);
-                    spellDamage *= (manaStatValue + 200) / 275.0;
-
-                    if (spellDamage < 0)
-                        spellDamage = 0;
-                }
-                else if (m_caster is GameNPC)
-                {
-                    int manaStatValue = m_caster.GetModified(eProperty.Intelligence);
-                    spellDamage *= (manaStatValue + 200) / 275.0;
-
-                    if (spellDamage < 0)
-                        spellDamage = 0;
-                }
-            }
-            return spellDamage;
-        }
-
-        // constructor
-        public DoTSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
-
-        private int CalculateCriticalDamage(AttackData ad)
+		private int CalculateCriticalDamage(AttackData ad)
         {
             if (CriticalDamage > 0 || !firstTick)
                 return CriticalDamage;
 
-			int criticalChance = Caster.DebuffCriticalChance;
+			ad.CriticalChance = Caster.DebuffCriticalChance;
 
-            if (criticalChance < 0)
-                return 0;
+			if (ad.CriticalChance < 0)
+				return 0;
 
-            int randNum = Util.CryptoNextInt(0, 100);
-            int critCap = Math.Min(50, criticalChance);
+			double randNum = Util.RandomDouble() * 100;
+			int critCap = Math.Min(50, ad.CriticalChance);
 
-            if (Caster is GamePlayer spellCaster && spellCaster.UseDetailedCombatLog && critCap > 0)
-                spellCaster.Out.SendMessage($"dot crit chance: {critCap} random: {randNum}", eChatType.CT_DamageAdd, eChatLoc.CL_SystemWindow);
+			if (Caster is GamePlayer spellCaster && spellCaster.UseDetailedCombatLog && critCap > 0)
+				spellCaster.Out.SendMessage($"dot crit chance: {critCap:0.##} random: {randNum:0.##}", eChatType.CT_DamageAdd, eChatLoc.CL_SystemWindow);
 
             if (critCap > randNum && (ad.Damage >= 1))
             {
@@ -359,7 +269,12 @@ namespace DOL.GS.Spells
                 CriticalDamage = Util.Random(ad.Damage / 10, critmax); //tThink min crit is 10% of damage
             }
 
-            return CriticalDamage;
-        }
-    }
+			return CriticalDamage;
+		}
+
+		protected override double CalculateBuffDebuffEffectiveness()
+		{
+			return 1.0; // Unused by DoTs.
+		}
+	}
 }

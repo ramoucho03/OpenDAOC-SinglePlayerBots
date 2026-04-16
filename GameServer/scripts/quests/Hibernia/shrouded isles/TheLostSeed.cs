@@ -18,7 +18,6 @@ using DOL.AI.Brain;
 using DOL.Database;
 using DOL.Events;
 using DOL.GS.PacketHandler;
-using log4net;
 
 namespace DOL.GS.Quests.Hibernia
 {
@@ -27,7 +26,7 @@ namespace DOL.GS.Quests.Hibernia
 		/// <summary>
 		/// Defines a logger for this class.
 		/// </summary>
-		private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		private const string questTitle = "The Lost Seed";
 		private const int minimumLevel = 48;
@@ -384,7 +383,7 @@ namespace DOL.GS.Quests.Hibernia
 			if (existingCopy.Length > 0) return;
 
 			//only try to spawn him once per trigger even if multiple people enter at the same time
-			if (Monitor.TryEnter(spawnLock))
+			if (_spawnLock.TryEnter())
 			{
 				try
 				{
@@ -396,7 +395,7 @@ namespace DOL.GS.Quests.Hibernia
 				}
 				finally
 				{
-					Monitor.Exit(spawnLock);
+					_spawnLock.Exit();
 				}
 			}
 			else
@@ -405,7 +404,7 @@ namespace DOL.GS.Quests.Hibernia
 			}
 		}
 
-		static object spawnLock = new object();
+		private static readonly Lock _spawnLock = new();
 
 		protected static void TalkToTerod(DOLEvent e, object sender, EventArgs args)
 		{

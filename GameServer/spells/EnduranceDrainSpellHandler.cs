@@ -3,18 +3,16 @@ using DOL.GS.PacketHandler;
 
 namespace DOL.GS.Spells
 {
-    [SpellHandlerAttribute("EnduranceDrain")]
-    public class EnduranceDrainSpellHandler : SpellHandler
-    {
-        public EnduranceDrainSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line)
-        {
-        }
-
-        public override void FinishSpellCast(GameLiving target)
-        {
-            m_caster.Mana -= PowerCost(target);
-            base.FinishSpellCast(target);
-        }
+	[SpellHandler(eSpellType.EnduranceDrain)]
+	public class EnduranceDrainSpellHandler : SpellHandler
+	{
+		public EnduranceDrainSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) {}
+		
+		public override void FinishSpellCast(GameLiving target)
+		{
+			m_caster.Mana -= PowerCost(target);
+			base.FinishSpellCast(target);
+		}
 
         public override void OnDirectEffect(GameLiving target)
         {

@@ -1,5 +1,6 @@
 using System;
 using DOL.AI.Brain;
+using DOL.GS.Scripts;
 
 namespace DOL.GS.PropertyCalc
 {
@@ -17,14 +18,14 @@ namespace DOL.GS.PropertyCalc
     {
         public override int CalcValue(GameLiving living, eProperty property)
         {
-            int chance = living.BuffBonusCategory4[(int) property] + living.AbilityBonus[(int) property];
+            int chance = living.OtherBonus[(int) property] + living.AbilityBonus[(int) property];
 
-            if (living is GamePlayer)
+            if (living is IGamePlayer)
                 chance += 10;
             else if (ServerProperties.Properties.EXPAND_WILD_MINION &&
                 living is GameNPC npc &&
                 npc.Brain is IControlledBrain brain &&
-                brain.GetPlayerOwner() is GamePlayer playerOwner)
+                brain.GetIPlayerOwner() is IGamePlayer playerOwner)
             {
                 if (npc is NecromancerPet)
                     chance += 10;

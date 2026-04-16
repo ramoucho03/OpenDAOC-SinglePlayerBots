@@ -17,7 +17,6 @@
  */
 using System.Reflection;
 using DOL.Database;
-using log4net;
 
 namespace DOL.GS.PacketHandler.Client.v168
 {
@@ -27,7 +26,7 @@ namespace DOL.GS.PacketHandler.Client.v168
 		/// <summary>
 		/// Defines a logger for this class.
 		/// </summary>
-		private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		public void HandlePacket(GameClient client, GSPacketIn packet)
 		{
@@ -64,8 +63,6 @@ namespace DOL.GS.PacketHandler.Client.v168
 					log.ErrorFormat("Error attempting to update cached player. {0}", ex.Message);
 				}
 			}
-
-			client.Player = null;
 
 			//reset realm if no characters
 			if((client.Account.Characters == null || client.Account.Characters.Length <= 0) && client.Account.Realm != (int)eRealm.None)
@@ -159,8 +156,6 @@ namespace DOL.GS.PacketHandler.Client.v168
 					log.ErrorFormat("Error attempting to update cached player. {0}", ex.Message);
 				}
 			}
-
-			client.Player = null;
 
 			//reset realm if no characters
 			if ((client.Account.Characters == null || client.Account.Characters.Length <= 0) && client.Account.Realm != (int)eRealm.None)

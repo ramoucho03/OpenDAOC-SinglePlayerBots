@@ -21,17 +21,6 @@ namespace DOL.GS.ServerRules
 			return "standard Normal server rules";
 		}
 
-		/// <summary>
-		/// Invoked on NPC death and deals out
-		/// experience/realm points if needed
-		/// </summary>
-		/// <param name="killedNPC">npc that died</param>
-		/// <param name="killer">killer</param>
-		public override void OnNPCKilled(GameNPC killedNPC, GameObject killer)
-		{
-			base.OnNPCKilled(killedNPC, killer); 	
-		}
-
 		public override bool IsAllowedToAttack(GameLiving attacker, GameLiving defender, bool quiet)
 		{
 			if (!base.IsAllowedToAttack(attacker, defender, quiet))
@@ -374,16 +363,6 @@ namespace DOL.GS.ServerRules
 		{
 			base.ResetKeep(lord, killer);
 			lord.Component.Keep.Reset((eRealm)killer.Realm);
-			
-			if (ConquestService.ConquestManager.ActiveObjective != null && ConquestService.ConquestManager.ActiveObjective.Keep == lord.Component.Keep)
-			{
-				ConquestService.ConquestManager.ConquestCapture(ConquestService.ConquestManager.ActiveObjective.Keep);
-			}
-			
-			if (ConquestService.ConquestManager.GetSecondaryObjectives().FirstOrDefault(conq => conq.Keep == lord.Component.Keep) != null)
-			{
-				ConquestService.ConquestManager.ConquestSubCapture(lord.Component.Keep);
-			}
 		}
 	}
 }

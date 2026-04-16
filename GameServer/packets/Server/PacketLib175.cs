@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Reflection;
 using DOL.GS.Housing;
 using DOL.GS.PlayerTitles;
-using log4net;
 
 namespace DOL.GS.PacketHandler
 {
@@ -13,7 +12,7 @@ namespace DOL.GS.PacketHandler
 		/// <summary>
 		/// Defines a logger for this class.
 		/// </summary>
-		private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		/// <summary>
 		/// Constructs a new PacketLib for Version 1.75 clients
@@ -378,21 +377,20 @@ namespace DOL.GS.PacketHandler
 				for (int i = 0; i < updateResists.Length; i++)
 				{
 					racial[i] = SkillBase.GetRaceResist(m_gameClient.Player.Race, updateResists[i]);
-					pak.WriteShort((ushort)racial[i]);
+					pak.WriteShort((ushort) racial[i]);
 				}
 
 				// buffs/debuffs only; remove base, item bonus, RA bonus, race bonus
 				for (int i = 0; i < updateResists.Length; i++)
 				{
-					int mod = m_gameClient.Player.GetModified((eProperty)updateResists[i]);
-					int buff = mod - racial[i] - m_gameClient.Player.AbilityBonus[(int)updateResists[i]] - Math.Min(caps[i], m_gameClient.Player.ItemBonus[(int)updateResists[i]]);
-					pak.WriteShort((ushort)buff);
+					int buff = m_gameClient.Player.GetModifiedFromBuffs((eProperty) updateResists[i]);
+					pak.WriteShort((ushort) buff);
 				}
 
 				// item bonuses
 				for (int i = 0; i < updateResists.Length; i++)
 				{
-					pak.WriteShort((ushort)(m_gameClient.Player.ItemBonus[(int)updateResists[i]]));
+					pak.WriteShort((ushort) m_gameClient.Player.ItemBonus[(int)updateResists[i]]);
 				}
 
 				// item caps
@@ -404,7 +402,7 @@ namespace DOL.GS.PacketHandler
 				// RA bonuses
 				for (int i = 0; i < updateResists.Length; i++)
 				{
-					pak.WriteByte((byte)(m_gameClient.Player.AbilityBonus[(int)updateResists[i]]));
+					pak.WriteByte((byte) (m_gameClient.Player.AbilityBonus[(int)updateResists[i]] + m_gameClient.Player.OtherBonus[(int)updateResists[i]]));
 				}
 
 				pak.WriteByte(0xFF); // FF if resists packet

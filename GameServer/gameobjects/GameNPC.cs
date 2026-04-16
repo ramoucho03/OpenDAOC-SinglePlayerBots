@@ -2,9 +2,9 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Collections.Specialized;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using DOL.AI;
 using DOL.AI.Brain;
 using DOL.Database;
@@ -17,17 +17,17 @@ using DOL.GS.Scripts;
 using DOL.GS.ServerProperties;
 using DOL.GS.Styles;
 using DOL.Language;
-using ECS.Debug;
 
 namespace DOL.GS
 {
-    /// <summary>
-    /// This class is the baseclass for all Non Player Characters like
-    /// Monsters, Merchants, Guards, Steeds ...
-    /// </summary>
-    public class GameNPC : GameLiving, ITranslatableObject
-    {
-        public static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+	/// <summary>
+	/// This class is the baseclass for all Non Player Characters like
+	/// Monsters, Merchants, Guards, Steeds ...
+	/// </summary>
+	public class GameNPC : GameLiving, ITranslatableObject
+	{
+		public static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
+		private static ConcurrentDictionary<Type, Func<AbstractQuest>> _abstractQuestConstructorCache = new();
 
         private const int VISIBLE_TO_PLAYER_SPAN = 60000;
 
@@ -802,12 +802,11 @@ namespace DOL.GS
 
         public int RealZ => m_z;
 
-        /// <summary>
-        /// The stealth state of this NPC
-        /// </summary>
-        public override bool IsStealthed => false;// (Flags & eFlags.STEALTH) != 0;
-
-        public bool WasStealthed { get; private set; } = false;
+		/// <summary>
+		/// The stealth state of this NPC
+		/// </summary>
+		public override bool IsStealthed => (Flags & eFlags.STEALTH) != 0;
+		public bool WasStealthed { get; private set; } = false;
 
 		public override void OnMaxSpeedChange()
 		{
@@ -1386,7 +1385,7 @@ namespace DOL.GS
 			{
 				if (template.Abilities != null)
 				{
-					lock (m_lockAbilities)
+					lock (_abilitiesLock)
 					{
 						foreach (Ability ab in template.Abilities)
 							m_abilities[ab.KeyName] = ab;
@@ -1444,11 +1443,12 @@ namespace DOL.GS
 					return;
 				}
 
-				m_ownBrain = new StandardMobBrain()
+				SetOwnBrain(new StandardMobBrain()
 				{
 					AggroLevel = template.AggroLevel,
-					AggroRange = template.AggroRange
-				};
+					AggroRange = template.AggroRange,
+					Body = this
+				});
 			}
 
 			void HandleModel()
@@ -1528,22 +1528,32 @@ namespace DOL.GS
 				player.Out.SendLivingEquipmentUpdate(this);
 		}
 
-        /// <summary>
-        /// Switches the active weapon to another one
-        /// </summary>
-        /// <param name="slot">the new eActiveWeaponSlot</param>
-        public override void SwitchWeapon(eActiveWeaponSlot slot)
-        {
-            if (attackComponent.AttackState)
-                attackComponent.StopAttack();
+		/// <summary>
+		/// Switches the active weapon to another one
+		/// </summary>
+		/// <param name="slot">the new eActiveWeaponSlot</param>
+		public override void SwitchWeapon(eActiveWeaponSlot slot)
+		{
+			bool wasInAttackState = attackComponent.AttackState;
 
-            bool differentSlot = ActiveWeaponSlot != slot;
+			// Stop attack before changing weapon so that animations play correctly.
+			if (wasInAttackState)
+				attackComponent.StopAttack();
 
-            base.SwitchWeapon(slot);
+			eActiveWeaponSlot previousActiveWeaponSlot = ActiveWeaponSlot;
+			base.SwitchWeapon(slot);
 
-            if (ObjectState == eObjectState.Active && differentSlot)
-                BroadcastLivingEquipmentUpdate();
-        }
+			// Resume attack and notify `attackAction` (disables or reenables automatic ranged weapon switch for NPCs).
+			// This is to comply with scripted NPCs and doesn't happen if `StartAttackWithMeleeWeapon` was called instead.
+			if (wasInAttackState)
+			{
+				attackComponent.attackAction.OnForcedWeaponSwitch();
+				attackComponent.RequestStartAttack();
+			}
+
+			if (previousActiveWeaponSlot != ActiveWeaponSlot)
+				BroadcastLivingEquipmentUpdate();
+		}
 
         /// <summary>
         /// Equipment templateID
@@ -1561,12 +1571,12 @@ namespace DOL.GS
 
         #endregion Inventory/LoadfromDB
 
-        #region Quest
-
-        /// <summary>
-        /// Holds all the quests this npc can give to players
-        /// </summary>
-        protected readonly ArrayList m_questListToGive = new ArrayList();
+		#region Quest
+		/// <summary>
+		/// Holds all the quests this npc can give to players
+		/// </summary>
+		protected readonly ArrayList m_questListToGive = new ArrayList();
+		protected readonly Lock _questListToGiveLock = new();
 
         /// <summary>
         /// Gets the questlist of this player
@@ -1576,65 +1586,77 @@ namespace DOL.GS
             get { return m_questListToGive; }
         }
 
-        /// <summary>
-        /// Adds a scripted quest type to the npc questlist
-        /// </summary>
-        /// <param name="questType">The quest type to add</param>
-        /// <returns>true if added, false if the npc has already the quest!</returns>
-        public void AddQuestToGive(Type questType)
-        {
-            lock (m_questListToGive.SyncRoot)
-            {
-                if (HasQuest(questType) == null)
-                {
-                    AbstractQuest newQuest = (AbstractQuest)Activator.CreateInstance(questType);
-                    if (newQuest != null) m_questListToGive.Add(newQuest);
-                }
-            }
-        }
+		/// <summary>
+		/// Adds a scripted quest type to the npc questlist
+		/// </summary>
+		/// <param name="questType">The quest type to add</param>
+		/// <returns>true if added, false if the npc has already the quest!</returns>
+		public void AddQuestToGive(Type questType)
+		{
+			lock (_questListToGiveLock)
+			{
+				if (HasQuest(questType) != null)
+					return;
 
-        /// <summary>
-        /// removes a scripted quest from this npc
-        /// </summary>
-        /// <param name="questType">The questType to remove</param>
-        /// <returns>true if added, false if the npc has already the quest!</returns>
-        public bool RemoveQuestToGive(Type questType)
-        {
-            lock (m_questListToGive.SyncRoot)
-            {
-                foreach (AbstractQuest q in m_questListToGive)
-                {
-                    if (q.GetType().Equals(questType))
-                    {
-                        m_questListToGive.Remove(q);
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
+				AbstractQuest newQuest = null;
 
-        /// <summary>
-        /// Check if the npc can give the specified quest to a player
-        /// Used for scripted quests
-        /// </summary>
-        /// <param name="questType">The type of the quest</param>
-        /// <param name="player">The player who search a quest</param>
-        /// <returns>the number of time the quest can be done again</returns>
-        public int CanGiveQuest(Type questType, GamePlayer player)
-        {
-            lock (m_questListToGive.SyncRoot)
-            {
-                foreach (AbstractQuest q in m_questListToGive)
-                {
-                    if (q.GetType().Equals(questType) && q.CheckQuestQualification(player) && player.HasFinishedQuest(questType) < q.MaxQuestCount)
-                    {
-                        return q.MaxQuestCount - player.HasFinishedQuest(questType);
-                    }
-                }
-            }
-            return 0;
-        }
+				try
+				{
+					newQuest = _abstractQuestConstructorCache.GetOrAdd(questType, (key) => CompiledConstructorFactory.CompileConstructor(key, []) as Func<AbstractQuest>)();
+				}
+				catch (Exception e)
+				{
+					if (log.IsErrorEnabled)
+						log.Error(e);
+				}
+
+				if (newQuest != null)
+					m_questListToGive.Add(newQuest);
+			}
+		}
+
+		/// <summary>
+		/// removes a scripted quest from this npc
+		/// </summary>
+		/// <param name="questType">The questType to remove</param>
+		/// <returns>true if added, false if the npc has already the quest!</returns>
+		public bool RemoveQuestToGive(Type questType)
+		{
+			lock (_questListToGiveLock)
+			{
+				foreach (AbstractQuest q in m_questListToGive)
+				{
+					if (q.GetType().Equals(questType))
+					{
+						m_questListToGive.Remove(q);
+						return true;
+					}
+				}
+			}
+			return false;
+		}
+
+		/// <summary>
+		/// Check if the npc can give the specified quest to a player
+		/// Used for scripted quests
+		/// </summary>
+		/// <param name="questType">The type of the quest</param>
+		/// <param name="player">The player who search a quest</param>
+		/// <returns>the number of time the quest can be done again</returns>
+		public int CanGiveQuest(Type questType, GamePlayer player)
+		{
+			lock (_questListToGiveLock)
+			{
+				foreach (AbstractQuest q in m_questListToGive)
+				{
+					if (q.GetType().Equals(questType) && q.CheckQuestQualification(player) && player.HasFinishedQuest(questType) < q.MaxQuestCount)
+					{
+						return q.MaxQuestCount - player.HasFinishedQuest(questType);
+					}
+				}
+			}
+			return 0;
+		}
 
         /// <summary>
         /// Return the proper indicator for quest
@@ -1681,38 +1703,38 @@ namespace DOL.GS
             return eQuestIndicator.None;
         }
 
-        /// <summary>
-        /// Check if the npc can show a quest indicator to a player
-        /// Checks both scripted and data quests
-        /// </summary>
-        /// <param name="player">The player to check</param>
-        /// <returns>true if yes, false if the npc can give any quest</returns>
-        public bool CanShowOneQuest(GamePlayer player)
-        {
-            // Scripted quests
-            lock (m_questListToGive.SyncRoot)
-            {
-                foreach (AbstractQuest q in m_questListToGive)
-                {
-                    Type questType = q.GetType();
-                    int doingQuest = (player.IsDoingQuest(questType) != null ? 1 : 0);
-                    if (q.CheckQuestQualification(player) && player.HasFinishedQuest(questType) + doingQuest < q.MaxQuestCount)
-                        return true;
-                }
-            }
+		/// <summary>
+		/// Check if the npc can show a quest indicator to a player
+		/// Checks both scripted and data quests
+		/// </summary>
+		/// <param name="player">The player to check</param>
+		/// <returns>true if yes, false if the npc can give any quest</returns>
+		public bool CanShowOneQuest(GamePlayer player)
+		{
+			// Scripted quests
+			lock (_questListToGiveLock)
+			{
+				foreach (AbstractQuest q in m_questListToGive)
+				{
+					Type questType = q.GetType();
+					int doingQuest = (player.IsDoingQuest(questType) != null ? 1 : 0);
+					if (q.CheckQuestQualification(player) && player.HasFinishedQuest(questType) + doingQuest < q.MaxQuestCount)
+						return true;
+				}
+			}
 
-            // Data driven quests
-            lock (m_dataQuests)
-            {
-                foreach (DataQuest quest in DataQuestList)
-                {
-                    if (quest.ShowIndicator &&
-                        quest.CheckQuestQualification(player))
-                    {
-                        return true;
-                    }
-                }
-            }
+			// Data driven quests
+			lock (_dataQuestsLock)
+			{
+				foreach (DataQuest quest in DataQuestList)
+				{
+					if (quest.ShowIndicator &&
+						quest.CheckQuestQualification(player))
+					{
+						return true;
+					}
+				}
+			}
 
             return false;
         }
@@ -1780,24 +1802,24 @@ namespace DOL.GS
             return false;
         }
 
-        /// <summary>
-        /// Checks if this npc already has a specified quest
-        /// used for scripted quests
-        /// </summary>
-        /// <param name="questType">The quest type</param>
-        /// <returns>the quest if the npc have the quest or null if not</returns>
-        protected AbstractQuest HasQuest(Type questType)
-        {
-            lock (m_questListToGive.SyncRoot)
-            {
-                foreach (AbstractQuest q in m_questListToGive)
-                {
-                    if (q.GetType().Equals(questType))
-                        return q;
-                }
-            }
-            return null;
-        }
+		/// <summary>
+		/// Checks if this npc already has a specified quest
+		/// used for scripted quests
+		/// </summary>
+		/// <param name="questType">The quest type</param>
+		/// <returns>the quest if the npc have the quest or null if not</returns>
+		protected AbstractQuest HasQuest(Type questType)
+		{
+			lock (_questListToGiveLock)
+			{
+				foreach (AbstractQuest q in m_questListToGive)
+				{
+					if (q.GetType().Equals(questType))
+						return q;
+				}
+			}
+			return null;
+		}
 
         #endregion Quest
 
@@ -2000,13 +2022,7 @@ namespace DOL.GS
 			m_spawnPoint.Z = Z;
 			m_spawnHeading = Heading;
 
-			if (Brain != null)
-			{
-				// Delay the first think tick a bit to prevent clients from sending positive LoS checks.
-				// when they shouldn't, which can happen right after 'SendNPCCreate' and makes mobs aggro through walls.
-				Brain.NextThinkTick = GameLoop.GameLoopTime + 750;
-				Brain.Start();
-			}
+			Brain?.Start();
 
             if (Mana <= 0 && MaxMana > 0)
                 Mana = MaxMana;
@@ -2051,8 +2067,8 @@ namespace DOL.GS
                 m_teleporterIndicator.AddToWorld();
             }
 
-            if (Flags.HasFlag(eFlags.STEALTH))
-                WasStealthed = true;
+			if (IsStealthed)
+				WasStealthed = true;
 
             return true;
         }
@@ -2150,7 +2166,7 @@ namespace DOL.GS
 		/// </summary>
 		public override void Delete()
 		{
-			lock (m_respawnTimerLock)
+			lock (_respawnTimerLock)
 			{
 				if (m_respawnTimer != null)
 				{
@@ -2193,78 +2209,76 @@ namespace DOL.GS
             }
         }
 
-        /// <summary>
-        /// Sets the NPC own brain
-        /// </summary>
-        /// <param name="brain">The new brain</param>
-        /// <returns>The old own brain</returns>
-        public virtual ABrain SetOwnBrain(ABrain brain)
-        {
-            if (brain == null)
-                return null;
-            if (brain.IsActive)
-                throw new ArgumentException("The new brain is already active.", "brain");
+		/// <summary>
+		/// Sets the NPC own brain
+		/// </summary>
+		/// <param name="brain">The new brain</param>
+		/// <returns>The old own brain</returns>
+		public virtual ABrain SetOwnBrain(ABrain brain)
+		{
+			if (brain == null)
+				return null;
 
-            ABrain oldBrain = m_ownBrain;
-            bool activate = oldBrain.IsActive;
-            if (activate)
-                oldBrain.Stop();
-            m_ownBrain = brain;
-            m_ownBrain.Body = this;
-            if (activate)
-                m_ownBrain.Start();
+			if (brain.IsActive)
+				throw new ArgumentException("The new brain is already active.", nameof(brain));
 
-            return oldBrain;
-        }
+			ABrain oldBrain = m_ownBrain;
+
+			oldBrain?.Stop();
+			m_ownBrain = brain;
+			m_ownBrain.Body = this;
+			m_ownBrain.FSM?.SetCurrentState(eFSMStateType.WAKING_UP);
+			m_ownBrain.Start();
+			return oldBrain;
+		}
 
 		/// <summary>
 		/// Adds a temporary brain to Npc, last added brain is active
 		/// </summary>
-		/// <param name="newBrain"></param>
 		public virtual void AddBrain(ABrain newBrain)
 		{
-			ArgumentNullException.ThrowIfNull(newBrain);
+			if (newBrain == null)
+				return;
 
 			if (newBrain.IsActive)
 				throw new ArgumentException("The new brain is already active.", nameof(newBrain));
 
 			Brain.Stop();
+
 			ArrayList brains = new(m_brains)
 			{
 				newBrain
 			};
+
 			m_brains = brains;
 			newBrain.Body = this;
+			newBrain.FSM?.SetCurrentState(eFSMStateType.WAKING_UP);
 			newBrain.Start();
 		}
 
-        /// <summary>
-        /// Removes a temporary brain from Npc
-        /// </summary>
-        /// <param name="removeBrain">The brain to remove</param>
-        /// <returns>True if brain was found</returns>
-        public virtual bool RemoveBrain(ABrain removeBrain)
-        {
-            if (removeBrain == null)
-            {
-                //Console.WriteLine("removeBrain is null!");
-                return false;
-            }
+		/// <summary>
+		/// Removes a temporary brain from Npc
+		/// </summary>
+		/// <param name="removeBrain">The brain to remove</param>
+		/// <returns>True if brain was found</returns>
+		public virtual bool RemoveBrain(ABrain removeBrain)
+		{
+			if (removeBrain == null)
+				return false;
 
-            ArrayList brains = new ArrayList(m_brains);
-            int index = brains.IndexOf(removeBrain);
-            if (index < 0)
-            {
-                //Console.WriteLine("Brain index < 0");
-                return false;
-            }
-            bool active = brains[index] == Brain;
-            if (active)
-                removeBrain.Stop();
-            brains.RemoveAt(index);
-            m_brains = brains;
-            if (active)
-                Brain.Start();
+			ArrayList brains = new ArrayList(m_brains);
+			int index = brains.IndexOf(removeBrain);
+
+			if (index < 0)
+				return false;
+
+			bool active = brains[index] == Brain;
+			if (active)
+				removeBrain.Stop();
+			brains.RemoveAt(index);
+			m_brains = brains;
+			if (active)
+				Brain.Start();
 
             return true;
         }
@@ -2630,44 +2644,34 @@ namespace DOL.GS
 			return true;
 		}
 
-        /// <summary>
-        /// ToDo
-        /// </summary>
-        /// <param name="source"></param>
-        /// <param name="text"></param>
-        /// <returns></returns>
-        public override bool WhisperReceive(GameLiving source, string text)
-        {
-            if (!base.WhisperReceive(source, text))
-                return false;
-            if (source is GamePlayer == false)
-                return true;
+		/// <summary>
+		/// ToDo
+		/// </summary>
+		/// <param name="source"></param>
+		/// <param name="text"></param>
+		/// <returns></returns>
+		public override bool WhisperReceive(GameLiving source, string text)
+		{
+			if (!base.WhisperReceive(source, text))
+				return false;
 
-            // GamePlayer player = (GamePlayer)source;
-            //
-            // //TODO: Guards in rvr areas doesn't need check
-            // if (text == "task")
-            // {
-            // 	if (source.TargetObject == null)
-            // 		return false;
-            // 	if (KillTask.CheckAvailability(player, (GameLiving)source.TargetObject))
-            // 	{
-            // 		KillTask.BuildTask(player, (GameLiving)source.TargetObject);
-            // 		return true;
-            // 	}
-            // 	else if (MoneyTask.CheckAvailability(player, (GameLiving)source.TargetObject))
-            // 	{
-            // 		MoneyTask.BuildTask(player, (GameLiving)source.TargetObject);
-            // 		return true;
-            // 	}
-            // 	else if (CraftTask.CheckAvailability(player, (GameLiving)source.TargetObject))
-            // 	{
-            // 		CraftTask.BuildTask(player, (GameLiving)source.TargetObject);
-            // 		return true;
-            // 	}
-            // }
-            return true;
-        }
+			if (source is not GamePlayer player || source.TargetObject is not GameLiving targetLiving)
+				return true;
+
+			if (!text.Equals("task", StringComparison.OrdinalIgnoreCase))
+				return true;
+
+			if (KillTask.CheckAvailability(player, targetLiving))
+				KillTask.BuildTask(player, targetLiving);
+			else if (MoneyTask.CheckAvailability(player, targetLiving))
+				MoneyTask.BuildTask(player, targetLiving);
+			else if (CraftTask.CheckAvailability(player, targetLiving))
+				CraftTask.BuildTask(player, targetLiving);
+			else
+				return false;
+
+			return true;
+		}
 
         public override bool ReceiveItem(GameLiving source, DbInventoryItem item)
         {
@@ -2739,8 +2743,6 @@ namespace DOL.GS
         /// </summary>
         public const int CHARMED_NOEXP_TIMEOUT = 60000;
 
-		public override bool InCombat => base.InCombat || (Brain is not IControlledBrain && Brain is StandardMobBrain brain && brain.HasAggro);
-
 		public virtual void StopAttack()
 		{
 			attackComponent.StopAttack();
@@ -2753,6 +2755,56 @@ namespace DOL.GS
 		public virtual void StartAttack(GameObject target)
 		{
 			attackComponent.RequestStartAttack(target);
+		}
+
+		public void StartAttackWithMeleeWeapon(GameObject target)
+		{
+			eActiveWeaponSlot newSlot = ActiveWeaponSlot;
+
+            if (this is MimicNPC mimic)
+            {
+                if (mimic.MimicSpec.Is2H)
+                    newSlot = eActiveWeaponSlot.TwoHanded;
+                else
+                    newSlot = eActiveWeaponSlot.Standard;
+            }
+            else
+            {
+                DbInventoryItem rightHandWeapon = Inventory.GetItem(eInventorySlot.RightHandWeapon);
+                DbInventoryItem twoHandWeapon = Inventory.GetItem(eInventorySlot.TwoHandWeapon);
+
+                if (twoHandWeapon == null)
+                    newSlot = eActiveWeaponSlot.Standard;
+                else if (rightHandWeapon == null)
+                    newSlot = eActiveWeaponSlot.TwoHanded;
+                else
+                    newSlot = Util.Chance(50) ? eActiveWeaponSlot.TwoHanded : eActiveWeaponSlot.Standard;
+            }
+
+			if (newSlot != ActiveWeaponSlot)
+			{
+				if (attackComponent.AttackState)
+					attackComponent.StopAttack();
+
+				SwitchWeapon(newSlot);
+			}
+
+			StartAttack(target);
+		}
+
+		public void StartAttackWithRangedWeapon(GameObject target)
+		{
+			if (ActiveWeaponSlot is not eActiveWeaponSlot.Distance)
+			{
+				StopFollowing();
+
+				if (attackComponent.AttackState)
+					attackComponent.StopAttack();
+
+				SwitchWeapon(eActiveWeaponSlot.Distance);
+			}
+
+			StartAttack(target);
 		}
 
 		private double damageFactor = 1;
@@ -2772,15 +2824,15 @@ namespace DOL.GS
                 m_lastAttackTickPvP = GameLoop.GameLoopTime;
         }
 
-        /// <summary>
-        /// Returns the Damage this NPC does on an attack, adding 2H damage bonus if appropriate
-        /// </summary>
-        /// <param name="weapon">the weapon used for attack</param>
-        /// <returns></returns>
-        public virtual double AttackDamage(DbInventoryItem weapon)
-        {
-            return attackComponent.AttackDamage(weapon, out _);
-        }
+		/// <summary>
+		/// Returns the Damage this NPC does on an attack, adding 2H damage bonus if appropriate
+		/// </summary>
+		/// <param name="weapon">the weapon used for attack</param>
+		/// <returns></returns>
+		public virtual double AttackDamage(DbInventoryItem weapon)
+		{
+			return attackComponent.AttackDamage(weapon, null, out _);
+		}
 
         /// <summary>
         /// Gets/sets the object health
@@ -2816,153 +2868,64 @@ namespace DOL.GS
         /// </summary>
         public override int Concentration => 500;
 
-        /// <summary>
-        /// Tests if this MOB should give XP and loot based on the XPGainers
-        /// </summary>
-        /// <returns>true if it should deal XP and give loot</returns>
-        public virtual bool IsWorthReward
-        {
-            get
-            {
-                if (CurrentRegion == null || CurrentRegion.Time - CHARMED_NOEXP_TIMEOUT < TempProperties.GetProperty<long>(CHARMED_TICK_PROP))
-                    return false;
-                if (this.Brain is IControlledBrain)
-                    return false;
-
-                HybridDictionary XPGainerList = new HybridDictionary();
-                lock (m_xpGainers.SyncRoot)
-                {
-                    foreach (DictionaryEntry gainer in m_xpGainers)
-                    {
-                        XPGainerList.Add(gainer.Key, gainer.Value);
-                    }
-                }
-                if (XPGainerList.Keys.Count == 0) return false;
-                foreach (DictionaryEntry de in XPGainerList)
-                {
-                    GameObject obj = (GameObject)de.Key;
-                    if (obj is GamePlayer)
-                    {
-                        //If a gameplayer with privlevel > 1 attacked the
-                        //mob, then the players won't gain xp ...
-                        if (((GamePlayer)obj).Client.Account.PrivLevel > 1)
-                            return false;
-                        //If a player to which we are gray killed up we
-                        //aren't worth anything either
-                        if (((GamePlayer)obj).IsObjectGreyCon(this))
-                            return false;
-                    }
-                    else
-                    {
-                        //If object is no gameplayer and realm is != none
-                        //then it means that a npc has hit this living and
-                        //it is not worth any xp ...
-                        //if(obj.Realm != (byte)eRealm.None)
-                        //If grey to at least one living then no exp
-                        if (obj is GameLiving && ((GameLiving)obj).IsObjectGreyCon(this))
-                            return false;
-                    }
-                }
-                return true;
-            }
-            set
-            {
-            }
-        }
+		/// <summary>
+		/// Tests if this MOB should give XP and loot based on the XPGainers
+		/// </summary>
+		/// <returns>true if it should deal XP and give loot</returns>
+		public virtual bool IsWorthReward => Brain is not IControlledBrain && CurrentRegion.Time - CHARMED_NOEXP_TIMEOUT >= TempProperties.GetProperty<long>(CHARMED_TICK_PROP);
 
 		protected void ControlledNPC_Release()
 		{
 			(ControlledBrain as ControlledMobBrain)?.OnRelease();
 		}
 
-        /// <summary>
-        /// Called when this living dies
-        /// </summary>
-        public override void ProcessDeath(GameObject killer)
-        {
-            int hashCode = GetHashCode();
-
-            try
-            {
-                Brain?.KillFSM();
-
-                FireAmbientSentence(eAmbientTrigger.dying, killer);
+		/// <summary>
+		/// Called when this living dies
+		/// </summary>
+		public override void ProcessDeath(GameObject killer)
+		{
+			try
+			{
+				Brain?.KillFSM();
+				FireAmbientSentence(eAmbientTrigger.dying, killer);
 
                 if (ControlledBrain != null)
                     ControlledNPC_Release();
 
-                if (killer != null)
-                {
-                    if (killer is GameNPC pet && pet.Brain is IControlledBrain petBrain)
-                        killer = petBrain.GetLivingOwner();
+				StopMoving();
 
-                    Diagnostics.StartPerfCounter($"ReaperService-NPC-ProcessDeath-DropLoot-NPC({hashCode})");
+				if (killer is GameNPC pet && pet.Brain is IControlledBrain petBrain)
+					killer = petBrain.GetLivingOwner();
+                
+				if (killer != null)
+				{
+					Message.SystemToArea(this, $"{GetName(0, true)} dies!", eChatType.CT_PlayerDied, killer);
 
-                    if (IsWorthReward)
-                        DropLoot(killer);
+					if (killer is GamePlayer player)
+						player.Out.SendMessage($"{GetName(0, true)} dies!", eChatType.CT_PlayerDied, eChatLoc.CL_SystemWindow);
 
-                    Diagnostics.StopPerfCounter($"ReaperService-NPC-ProcessDeath-DropLoot-NPC({hashCode})");
-                    Diagnostics.StartPerfCounter($"ReaperService-NPC-ProcessDeath-AreaMessages-NPC({hashCode})");
+					// Deal out experience, realm points, loot... Based on server rules.
+					GameServer.ServerRules.OnNpcKilled(this, killer);
+				}
 
-                    Message.SystemToArea(this, GetName(0, true) + " dies!", eChatType.CT_PlayerDied, killer);
+				Group?.RemoveMember(this);
+				base.ProcessDeath(killer);
 
-                    if (killer is GamePlayer player)
-                        player.Out.SendMessage(GetName(0, true) + " dies!", eChatType.CT_PlayerDied, eChatLoc.CL_SystemWindow);
+				lock (XpGainersLock)
+				{
+					XPGainers.Clear();
+				}
 
-                    Diagnostics.StopPerfCounter($"ReaperService-NPC-ProcessDeath-AreaMessages-NPC({hashCode})");
-                }
-
-                StopMoving();
-
-                if (Group != null)
-                    Group.RemoveMember(this);
-
-                if (killer != null)
-                {
-                    // Handle faction alignement changes.
-                    if (Faction != null && killer is GamePlayer)
-                    {
-                        lock (m_xpGainers.SyncRoot)
-                        {
-                            foreach (GameLiving xpGainer in m_xpGainers.Keys)
-                            {
-                                GamePlayer playerXpGainer = xpGainer as GamePlayer;
-
-                                if (playerXpGainer != null && playerXpGainer.IsObjectGreyCon(this))
-                                    continue;
-
-								if (playerXpGainer != null &&
-									playerXpGainer.ObjectState == eObjectState.Active &&
-									playerXpGainer.IsAlive &&
-									playerXpGainer.IsWithinRadius(this, WorldMgr.MAX_EXPFORKILL_DISTANCE))
-									Faction.OnMemberKilled(playerXpGainer);
-							}
-						}
-					}
-
-                    // Deal out exp and realm points based on server rules.
-                    Diagnostics.StartPerfCounter($"ReaperService-NPC-ProcessDeath-OnNPCKIlled-NPC({hashCode})");
-                    GameServer.ServerRules.OnNPCKilled(this, killer);
-                    Diagnostics.StopPerfCounter($"ReaperService-NPC-ProcessDeath-OnNPCKIlled-NPC({hashCode})");
-                }
-
-                base.ProcessDeath(killer);
-
-                lock (XPGainers.SyncRoot)
-                {
-                    XPGainers.Clear();
-                }
-
-                Delete();
-                TempProperties.RemoveAllProperties();
-                StartRespawn();
-            }
-            finally
-            {
-                if (isDeadOrDying == true)
-                    base.ProcessDeath(killer);
-            }
-        }
+				Delete();
+				TempProperties.RemoveAllProperties();
+				StartRespawn();
+			}
+			finally
+			{
+				if (IsBeingHandledByReaperService)
+					base.ProcessDeath(killer);
+			}
+		}
 
         /// <summary>
         /// Stores the melee damage type of this NPC
@@ -3064,43 +3027,6 @@ namespace DOL.GS
             set => CanUseLefthandedWeapon = value;
         }
 
-		/// <summary>
-		/// Method to switch the npc to Melee attacks
-		/// </summary>
-		/// <param name="target"></param>
-		public void SwitchToMelee(GameObject target)
-		{
-			attackComponent.StopAttack();
-			DbInventoryItem twohand = Inventory.GetItem(eInventorySlot.TwoHandWeapon);
-			DbInventoryItem righthand = Inventory.GetItem(eInventorySlot.RightHandWeapon);
-
-			if (twohand != null && righthand == null)
-				SwitchWeapon(eActiveWeaponSlot.TwoHanded);
-			else if (twohand != null && righthand != null)
-			{
-				if (Util.Chance(50))
-					SwitchWeapon(eActiveWeaponSlot.TwoHanded);
-				else
-					SwitchWeapon(eActiveWeaponSlot.Standard);
-			}
-			else
-				SwitchWeapon(eActiveWeaponSlot.Standard);
-
-            attackComponent.RequestStartAttack(target);
-        }
-
-        /// <summary>
-        /// Method to switch the guard to Ranged attacks
-        /// </summary>
-        /// <param name="target"></param>
-        public void SwitchToRanged(GameObject target)
-        {
-            StopFollowing();
-            attackComponent.StopAttack();
-            SwitchWeapon(eActiveWeaponSlot.Distance);
-            attackComponent.RequestStartAttack(target);
-        }
-
 		public override void StartInterruptTimer(int duration, AttackData.eAttackType attackType, GameLiving attacker)
 		{
 			// Increase substantially the base interrupt timer duration for non player controlled NPCs
@@ -3142,7 +3068,7 @@ namespace DOL.GS
 		/// <summary>
 		/// The sync object for respawn timer modifications
 		/// </summary>
-		protected readonly object m_respawnTimerLock = new object();
+		protected readonly Lock _respawnTimerLock = new();
 
         /// <summary>
         /// The Respawn Interval of this mob in milliseconds
@@ -3226,7 +3152,7 @@ namespace DOL.GS
 			if (RespawnInterval <= 0)
 				return;
 
-			lock (m_respawnTimerLock)
+			lock (_respawnTimerLock)
 			{
 				if (m_respawnTimer == null)
 				{
@@ -3245,7 +3171,7 @@ namespace DOL.GS
 		/// <returns>the new interval</returns>
 		protected virtual int RespawnTimerCallback(ECSGameTimer respawnTimer)
 		{
-			lock (m_respawnTimerLock)
+			lock (_respawnTimerLock)
 			{
 				if (m_respawnTimer != null)
 				{
@@ -3266,6 +3192,11 @@ namespace DOL.GS
 			m_z = m_spawnPoint.Z;
 			Heading = m_spawnHeading;
 			SpawnTick = GameLoop.GameLoopTime;
+
+			// Set stealth back on respawn instead of when the NPC is dying to prevent the corpse from immediately disappearing.
+			if (WasStealthed)
+				Flags |= eFlags.STEALTH;
+
 			AddToWorld();
 			return 0;
 		}
@@ -3286,214 +3217,36 @@ namespace DOL.GS
             return GetModified(eProperty.CriticalMeleeHitChance);
         }
 
-        public override void OnAttackedByEnemy(AttackData ad)
-        {
-            if (Brain is StandardMobBrain standardMobBrain)
-                standardMobBrain.OnAttackedByEnemy(ad);
+		public override void OnAttackedByEnemy(AttackData ad)
+		{
+			if (ad.AttackType is AttackData.eAttackType.Spell && ad.Damage > 0 && Brain is IControlledBrain controlledBrain)
+			{
+				GamePlayer player = controlledBrain.GetPlayerOwner();
 
-            if ((Flags & eFlags.STEALTH) != 0)
-                Flags ^= eFlags.STEALTH;
-
-            base.OnAttackedByEnemy(ad);
-        }
-
-        /// <summary>
-        /// This method is called to drop loot after this mob dies
-        /// </summary>
-        /// <param name="killer">The killer</param>
-        public virtual void DropLoot(GameObject killer)
-        {
-            // TODO: mobs drop "a small chest" sometimes
-            ArrayList droplist = new ArrayList();
-            ArrayList autolootlist = new ArrayList();
-            ArrayList aplayer = new ArrayList();
-
-            HybridDictionary XPGainerList = new HybridDictionary();
-            lock (m_xpGainers.SyncRoot)
-            {
-                foreach (DictionaryEntry gainer in m_xpGainers)
-                {
-                    XPGainerList.Add(gainer.Key, gainer.Value);
-                }
-            }
-
-            if (XPGainerList.Keys.Count == 0)
-                return;
-
-            DbItemTemplate[] lootTemplates = LootMgr.GetLoot(this, killer);
-
-            foreach (DbItemTemplate lootTemplate in lootTemplates)
-            {
-                if (lootTemplate == null)
-                    continue;
-
-                GameStaticItem loot = null;
-
-                if (GameMoney.IsItemMoney(lootTemplate.Name))
-                {
-                    long value = lootTemplate.Price;
-
-                    //[StephenxPimentel] - Zone Bonus XP Support
-                    if (Properties.ENABLE_ZONE_BONUSES)
-                    {
-                        GamePlayer killerPlayer;
-
-                        if (killer is GamePlayer player)
-                            killerPlayer = player;
-                        else if (killer is GameNPC npc)
-                        {
-                            if (npc.Brain is IControlledBrain brain)
-                                killerPlayer = brain.GetPlayerOwner();
-                            else
-                                return;
-                        }
-                        else
-                            return;
-
-                        int zoneBonus = (((int)value * ZoneBonus.GetCoinBonus(killerPlayer) / 100));
-                        if (zoneBonus > 0)
-                        {
-                            long amount = (long)(zoneBonus * ServerProperties.Properties.MONEY_DROP);
-                            killerPlayer.AddMoney(amount,
-                                                  ZoneBonus.GetBonusMessage(killerPlayer, (int)(zoneBonus * ServerProperties.Properties.MONEY_DROP), ZoneBonus.eZoneBonusType.COIN),
-                                                  eChatType.CT_Important, eChatLoc.CL_SystemWindow);
-                            InventoryLogging.LogInventoryAction(this, killerPlayer, eInventoryActionType.Loot, amount);
-                        }
-                    }
-
-                    if (Keeps.KeepBonusMgr.RealmHasBonus(DOL.GS.Keeps.eKeepBonusType.Coin_Drop_5, (eRealm)killer.Realm))
-                        value += (value / 100) * 5;
-                    else if (Keeps.KeepBonusMgr.RealmHasBonus(DOL.GS.Keeps.eKeepBonusType.Coin_Drop_3, (eRealm)killer.Realm))
-                        value += (value / 100) * 3;
-
-                    //this will need to be changed when the ML for increasing money is added
-                    if (value != lootTemplate.Price)
-                    {
-                        GamePlayer killerPlayer = killer as GamePlayer;
-                        if (killerPlayer != null)
-                            killerPlayer.Out.SendMessage(LanguageMgr.GetTranslation(killerPlayer.Client, "GameNPC.DropLoot.AdditionalMoney", Money.GetString(value - lootTemplate.Price)), eChatType.CT_Loot, eChatLoc.CL_SystemWindow);
-                    }
-
-                    //Mythical Coin bonus property (Can be used for any equipped item, bonus 235)
-                    if (killer is GamePlayer)
-                    {
-                        GamePlayer killerPlayer = killer as GamePlayer;
-                        if (killerPlayer.GetModified(eProperty.MythicalCoin) > 0)
-                        {
-                            value += (value * killerPlayer.GetModified(eProperty.MythicalCoin)) / 100;
-                            killerPlayer.Out.SendMessage(LanguageMgr.GetTranslation(killerPlayer.Client,
-                                                                                    "GameNPC.DropLoot.ItemAdditionalMoney", Money.GetString(value - lootTemplate.Price)), eChatType.CT_Loot, eChatLoc.CL_SystemWindow);
-                        }
-                    }
-
-                    loot = new GameMoney(value, this);
-                    loot.Name = lootTemplate.Name;
-                    loot.Model = (ushort)lootTemplate.Model;
-                }
-                else
-                {
-                    DbInventoryItem invitem;
-
-					if (lootTemplate is DbItemUnique)
-						invitem = GameInventoryItem.Create(lootTemplate as DbItemUnique);
-					else
-						invitem = GameInventoryItem.Create(lootTemplate);
-
-                    if (lootTemplate is GeneratedUniqueItem)
-                    {
-                        invitem.IsROG = true;
-                    }
-
-                    loot = new WorldInventoryItem(invitem);
-                    loot.X = X;
-                    loot.Y = Y;
-                    loot.Z = Z;
-                    loot.Heading = Heading;
-                    loot.CurrentRegion = CurrentRegion;
-                    (loot as WorldInventoryItem).Item.IsCrafted = false;
-                    (loot as WorldInventoryItem).Item.Creator = Name;
-
-                    // This may seem like an odd place for this code, but loot-generating code further up the line
-                    // is dealing strictly with ItemTemplate objects, while you need the InventoryItem in order
-                    // to be able to set the Count property.
-                    // Converts single drops of loot with PackSize > 1 (and MaxCount >= PackSize) to stacks of Count = PackSize
-                    if (((WorldInventoryItem)loot).Item.PackSize > 1 && ((WorldInventoryItem)loot).Item.MaxCount >= ((WorldInventoryItem)loot).Item.PackSize)
-                    {
-                        ((WorldInventoryItem)loot).Item.Count = ((WorldInventoryItem)loot).Item.PackSize;
-                    }
-                }
-
-                GamePlayer playerAttacker = null;
-                BattleGroup activeBG = null;
-
-				if (killer is GamePlayer playerKiller && activeBG != null)
-					activeBG = playerKiller.TempProperties.GetProperty<BattleGroup>(BattleGroup.BATTLEGROUP_PROPERTY);
-				
-				foreach (GameObject gainer in XPGainerList.Keys)
+				if (player != null)
 				{
-					//if a battlegroup killed the mob, filter out any non BG players
-					if (activeBG != null && gainer is GamePlayer p &&
-						p.TempProperties.GetProperty<BattleGroup>(BattleGroup.BATTLEGROUP_PROPERTY) != activeBG)
-						continue;
-					
-					if (gainer is GamePlayer)
-					{
-						playerAttacker = gainer as GamePlayer;
-						if (loot.Realm == 0)
-							loot.Realm = ((GamePlayer)gainer).Realm;
-					}
-					loot.AddOwner(gainer);
-					if (gainer is GameNPC)
-					{
-						IControlledBrain brain = ((GameNPC)gainer).Brain as IControlledBrain;
-						if (brain != null)
-						{
-							playerAttacker = brain.GetPlayerOwner();
-							loot.AddOwner(brain.GetPlayerOwner());
-						}
-					}
+					string modMessage = string.Empty;
+
+					if (ad.Modifier > 0)
+						modMessage = $" (+{ad.Modifier})";
+					else if (ad.Modifier < 0)
+						modMessage = $" ({ad.Modifier})";
+
+					player.Out.SendMessage(string.Format(LanguageMgr.GetTranslation(player.Client.Account.Language, "GameLiving.AttackData.HitsForDamage"), ad.Attacker.GetName(0, true), ad.Target.Name, ad.Damage, modMessage), eChatType.CT_Damaged, eChatLoc.CL_SystemWindow);
+
+					if (ad.CriticalDamage > 0)
+						player.Out.SendMessage(string.Format(LanguageMgr.GetTranslation(player.Client.Account.Language, "GameLiving.AttackData.CriticallyHitsForDamage"), ad.Attacker.GetName(0, true), ad.Target.Name, ad.CriticalDamage), eChatType.CT_Damaged, eChatLoc.CL_SystemWindow);
 				}
-				if (playerAttacker == null) return; // no loot if mob kills another mob
+			}
 
+			if (Brain is StandardMobBrain standardMobBrain)
+				standardMobBrain.OnAttackedByEnemy(ad);
 
-                droplist.Add(loot.GetName(1, false));
-                Diagnostics.StartPerfCounter("ReaperService-NPC-DropLoot-AddToWorld-loot(" + loot.GetHashCode() + ")");
-                loot.AddToWorld();
-                Diagnostics.StopPerfCounter("ReaperService-NPC-DropLoot-AddToWorld-loot(" + loot.GetHashCode() + ")");
+			Flags &= ~eFlags.STEALTH;
+			base.OnAttackedByEnemy(ad);
+		}
 
-                foreach (GameObject gainer in XPGainerList.Keys)
-                {
-                    if (gainer is GamePlayer)
-                    {
-                        GamePlayer player = gainer as GamePlayer;
-                        if (player.Autoloot && loot.IsWithinRadius(player, 2400)) // should be large enough for most casters to autoloot
-                        {
-                            if (player.Group == null || (player.Group != null && player == player.Group.Leader))
-                                aplayer.Add(player);
-                            autolootlist.Add(loot);
-                        }
-                    }
-                }
-            }
-
-            Diagnostics.StartPerfCounter("ReaperService-NPC-DropLoot-BroadcastLoot-npc(" + this.GetHashCode() + ")");
-            BroadcastLoot(droplist);
-            Diagnostics.StopPerfCounter("ReaperService-NPC-DropLoot-BroadcastLoot-npc(" + this.GetHashCode() + ")");
-
-            Diagnostics.StartPerfCounter("ReaperService-NPC-DropLoot-PickupLoot-npc(" + this.GetHashCode() + ")");
-            if (autolootlist.Count > 0)
-            {
-                foreach (GameObject obj in autolootlist)
-                {
-                    foreach (GamePlayer player in aplayer)
-                    {
-                        player.PickupObject(obj, true);
-                        break;
-                    }
-                }
-            }
-            Diagnostics.StopPerfCounter("ReaperService-NPC-DropLoot-PickupLoot-npc(" + this.GetHashCode() + ")");
-        }
+		public virtual bool CanDropLoot => true;
 
         /// <summary>
         /// The enemy is healed, so we add to the xp gainers list
@@ -3527,18 +3280,18 @@ namespace DOL.GS
 
                 float damageAmount = (float)healAmount / xpGainers.Length;
 
-                foreach (GameLiving living in xpGainers)
-                {
-                    // add players in range for exp to exp gainers
-                    this.AddXPGainer(living, damageAmount);
-                }
-            }
-            else
-            {
-                this.AddXPGainer(healSource, (float)healAmount);
-            }
+				foreach (GameLiving living in xpGainers)
+				{
+					// add players in range for exp to exp gainers
+					this.AddXPGainer(living, damageAmount);
+				}
+			}
+			else
+			{
+				this.AddXPGainer(healSourceLiving, healAmount);
+			}
 
-            if (healSource is GamePlayer || (healSource is GameNPC healSourceNpc && (healSourceNpc.Flags & eFlags.PEACE) == 0))
+            if (healSource is IGamePlayer || (healSource is GameNPC healSourceNpc && (healSourceNpc.Flags & eFlags.PEACE) == 0))
             {
                 // first check to see if the healer is in our aggrolist so we don't go attacking anyone who heals
                 if (Brain is StandardMobBrain mobBrain && mobBrain.GetBaseAggroAmount(healSourceLiving) > 0)
@@ -3601,6 +3354,11 @@ namespace DOL.GS
 		private List<Spell> m_spells = [];
 		private ConcurrentDictionary<GameObject, List<SpellWaitingForLosCheck>> _spellsWaitingForLosCheck = new();
 
+		public void ClearSpellsWaitingForLosCheck()
+		{
+			_spellsWaitingForLosCheck.Clear();
+		}
+
 		public class SpellWaitingForLosCheck
 		{
 			public Spell Spell { get; set; }
@@ -3642,83 +3400,29 @@ namespace DOL.GS
 			}
 		}
 
-        /// <summary>
-        /// Harmful spell list and accessor
-        /// </summary>
-        public List<Spell> HarmfulSpells { get; set; } = null;
+		public List<Spell> HarmfulSpells { get; set; } = null;
+		public List<Spell> InstantHarmfulSpells { get; set; } = null;
+		public List<Spell> HealSpells { get; set; } = null;
+		public List<Spell> InstantHealSpells { get; set; } = null;
+		public List<Spell> MiscSpells { get; set; } = null;
+		public List<Spell> InstantMiscSpells { get; set; } = null;
 
-        /// <summary>
-        /// Whether or not the NPC can cast harmful spells with a cast time.
-        /// </summary>
-        public bool CanCastHarmfulSpells
-        {
-            get { return (HarmfulSpells != null && HarmfulSpells.Count > 0); }
-        }
+		// These should only be used to check if the lists have something in them.
+		public bool CanCastHarmfulSpells => HarmfulSpells != null && HarmfulSpells.Count > 0;
+		public bool CanCastInstantHarmfulSpells => InstantHarmfulSpells != null && InstantHarmfulSpells.Count > 0;
+		public bool CanCastHealSpells => HealSpells != null && HealSpells.Count > 0;
+		public bool CanCastInstantHealSpells => InstantHealSpells != null && InstantHealSpells.Count > 0;
+		public bool CanCastMiscSpells => MiscSpells != null && MiscSpells.Count > 0;
+		public bool CanCastInstantMiscSpells => InstantMiscSpells != null && InstantMiscSpells.Count > 0;
 
-        /// <summary>
-        /// Instant harmful spell list and accessor
-        /// </summary>
-        public List<Spell> InstantHarmfulSpells { get; set; } = null;
+		private long _nextInstantHarmfulSpell;
+		public virtual bool IsInstantHarmfulSpellCastingLocked => !ServiceUtils.ShouldTickAdjust(ref _nextInstantHarmfulSpell);
 
-        /// <summary>
-        /// Whether or not the NPC can cast harmful instant spells.
-        /// </summary>
-        public bool CanCastInstantHarmfulSpells
-        {
-            get { return (InstantHarmfulSpells != null && InstantHarmfulSpells.Count > 0); }
-        }
-
-        /// <summary>
-        /// Healing spell list and accessor
-        /// </summary>
-        public List<Spell> HealSpells { get; set; } = null;
-
-        /// <summary>
-        /// Whether or not the NPC can cast heal spells with a cast time.
-        /// </summary>
-        public bool CanCastHealSpells
-        {
-            get { return (HealSpells != null && HealSpells.Count > 0); }
-        }
-
-        /// <summary>
-        /// Instant healing spell list and accessor
-        /// </summary>
-        public List<Spell> InstantHealSpells { get; set; } = null;
-
-        /// <summary>
-        /// Whether or not the NPC can cast instant healing spells.
-        /// </summary>
-        public bool CanCastInstantHealSpells
-        {
-            get { return (InstantHealSpells != null && InstantHealSpells.Count > 0); }
-        }
-
-        /// <summary>
-        /// Miscellaneous spell list and accessor
-        /// </summary>
-        public List<Spell> MiscSpells { get; set; } = null;
-
-        /// <summary>
-        /// Whether or not the NPC can cast miscellaneous spells with a cast time.
-        /// </summary>
-        public bool CanCastMiscSpells
-        {
-            get { return (MiscSpells != null && MiscSpells.Count > 0); }
-        }
-
-        /// <summary>
-        /// Instant miscellaneous spell list and accessor
-        /// </summary>
-        public List<Spell> InstantMiscSpells { get; set; } = null;
-
-        /// <summary>
-        /// Whether or not the NPC can cast miscellaneous instant spells.
-        /// </summary>
-        public bool CanCastInstantMiscSpells
-        {
-            get { return (InstantMiscSpells != null && InstantMiscSpells.Count > 0); }
-        }
+		public virtual void ApplyInstantHarmfulSpellDelay()
+		{
+			// Delay the next spell by 1~6 seconds (triangular distribution).
+			_nextInstantHarmfulSpell += 1000 + Util.Random(2500) + Util.Random(2500);;
+		}
 
         /// <summary>
         /// Sort spells into specific lists
@@ -3795,10 +3499,106 @@ namespace DOL.GS
 						MiscSpells.Add(spell);
 					}
 				}
-			} // foreach
+			}
+		}
 
-            //SortedSpells = true;
-        }
+		public virtual void ScaleSpell(Spell spell, int casterLevel, double baseLineLevel)
+		{
+			if (spell == null || Level < 1 || spell.ScaledToNpcLevel)
+				return;
+
+			if (casterLevel < 1)
+				casterLevel = Level;
+
+			double scalingFactor = casterLevel / baseLineLevel;
+
+			switch (spell.SpellType)
+			{
+				// Scale Damage.
+				case eSpellType.DamageOverTime:
+				case eSpellType.DamageShield:
+				case eSpellType.DamageAdd:
+				case eSpellType.DirectDamage:
+				case eSpellType.Lifedrain:
+				case eSpellType.DamageSpeedDecrease:
+				case eSpellType.StyleBleeding:
+				{
+					spell.Damage *= scalingFactor;
+					spell.ScaledToNpcLevel = true;
+					break;
+				}
+				// Scale Value.
+				case eSpellType.EnduranceRegenBuff:
+				case eSpellType.Heal:
+				case eSpellType.StormEnduDrain:
+				case eSpellType.PowerRegenBuff:
+				case eSpellType.PowerHealthEnduranceRegenBuff:
+				case eSpellType.CombatSpeedBuff:
+				case eSpellType.HasteBuff:
+				case eSpellType.CelerityBuff:
+				case eSpellType.CombatSpeedDebuff:
+				case eSpellType.StyleCombatSpeedDebuff:
+				case eSpellType.CombatHeal:
+				case eSpellType.HealthRegenBuff:
+				case eSpellType.HealOverTime:
+				case eSpellType.ConstitutionBuff:
+				case eSpellType.DexterityBuff:
+				case eSpellType.StrengthBuff:
+				case eSpellType.ConstitutionDebuff:
+				case eSpellType.DexterityDebuff:
+				case eSpellType.StrengthDebuff:
+				case eSpellType.ArmorFactorDebuff:
+				case eSpellType.BaseArmorFactorBuff:
+				case eSpellType.SpecArmorFactorBuff:
+				case eSpellType.PaladinArmorFactorBuff:
+				case eSpellType.ArmorAbsorptionBuff:
+				case eSpellType.ArmorAbsorptionDebuff:
+				case eSpellType.DexterityQuicknessBuff:
+				case eSpellType.StrengthConstitutionBuff:
+				case eSpellType.DexterityQuicknessDebuff:
+				case eSpellType.StrengthConstitutionDebuff:
+				case eSpellType.Taunt:
+				case eSpellType.SpeedDecrease:
+				case eSpellType.SavageCombatSpeedBuff:
+				{
+					spell.Value *= scalingFactor;
+					spell.ScaledToNpcLevel = true;
+					break;
+				}
+				// Scale Duration.
+				case eSpellType.Disease:
+				case eSpellType.Stun:
+				case eSpellType.UnrresistableNonImunityStun:
+				case eSpellType.Mesmerize:
+				case eSpellType.StyleStun:
+				case eSpellType.StyleSpeedDecrease:
+				{
+					spell.Duration = (int) Math.Ceiling(spell.Duration * scalingFactor);
+					spell.ScaledToNpcLevel = true;
+					break;
+				}
+				// Scale Damage and Value.
+				case eSpellType.DirectDamageWithDebuff:
+				{
+					// Patch 1.123: For Cabalist, Enchanter, and Spiritmaster pets
+					// The debuff component of its nuke has been as follows:
+					// For pet level 1-23, the debuff is now 10%.
+					// For pet level 24-43, the debuff is now 20%.
+					// For pet level 44-50, the debuff is now 30%.
+					spell.Value *= scalingFactor;
+					spell.Damage *= scalingFactor;
+					spell.Duration = (int) Math.Ceiling(spell.Duration * scalingFactor);
+					spell.ScaledToNpcLevel = true;
+					break;
+				}
+				case eSpellType.StyleTaunt:
+				case eSpellType.CurePoison:
+				case eSpellType.CureDisease:
+					break;
+				default:
+					break;
+			}
+		}
 
         /// <summary>
         /// Cast a spell, with optional LOS check
@@ -3844,7 +3644,7 @@ namespace DOL.GS
 					for (int i = list.Count - 1; i >= 0; i--)
 					{
 						if (ServiceUtils.ShouldTick(list[i].RequestTime + 2000))
-							list.RemoveAt(i);
+							list.SwapRemoveAt(i);
 					}
 
 					// We can keep the list if we're about to add anything to it.
@@ -3855,14 +3655,14 @@ namespace DOL.GS
 
             Spell spellToCast = null;
 
-            if (line.KeyName == GlobalSpellsLines.Mob_Spells && this is not MimicNPC)
-            {
-                // NPC spells will get the level equal to their caster
-                spellToCast = (Spell)spell.Clone();
-                spellToCast.Level = Level;
-            }
-            else
-                spellToCast = spell;
+			if (line.KeyName is GlobalSpellsLines.Mob_Spells && this is not MimicNPC)
+			{
+				// NPC spells will get the level equal to their caster
+				spellToCast = (Spell) spell.Clone();
+				spellToCast.Level = Level;
+			}
+			else
+				spellToCast = spell;
 
             if (TargetObject == this || TargetObject == null)
                 return base.CastSpell(spellToCast, line);
@@ -3897,12 +3697,7 @@ namespace DOL.GS
 			{
 				// This LoS check will not necessarily result in an actual packet being sent to the client, but it will trigger a second call to the callback.
 				LosChecker.Out.SendCheckLos(this, TargetObject, new CheckLosResponse(CastSpellLosCheckReply));
-
-				lock (((ICollection) oldValue).SyncRoot)
-				{
-					oldValue.Add(arg);
-				}
-
+				oldValue.Add(arg);
 				return oldValue;
 			}
 		}
@@ -4180,10 +3975,10 @@ namespace DOL.GS
             {
                 Dictionary<string, Ability> tmp = new Dictionary<string, Ability>();
 
-                lock (m_lockAbilities)
-                {
-                    tmp = new Dictionary<string, Ability>(m_abilities);
-                }
+				lock (_abilitiesLock)
+				{
+					tmp = new Dictionary<string, Ability>(m_abilities);
+				}
 
 				return tmp;
 			}
@@ -4331,25 +4126,35 @@ namespace DOL.GS
 
         #region ControlledNPCs
 
-        public override void SetControlledBrain(IControlledBrain controlledBrain)
-        {
-            if (ControlledBrain == null)
-                InitControlledBrainArray(1);
+		public override bool AddControlledBrain(IControlledBrain controlledBrain)
+		{
+			ControlledBrain = controlledBrain;
+			return true;
+		}
 
-            ControlledBrain = controlledBrain;
-        }
+		public override bool RemoveControlledBrain(IControlledBrain controlledBrain)
+		{
+			if (ControlledBrain == controlledBrain)
+			{
+				InitControlledBrainArray(1);
+				ControlledBrain = null;
+				return true;
+			}
 
-        /// <summary>
-        /// Gets the controlled object of this NPC
-        /// </summary>
-        public override IControlledBrain ControlledBrain
-        {
-            get
-            {
-                if (m_controlledBrain == null) return null;
-                return m_controlledBrain[0];
-            }
-        }
+			return false;
+		}
+
+		/// <summary>
+		/// Gets the controlled object of this NPC
+		/// </summary>
+		public override IControlledBrain ControlledBrain
+		{
+			get
+			{
+				if (m_controlledBrain == null) return null;
+				return m_controlledBrain[0];
+			}
+		}
 
         /// <summary>
         /// Gets the controlled array of this NPC
@@ -4359,27 +4164,12 @@ namespace DOL.GS
             get { return m_controlledBrain; }
         }
 
-        /// <summary>
-        /// Adds a pet to the current array of pets
-        /// </summary>
-        /// <param name="controlledNpc">The brain to add to the list</param>
-        /// <returns>Whether the pet was added or not</returns>
-        public virtual bool AddControlledNpc(IControlledBrain controlledNpc)
-        {
-            return true;
-        }
+		#endregion
 
-        /// <summary>
-        /// Removes the brain from
-        /// </summary>
-        /// <param name="controlledNpc">The brain to find and remove</param>
-        /// <returns>Whether the pet was removed</returns>
-        public virtual bool RemoveControlledNpc(IControlledBrain controlledNpc)
-        {
-            return true;
-        }
-
-        #endregion ControlledNPCs
+		/// <summary>
+		/// Whether this NPC is available to add on a fight.
+		/// </summary>
+		public virtual bool IsAvailableToJoinFight => !InCombat && Brain is not IControlledBrain && Brain is StandardMobBrain brain && !brain.HasAggro;
 
 		/// <summary>
 		/// Whether this NPC is aggressive.
@@ -4427,7 +4217,8 @@ namespace DOL.GS
 
         public override eGender Gender { get; set; }
 
-        public new NpcMovementComponent movementComponent;
+		public new NpcCastingComponent castingComponent;
+		public new NpcMovementComponent movementComponent;
 
         public GameNPC Copy()
         {
@@ -4549,8 +4340,8 @@ namespace DOL.GS
 
 		public GameNPC(ABrain defaultBrain) : base()
 		{
-			if (movementComponent == null)
-				movementComponent = base.movementComponent as NpcMovementComponent;
+			castingComponent ??= base.castingComponent as NpcCastingComponent;
+			movementComponent ??= base.movementComponent as NpcMovementComponent;
 
 			Level = 1;
 			m_health = MaxHealth;
@@ -4566,12 +4357,12 @@ namespace DOL.GS
 			m_spawnPoint = new Point3D();
 			LinkedFactions = new ArrayList(1);
 
-            if (m_ownBrain == null)
-            {
-                m_ownBrain = defaultBrain;
-                m_ownBrain.Body = this;
-            }
-        }
+			if (m_ownBrain == null)
+			{
+				defaultBrain.Body = this;
+				SetOwnBrain(defaultBrain);
+			}
+		}
 
         public GameNPC() : this(new StandardMobBrain())
         {
@@ -4590,6 +4381,7 @@ namespace DOL.GS
 
         private double m_campBonus = 1;
 
+		public virtual bool CanAwardKillCredit => false;
 		public virtual double CampBonus { get => m_campBonus; set => m_campBonus = value; }
 		public virtual double MaxHealthScalingFactor => 1.0;
 		public double DamageFactor { get => damageFactor; set => damageFactor = value; }

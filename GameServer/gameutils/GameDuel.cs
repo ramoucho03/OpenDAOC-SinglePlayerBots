@@ -56,7 +56,7 @@ namespace DOL.GS
                 living.LastAttackTickPvP = living.TempProperties.GetProperty<long>(DUEL_PREVIOUS_LASTATTACKTICKPVP);
                 living.LastAttackedByEnemyTickPvP = living.TempProperties.GetProperty<long>(DUEL_PREVIOUS_LASTATTACKEDBYENEMYTICKPVP);
 
-                lock (living.XPGainers.SyncRoot)
+                lock (player.XpGainersLock)
                 {
                     living.XPGainers.Clear();
                 }

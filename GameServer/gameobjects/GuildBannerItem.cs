@@ -2,7 +2,6 @@ using System;
 using System.Reflection;
 using DOL.Database;
 using DOL.GS.PacketHandler;
-using log4net;
 using DOL.GS.Scripts;
 
 namespace DOL.GS
@@ -12,7 +11,7 @@ namespace DOL.GS
 	/// </summary>
 	public class GuildBannerItem : GameInventoryItem
 	{
-		private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		public enum eStatus : byte
 		{

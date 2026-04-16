@@ -2,14 +2,13 @@ using System.Linq;
 using System.Reflection;
 using DOL.GS.PacketHandler;
 using DOL.Language;
-using log4net;
 
 namespace DOL.GS.SkillHandler
 {
     [SkillHandlerAttribute(Abilities.Intercept)]
     public class InterceptAbilityHandler : IAbilityActionHandler
     {
-        private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
         public const int INTERCEPT_DISTANCE = 128;
         public const int REUSE_TIMER = 60 * 1000;
@@ -29,7 +28,7 @@ namespace DOL.GS.SkillHandler
                 foreach (InterceptECSGameEffect intercept in player.effectListComponent.GetAbilityEffects().Where(e => e.EffectType is eEffect.Intercept))
                 {
                     if (intercept.Source == player)
-                        EffectService.RequestImmediateCancelEffect(intercept);
+                        EffectService.RequestCancelEffect(intercept);
                 }
 
                 player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "Skill.Ability.Intercept.CancelTargetNull"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
@@ -77,7 +76,7 @@ namespace DOL.GS.SkillHandler
                     foundOurEffect = true;
 
                     if (cancelOurs)
-                        EffectService.RequestImmediateCancelEffect(intercept);
+                        EffectService.RequestCancelEffect(intercept);
                 }
 
                 if (intercept.Target == target)
@@ -90,7 +89,7 @@ namespace DOL.GS.SkillHandler
             foreach (InterceptECSGameEffect intercept in source.effectListComponent.GetAbilityEffects().Where(e => e.EffectType is eEffect.Intercept))
             {
                 if (intercept.Source == source)
-                    EffectService.RequestImmediateCancelEffect(intercept);
+                    EffectService.RequestCancelEffect(intercept);
             }
 
             new InterceptECSGameEffect(new ECSGameEffectInitParams(source, 0, 1, null), source, target);

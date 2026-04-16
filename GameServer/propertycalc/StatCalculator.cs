@@ -1,22 +1,4 @@
-/*
- * DAWN OF LIGHT - The first free open source DAoC server emulator
- * 
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- * 
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
- *
- */
-
+using DOL.GS.Scripts;
 using System;
 
 namespace DOL.GS.PropertyCalc
@@ -46,7 +28,7 @@ namespace DOL.GS.PropertyCalc
             int deathConDebuff = 0;
             GameLiving livingToCheck; // Used to get item and ability bonuses from the owner of a Necromancer pet.
 
-            if (living is GamePlayer player)
+            if (living is IGamePlayer player)
             {
                 if (property == (eProperty) player.CharacterClass.ManaStat)
                 {
@@ -55,7 +37,7 @@ namespace DOL.GS.PropertyCalc
                 }
 
                 deathConDebuff = player.TotalConstitutionLostAtDeath;
-                livingToCheck = player;
+                livingToCheck = (GameLiving)player;
             }
             else if (living is NecromancerPet necromancerPet)
                 livingToCheck = necromancerPet.Owner ?? living;
@@ -85,7 +67,7 @@ namespace DOL.GS.PropertyCalc
             int baseBuffBonus = living.BaseBuffBonusCategory[propertyIndex];
             int specBuffBonus = living.SpecBuffBonusCategory[propertyIndex];
 
-            if (living is GamePlayer player)
+            if (living is IGamePlayer player)
             {
                 if (property == (eProperty) player.CharacterClass.ManaStat)
                 {
@@ -95,8 +77,8 @@ namespace DOL.GS.PropertyCalc
             }
 
             // Caps and cap increases. Only players actually have a buff bonus cap, pets don't.
-            int baseBuffBonusCap = (living is GamePlayer) ? (int)(living.Level * 1.25) : short.MaxValue;
-            int specBuffBonusCap = (living is GamePlayer) ? (int)(living.Level * 1.5 * 1.25) : short.MaxValue;
+            int baseBuffBonusCap = (living is IGamePlayer) ? (int)(living.Level * 1.25) : short.MaxValue;
+            int specBuffBonusCap = (living is IGamePlayer) ? (int)(living.Level * 1.5 * 1.25) : short.MaxValue;
 
             baseBuffBonus = Math.Min(baseBuffBonus, baseBuffBonusCap);
             specBuffBonus = Math.Min(specBuffBonus, specBuffBonusCap);
@@ -111,7 +93,7 @@ namespace DOL.GS.PropertyCalc
             int itemBonus = living.ItemBonus[(int) property];
             int itemBonusCap = GetItemBonusCap(living);
 
-            if (living is GamePlayer player)
+            if (living is IGamePlayer player)
             {
                 if (property == (eProperty) player.CharacterClass.ManaStat)
                 {
@@ -138,7 +120,7 @@ namespace DOL.GS.PropertyCalc
             int itemBonusCapIncreaseCap = GetItemBonusCapIncreaseCap(living);
             int itemBonusCapIncrease = living.ItemBonus[(int)(eProperty.StatCapBonus_First - eProperty.Stat_First + property)];
 
-            if (living is GamePlayer player)
+            if (living is IGamePlayer player)
             {
                 if (property == (eProperty) player.CharacterClass.ManaStat)
                 {
@@ -159,7 +141,7 @@ namespace DOL.GS.PropertyCalc
             int mythicalItemBonusCapIncrease = living.ItemBonus[(int) (eProperty.MythicalStatCapBonus_First - eProperty.Stat_First + property)];
             int itemBonusCapIncrease = GetItemBonusCapIncrease(living, property);
 
-            if (living is GamePlayer player)
+            if (living is IGamePlayer player)
             {
                 if (property == (eProperty) player.CharacterClass.ManaStat)
                 {
@@ -190,7 +172,7 @@ namespace DOL.GS.PropertyCalc
                 not eCharacterClass.Scout and
                 not eCharacterClass.Hunter and
                 not eCharacterClass.Ranger and
-                not eCharacterClass.Nightshade;
+                not eCharacterClass.Nightshade; // Augmented Acuity augments spell damage since 1.62, but it shouldn't increase stats directly.
         }
 
         public static void ApplyDebuffs(ref int baseDebuff, ref int specDebuff, ref int buffBonus, ref int baseAndItemStat)

@@ -1,23 +1,4 @@
-﻿/*
- * DAWN OF LIGHT - The first free open source DAoC server emulator
- * 
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- * 
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
- *
- */
-
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using DOL.AI.Brain;
@@ -27,7 +8,6 @@ using DOL.GS.Housing;
 using DOL.GS.Keeps;
 using DOL.GS.PacketHandler;
 using DOL.GS.Quests;
-using Microsoft.AspNetCore.Mvc;
 
 namespace DOL.Tests
 {
@@ -71,30 +51,10 @@ namespace DOL.Tests
 		{
 			if (SendTCPPacket != null) SendTCPPacket(this, packet);
 		}
-		public Action<TestPacketLib, byte[]> SendTCPBuf { get; set; }
-		public void SendTCP(byte[] buf)
-		{
-			if (SendTCPBuf != null) SendTCPBuf(this, buf);
-		}
-		public Action<TestPacketLib, GSTCPPacketOut> SendTCPRawPacket { get; set; }
-		public void SendTCPRaw(GSTCPPacketOut packet)
-		{
-			if (SendTCPRawPacket != null) SendTCPRawPacket(this, packet);
-		}
 		public Action<TestPacketLib, GSUDPPacketOut> SendUDPPacket { get; set; }
 		public void SendUDP(GSUDPPacketOut packet)
 		{
 			if (SendUDPPacket != null) SendUDPPacket(this, packet);
-		}
-		public Action<TestPacketLib, byte[]> SendUDPBuf { get; set; }
-		public void SendUDP(byte[] buf)
-		{
-			if (SendUDPBuf != null) SendUDPBuf(this, buf);
-		}
-		public Action<TestPacketLib, GSUDPPacketOut> SendUDPRawPacket { get; set; }
-		public void SendUDPRaw(GSUDPPacketOut packet)
-		{
-			if (SendUDPRawPacket != null) SendUDPRawPacket(this, packet);
 		}
 		public Action<TestPacketLib, GamePlayer> SendWarlockChamberEffectMethod { get; set; }
 		public void SendWarlockChamberEffect(GamePlayer player)
@@ -414,8 +374,8 @@ namespace DOL.Tests
 		{
 			if (SendInventoryItemsUpdateMethod != null) SendInventoryItemsUpdateMethod(this, itemsToUpdate);
 		}
-		public Action<TestPacketLib, ICollection<int>> SendInventorySlotsUpdateMethod { get; set; }
-		public void SendInventorySlotsUpdate(ICollection<int> slots)
+		public Action<TestPacketLib, ICollection<eInventorySlot>> SendInventorySlotsUpdateMethod { get; set; }
+		public void SendInventorySlotsUpdate(ICollection<eInventorySlot> slots)
 		{
 			if (SendInventorySlotsUpdateMethod != null) SendInventorySlotsUpdateMethod(this, slots);
 		}
@@ -464,10 +424,10 @@ namespace DOL.Tests
 		{
 			if (SendUpdatePlayerMethod != null) SendUpdatePlayerMethod(this);
 		}
-		public Action<TestPacketLib> SendUpdatePlayerSkillsMethod { get; set; }
-		public void SendUpdatePlayerSkills()
+		public Action<TestPacketLib, bool> SendUpdatePlayerSkillsMethod { get; set; }
+		public void SendUpdatePlayerSkills(bool updateInternalCache)
 		{
-			if (SendUpdatePlayerSkillsMethod != null) SendUpdatePlayerSkillsMethod(this);
+			if (SendUpdatePlayerSkillsMethod != null) SendUpdatePlayerSkillsMethod(this, updateInternalCache);
 		}
 		public Action<TestPacketLib> SendUpdateWeaponAndArmorStatsMethod { get; set; }
 		public void SendUpdateWeaponAndArmorStats()
@@ -490,7 +450,7 @@ namespace DOL.Tests
 			if (SendPlayerTitleUpdateMethod != null) SendPlayerTitleUpdateMethod(this, player);
 		}
 		public Action<TestPacketLib> SendEncumberanceMethod { get; set; }
-		public void SendEncumberance()
+		public void SendEncumbrance()
 		{
 			if (SendEncumberanceMethod != null) SendEncumberanceMethod(this);
 		}
@@ -589,10 +549,10 @@ namespace DOL.Tests
 		{
 			if (SendObjectIdDeleteMethod != null) SendObjectIdDeleteMethod(this, objId);
 		}
-		public Action<TestPacketLib, GameObject> SendObjectUpdateMethod { get; set; }
-		public void SendObjectUpdate(GameObject obj)
+		public Action<TestPacketLib, GameObject, bool> SendObjectUpdateMethod { get; set; }
+		public void SendObjectUpdate(GameObject obj, bool udp = true)
 		{
-			if (SendObjectUpdateMethod != null) SendObjectUpdateMethod(this, obj);
+			if (SendObjectUpdateMethod != null) SendObjectUpdateMethod(this, obj, udp);
 		}
 		public Action<TestPacketLib> SendQuestListUpdateMethod { get; set; }
 		public void SendQuestListUpdate()

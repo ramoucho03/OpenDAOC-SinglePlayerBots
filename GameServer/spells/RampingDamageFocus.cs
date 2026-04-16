@@ -7,10 +7,10 @@ using DOL.Language;
 
 namespace DOL.GS.Spells
 {
-	[SpellHandler("RampingDamageFocus")]
+	[SpellHandler(eSpellType.RampingDamageFocus)]
 	public class RampingDamageFocus : SpellHandler
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 		private int pulseCount = 0;
 		private ISpellHandler snareSubSpell;
 
@@ -25,17 +25,6 @@ namespace DOL.GS.Spells
 			Caster.Mana -= (PowerCost(target) + Spell.PulsePower);
 			base.FinishSpellCast(target);
 			OnDirectEffect(target);
-		}
-
-		public override bool StartSpell(GameLiving target)
-		{
-			if (Target == null)
-				Target = target;
-
-			if (Target == null) return false;
-
-			ApplyEffectOnTarget(target);
-			return true;
 		}
 
 		public override void OnSpellPulse(PulsingSpellEffect effect)
@@ -57,7 +46,7 @@ namespace DOL.GS.Spells
 			else
 			{
 				MessageToCaster("You do not have enough power and your spell was canceled.", eChatType.CT_SpellExpires);
-				FocusSpellAction(/*null, Caster, null*/);
+				CancelFocusSpells(false);
 				effect.Cancel(false);
 			}
 		}

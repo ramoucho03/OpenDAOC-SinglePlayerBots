@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using DOL.Database;
 using Newtonsoft.Json;
 
 namespace DOL.GS.Utils
@@ -10,54 +13,61 @@ namespace DOL.GS.Utils
         private const int DECKS_COUNT = 1;
         private const int CARDS_PER_DECK_COUNT = 100;
 
+        private GamePlayer _player;
         private ConcurrentStack<int> _cards = new();
-        private object _lock = new();
+        private readonly Lock _cardsLock = new();
 
         public PlayerDeck()
         {
-            lock (_lock)
-            {
-                InitializeDeck();
-            }
+            InitializeDeck();
         }
 
-        private void InitializeDeck()
+        public PlayerDeck(GamePlayer player)
         {
-            _cards.Clear();
-            int[] tempCards = new int[DECKS_COUNT * CARDS_PER_DECK_COUNT];
+            // We only want one deck even if for some reason multiple rows are returned or were loaded.
 
-            for (int i = 0; i < DECKS_COUNT; i++)
+            _player = player;
+
+            if (TryUsePreLoadedDeck())
+                return;
+
+            if (TryLoadExistingDeck())
+                return;
+
+            InitializeDeck();
+
+            bool TryUsePreLoadedDeck()
             {
-                for (int j = 0; j < CARDS_PER_DECK_COUNT; j++)
-                    tempCards[j + i * CARDS_PER_DECK_COUNT] = j;
+                string serializedDeck = _player.DBCharacter.RandomNumberDeck?.FirstOrDefault()?.Deck;
+
+                if (string.IsNullOrEmpty(serializedDeck))
+                    return false;
+
+                DeserializeCards(serializedDeck);
+                return true;
             }
 
-            // Fisher-Yates shuffle algorithm.
-            // https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle
-            for (int i = tempCards.Length - 1; i > 0; i--)
+            bool TryLoadExistingDeck()
             {
-                int j = Util.CryptoNextInt(i + 1);
-                (tempCards[j], tempCards[i]) = (tempCards[i], tempCards[j]);
+                IList<DbCoreCharacterXDeck> dbCoreCharacterXDecks = DOLDB<DbCoreCharacterXDeck>.SelectObjects(DB.Column("DOLCharactersObjectId").IsEqualTo(player.ObjectId));
+
+                if (dbCoreCharacterXDecks == null || dbCoreCharacterXDecks.Count == 0)
+                    return false;
+
+                _player.DBCharacter.RandomNumberDeck = dbCoreCharacterXDecks.ToArray();
+                string serializedDeck = dbCoreCharacterXDecks[0].Deck;
+
+                if (string.IsNullOrEmpty(serializedDeck))
+                    return false;
+
+                DeserializeCards(serializedDeck);
+                return true;
             }
 
-            foreach (int card in tempCards)
-                _cards.Push(card);
-        }
-
-        private int Pop()
-        {
-            int result;
-
-            while (!_cards.TryPop(out result))
+            void DeserializeCards(string serializedDeck)
             {
-                lock (_lock)
-                {
-                    if (_cards.IsEmpty)
-                        InitializeDeck();
-                }
+                _cards = JsonConvert.DeserializeObject<ConcurrentStack<int>>(serializedDeck);
             }
-
-            return result;
         }
 
         public int GetInt()
@@ -68,23 +78,82 @@ namespace DOL.GS.Utils
         public double GetPseudoDouble()
         {
             // Just use a simple random for the fractional digits.
-            return (Pop() + Util.CryptoNextDouble()) / 100.0;
+            return (Pop() + Util.RandomDouble()) / 100.0;
         }
 
-        public string SaveDeckToJSON()
+        public void SaveDeck()
         {
-            lock (_lock)
+            if (_player == null)
+                return;
+
+            DbCoreCharacterXDeck dbCoreCharacterXDeck = _player.DBCharacter.RandomNumberDeck?.FirstOrDefault();
+
+            if (dbCoreCharacterXDeck == null)
             {
-                return JsonConvert.SerializeObject(_cards.Reverse());
+                dbCoreCharacterXDeck = new()
+                {
+                    DOLCharactersObjectId = _player.ObjectId,
+                    Deck = SerializeCards()
+                };
+                _player.DBCharacter.RandomNumberDeck = [dbCoreCharacterXDeck];
+            }
+            else
+                dbCoreCharacterXDeck.Deck = SerializeCards();
+
+            if (dbCoreCharacterXDeck?.IsPersisted == true)
+                GameServer.Database.SaveObject(dbCoreCharacterXDeck);
+            else
+                GameServer.Database.AddObject(dbCoreCharacterXDeck);
+
+            string SerializeCards()
+            {
+                lock (_cardsLock)
+                {
+                    return JsonConvert.SerializeObject(_cards.Reverse());
+                }
             }
         }
 
-        public void LoadDeckFromJSON(string json)
+        private void InitializeDeck()
         {
-            lock (_lock)
+            lock (_cardsLock)
             {
-                _cards = JsonConvert.DeserializeObject<ConcurrentStack<int>>(json);
+                _cards.Clear();
+                int[] tempCards = new int[DECKS_COUNT * CARDS_PER_DECK_COUNT];
+
+                for (int i = 0; i < DECKS_COUNT; i++)
+                {
+                    for (int j = 0; j < CARDS_PER_DECK_COUNT; j++)
+                        tempCards[j + i * CARDS_PER_DECK_COUNT] = j;
+                }
+
+                // Fisher-Yates shuffle algorithm.
+                // https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle
+                for (int i = tempCards.Length - 1; i > 0; i--)
+                {
+                    int j = Util.Random(i);
+                    (tempCards[j], tempCards[i]) = (tempCards[i], tempCards[j]);
+                }
+
+                foreach (int card in tempCards)
+                    _cards.Push(card);
             }
+        }
+
+        private int Pop()
+        {
+            int result;
+
+            lock (_cardsLock)
+            {
+                while (!_cards.TryPop(out result))
+                {
+                    if (_cards.IsEmpty)
+                        InitializeDeck();
+                }
+            }
+
+            return result;
         }
     }
 }

@@ -5,12 +5,12 @@ using DOL.Language;
 
 namespace DOL.GS.Spells
 {
-    /// <summary>
-    /// Reduce range needed to cast the spell
-    /// </summary>
-    [SpellHandler("Nearsight")]
-    public class NearsightSpellHandler : ImmunityEffectSpellHandler
-    {
+	/// <summary>
+	/// Reduce range needed to cast the spell
+	/// </summary>
+	[SpellHandler(eSpellType.Nearsight)]
+	public class NearsightSpellHandler : ImmunityEffectSpellHandler
+	{
         public override ECSGameSpellEffect CreateECSEffect(ECSGameEffectInitParams initParams)
         {
             return new NearsightECSGameEffect(initParams);
@@ -161,26 +161,24 @@ namespace DOL.GS.Spells
             }
         }
 
-        // constructor
-        public NearsightSpellHandler(GameLiving caster, Spell spell, SpellLine spellLine) : base(caster, spell, spellLine) { }
-    }
-
-    /// <summary>
-    /// Reduce efficacity of nearsight effect
-    /// </summary>
-    [SpellHandler("NearsightReduction")]
-    public class NearsightReductionSpellHandler : SpellHandler
-    {
-        /// <summary>
-        /// called after normal spell cast is completed and effect has to be started
-        /// </summary>
-        public override void FinishSpellCast(GameLiving target)
-        {
-            m_caster.Mana -= PowerCost(target);
-            base.FinishSpellCast(target);
-        }
-
-        // constructor
-        public NearsightReductionSpellHandler(GameLiving caster, Spell spell, SpellLine spellLine) : base(caster, spell, spellLine) { }
-    }
+		// constructor
+		public NearsightSpellHandler(GameLiving caster, Spell spell, SpellLine spellLine) : base(caster, spell, spellLine) {}
+	}
+	/// <summary>
+	/// Reduce efficacity of nearsight effect
+	/// </summary>
+	[SpellHandler(eSpellType.NearsightReduction)]
+	public class NearsightReductionSpellHandler : SpellHandler
+	{
+		/// <summary>
+		/// called after normal spell cast is completed and effect has to be started
+		/// </summary>
+		public override void FinishSpellCast(GameLiving target)
+		{
+			m_caster.Mana -= PowerCost(target);
+			base.FinishSpellCast(target);
+		}	
+		// constructor
+		public NearsightReductionSpellHandler(GameLiving caster, Spell spell, SpellLine spellLine) : base(caster, spell, spellLine) {}
+	}
 }

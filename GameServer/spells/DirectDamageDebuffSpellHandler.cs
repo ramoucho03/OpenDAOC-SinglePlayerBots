@@ -6,28 +6,27 @@ using DOL.Language;
 
 namespace DOL.GS.Spells
 {
-    /// <summary>
-    /// Damages the target and lowers their resistance to the spell's type.
-    /// </summary>
-    [SpellHandler("DirectDamageWithDebuff")]
-    public class DirectDamageDebuffSpellHandler : AbstractResistDebuff
-    {
-        public override ECSGameSpellEffect CreateECSEffect(ECSGameEffectInitParams initParams)
-        {
-            return new StatDebuffECSEffect(initParams);
-        }
+	/// <summary>
+	/// Damages the target and lowers their resistance to the spell's type.
+	/// </summary>
+	[SpellHandler(eSpellType.DirectDamageWithDebuff)]
+	public class DirectDamageDebuffSpellHandler : AbstractResistDebuff
+	{
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		public override eProperty Property1 => Caster.GetResistTypeForDamage(Spell.DamageType);
+		public override string DebuffTypeName => GlobalConstants.DamageTypeToName(Spell.DamageType);
+		protected override bool IsDualComponentSpell => true;
 
-        public override eProperty Property1 { get { return Caster.GetResistTypeForDamage(Spell.DamageType); } }
-        public override string DebuffTypeName { get { return GlobalConstants.DamageTypeToName(Spell.DamageType); } }
+		public override ECSGameSpellEffect CreateECSEffect(ECSGameEffectInitParams initParams)
+		{
+			return new StatDebuffECSEffect(initParams);
+		}
 
-        #region LOS on Keeps
-
-        public override void OnDirectEffect(GameLiving target)
-        {
-            if (target == null)
-                return;
+		public override void OnDirectEffect(GameLiving target)
+		{
+			if (target == null)
+				return;
 
 			if (Spell.Target == eSpellTarget.CONE || (Spell.Target == eSpellTarget.ENEMY && Spell.IsPBAoE))
 			{
@@ -82,42 +81,30 @@ namespace DOL.GS.Spells
             }
         }
 
-        public override void ApplyEffectOnTarget(GameLiving target)
-        {
-            // do not apply debuff to keep components or doors
-            if ((target is Keeps.GameKeepComponent) == false && (target is Keeps.GameKeepDoor) == false)
-            {
-                base.ApplyEffectOnTarget(target);
-            }
+		public override void ApplyEffectOnTarget(GameLiving target)
+		{
+			base.ApplyEffectOnTarget(target);
 
-            if ((Spell.Duration > 0 && Spell.Target != eSpellTarget.AREA) || Spell.Concentration > 0)
-            {
-                OnDirectEffect(target);
-            }
-        }
+			if ((Spell.Duration > 0 && Spell.Target is not eSpellTarget.AREA) || Spell.Concentration > 0)
+				OnDirectEffect(target);
+		}
 
-        private void DealDamage(GameLiving target)
-        {
-            if (!target.IsAlive || target.ObjectState != GameLiving.eObjectState.Active)
-                return;
+		private void DealDamage(GameLiving target)
+		{
+			if (!target.IsAlive || target.ObjectState is not GameObject.eObjectState.Active)
+				return;
 
-            if (target is Keeps.GameKeepDoor || target is Keeps.GameKeepComponent)
-            {
-                MessageToCaster("Your spell has no effect on the keep component!", eChatType.CT_SpellResisted);
-                return;
-            }
-
-            // calc damage
-            AttackData ad = CalculateDamageToTarget(target);
-            SendDamageMessages(ad);
-            DamageTarget(ad, true);
-            target.StartInterruptTimer(target.SpellInterruptDuration, ad.AttackType, Caster);
-            /*
+			// calc damage
+			AttackData ad = CalculateDamageToTarget(target);
+			SendDamageMessages(ad);
+			DamageTarget(ad, true);
+			target.StartInterruptTimer(target.SpellInterruptDuration, ad.AttackType, Caster);
+			/*
 			if (target.IsAlive)
 				base.ApplyEffectOnTarget(target, effectiveness);*/
-        }
+		}
 
-        /*
+		/*
 		 * We need to send resist spell los check packets because spell resist is calculated first, and
 		 * so you could be inside keep and resist the spell and be interupted when not in view
 		 */
@@ -151,16 +138,14 @@ namespace DOL.GS.Spells
 			}
 		}
 
-        #endregion LOS on Keeps
-
-        /// <summary>
-        /// Delve Info
-        /// </summary>
-        public override IList<string> DelveInfo
-        {
-            get
-            {
-                /*
+		/// <summary>
+		/// Delve Info
+		/// </summary>
+		public override IList<string> DelveInfo
+		{
+			get
+			{
+				/*
 				<Begin Info: Lesser Raven Bolt>
 				Function: dmg w/resist decrease
 

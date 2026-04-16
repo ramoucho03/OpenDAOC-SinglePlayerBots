@@ -1,12 +1,12 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Reflection;
-using log4net;
 
 namespace DOL.GS
 {
     public static class ServiceUtils
     {
-        private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
         private static long HalfTickRate => GameLoop.TickRate / 2;
 
         public static bool ShouldTick(long tickTime)
@@ -57,13 +57,38 @@ namespace DOL.GS
 
         public static void HandleServiceException<T>(Exception exception, string serviceName, T entity, GameObject entityOwner) where T : class, IManagedEntity
         {
-            log.Error($"Critical error encountered in {serviceName}: {exception}");
             EntityManager.Remove(entity);
+            List<string> logMessages = [$"Critical error encountered in {serviceName}: {exception}"];
 
-            if (entityOwner is GamePlayer player)
-                KickPlayerToCharScreen(player);
-            else
-                entityOwner?.RemoveFromWorld();
+            // Define the actions and log messages.
+            Action action = entityOwner switch
+            {
+                GamePlayer player => () =>
+                {
+                    logMessages.Add($"Calling {nameof(KickPlayerToCharScreen)} with (entityOwner: {player})");
+                    KickPlayerToCharScreen(player);
+                },
+                not null => () =>
+                {
+                    logMessages.Add($"Calling {nameof(entityOwner.RemoveFromWorld)} with (entityOwner: {entityOwner})");
+                    entityOwner.RemoveFromWorld();
+                },
+                _ => () => logMessages.Add($"No other action performed (entityOwner: null)")
+            };
+
+            // Log error messages before executing the action (if any).
+            if (log.IsErrorEnabled)
+                log.Error(string.Join(Environment.NewLine, logMessages));
+
+            try
+            {
+                action?.Invoke();
+            }
+            catch (Exception e)
+            {
+                if (log.IsErrorEnabled)
+                    log.Error($"Couldn't invoke {nameof(action)} in {nameof(HandleServiceException)}", e);
+            }
         }
 
         public static void KickPlayerToCharScreen(GamePlayer player)
@@ -73,7 +98,7 @@ namespace DOL.GS
 
             player.Client.ClientState = GameClient.eClientState.CharScreen;
 
-            if (player.CharacterClass.ID == (int) eCharacterClass.Necromancer && player.IsShade)
+            if ((eCharacterClass) player.CharacterClass.ID is eCharacterClass.Necromancer && player.HasShadeModel)
                 player.Shade(false);
 
             player.Out.SendPlayerQuit(false);

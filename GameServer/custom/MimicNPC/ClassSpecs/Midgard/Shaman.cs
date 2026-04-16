@@ -15,7 +15,7 @@ namespace DOL.GS.Scripts
             SpecName = "ShamanSpec";
 
             WeaponOneType = eObjectType.Hammer;
-            Is2H = Util.RandomBool();
+            Is2H = Util.Random(1) > 0;
 
             var randVariance = spec switch
             {

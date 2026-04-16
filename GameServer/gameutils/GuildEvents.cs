@@ -2,7 +2,6 @@ using System;
 using System.Threading;
 using DOL.Events;
 using DOL.GS.PacketHandler;
-using log4net;
 
 namespace DOL.GS
 {
@@ -17,7 +16,7 @@ namespace DOL.GS
 
 	public class GuildEventHandler
 	{
-		private static readonly ILog log = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
 		/// <summary>
 		/// Time Interval to check for expired guild buffs
@@ -170,9 +169,6 @@ namespace DOL.GS
 					}
 				}
 			}
-
-			if (player.Guild != null)
-				player.Guild.UpdateGuildWindow();
 		}
 
 		#endregion
@@ -249,7 +245,7 @@ namespace DOL.GS
 
 		public static void StartCheckThread()
 		{
-			foreach (Guild checkGuild in GuildMgr.GetAllGuilds())
+			foreach (Guild checkGuild in GuildMgr.GetGuilds())
 			{
 				if (checkGuild.BonusType != Guild.eBonusType.None)
 				{

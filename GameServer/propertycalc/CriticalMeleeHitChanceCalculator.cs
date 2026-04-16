@@ -1,5 +1,6 @@
 using System;
 using DOL.AI.Brain;
+using DOL.GS.Scripts;
 
 namespace DOL.GS.PropertyCalc
 {
@@ -20,13 +21,13 @@ namespace DOL.GS.PropertyCalc
             if (EffectListService.GetEffectOnTarget(living, eEffect.Berserk) != null)
                 return 100;
 
-            int chance = living.BuffBonusCategory4[(int) property] + living.AbilityBonus[(int) property];
+            int chance = living.OtherBonus[(int) property] + living.AbilityBonus[(int) property];
 
-            if (living is GamePlayer)
+            if (living is IGamePlayer)
                 chance += 10;
             else if (living is GameNPC npc &&
                 npc.Brain is IControlledBrain petBrain &&
-                petBrain.GetPlayerOwner() is GamePlayer playerOwner)
+                petBrain.GetIPlayerOwner() is IGamePlayer playerOwner)
             {
                 if (npc is NecromancerPet)
                     chance += 10;

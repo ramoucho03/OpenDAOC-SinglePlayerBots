@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using DOL.Database;
 using DOL.Events;
 using DOL.GS.Housing;
@@ -21,7 +22,7 @@ namespace DOL.GS
 		/// <summary>
 		/// Defines a logger for this class.
 		/// </summary>
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
 		#region State/Random/Type
 
@@ -570,6 +571,8 @@ namespace DOL.GS
 			return list;
 		}
 
+		public virtual bool IsStealthed => false;
+
 		#endregion
 
 		#region IDs/Database
@@ -790,6 +793,7 @@ namespace DOL.GS
 			Notify(GameObjectEvent.Delete, this);
 			RemoveFromWorld();
 			ObjectState = eObjectState.Deleted;
+			ClearObjectsInRadiusCache();
 			GameEventMgr.RemoveAllHandlersForObject(this);
 		}
 
@@ -820,6 +824,7 @@ namespace DOL.GS
 		/// List of DataQuests available for this object
 		/// </summary>
 		protected List<DataQuest> m_dataQuests = new List<DataQuest>();
+		protected readonly Lock _dataQuestsLock = new();
 
 		/// <summary>
 		/// Flag to prevent loading quests on every respawn
@@ -1042,7 +1047,7 @@ namespace DOL.GS
 			};
 		}
 
-		public List<T> GetObjectsInRadius<T>(eGameObjectType objectType, ushort radiusToCheck)  where T : GameObject
+		public List<T> GetObjectsInRadius<T>(eGameObjectType objectType, ushort radiusToCheck) where T : GameObject
 		{
 			List<T> result = new();
 

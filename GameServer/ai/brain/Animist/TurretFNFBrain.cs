@@ -8,12 +8,17 @@ namespace DOL.AI.Brain
     public class TurretFNFBrain : TurretBrain
     {
         private List<GameLiving> _filteredAggroList = [];
+
+        public TurretFNFBrain(GameLiving owner) : base(owner) { }
+
         protected override bool CheckLosBeforeCastingOffensiveSpells => Properties.CHECK_LOS_BEFORE_AGGRO_FNF;
 
-        public TurretFNFBrain(GameLiving owner) : base(owner)
+        public override void Think()
         {
-            // Forced to aggressive, otherwise 'CheckProximityAggro()' won't be called.
-            AggressionState = eAggressionState.Aggressive;
+            CheckProximityAggro();
+
+            if (!CheckSpells(eCheckSpellType.Offensive))
+                CheckSpells(eCheckSpellType.Defensive);
         }
 
         public override bool CheckProximityAggro()
@@ -63,7 +68,7 @@ namespace DOL.AI.Brain
                         SendLosCheckForAggro(theirOwner, npc);
                         continue;
                     }
-                    else if (this is ControlledMobBrain ourControlledNpcBrain && ourControlledNpcBrain.GetPlayerOwner() is GamePlayer ourOwner)
+                    else if (GetPlayerOwner() is GamePlayer ourOwner)
                     {
                         SendLosCheckForAggro(ourOwner, npc);
                         continue;
@@ -103,9 +108,9 @@ namespace DOL.AI.Brain
 
             // Prioritize targets that don't already have our effect and aren't immune to it.
             // If there's none, allow them to be attacked again but only if our spell does damage.
-            if (_filteredAggroList.Any())
+            if (_filteredAggroList.Count > 0)
                 return _filteredAggroList[Util.Random(_filteredAggroList.Count - 1)];
-            else if (((TurretPet) Body).TurretSpell.Damage > 0)
+            else if ((Body as TurretPet).TurretSpell.Damage > 0)
             {
                 List<GameLiving> tempAggroList = AggroList.Keys.ToList();
 
@@ -117,5 +122,6 @@ namespace DOL.AI.Brain
         }
 
         public override void UpdatePetWindow() { }
+        public override void OnAttackedByEnemy(AttackData ad) { }
     }
 }

@@ -4,21 +4,18 @@ using System.Threading;
 using DOL.Database;
 using DOL.Events;
 using DOL.GS.PerformanceStatistics;
-using log4net;
 
 namespace DOL.GS.GameEvents
 {
     public class StatSave
     {
-        private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
         private static readonly int INITIAL_DELAY = 60000;
 
         private static volatile Timer _timer;
-        private static long _lastBytesIn;
-        private static long _lastBytesOut;
         private static long _lastMeasureTick = DateTime.Now.Ticks;
         private static IPerformanceStatistic _programCpuUsagePercent;
-        private static object _lock  = new();
+        private static readonly Lock _lock  = new();
 
         [GameServerStartedEvent]
         public static void OnScriptCompiled(DOLEvent e, object sender, EventArgs args)
@@ -68,16 +65,11 @@ namespace DOL.GS.GameEvents
                 {
                     CPU = (float) (serverCpuUsage >= 0 ? serverCpuUsage : 0),
                     Clients = ClientService.ClientCount,
-                    Upload = (int) ((Statistics.BytesOut - _lastBytesOut) / time / 1024),
-                    Download = (int) ((Statistics.BytesIn - _lastBytesIn) / time / 1024),
                     Memory = GC.GetTotalMemory(false) / 1024,
                     AlbionPlayers = ClientService.GetPlayersOfRealm(eRealm.Albion).Count,
                     MidgardPlayers = ClientService.GetPlayersOfRealm(eRealm.Midgard).Count,
                     HiberniaPlayers = ClientService.GetPlayersOfRealm(eRealm.Hibernia).Count
                 };
-
-                _lastBytesIn = Statistics.BytesIn;
-                _lastBytesOut = Statistics.BytesOut;
 
                 GameServer.Database.AddObject(newStat);
                 GameServer.Database.SaveObject(newStat);

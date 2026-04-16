@@ -1,16 +1,16 @@
 ﻿using System.Collections.Generic;
+using System.Threading;
 using DOL.Database;
-using log4net;
 
 namespace DOL.GS
 {
 	public class MarketCache
 	{
-		private static readonly ILog log = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
 		private static Dictionary<string, DbInventoryItem> m_itemCache = null;
 
-		private static object CacheLock = new object();
+		private static readonly Lock _cacheLock = new();
 
 		/// <summary>
 		/// Return a List of all items in the cache
@@ -32,7 +32,7 @@ namespace DOL.GS
 				m_itemCache = new Dictionary<string, DbInventoryItem>();
 
 				var filterBySlot = DB.Column("SlotPosition").IsGreaterOrEqualTo((int)eInventorySlot.Consignment_First).And(DB.Column("SlotPosition").IsLessOrEqualTo((int)eInventorySlot.Consignment_Last));
-				var list = DOLDB<DbInventoryItem>.SelectObjects(filterBySlot.And(DB.Column("OwnerLot").IsGreatherThan(0)));
+				var list = DOLDB<DbInventoryItem>.SelectObjects(filterBySlot.And(DB.Column("OwnerLot").IsGreaterThan(0)));
 
 				foreach (DbInventoryItem item in list)
 				{
@@ -61,7 +61,7 @@ namespace DOL.GS
 
 			if (item != null && item.OwnerID != null)
 			{
-				lock (CacheLock)
+				lock (_cacheLock)
 				{
 					if (m_itemCache.ContainsKey(item.ObjectId) == false)
 					{
@@ -88,7 +88,7 @@ namespace DOL.GS
 			if (item == null)
 				return false;
 
-			lock (CacheLock)
+			lock (_cacheLock)
 			{
 				return m_itemCache.Remove(item.ObjectId);
 			}

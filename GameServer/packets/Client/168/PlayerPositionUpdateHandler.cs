@@ -5,7 +5,6 @@ using System.Text;
 using DOL.Database;
 using DOL.GS.Utils;
 using DOL.Language;
-using log4net;
 
 namespace DOL.GS.PacketHandler.Client.v168
 {
@@ -15,7 +14,7 @@ namespace DOL.GS.PacketHandler.Client.v168
         /// <summary>
         /// Defines a logger for this class.
         /// </summary>
-        private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
         /// <summary>
         /// Stores the count of times the player is above speedhack tolerance!
@@ -193,10 +192,13 @@ namespace DOL.GS.PacketHandler.Client.v168
                 client.Player.LastPositionUpdatePoint.Z = z;
                 int tolerance = ServerProperties.Properties.CPS_TOLERANCE;
 
-                if (client.Player.Steed != null && client.Player.Steed.MaxSpeed > 0)
-                    tolerance += client.Player.Steed.MaxSpeed;
-                else if (client.Player.MaxSpeed > 0)
-                    tolerance += client.Player.MaxSpeed;
+                if (client.Player.movementComponent.MaxSpeedPercent > 0)
+                {
+                    if (client.Player.Steed != null)
+                        tolerance += client.Player.Steed.MaxSpeed;
+                    else
+                        tolerance += client.Player.MaxSpeed;
+                }
 
                 if (client.Player.IsJumping)
                 {
@@ -373,10 +375,7 @@ namespace DOL.GS.PacketHandler.Client.v168
                             int fallPercent = (int) Math.Min(99, (fallSpeed - 501) / fallDivide);
 
                             if (fallSpeed > 500)
-                            {
-                                if ((eCharacterClass) client.Player.CharacterClass.ID is not eCharacterClass.Necromancer || !client.Player.IsShade)
-                                    client.Player.CalcFallDamage(fallPercent);
-                            }
+                                client.Player.CalcFallDamage(fallPercent);
 
                             client.Player.MaxLastZ = client.Player.Z;
                         }
@@ -979,7 +978,7 @@ namespace DOL.GS.PacketHandler.Client.v168
                     if ((player.InHouse || otherPlayer.InHouse) && otherPlayer.CurrentHouse != player.CurrentHouse)
                         continue;
 
-                    if (!player.IsStealthed || otherPlayer.CanDetect(player))
+                    if (otherPlayer.CanDetect(player))
                     {
                         if (otherPlayer.Client.Version >= GameClient.eClientVersion.Version1127)
                         {
@@ -1225,7 +1224,7 @@ namespace DOL.GS.PacketHandler.Client.v168
                         }
                     }
 
-                    if (!player.IsStealthed || otherPlayer.CanDetect(player))
+                    if (otherPlayer.CanDetect(player))
                     {
                         //forward the position packet like normal!
                         if (otherPlayer.Client.Version >= GameClient.eClientVersion.Version1124)

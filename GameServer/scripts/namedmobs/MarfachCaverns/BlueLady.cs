@@ -9,8 +9,7 @@ namespace DOL.GS
 {
     public class BlueLady : GameEpicBoss
     {
-        private static new readonly log4net.ILog log =
-            log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         [ScriptLoadedEvent]
         public static void ScriptLoaded(DOLEvent e, object sender, EventArgs args)
@@ -132,8 +131,7 @@ namespace DOL.AI.Brain
 {
     public class BlueLadyBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log =
-            log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public BlueLadyBrain()
             : base()
@@ -242,8 +240,7 @@ namespace DOL.GS
 {
     public class BlueLadySwordAdd : GameNPC
     {
-        private static new readonly log4net.ILog log =
-            log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public BlueLadySwordAdd()
             : base()
@@ -274,9 +271,7 @@ namespace DOL.GS
             base.Die(killer);
         }
         public override long ExperienceValue => 0;
-        public override void DropLoot(GameObject killer) //no loot
-        {
-        }
+        public override bool CanDropLoot => false;
         public override short Quickness { get => base.Quickness; set => base.Quickness = 125; }
         public override short Strength { get => base.Strength; set => base.Strength = 50; }
         public override bool AddToWorld()
@@ -311,8 +306,7 @@ namespace DOL.GS
     }
     public class BlueLadyAxeAdd : GameNPC
     {
-        private static new readonly log4net.ILog log =
-            log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public BlueLadyAxeAdd()
             : base()
@@ -343,9 +337,7 @@ namespace DOL.GS
             base.Die(killer);
         }
         public override long ExperienceValue => 0;
-        public override void DropLoot(GameObject killer) //no loot
-        {
-        }
+        public override bool CanDropLoot => false;
         public override short Quickness { get => base.Quickness; set => base.Quickness = 125; }
         public override short Strength { get => base.Strength; set => base.Strength = 50; }
         public override bool AddToWorld()
@@ -383,8 +375,7 @@ namespace DOL.AI.Brain
 {
     public class BlueLadyAddBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log =
-            log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public BlueLadyAddBrain()
             : base()

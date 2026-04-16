@@ -1,5 +1,4 @@
 using System.Reflection;
-using log4net;
 
 namespace DOL.GS.PacketHandler.Client.v168
 {
@@ -9,7 +8,7 @@ namespace DOL.GS.PacketHandler.Client.v168
         /// <summary>
         /// Defines a logger for this class.
         /// </summary>
-        private static readonly ILog Log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger Log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
         public void HandlePacket(GameClient client, GSPacketIn packet)
         {
@@ -26,7 +25,6 @@ namespace DOL.GS.PacketHandler.Client.v168
                 return;
             }
 
-            // DOLConsole.WriteLine("player creation request "+target.Player.Name);
             if (target.IsPlaying && target.Player != null && target.Player.ObjectState == GameObject.eObjectState.Active)
             {
                 client.Out.SendPlayerCreate(target.Player);

@@ -26,7 +26,7 @@ namespace DOL.GS.Spells.Atlantis
     /// <summary>
     /// Arrogance spell handler
     /// </summary>
-    [SpellHandlerAttribute("Arrogance")]
+    [SpellHandler(eSpellType.Arrogance)]
     public class Arrogance : SpellHandler
     {
     	GamePlayer playertarget = null;
@@ -53,7 +53,7 @@ namespace DOL.GS.Spells.Atlantis
             {
             	GamePlayer player = effect.Owner as GamePlayer;
                 player.Out.SendCharStatsUpdate();
-                player.UpdateEncumberance();
+                player.UpdateEncumbrance();
                 player.UpdatePlayerStatus();
             	player.Out.SendUpdatePlayer();       
             }
@@ -76,7 +76,7 @@ namespace DOL.GS.Spells.Atlantis
             {
             	GamePlayer player = effect.Owner as GamePlayer;
                 player.Out.SendCharStatsUpdate();
-                player.UpdateEncumberance();
+                player.UpdateEncumbrance();
                 player.UpdatePlayerStatus();
             	player.Out.SendUpdatePlayer();  
                 Start(player);
@@ -100,7 +100,7 @@ namespace DOL.GS.Spells.Atlantis
             player.DebuffCategory[(int)eProperty.ArmorAbsorption] += (int)m_spell.Value;
             
             player.Out.SendCharStatsUpdate();
-            player.UpdateEncumberance();
+            player.UpdateEncumbrance();
             player.UpdatePlayerStatus();
           	player.Out.SendUpdatePlayer(); 
         }
@@ -121,7 +121,7 @@ namespace DOL.GS.Spells.Atlantis
 	            playertarget.DebuffCategory[(int)eProperty.ArmorAbsorption] -= (int)m_spell.Value;;
 	            
             	playertarget.Out.SendCharStatsUpdate();
-            	playertarget.UpdateEncumberance();
+            	playertarget.UpdateEncumbrance();
             	playertarget.UpdatePlayerStatus();
           		playertarget.Out.SendUpdatePlayer(); 
             }

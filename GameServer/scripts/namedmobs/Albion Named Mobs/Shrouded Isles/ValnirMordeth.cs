@@ -145,7 +145,7 @@ namespace DOL.AI.Brain
 {
 	public class ValnirMordethBrain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 		public ValnirMordethBrain() : base()
 		{
 			AggroLevel = 100;
@@ -380,9 +380,7 @@ namespace DOL.GS
 			return true;
 		}
         public override long ExperienceValue => 0;
-        public override void DropLoot(GameObject killer)
-        {
-        }
+        public override bool CanDropLoot => false;
         public override void Die(GameObject killer)
         {
 			--EssenceGhoulCount;
@@ -407,7 +405,7 @@ namespace DOL.AI.Brain
 {
 	public class ValnirMordethAddBrain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 		public ValnirMordethAddBrain() : base()
 		{
 			AggroLevel = 100;

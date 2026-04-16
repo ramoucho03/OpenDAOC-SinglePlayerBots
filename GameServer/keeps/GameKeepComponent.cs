@@ -6,7 +6,6 @@ using System.Text;
 using DOL.Database;
 using DOL.Events;
 using DOL.GS.ServerProperties;
-using log4net;
 
 namespace DOL.GS.Keeps
 {
@@ -16,7 +15,7 @@ namespace DOL.GS.Keeps
 	/// </summary>
 	public class GameKeepComponent : GameLiving, IComparable, IGameKeepComponent
 	{
-		private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		protected readonly ushort INVISIBLE_MODEL = 150;
 
@@ -137,16 +136,6 @@ namespace DOL.GS.Keeps
 			}
 
 			return list;
-		}
-
-		/// <summary>
-		/// Procs don't normally fire on game keep components
-		/// </summary>
-		public override bool AllowWeaponMagicalEffect(AttackData ad, DbInventoryItem weapon, Spell weaponSpell)
-		{
-			if (weapon.Flags == 10) //Bruiser or any other item needs Itemtemplate "Flags" set to 10 to proc on keep components
-				return true;
-			else return false;
 		}
 
 		/// <summary>

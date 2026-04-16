@@ -7,9 +7,9 @@ namespace DOL.GS.RealmAbilities
     /// </summary>
     public class AtlasOF_ToughnessAbility : RAPropertyEnhancer
     {
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
-        public AtlasOF_ToughnessAbility(DbAbility dba, int level) : base(dba, level, eProperty.MaxHealth) { }
+        public AtlasOF_ToughnessAbility(DbAbility dba, int level) : base(dba, level, eProperty.Of_Toughness) { }
 
         public override int CostForUpgrade(int level)
         {

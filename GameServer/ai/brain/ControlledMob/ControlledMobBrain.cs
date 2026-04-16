@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using DOL.Events;
+using System.Threading;
 using DOL.GS;
 using DOL.GS.Effects;
 using DOL.GS.PacketHandler;
@@ -11,7 +11,6 @@ using DOL.GS.Scripts;
 using DOL.GS.ServerProperties;
 using DOL.GS.SkillHandler;
 using DOL.GS.Spells;
-using log4net;
 
 namespace DOL.AI.Brain
 {
@@ -23,7 +22,7 @@ namespace DOL.AI.Brain
 		/// <summary>
 		/// Defines a logger for this class.
 		/// </summary>
-		private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		public const int MAX_PET_AGGRO_DISTANCE = 512; // Tolakram - Live test with caby pet - I was extremely close before auto aggro
 		// note that a minimum distance is inforced in GameNPC
@@ -50,8 +49,8 @@ namespace DOL.AI.Brain
         /// </summary>
         protected eAggressionState m_aggressionState;
 
-        private HashSet<GameLiving> m_buffedTargets = new();
-        private object m_buffedTargetsLock = new();
+		private HashSet<GameLiving> _buffedTargets = new();
+		private readonly Lock _buffedTargetsLock = new();
 
 		/// <summary>
 		/// Constructs new controlled npc brain
@@ -74,7 +73,6 @@ namespace DOL.AI.Brain
 			FSM.Add(new ControlledMobState_DEFENSIVE(this));
 			FSM.Add(new ControlledMobState_AGGRO(this));
 			FSM.Add(new ControlledMobState_PASSIVE(this));
-			FSM.SetCurrentState(eFSMStateType.WAKING_UP);
 		}
 
 		protected bool m_isMainPet = true;
@@ -98,7 +96,9 @@ namespace DOL.AI.Brain
             get { return GS.ServerProperties.Properties.PET_THINK_INTERVAL; }
         }
 
-        #region Control
+		protected override int ThinkOffsetOnStart => 0;
+
+		#region Control
 
         /// <summary>
         /// Gets the controlling owner of the brain
@@ -204,11 +204,13 @@ namespace DOL.AI.Brain
         /// </summary>
         public virtual eWalkState WalkState
         {
-            get { return m_walkState; }
+            get => m_walkState;
             set
             {
+                if (m_walkState != value)
+                    Body?.effectListComponent.RequestPlayerUpdate(EffectService.PlayerUpdate.ICONS);
+
                 m_walkState = value;
-                UpdatePetWindow();
             }
         }
 
@@ -220,9 +222,12 @@ namespace DOL.AI.Brain
             get => m_aggressionState;
             set
             {
+                if (m_aggressionState != value)
+                    Body?.effectListComponent.RequestPlayerUpdate(EffectService.PlayerUpdate.ICONS);
+
                 m_aggressionState = value;
 
-                if (m_aggressionState == eAggressionState.Passive)
+                if (m_aggressionState is eAggressionState.Passive)
                 {
                     Disengage();
 
@@ -242,12 +247,9 @@ namespace DOL.AI.Brain
         /// </summary>
         /// <param name="target"></param>
         public virtual void Attack(GameObject target)
-        {
-            if (AggressionState == eAggressionState.Passive)
-            {
-                AggressionState = eAggressionState.Defensive;
-                UpdatePetWindow();
-            }
+		{
+			if (AggressionState is eAggressionState.Passive)
+				AggressionState = eAggressionState.Defensive;
 
             if (m_orderAttackTarget == target)
                 return;
@@ -264,11 +266,8 @@ namespace DOL.AI.Brain
 		public virtual void CheckAggressionStateOnPlayerOrder()
 		{
 			// We switch to defensive mode if we're in aggressive and have a target, so that we don't immediately aggro back
-			if (AggressionState == eAggressionState.Aggressive && Body.TargetObject != null)
-			{
+			if (AggressionState is eAggressionState.Aggressive && Body.TargetObject != null)
 				AggressionState = eAggressionState.Defensive;
-				UpdatePetWindow();
-			}
 		}
 
 		public virtual void Disengage()
@@ -329,11 +328,10 @@ namespace DOL.AI.Brain
             Body.PathTo(target, Body.MaxSpeed);
         }
 
-        public virtual void SetAggressionState(eAggressionState state)
-        {
-            AggressionState = state;
-            UpdatePetWindow();
-        }
+		public virtual void SetAggressionState(eAggressionState state)
+		{
+			AggressionState = state;
+		}
 
 		/// <summary>
 		/// Updates the pet window
@@ -413,57 +411,57 @@ namespace DOL.AI.Brain
 				{
 					case Abilities.Intercept:
 					{
-						GamePlayer playerOwner = GetPlayerOwner();
+						IGamePlayer playerOwner = GetIPlayerOwner();
 
 						if (playerOwner != null)
 						{
-							InterceptAbilityHandler.CheckExistingEffectsOnTarget(Body, playerOwner, false, out bool foundOurEffect, out InterceptECSGameEffect existingEffectFromAnotherSource);
+							InterceptAbilityHandler.CheckExistingEffectsOnTarget(Body, (GameLiving)playerOwner, false, out bool foundOurEffect, out InterceptECSGameEffect existingEffectFromAnotherSource);
 
 							if (foundOurEffect)
 								break;
 
 							if (existingEffectFromAnotherSource != null)
-								EffectService.RequestImmediateCancelEffect(existingEffectFromAnotherSource);
+								EffectService.RequestCancelEffect(existingEffectFromAnotherSource);
 
-							new InterceptECSGameEffect(new ECSGameEffectInitParams(Body, 0, 1), Body, playerOwner);
+							new InterceptECSGameEffect(new ECSGameEffectInitParams(Body, 0, 1), Body, (GameLiving)playerOwner);
 						}
 
                         break;
                     }
                     case Abilities.Guard:
                     {
-                        GamePlayer playerOwner = GetPlayerOwner();
+                        IGamePlayer playerOwner = GetIPlayerOwner();
 
                         if (playerOwner != null)
                         {
-                            GuardAbilityHandler.CheckExistingEffectsOnTarget(Body, playerOwner, false, out bool foundOurEffect, out GuardECSGameEffect existingEffectFromAnotherSource);
+                            GuardAbilityHandler.CheckExistingEffectsOnTarget(Body, (GameLiving)playerOwner, false, out bool foundOurEffect, out GuardECSGameEffect existingEffectFromAnotherSource);
 
                             if (foundOurEffect)
                                 break;
 
 							if (existingEffectFromAnotherSource != null)
-								EffectService.RequestImmediateCancelEffect(existingEffectFromAnotherSource);
+								EffectService.RequestCancelEffect(existingEffectFromAnotherSource);
 
-							new GuardECSGameEffect(new ECSGameEffectInitParams(Body, 0, 1, null), Body, playerOwner);
+							new GuardECSGameEffect(new ECSGameEffectInitParams(Body, 0, 1, null), Body, (GameLiving)playerOwner);
 						}
 
                         break;
                     }
                     case Abilities.Protect:
                     {
-                        GamePlayer playerOwner = GetPlayerOwner();
+                        IGamePlayer playerOwner = GetIPlayerOwner();
 
 						if (playerOwner != null)
 						{
-							ProtectAbilityHandler.CheckExistingEffectsOnTarget(Body, playerOwner, false, out bool foundOurEffect, out ProtectECSGameEffect existingEffectFromAnotherSource);
+							ProtectAbilityHandler.CheckExistingEffectsOnTarget(Body, (GameLiving)playerOwner, false, out bool foundOurEffect, out ProtectECSGameEffect existingEffectFromAnotherSource);
 
 							if (foundOurEffect)
 								break;
 
 							if (existingEffectFromAnotherSource != null)
-								EffectService.RequestImmediateCancelEffect(existingEffectFromAnotherSource);
+								EffectService.RequestCancelEffect(existingEffectFromAnotherSource);
 
-							new ProtectECSGameEffect(new ECSGameEffectInitParams(Body, 0, 1, null), Body, playerOwner);
+							new ProtectECSGameEffect(new ECSGameEffectInitParams(Body, 0, 1, null), Body, (GameLiving)playerOwner);
 						}
 
                         break;
@@ -497,6 +495,7 @@ namespace DOL.AI.Brain
                 case eSpellType.AcuityBuff:
                 case eSpellType.AFHitsBuff:
                 case eSpellType.AllMagicResistBuff:
+                case eSpellType.AllSecondaryMagicResistsBuff:
                 case eSpellType.ArmorAbsorptionBuff:
                 case eSpellType.BaseArmorFactorBuff:
                 case eSpellType.SpecArmorFactorBuff:
@@ -581,20 +580,20 @@ namespace DOL.AI.Brain
                             }
                         }
 
-                        GamePlayer player = GetPlayerOwner();
+                        IGamePlayer player = GetIPlayerOwner();
 
                         // Buff group members.
                         if (player != null)
                         {
-                            if (!LivingHasEffect(player, spell))
+                            if (!LivingHasEffect((GameLiving)player, spell))
                             {
-                                target = player;
+                                target = (GameLiving)player;
                                 break;
                             }
 
-                            if (player.Group != null)
+                            if (player?.Group != null)
                             {
-                                foreach (GamePlayer member in player.Group.GetPlayersInTheGroup())
+                                foreach (GameLiving member in player.Group.GetMembersInTheGroup())
                                 {
                                     if (!LivingHasEffect(member, spell) && Body.IsWithinRadius(member, spell.Range))
                                     {
@@ -631,12 +630,12 @@ namespace DOL.AI.Brain
                         break;
                     }
 
-                    GamePlayer player = GetPlayerOwner();
+                    IGamePlayer player = GetIPlayerOwner();
 
                     // Cure group members.
                     if (player?.Group != null)
                     {
-                        foreach (GamePlayer member in player.Group.GetPlayersInTheGroup())
+                        foreach (GameLiving member in player.Group.GetMembersInTheGroup())
                         {
                             if (member.IsDiseased && Body.IsWithinRadius(member, spell.Range))
                             {
@@ -666,12 +665,12 @@ namespace DOL.AI.Brain
                         break;
                     }
 
-                    GamePlayer player = GetPlayerOwner();
+                    IGamePlayer player = GetIPlayerOwner();
 
                     // Cure group members.
                     if (player?.Group != null)
                     {
-                        foreach (GamePlayer member in player.Group.GetPlayersInTheGroup())
+                        foreach (GameLiving member in player.Group.GetMembersInTheGroup())
                         {
                             if (member.IsPoisoned && Body.IsWithinRadius(member, spell.Range))
                             {
@@ -730,15 +729,15 @@ namespace DOL.AI.Brain
                         break;
                     }
 
-                    ICollection<GamePlayer> playerGroup = null;
-                    GamePlayer playerOwner = GetPlayerOwner();
+                    ICollection<GameLiving> playerGroup = null;
+                    IGamePlayer playerOwner = GetIPlayerOwner();
 
                     // Heal group members.
                     if (playerOwner?.Group != null && (spell.Target is eSpellTarget.REALM or eSpellTarget.GROUP))
                     {
-                        playerGroup = playerOwner.Group.GetPlayersInTheGroup();
+                        playerGroup = playerOwner.Group.GetMembersInTheGroup();
 
-                        foreach (GamePlayer member in playerGroup)
+                        foreach (GameLiving member in playerGroup)
                         {
                             if (member.HealthPercent < emergencyThreshold && !LivingHasEffect(member, spell) && Body.IsWithinRadius(member, spell.Range))
                             {
@@ -776,7 +775,7 @@ namespace DOL.AI.Brain
                     // Heal group members.
                     if (playerGroup != null)
                     {
-                        foreach (GamePlayer member in playerGroup)
+                        foreach (GameLiving member in playerGroup)
                         {
                             if (member.HealthPercent < healThreshold && !LivingHasEffect(member, spell) && Body.IsWithinRadius(member, spell.Range))
                             {
@@ -797,24 +796,16 @@ namespace DOL.AI.Brain
 
 		public override bool CanAggroTarget(GameLiving target)
 		{
-			// Only attack if target (or target's owner) is green+ to our owner
-			if (target is GameNPC npc && npc.Brain is IControlledBrain controlledBrain && controlledBrain.Owner != null)
-				target = controlledBrain.Owner;
-
-			GameLiving ownerToCheck = GetPlayerOwner();
+			GameLiving ownerToCheck = GetLivingOwner();
 			ownerToCheck ??= Owner;
-
-			if (!GameServer.ServerRules.IsAllowedToAttack(Body, target, true) || ownerToCheck.IsObjectGreyCon(target))
-				return false;
-
-            return AggroLevel > 0;
-        }
+			return AggroLevel > 0 && !ownerToCheck.IsObjectGreyCon(target) && GameServer.ServerRules.IsAllowedToAttack(Body, target, true);
+		}
 
 		protected override bool ShouldBeRemovedFromAggroList(GameLiving living)
 		{
 			if (living.IsMezzed ||
 				!living.IsAlive ||
-				living.ObjectState != GameObject.eObjectState.Active ||
+				living.ObjectState is not GameObject.eObjectState.Active ||
 				living.CurrentRegion != Body.CurrentRegion ||
 				!Body.IsWithinRadius(living, MAX_AGGRO_LIST_DISTANCE) ||
 				!GameServer.ServerRules.IsAllowedToAttack(Body, living, true))
@@ -884,23 +875,23 @@ namespace DOL.AI.Brain
 
                     List<GameSpellEffect> effects = new List<GameSpellEffect>();
 
-                    lock (Body.EffectList)
-                    {
-                        foreach (IGameEffect effect in Body.EffectList)
-                        {
-                            if (effect is GameSpellEffect gameSpellEffect && gameSpellEffect.SpellHandler is SpeedEnhancementSpellHandler)
-                                effects.Add(gameSpellEffect);
-                        }
-                    }
+					lock (Body.EffectList.Lock)
+					{
+						foreach (IGameEffect effect in Body.EffectList)
+						{
+							if (effect is GameSpellEffect gameSpellEffect && gameSpellEffect.SpellHandler is SpeedEnhancementSpellHandler)
+								effects.Add(gameSpellEffect);
+						}
+					}
 
-                    lock (Owner.EffectList)
-                    {
-                        foreach (IGameEffect effect in Owner.EffectList)
-                        {
-                            if (effect is GameSpellEffect gameSpellEffect && gameSpellEffect.SpellHandler is SpeedEnhancementSpellHandler)
-                                effects.Add(gameSpellEffect);
-                        }
-                    }
+					lock (Owner.EffectList.Lock)
+					{
+						foreach (IGameEffect effect in Owner.EffectList)
+						{
+							if (effect is GameSpellEffect gameSpellEffect && gameSpellEffect.SpellHandler is SpeedEnhancementSpellHandler)
+								effects.Add(gameSpellEffect);
+						}
+					}
 
                     foreach (GameSpellEffect effect in effects)
                         effect.Cancel(false);
@@ -925,16 +916,14 @@ namespace DOL.AI.Brain
             }
         }
 
-        public virtual void OnOwnerAttacked(AttackData ad)
-        {
-            if (FSM.GetState(eFSMStateType.PASSIVE) == FSM.GetCurrentState()) { return; }
+		public virtual void OnOwnerAttacked(AttackData ad)
+		{
+			if (FSM.GetCurrentState() == FSM.GetState(eFSMStateType.PASSIVE))
+				return;
 
-            // Theurgist pets don't help their owner.
-            if (Owner is IGamePlayer && ((IGamePlayer)Owner).CharacterClass.ID == (int)eCharacterClass.Theurgist)
-                return;
-
-            if (ad.Target is IGamePlayer && ((ad.Target as IGamePlayer).ControlledBrain != this || (ad.Target as IGamePlayer).ControlledBrain.Body == Owner))
-                return;
+			// Theurgist pets don't help their owner.
+			if (Owner is IGamePlayer playerOwner && (eCharacterClass) playerOwner.CharacterClass.ID is eCharacterClass.Theurgist)
+				return;
 
 			switch (ad.AttackResult)
 			{
@@ -945,13 +934,13 @@ namespace DOL.AI.Brain
 				case eAttackResult.HitUnstyled:
 				case eAttackResult.Missed:
 				case eAttackResult.Parried:
-					AddToAggroList(ad.Attacker, ad.Damage + ad.CriticalDamage);
-					break;
-			}
+				{
+					ConvertAttackToAggroAmount(ad);
+				}
 
-            if (FSM.GetState(eFSMStateType.AGGRO) != FSM.GetCurrentState()) { FSM.SetCurrentState(eFSMStateType.AGGRO); }
-            AttackMostWanted();
-        }
+				break;
+			}
+		}
 
 		public virtual void OnRelease()
 		{
@@ -960,7 +949,7 @@ namespace DOL.AI.Brain
 			foreach (ECSGameSpellEffect effect in Body.effectListComponent.GetSpellEffects())
 			{
 				if (effect.EffectType is eEffect.Pet or eEffect.Charm)
-					EffectService.RequestImmediateCancelEffect(effect);
+					EffectService.RequestCancelEffect(effect);
 			}
 		}
 
@@ -969,25 +958,25 @@ namespace DOL.AI.Brain
 			if (living == Body)
 				return;
 
-            lock (m_buffedTargetsLock)
-            {
-                m_buffedTargets.Add(living);
-            }
-        }
+			lock (_buffedTargetsLock)
+			{
+				_buffedTargets.Add(living);
+			}
+		}
 
-        public void StripCastedBuffs()
-        {
-            lock (m_buffedTargetsLock)
-            {
-                foreach (GameLiving living in m_buffedTargets)
-                {
-                    foreach (ECSGameEffect effect in living.effectListComponent.GetAllEffects().Where(x => x.SpellHandler != null && x.SpellHandler.Caster == Body))
-                        EffectService.RequestCancelEffect(effect);
-                }
+		public void StripCastedBuffs()
+		{
+			lock (_buffedTargetsLock)
+			{
+				foreach (GameLiving living in _buffedTargets)
+				{
+					foreach (ECSGameEffect effect in living.effectListComponent.GetAllEffects().Where(x => x.SpellHandler != null && x.SpellHandler.Caster == Body))
+						EffectService.RequestCancelEffect(effect);
+				}
 
-                m_buffedTargets.Clear();
-            }
-        }
+				_buffedTargets.Clear();
+			}
+		}
 
         public virtual int ModifyDamageWithTaunt(int damage)
         { return damage; }

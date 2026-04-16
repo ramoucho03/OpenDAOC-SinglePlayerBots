@@ -106,7 +106,8 @@ namespace DOL.GS
 		/// </summary>
 		eClassType ClassType { get; }
 
-		bool FocusCaster { get; }
+		bool IsAssassin { get; }
+		bool IsFocusCaster { get; }
 
 		/// <summary>
 		/// Instance Attached GamePlayer
@@ -139,8 +140,9 @@ namespace DOL.GS
 		void CommandNpcRelease();
 		void OnPetReleased();
 		bool StartAttack(GameObject attackTarget);
-		ShadeECSGameEffect CreateShadeEffect();
-		void Shade(bool state);
+		bool CancelShadeEffect(out ECSGameAbilityEffect effect);
+		bool CreateShadeEffect(out ECSGameAbilityEffect effect);
+		bool Shade(bool state, out ECSGameAbilityEffect effect);
 		bool RemoveFromWorld();
 		void Die(GameObject killer);
 		void Notify(DOLEvent e, object sender, EventArgs args);

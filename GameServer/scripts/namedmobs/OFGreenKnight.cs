@@ -268,7 +268,7 @@ namespace DOL.AI.Brain
 {
     public class OFGreenKnightBrain : EpicBossBrain
     {
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         public OFGreenKnightBrain() : base()
         {
             AggroLevel = 100;
@@ -688,9 +688,7 @@ namespace DOL.GS
         }
         public override short Strength { get => base.Strength; set => base.Strength = 150; }
         public override short Quickness { get => base.Quickness; set => base.Quickness = 80; }
-        public override void DropLoot(GameObject killer) //no loot
-        {
-        }
+        public override bool CanDropLoot => false;
         public override long ExperienceValue => 0;
         public override bool AddToWorld()
         {

@@ -10,12 +10,11 @@ namespace DOL.GS
 {
     public class NpcMovementComponent : MovementComponent
     {
-        public static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        public static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public const short DEFAULT_WALK_SPEED = 70;
         public const int MIN_ALLOWED_FOLLOW_DISTANCE = 100;
         public const int MIN_ALLOWED_PET_FOLLOW_DISTANCE = 90;
-        private const double FOLLOW_SPEED_SCALAR = 2.5;
 
         private MovementState _movementState;
         private long _nextFollowTick;
@@ -29,6 +28,7 @@ namespace DOL.GS
         private Point3D _positionForUpdatePackets;
         private bool _needsBroadcastUpdate;
         private short _currentMovementDesiredSpeed;
+        private PathVisualization _pathVisualization;
 
         public new GameNPC Owner { get; }
         public Vector3 Velocity { get; private set; }
@@ -44,6 +44,7 @@ namespace DOL.GS
         public long MovementElapsedTicks => IsMoving ? GameLoop.GameLoopTime - MovementStartTick : 0;
         public bool FixedSpeed { get; set; }
         public override short MaxSpeed => FixedSpeed ? MaxSpeedBase : base.MaxSpeed;
+        public int MaxSpeedPercent => MaxSpeed * 100 / GamePlayer.PLAYER_BASE_SPEED;
         public bool IsMovingOnPath => IsFlagSet(MovementState.ON_PATH);
         public bool IsNearSpawn => Owner.IsWithinRadius(Owner.SpawnPoint, 25);
         public bool IsDestinationValid { get; private set; }
@@ -61,7 +62,7 @@ namespace DOL.GS
             _positionForUpdatePackets = Owner;
         }
 
-        public override void Tick()
+        protected override void TickInternal()
         {
             if (IsFlagSet(MovementState.TURN_TO))
             {
@@ -117,11 +118,11 @@ namespace DOL.GS
 
             void FinalizeTick()
             {
-                base.Tick();
+                base.TickInternal();
 
                 if (_needsBroadcastUpdate)
                 {
-                    ClientService.UpdateObjectForPlayers(Owner);
+                    ClientService.UpdateNpcForPlayers(Owner);
                     _needsBroadcastUpdate = false;
                 }
             }
@@ -156,7 +157,7 @@ namespace DOL.GS
 
         public void Follow(GameLiving target, int minDistance, int maxDistance)
         {
-            if (target == null || target.ObjectState != eObjectState.Active)
+            if (target == null || target.ObjectState is not eObjectState.Active || !Owner.castingComponent.IsAllowedToFollow(target))
                 return;
 
             if (target != FollowTarget)
@@ -185,7 +186,9 @@ namespace DOL.GS
             {
                 if (PathID == null)
                 {
-                    log.Error($"Called {nameof(MoveOnPath)} but PathID is null (NPC: {Owner})");
+                    if (log.IsErrorEnabled)
+                        log.Error($"Called {nameof(MoveOnPath)} but PathID is null (NPC: {Owner})");
+
                     return;
                 }
 
@@ -193,7 +196,9 @@ namespace DOL.GS
 
                 if (CurrentWaypoint == null)
                 {
-                    log.Error($"Called {nameof(MoveOnPath)} but LoadPath returned null (PathID: {PathID}) (NPC: {Owner})");
+                    if (log.IsErrorEnabled)
+                        log.Error($"Called {nameof(MoveOnPath)} but LoadPath returned null (PathID: {PathID}) (NPC: {Owner})");
+
                     return;
                 }
 
@@ -221,7 +226,7 @@ namespace DOL.GS
 
                 PathTo(CurrentWaypoint, Owner.MaxSpeed);
             }
-            else
+            else if (log.IsErrorEnabled)
                 log.Error($"Called {nameof(MoveOnPath)} but both CurrentWaypoint and ON_PATH are already set. (NPC: {Owner})");
         }
 
@@ -262,20 +267,25 @@ namespace DOL.GS
             // Note that `CanRoam` returns false if `RoamingRange` is <= 0.
             int maxRoamingRadius = Owner.RoamingRange > 0 ? Owner.RoamingRange : Owner.CurrentRegion.IsDungeon ? 5 : 500;
 
-            if (Owner.CurrentZone.IsPathingEnabled)
-            {
-                Vector3? target = PathingMgr.Instance.GetRandomPointAsync(Owner.CurrentZone, new Vector3(Owner.SpawnPoint.X, Owner.SpawnPoint.Y, Owner.SpawnPoint.Z), maxRoamingRadius);
+            if (Owner.CurrentZone != null)
+                if (Owner.CurrentZone.IsPathingEnabled)
+                {
+                    Vector3? target = PathingMgr.Instance.GetRandomPointAsync(Owner.CurrentZone, new Vector3(Owner.SpawnPoint.X, Owner.SpawnPoint.Y, Owner.SpawnPoint.Z), maxRoamingRadius);
 
-                if (target.HasValue)
-                    PathTo(new Point3D(target.Value.X, target.Value.Y, target.Value.Z), speed);
+                    if (target.HasValue)
+                        PathTo(new Point3D(target.Value.X, target.Value.Y, target.Value.Z), speed);
 
-                return;
-            }
+                    return;
+                }
 
             maxRoamingRadius = Util.Random(maxRoamingRadius);
             double angle = Util.RandomDouble() * Math.PI * 2;
             double targetX = Owner.SpawnPoint.X + maxRoamingRadius * Math.Cos(angle);
             double targetY = Owner.SpawnPoint.Y + maxRoamingRadius * Math.Sin(angle);
+
+            if (Owner.CurrentRegion.GetZone((int)targetX, (int)targetY) == null)
+                return;
+
             WalkTo(new Point3D((int) targetX, (int) targetY, Owner.SpawnPoint.Z), speed);
         }
 
@@ -335,6 +345,25 @@ namespace DOL.GS
             // May technically be only necessary if the count is going from 0 to 1 or 1 to 0, but we're skipping that because it would needs to be thread safe.
             _needsBroadcastUpdate = true;
             base.DisableTurning(add);
+        }
+
+        public void TogglePathVisualization()
+        {
+            // Toggle both visualization for `PathCalculator` (pathfinding) and `PathPoint` (patrols, horse routes).
+
+            _pathCalculator.ToggleVisualization();
+
+            if (_pathVisualization != null)
+            {
+                _pathVisualization.CleanUp();
+                _pathVisualization = null;
+                return;
+            }
+
+            _pathVisualization = new();
+
+            if (CurrentWaypoint != null)
+                _pathVisualization.Visualize(MovementMgr.FindFirstPathPoint(CurrentWaypoint), Owner.CurrentRegion);
         }
 
         private void UpdateVelocity(double distanceToTarget)
@@ -422,20 +451,29 @@ namespace DOL.GS
                 return;
             }
 
-            Tuple<Vector3?, NoPathReason> res = _pathCalculator.CalculateNextTarget(destinationForPathCalculator);
-            Vector3? nextNode = res.Item1;
-            //NoPathReason noPathReason = res.Item2;
-            //bool shouldUseAirPath = noPathReason == NoPathReason.RECAST_FOUND_NO_PATH;
-            //bool didFindPath = PathCalculator.DidFindPath;
+            Vector3? nextNode = _pathCalculator.CalculateNextTarget(destinationForPathCalculator, out ENoPathReason noPathReason);
 
-            if (!nextNode.HasValue)
+            // Fall back to normal walking method if no path is found.
+            if (noPathReason is ENoPathReason.NoPath or ENoPathReason.End)
             {
                 UnsetFlag(MovementState.PATHING);
                 WalkToInternal(destination, speed);
                 return;
             }
 
-            // Do the actual pathing bit: Walk towards the next pathing node
+            // Pause movement and turn toward the destination the path contains a closed door.
+            if (noPathReason is ENoPathReason.ClosedDoor)
+            {
+                TurnTo(destination.X, destination.Y);
+                UnsetFlag(MovementState.PATHING);
+
+                if (IsMoving)
+                    UpdateMovement(null, 0.0, 0);
+
+                return;
+            }
+
+            // Walk towards the next pathing node.
             _movementRequest = new(destination, speed, PathToInternal);
             SetFlag(MovementState.PATHING);
             WalkToInternal(new Point3D(nextNode.Value.X, nextNode.Value.Y, nextNode.Value.Z), speed);
@@ -613,7 +651,7 @@ namespace DOL.GS
             oldPathPoint.FiredFlag = !oldPathPoint.FiredFlag;
 
             if (CurrentWaypoint != null)
-                WalkToInternal(CurrentWaypoint, Math.Min(_moveOnPathSpeed, CurrentWaypoint.MaxSpeed));
+                PathToInternal(CurrentWaypoint, Math.Min(_moveOnPathSpeed, CurrentWaypoint.MaxSpeed));
             else
                 StopMovingOnPath();
         }
@@ -655,7 +693,7 @@ namespace DOL.GS
                 DestinationForClient = Owner;
             else
             {
-                magic = Math.Max(20, CurrentSpeed * 0.1);
+                magic = Math.Max(15, CurrentSpeed * 0.1);
                 ratio = (distanceToTarget + magic) / distanceToTarget;
                 complementRatio = 1 - ratio;
 

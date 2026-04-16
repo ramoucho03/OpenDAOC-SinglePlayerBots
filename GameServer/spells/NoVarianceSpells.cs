@@ -2,37 +2,11 @@ using DOL.GS.Effects;
 
 namespace DOL.GS.Spells
 {
-    /// <summary>
-    ///
-    /// </summary>
-    [SpellHandlerAttribute("DamageSpeedDecreaseNoVariance")]
-    public class DamageSpeedDecreaseNoVarianceSpellHandler : DamageSpeedDecreaseSpellHandler
-    {
-        public override double CalculateDamageBase(GameLiving target)
-        {
-            return Spell.Damage;
-        }
-
-        public override void CalculateDamageVariance(GameLiving target, out double min, out double max)
-        {
-            min = 1.00;
-            max = 1.00;
-        }
-
-        public DamageSpeedDecreaseNoVarianceSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line)
-        {
-        }
-    }
-}
-
-namespace DOL.GS.Spells
-{
-    /// <summary>
-    ///
-    /// </summary>
-    [SpellHandlerAttribute("DirectDamageNoVariance")]
+    [SpellHandler(eSpellType.DirectDamageNoVariance)]
     public class DirectDamageNoVarianceSpellHandler : DirectDamageSpellHandler
     {
+        public DirectDamageNoVarianceSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
+
         public override double CalculateDamageBase(GameLiving target)
         {
             return Spell.Damage;
@@ -43,25 +17,85 @@ namespace DOL.GS.Spells
             min = 1.00;
             max = 1.00;
         }
+    }
 
-        public DirectDamageNoVarianceSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line)
+    [SpellHandler(eSpellType.DirectDamageWithDebuffNoVariance)]
+    public class DirectDamageDebuffNoVariance : DirectDamageDebuffSpellHandler
+    {
+        public DirectDamageDebuffNoVariance(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
+
+        public override double CalculateDamageBase(GameLiving target)
         {
+            return Spell.Damage;
+        }
+
+        public override void CalculateDamageVariance(GameLiving target, out double min, out double max)
+        {
+            min = 1.00;
+            max = 1.00;
         }
     }
-}
 
-namespace DOL.GS.Spells
-{
-    /// <summary>
-    /// UnresistableStun 
-    /// </summary>
-    [SpellHandlerAttribute("UnresistableStun")]
-	public class UnresistableStunSpellHandler : StunSpellHandler
-	{
-		public override double CalculateSpellResistChance(GameLiving target)
-		{
-			return 0;
-		}
+    [SpellHandler(eSpellType.DamageOverTimeNoVariance)]
+    public class DoTSpellHandlerNoVariance : DoTSpellHandler
+    {
+        public DoTSpellHandlerNoVariance(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
+
+        public override double CalculateDamageBase(GameLiving target)
+        {
+            return Spell.Damage;
+        }
+
+        public override void CalculateDamageVariance(GameLiving target, out double min, out double max)
+        {
+            min = 1.00;
+            max = 1.00;
+        }
+    }
+
+    [SpellHandler(eSpellType.DamageSpeedDecreaseNoVariance)]
+    public class DamageSpeedDecreaseNoVarianceSpellHandler : DamageSpeedDecreaseSpellHandler
+    {
+        public DamageSpeedDecreaseNoVarianceSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
+
+        public override double CalculateDamageBase(GameLiving target)
+        {
+            return Spell.Damage;
+        }
+
+        public override void CalculateDamageVariance(GameLiving target, out double min, out double max)
+        {
+            min = 1.00;
+            max = 1.00;
+        }
+    }
+
+    [SpellHandler(eSpellType.LifedrainNoVariance)]
+    public class LifedrainNoVarianceSpellHandler : LifedrainSpellHandler
+    {
+        public LifedrainNoVarianceSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
+
+        public override double CalculateDamageBase(GameLiving target)
+        {
+            return Spell.Damage;
+        }
+
+        public override void CalculateDamageVariance(GameLiving target, out double min, out double max)
+        {
+            min = 1.00;
+            max = 1.00;
+        }
+    }
+
+    [SpellHandler(eSpellType.UnresistableStun)]
+    public class UnresistableStunSpellHandler : StunSpellHandler
+    {
+        public UnresistableStunSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
+
+        public override double CalculateSpellResistChance(GameLiving target)
+        {
+            return 0;
+        }
 
         public override int OnEffectExpires(GameSpellEffect effect, bool noMessages)
         {
@@ -69,15 +103,12 @@ namespace DOL.GS.Spells
                 return 0;
 
             base.OnEffectExpires(effect, noMessages);
+            return 0;
+        }
 
-			return 0;
-		}
-
-		protected override int CalculateEffectDuration(GameLiving target)
-		{
-			return Spell.Duration;
-		}
-
-		public UnresistableStunSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
-	}
+        protected override int CalculateEffectDuration(GameLiving target)
+        {
+            return Spell.Duration;
+        }
+    }
 }

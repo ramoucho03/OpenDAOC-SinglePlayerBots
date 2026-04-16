@@ -7,7 +7,7 @@ namespace DOL.GS.RealmAbilities
     /// </summary>
     public class AtlasOF_LifterAbility : RAPropertyEnhancer
     {
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         protected override string ValueUnit => "%";
 
@@ -28,7 +28,7 @@ namespace DOL.GS.RealmAbilities
             base.Activate(living, sendUpdates);
 
             if (living is GamePlayer player)
-                player.Out.SendEncumberance();
+                player.Out.SendEncumbrance();
         }
 
         public override void Deactivate(GameLiving living, bool sendUpdates)
@@ -36,7 +36,7 @@ namespace DOL.GS.RealmAbilities
             base.Deactivate(living, sendUpdates);
 
             if (living is GamePlayer player)
-                player.Out.SendEncumberance();
+                player.Out.SendEncumbrance();
         }
 
         public override void OnLevelChange(int oldLevel, int newLevel = 0) 
@@ -44,7 +44,7 @@ namespace DOL.GS.RealmAbilities
             base.OnLevelChange(oldLevel, newLevel);
 
             if (m_activeLiving is GamePlayer player)
-                player.Out.SendEncumberance();
+                player.Out.SendEncumbrance();
         }
     }
 }

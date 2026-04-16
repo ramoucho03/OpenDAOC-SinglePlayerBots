@@ -7,7 +7,6 @@ using DOL.Events;
 using DOL.GS.Behaviour;
 using DOL.GS.PacketHandler;
 using DOL.Language;
-using log4net;
 
 namespace DOL.GS.Quests
 {
@@ -110,7 +109,7 @@ namespace DOL.GS.Quests
 	/// </summary>
 	public class DataQuest : AbstractQuest
 	{
-		private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		protected int m_step = 1;
 		protected DbDataQuest m_dataQuest = null;
@@ -1619,7 +1618,7 @@ namespace DOL.GS.Quests
 					{
 						// check for inventory space
 
-						lock (QuestPlayer.Inventory)
+						lock (QuestPlayer.Inventory.Lock)
 						{
 							if (QuestPlayer.Inventory.IsSlotsFree(stepTemplates.Count, eInventorySlot.FirstBackpack, eInventorySlot.LastBackpack))
 							{
@@ -1972,7 +1971,7 @@ namespace DOL.GS.Quests
 
 							if (m_finalRewards.Count > 0)
 							{
-								lock (player.Inventory.LockObject)
+								lock (player.Inventory.Lock)
 								{
 									if (player.Inventory.IsSlotsFree(m_finalRewards.Count, eInventorySlot.FirstBackpack, eInventorySlot.LastBackpack))
 									{
@@ -2074,7 +2073,7 @@ namespace DOL.GS.Quests
                 {
                     if (m_searchStartItemTemplate != string.Empty)
                     {
-                        lock (player.Inventory.LockObject)
+                        lock (player.Inventory.Lock)
                         {
                             if (player.Inventory.IsSlotsFree(1, eInventorySlot.FirstBackpack, eInventorySlot.LastBackpack))
                             {
@@ -2194,7 +2193,6 @@ namespace DOL.GS.Quests
 			{
 				DbCharacterXDataQuest charQuest = GetCharacterQuest(player, ID, true);
 
-				//Console.WriteLine($"count {charQuest.Count} maxCount {MaxQuestCount} Minlvl {Level} Maxlvl {MaxLevel} playerlvl {player.Level}");
 				if (charQuest.Count < MaxQuestCount && player.Level <= MaxLevel && player.Level >= Level)
 				{
 					TryTurnTo(obj, player);
@@ -2632,7 +2630,7 @@ namespace DOL.GS.Quests
 
 								if (m_finalRewards.Count > 0)
 								{
-									lock (player.Inventory.LockObject)
+									lock (player.Inventory.Lock)
 									{
 										if (player.Inventory.IsSlotsFree(m_finalRewards.Count, eInventorySlot.FirstBackpack, eInventorySlot.LastBackpack))
 										{
@@ -2846,7 +2844,7 @@ namespace DOL.GS.Quests
 
 			// try rewards first
 
-			lock (m_questPlayer.Inventory)
+			lock (m_questPlayer.Inventory.Lock)
 			{
 				if (m_questPlayer.Inventory.IsSlotsFree(m_finalRewards.Count + m_optionalRewardChoice.Count, eInventorySlot.FirstBackpack, eInventorySlot.LastBackpack))
 				{

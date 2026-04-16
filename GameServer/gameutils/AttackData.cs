@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 using DOL.Database;
-using DOL.GS.PacketHandler;
+using DOL.GS.Scripts;
 using DOL.GS.Spells;
 using DOL.GS.Styles;
 
@@ -14,8 +14,9 @@ namespace DOL.GS
         public eAttackType AttackType { get; set; } = eAttackType.Unknown;
         public eAttackResult AttackResult { get; set; } = eAttackResult.Any;
         public int Damage { get; set; }
-        public int CriticalDamage { get; set; }
         public int StyleDamage { get; set; }
+        public int CriticalDamage { get; set; }
+        public int CriticalChance { get; set; }
         public DbInventoryItem Weapon { get; set; }
         public int Interval { get; set; }
         public bool IsOffHand { get; set; }
@@ -47,29 +48,41 @@ namespace DOL.GS
             _ => false
         };
 
-        public bool IsRandomFumble
-        {
-            get
-            {
-                GamePlayer playerAttacker = Attacker as GamePlayer;
-                double fumbleChance = Attacker.ChanceToFumble;
-                double fumbleRoll;
-
-                if (!ServerProperties.Properties.OVERRIDE_DECK_RNG && playerAttacker != null)
-                    fumbleRoll = playerAttacker.RandomNumberDeck.GetPseudoDouble();
-                else
-                    fumbleRoll = Util.CryptoNextDouble();
-
-                if (playerAttacker?.UseDetailedCombatLog == true)
-                    playerAttacker.Out.SendMessage($"Your chance to fumble: {fumbleChance * 100:0.##}% rand: {fumbleRoll * 100:0.##}", eChatType.CT_DamageAdd, eChatLoc.CL_SystemWindow);
-
-                return IsMeleeAttack && fumbleChance > fumbleRoll;
-            }
-        }
-
         public bool GeneratesAggro => SpellHandler == null || SpellHandler.Spell.SpellType is not eSpellType.Amnesia || IsSpellResisted;
 
         public AttackData() { }
+
+        public static eAttackType GetAttackType(DbInventoryItem weapon, bool dualWield, GameLiving attacker)
+        {
+            if (dualWield && (attacker is not IGamePlayer playerAttacker || (eCharacterClass) playerAttacker.CharacterClass.ID is not eCharacterClass.Savage))
+                return eAttackType.MeleeDualWield;
+            else if (weapon == null)
+                return eAttackType.MeleeOneHand;
+
+            eAttackType attackType = weapon.SlotPosition switch
+            {
+                Slot.TWOHAND => eAttackType.MeleeTwoHand,
+                Slot.RANGED => eAttackType.Ranged,
+                _ => eAttackType.MeleeOneHand,
+            };
+
+            if (attacker is IGamePlayer)
+            {
+                // This should the only important one to check.
+                if (attackType is eAttackType.MeleeTwoHand)
+                {
+                    if (weapon.Item_Type is not Slot.TWOHAND)
+                        attackType = eAttackType.MeleeOneHand;
+                }
+                else if (attackType is eAttackType.Ranged)
+                {
+                    if (weapon.Item_Type is not Slot.RANGED)
+                        attackType = eAttackType.MeleeOneHand;
+                }
+            }
+
+            return attackType;
+        }
 
         public enum eAttackType : int
         {

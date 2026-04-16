@@ -3,7 +3,7 @@ using DOL.GS.Scripts;
 
 namespace DOL.GS.Spells
 {
-    [SpellHandlerAttribute("SiegeDirectDamage")]
+    [SpellHandler(eSpellType.SiegeDirectDamage)]
     public class SiegeDirectDamageSpellHandler : DirectDamageSpellHandler
     {
         public SiegeDirectDamageSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
@@ -26,6 +26,11 @@ namespace DOL.GS.Spells
         public override bool CasterIsAttacked(GameLiving attacker)
         {
             return false;
+        }
+
+        public override double CalculateDamageBase(GameLiving target)
+        {
+            return Spell.Damage;
         }
 
         public override void CalculateDamageVariance(GameLiving target, out double min, out double max)

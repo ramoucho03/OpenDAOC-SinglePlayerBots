@@ -18,6 +18,7 @@
  */
 
 using DOL.AI.Brain;
+using DOL.GS.Scripts;
 
 namespace DOL.GS.PropertyCalc
 {
@@ -37,7 +38,7 @@ namespace DOL.GS.PropertyCalc
         {
             int chance = 0;
 
-            if (living is GamePlayer player)
+            if (living is IGamePlayer player)
             {
                 if (player.HasSpecialization(Specs.Parry))
                     chance += (player.Dexterity * 2 - 100) / 4 + (player.GetModifiedSpecLevel(Specs.Parry) - 1) * (10 / 2) + 50;
@@ -45,7 +46,7 @@ namespace DOL.GS.PropertyCalc
                 chance += player.BaseBuffBonusCategory[(int) property] * 10;
                 chance += player.SpecBuffBonusCategory[(int) property] * 10;
                 chance -= player.DebuffCategory[(int) property] * 10;
-                chance += player.BuffBonusCategory4[(int) property] * 10;
+                chance += ((GameLiving)player).OtherBonus[(int) property] * 10;
                 chance += player.AbilityBonus[(int) property] * 10;
             }
             else if (living is GameNPC npc)
@@ -57,7 +58,7 @@ namespace DOL.GS.PropertyCalc
                     chance += pet.BaseBuffBonusCategory[(int) property] * 10;
                     chance += pet.SpecBuffBonusCategory[(int) property] * 10;
                     chance -= pet.DebuffCategory[(int) property] * 10;
-                    chance += pet.BuffBonusCategory4[(int) property] * 10;
+                    chance += pet.OtherBonus[(int) property] * 10;
                     chance += pet.AbilityBonus[(int) property] * 10;
                     chance += (pet.GetModified(eProperty.Dexterity) * 2 - 100) / 4;
                 }

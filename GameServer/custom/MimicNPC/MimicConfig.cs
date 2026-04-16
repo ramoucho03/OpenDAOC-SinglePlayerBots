@@ -1,15 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace DOL.GS.Scripts
+﻿namespace DOL.GS.Scripts
 {
     public static class MimicConfig
     {
-        public static bool CLASS_BIAS = true;
-
-        public static bool LEVEL_BIAS = true;
+        public static readonly bool LFG_CLASS_BIAS = true;     // Not implemented
+        public static readonly bool LFG_LEVEL_BIAS = true;     // Should bots take level difference into account when trying to group
+        public static readonly bool WEAPON_ROG = false;        // Not implemented
+        public static readonly bool ARMOR_ROG = true;          // Should bots recieve ROG items based on class, or random items from the DB
+        public static readonly bool PLAYER_LOOTMASTER = false; // Should all loot go to the player leader or distribute to bots as normal
     }
 }

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using DOL.Database;
 using DOL.GS.Keeps;
 using DOL.GS.Scripts;
+using static DOL.GS.IGameStaticItemOwner;
 
 namespace DOL.GS.ServerRules
 {
@@ -45,16 +46,6 @@ namespace DOL.GS.ServerRules
 		/// <param name="quiet">should messages be sent</param>
 		/// <returns>true if attack is allowed</returns>
 		bool IsAllowedToAttack(GameLiving attacker, GameLiving defender, bool quiet);
-
-		/// <summary>
-		/// Is caster allowed to cast a spell
-		/// </summary>
-		/// <param name="caster"></param>
-		/// <param name="target"></param>
-		/// <param name="spell"></param>
-		/// <param name="spellLine"></param>
-		/// <returns>true if allowed</returns>
-		bool IsAllowedToCastSpell(GameLiving caster, GameLiving target, Spell spell, SpellLine spellLine);
 
 		/// <summary>
 		/// Should the target be considered the same realm as the source?
@@ -214,7 +205,9 @@ namespace DOL.GS.ServerRules
 		/// </summary>
 		/// <param name="killedNPC">npc that died</param>
 		/// <param name="killer">killer</param>
-		void OnNPCKilled(GameNPC killedNPC, GameObject killer);
+		void OnNpcKilled(GameNPC killedNPC, GameObject killer);
+
+		void DropLoot(GameNPC killedNPC, GameObject killer, SortedSet<ItemOwnerTotalDamagePair> itemOwners);
 
 		/// <summary>
 		/// Invoked on Player death and deals out
@@ -222,15 +215,7 @@ namespace DOL.GS.ServerRules
 		/// </summary>
 		/// <param name="killedPlayer">player that died</param>
 		/// <param name="killer">killer</param>
-		void OnPlayerKilled(GamePlayer killedPlayer, GameObject killer);
-
-		/// <summary>
-		/// Invoked on a livings death and deals out
-		/// experience / rps if needed
-		/// </summary>
-		/// <param name="living">the living that died</param>
-		/// <param name="killer"></param>
-		void OnLivingKilled(GameLiving living, GameObject killer);
+		void OnPlayerKilled(IGamePlayer killedPlayer, GameObject killer);
 
 		/// <summary>
 		/// Invoked when a player teleports somewhere
@@ -368,7 +353,7 @@ namespace DOL.GS.ServerRules
 		/// <param name="type">the type of news</param>
 		/// <param name="player">the player</param>
 		/// <returns>true if the player is allowed to generate news</returns>
-		bool CanGenerateNews(GamePlayer player);
+		bool CanGenerateNews(IGamePlayer player);
 
 		/// <summary>
 		/// Is the player allowed to /level
@@ -450,5 +435,12 @@ namespace DOL.GS.ServerRules
 		/// Enable Handling Custom Player Level Up
 		/// </summary>
 		void OnPlayerLevelUp(GamePlayer player, int previousLevel);
+
+		public class EntityCountTotalDamagePair(int count, double damage, IGamePlayer highestLevelPlayer)
+		{
+			public int Count { get; set; } = count;
+			public double Damage { get; set; } = damage;
+			public IGamePlayer HighestLevelPlayer { get; set; } = highestLevelPlayer;
+		}
 	}
 }

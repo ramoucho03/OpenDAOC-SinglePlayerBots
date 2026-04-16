@@ -23,8 +23,7 @@
 // using DOL.Database;
 // using System.Collections;
 // using DOL.GS.Quests;
-// using log4net;
-// using System.Reflection;
+// // using System.Reflection;
 // using DOL.Events;
 // using DOL.GS.Quests.Atlantis;
 //
@@ -36,7 +35,7 @@
 //     /// <author>Aredhel</author>
 //     public class Scholar : Researcher
 //     {
-// 		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+// 		private static readonly Logging.Logger log = Logging.LoggerFactory.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 //
 // 		/// <summary>
 // 		/// Create a new scholar.
@@ -59,7 +58,7 @@
 // 			string artifacts = string.Empty;
 // 			if (quests.Count > 0)
 // 			{
-// 				lock (quests.SyncRoot)
+// 				lock (_questListToGiveLock)
 // 				{
 // 					int numQuests = quests.Count;
 // 					foreach (ArtifactQuest quest in quests)
@@ -131,7 +130,7 @@
 // 			if (player == null)
 // 				return false;
 //
-// 			lock (QuestListToGive.SyncRoot)
+// 			lock (_questListToGiveLock)
 // 			{
 // 				// Start new quest...
 //
@@ -247,7 +246,7 @@
 //
 // 			if (player != null)
 // 			{
-// 				lock (QuestListToGive.SyncRoot)
+// 				lock (_questListToGiveLock)
 // 				{
 // 					try
 // 					{

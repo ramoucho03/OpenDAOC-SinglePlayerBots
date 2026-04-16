@@ -26,12 +26,11 @@ using DOL.GS.PacketHandler;
 using DOL.GS.Effects;
 using DOL.Events;
 
-using log4net;
 
 
 namespace DOL.GS.Spells
 {
-    [SpellHandlerAttribute("StyleDmgAbs")]
+    [SpellHandler(eSpellType.StyleDmgAbs)]
     public class StyleDmgAbsSpellHandler : SpellHandler
     {
 

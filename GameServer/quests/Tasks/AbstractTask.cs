@@ -6,7 +6,6 @@ using System.Text;
 using DOL.Database;
 using DOL.Events;
 using DOL.GS.PacketHandler;
-using log4net;
 
 namespace DOL.GS.Quests
 {
@@ -19,7 +18,7 @@ namespace DOL.GS.Quests
         /// <summary>
         /// Defines a logger for this class.
         /// </summary>
-        private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
         /// <summary>
         /// The temp property name for next check task millisecond
@@ -38,10 +37,10 @@ namespace DOL.GS.Quests
         /// </summary>
         protected const int CHANCE = 50;
 
+        protected const int MAX_LEVEL = 20;
+
         // allowed number of tasks per level
-        //private static int[] m_maxTasksDone = new int[20] {1,2,3,5,6,7,9,10,12,14,16,18,20,22,24,26,28,30,32,34};
-        private static readonly int[] m_maxTasksDone = new int[20]
-            {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20};
+        private static readonly int[] m_maxTasksDone = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
 
         protected const string RECEIVER_NAME = "receiverName";
         protected const string ITEM_NAME = "itemName";
@@ -396,7 +395,7 @@ namespace DOL.GS.Quests
         {
             if (ItemName != null)
             {
-                lock (m_taskPlayer.Inventory)
+                lock (m_taskPlayer.Inventory.Lock)
                 {
                     DbInventoryItem item = m_taskPlayer.Inventory.GetFirstItemByID(ItemName, eInventorySlot.Min_Inv,
                         eInventorySlot.Max_Inv);
@@ -438,9 +437,8 @@ namespace DOL.GS.Quests
         /// </summary>
         public bool CheckTaskExpired()
         {
-            if (TaskActive && DateTime.Compare(TimeOut, DateTime.Now) < 0)
+            if (TaskActive && (DateTime.Compare(TimeOut, DateTime.Now) < 0 || m_taskPlayer.Level > MAX_LEVEL))
             {
-                //DOLConsole.WriteError("TimeOut: "+m_Tasks[i].TimeOut+" - Now: "+DateTime.Now);
                 ExpireTask();
                 return true;
             }
@@ -450,10 +448,7 @@ namespace DOL.GS.Quests
 
         public static int MaxTasksDone(int level)
         {
-            if (level <= 20)
-                return m_maxTasksDone[level - 1];
-            else
-                return 20;
+            return level > MAX_LEVEL ? 0 : m_maxTasksDone[Math.Min(level - 1, m_maxTasksDone.Length)];
         }
 
         /// <summary>
@@ -511,18 +506,20 @@ namespace DOL.GS.Quests
             if (GameServer.ServerRules.IsAllowedToUnderstand(target, player) == false)
                 return false;
 
-            if (player.Level > 20)
+            if (player.Level > MAX_LEVEL)
             {
-                player.Out.SendMessage("Tasks are only available to player up to level 20!", eChatType.CT_System,
+                player.Out.SendMessage($"Tasks are only available to player up to level {MAX_LEVEL}!", eChatType.CT_System,
                     eChatLoc.CL_SystemWindow);
                 return false;
             }
+
             if (player.Task is {TaskActive: true})
             {
                 player.Out.SendMessage("You already have a Task. Select yourself and type /Task for more Information.",
                     eChatType.CT_System, eChatLoc.CL_SystemWindow);
                 return false;
             }
+
             if (player.Task != null && player.Task.TasksDone >= MaxTasksDone(player.Level))
             {
                 player.Out.SendMessage(
@@ -530,6 +527,7 @@ namespace DOL.GS.Quests
                     eChatType.CT_System, eChatLoc.CL_SystemWindow);
                 return false;
             }
+
             if (player.TempProperties.GetProperty<int>(CHECK_TASK_TICK) > GameLoop.GameLoopTime)
             {
                 player.Out.SendMessage(
@@ -537,6 +535,7 @@ namespace DOL.GS.Quests
                     eChatType.CT_Say, eChatLoc.CL_PopupWindow);
                 return false;
             }
+
             if (Util.Chance(chanceOfSuccess))
             {
                 return true;
@@ -548,7 +547,6 @@ namespace DOL.GS.Quests
             // stored time of try to disable task for defined time.
             player.TempProperties.SetProperty(CHECK_TASK_TICK, GameLoop.GameLoopTime + CHECK_TASK_DELAY);
             return false;
-            
         }
     }
 }

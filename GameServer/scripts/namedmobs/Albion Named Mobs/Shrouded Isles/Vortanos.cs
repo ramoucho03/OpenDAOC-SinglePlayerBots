@@ -158,7 +158,7 @@ namespace DOL.AI.Brain
 {
 	public class VortanosBrain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 		public VortanosBrain() : base()
 		{
 			AggroLevel = 100;
@@ -458,16 +458,14 @@ namespace DOL.GS
 			return true;
 		}
 		public override long ExperienceValue => 0;
-		public override void DropLoot(GameObject killer)
-		{
-		}
+		public override bool CanDropLoot => false;
 	}
 }
 namespace DOL.AI.Brain
 {
 	public class VortanosAddBrain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 		public VortanosAddBrain() : base()
 		{
 			AggroLevel = 100;

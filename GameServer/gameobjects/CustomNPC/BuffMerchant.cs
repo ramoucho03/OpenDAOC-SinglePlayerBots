@@ -8,7 +8,6 @@ using DOL.GS;
 using DOL.GS.PacketHandler;
 using DOL.GS.Spells;
 using DOL.Language;
-using log4net;
 
 namespace DOL.GS
 {
@@ -878,7 +877,7 @@ namespace DOL.GS
 
 				long totalValue = number * (template.Price);
 
-				lock (player.Inventory.LockObject)
+				lock (player.Inventory.Lock)
 				{
 					if (player.BountyPoints < totalValue)
 					{
@@ -918,7 +917,7 @@ namespace DOL.GS
 
 				long totalValue = number * template.Price;
 
-				lock (player.Inventory.LockObject)
+				lock (player.Inventory.Lock)
 				{
 
 					if (player.GetCurrentMoney() < totalValue)
@@ -1225,7 +1224,7 @@ namespace DOL.GS.Items
 {
     public class BuffTokens
 	{
-		private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		[GameServerStartedEvent]
 		public static void OnServerStartup(DOLEvent e, object sender, EventArgs args)
@@ -1583,7 +1582,7 @@ namespace DOL.GS.Items
 	}
 	public class BPBuffTokens
 	{
-		private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		[GameServerStartedEvent]
 		public static void OnServerStartup(DOLEvent e, object sender, EventArgs args)

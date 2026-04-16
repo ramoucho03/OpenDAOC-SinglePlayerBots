@@ -8,7 +8,7 @@ namespace DOL.GS.Spells
     /// <summary>
     /// The spell used for the Personal Bind Recall Stone.
     /// </summary>
-    [SpellHandlerAttribute("GatewayPersonalBind")]
+    [SpellHandler(eSpellType.GatewayPersonalBind)]
     public class GatewayPersonalBind : SpellHandler
     {
         public GatewayPersonalBind(GameLiving caster, Spell spell, SpellLine spellLine) : base(caster, spell, spellLine) { }
@@ -94,9 +94,6 @@ namespace DOL.GS.Spells
         public override void CasterMoves()
         {
             InterruptCasting();
-
-            if (Caster is GamePlayer playerCaster)
-                playerCaster.Out.SendMessage(LanguageMgr.GetTranslation(playerCaster.Client, "SpellHandler.CasterMove"), eChatType.CT_Important, eChatLoc.CL_SystemWindow);
         }
 
         public override IList<string> DelveInfo

@@ -17,7 +17,7 @@ namespace DOL.GS
 
 	public class GameRelic : GameStaticItem
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
 		public const string PLAYER_CARRY_RELIC_WEAK = "IAmCarryingARelic";
 		protected const int RelicEffectInterval = 4000;
@@ -302,13 +302,12 @@ namespace DOL.GS
 			}
 			if (removeFromInventory)
 			{
-				lock (player.Inventory.LockObject)
+				lock (player.Inventory.Lock)
 				{
 					bool success = player.Inventory.RemoveItem(m_item);
 					InventoryLogging.LogInventoryAction(player, this, eInventoryActionType.Other, m_item.Template, m_item.Count);
 					log.Debug("Remove " + m_item.Name + " from " + player.Name + "'s Inventory " + ((success) ? "successfully." : "with errors."));
 				}
-
 			}
 
 			// remove the handlers from the player

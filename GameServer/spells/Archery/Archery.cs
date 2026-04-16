@@ -8,7 +8,7 @@ using DOL.GS.Scripts;
 
 namespace DOL.GS.Spells
 {
-	[SpellHandler("Archery")]
+	[SpellHandler(eSpellType.Archery)]
 	public class Archery : ArrowSpellHandler
 	{
 		public enum eShotType
@@ -95,16 +95,6 @@ namespace DOL.GS.Spells
 			return damage;
 		}
 
-		/// <summary>
-		/// Level mod for effect between target and caster if there is any
-		/// </summary>
-		/// <returns></returns>
-		public override double GetLevelModFactor()
-		{
-			return 0.025;
-		}
-
-
 		public override AttackData CalculateDamageToTarget(GameLiving target)
 		{
 			AttackData ad = base.CalculateDamageToTarget(target);
@@ -131,7 +121,7 @@ namespace DOL.GS.Spells
 							player = target as IGamePlayer;
 							player.Out.SendMessage("A shot penetrated your magic barrier!", eChatType.CT_SpellResisted, eChatLoc.CL_SystemWindow);
 							ad.AttackResult = eAttackResult.HitUnstyled;
-                            EffectService.RequestImmediateCancelEffect(bladeturn.FirstOrDefault());
+                            EffectService.RequestCancelEffect(bladeturn.FirstOrDefault());
                         }
                         break;
 
@@ -149,7 +139,7 @@ namespace DOL.GS.Spells
 								player = target as IGamePlayer;
 								player.Out.SendMessage("The blow was absorbed by a magical barrier!", eChatType.CT_SpellResisted, eChatLoc.CL_SystemWindow);
 								ad.AttackResult = eAttackResult.Missed;
-								EffectService.RequestImmediateCancelEffect(bladeturn.FirstOrDefault());
+								EffectService.RequestCancelEffect(bladeturn.FirstOrDefault());
 							}
 						}
 						break;
@@ -193,27 +183,6 @@ namespace DOL.GS.Spells
 			{
 				return eDamageType.Slash;
 			}
-		}
-
-		/// <summary>
-		/// Calculates the base 100% spell damage which is then modified by damage variance factors
-		/// </summary>
-		/// <returns></returns>
-		public override double CalculateDamageBase(GameLiving target)
-		{
-			double spellDamage = Spell.Damage;
-			IGamePlayer player = Caster as IGamePlayer;
-
-			if (player != null)
-			{
-				int manaStatValue = player.GetModified((eProperty)player.CharacterClass.ManaStat);
-				spellDamage *= (manaStatValue + 300) / 275.0;
-			}
-
-			if (spellDamage < 0)
-				spellDamage = 0;
-
-			return spellDamage;
 		}
 
 		public override void FinishSpellCast(GameLiving target)

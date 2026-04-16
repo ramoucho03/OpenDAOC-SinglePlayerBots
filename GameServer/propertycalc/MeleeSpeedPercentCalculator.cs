@@ -16,6 +16,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  *
  */
+using DOL.GS.Scripts;
 using System;
 
 namespace DOL.GS.PropertyCalc
@@ -34,7 +35,7 @@ namespace DOL.GS.PropertyCalc
 	{
 		public override int CalcValue(GameLiving living, eProperty property)
 		{
-			if (living is GameNPC)
+			if (living is GameNPC && living is not MimicNPC)
 			{
 				// NPC buffs effects are halved compared to debuffs, so it takes 2% debuff to mitigate 1% buff
 				// See PropertyChangingSpell.ApplyNpcEffect() for details.

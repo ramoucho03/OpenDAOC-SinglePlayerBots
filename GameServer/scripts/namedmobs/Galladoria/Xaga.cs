@@ -9,8 +9,7 @@ namespace DOL.GS
 {
     public class Xaga : GameEpicBoss
     {
-        private static new readonly log4net.ILog log =
-            log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public Xaga()
             : base()
@@ -197,8 +196,7 @@ namespace DOL.AI.Brain
 {
     public class XagaBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log =
-            log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public XagaBrain()
             : base()
@@ -259,8 +257,7 @@ namespace DOL.GS
 {
     public class Beatha : GameEpicBoss
     {
-        private static new readonly log4net.ILog log =
-            log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public Beatha()
             : base()
@@ -348,8 +345,7 @@ namespace DOL.AI.Brain
 {
     public class BeathaBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log =
-            log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public BeathaBrain()
             : base()
@@ -365,9 +361,9 @@ namespace DOL.AI.Brain
                 {
                     if (mob_c != null)
                     {
-                        if (mob_c?.Brain is XagaBrain brain1 && mob_c.IsAlive && !mob_c.InCombat)
+                        if (mob_c?.Brain is XagaBrain brain1 && mob_c.IsAlive && mob_c.IsAvailableToJoinFight)
                             AddAggroListTo(brain1);
-                        if (mob_c?.Brain is TineBrain brain2 && mob_c.IsAlive && !mob_c.InCombat)
+                        if (mob_c?.Brain is TineBrain brain2 && mob_c.IsAlive && mob_c.IsAvailableToJoinFight)
                             AddAggroListTo(brain2);
                     }
                 }
@@ -477,8 +473,7 @@ namespace DOL.GS
 {
     public class Tine : GameEpicBoss
     {
-        private static new readonly log4net.ILog log =
-            log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public Tine()
             : base()
@@ -551,8 +546,7 @@ namespace DOL.AI.Brain
 {
     public class TineBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log =
-            log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public TineBrain()
             : base()
@@ -569,9 +563,9 @@ namespace DOL.AI.Brain
                 {
                     if (mob_c != null)
                     {
-                        if (mob_c?.Brain is XagaBrain brain1 && mob_c.IsAlive && !mob_c.InCombat)
+                        if (mob_c?.Brain is XagaBrain brain1 && mob_c.IsAlive && mob_c.IsAvailableToJoinFight)
                             AddAggroListTo(brain1);
-                        if (mob_c?.Brain is BeathaBrain brain2 && mob_c.IsAlive && !mob_c.InCombat)
+                        if (mob_c?.Brain is BeathaBrain brain2 && mob_c.IsAlive && mob_c.IsAvailableToJoinFight)
                             AddAggroListTo(brain2);
                     }
                 }

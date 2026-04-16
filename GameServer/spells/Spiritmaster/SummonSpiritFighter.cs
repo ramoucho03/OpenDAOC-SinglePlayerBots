@@ -31,13 +31,13 @@ using DOL.GS.Scripts;
 
 namespace DOL.GS.Spells
 {
-    [SpellHandler("SummonSpiritFighter")]
-    public class SummonSpiritFighter : SummonSpellHandler
-    {
-        public SummonSpiritFighter(GameLiving caster, Spell spell, SpellLine line)
-            : base(caster, spell, line)
-        {
-        }
+	[SpellHandler(eSpellType.SummonSpiritFighter)]
+	public class SummonSpiritFighter : SummonSpellHandler
+	{
+		public SummonSpiritFighter(GameLiving caster, Spell spell, SpellLine line)
+			: base(caster, spell, line)
+		{
+		}
 
         public override bool CheckEndCast(GameLiving selectedTarget)
         {

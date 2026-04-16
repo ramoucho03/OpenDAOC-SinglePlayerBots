@@ -8,13 +8,12 @@ using System.Runtime.InteropServices;
 using DOL.GS;
 using DOL.GS.Scripts;
 using DOL.GS.ServerProperties;
-using log4net;
 
 namespace DOL.AI.Brain
 {
     public class MimicState : FSMState
     {
-        protected static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        protected static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
         protected MimicBrain _brain = null;
 
@@ -156,6 +155,9 @@ namespace DOL.AI.Brain
             if (_brain.CheckHeals())
                 return;
 
+            if (_brain.IsMainCC)
+                _brain.CheckMainCC();
+
             if (_brain.Body.Group == null || _leader == _brain.Body)
             {
                 _brain.Body.StopFollowing();
@@ -209,7 +211,7 @@ namespace DOL.AI.Brain
 
     public class MimicState_Aggro : MimicState
     {
-        private const int LEAVE_WHEN_OUT_OF_COMBAT_FOR = 6000;
+        private const int LEAVE_WHEN_OUT_OF_COMBAT_FOR = 25000;
         private long _aggroEndTime;
         private long _checkAggroTime;
 
@@ -233,14 +235,16 @@ namespace DOL.AI.Brain
         public override void Exit()
         {
             _brain.Body.StopAttack();
-            _brain.Body.TargetObject = null;
+            _brain.Body.StopMoving();
+            _brain.Body.StopCurrentSpellcast();
             _brain.ClearAggroList();
+            _brain.Body.TargetObject = null;
 
             if (_brain.MimicBody.CharacterClass.ID == (int)eCharacterClass.Reaver)
             {
                 foreach (ECSPulseEffect pulseEffect in _brain.MimicBody.effectListComponent.GetAllPulseEffects())
                 {
-                    EffectService.RequestImmediateCancelEffect(pulseEffect);
+                    EffectService.RequestCancelEffect(pulseEffect);
                 }
             }
 
@@ -298,7 +302,7 @@ namespace DOL.AI.Brain
                             if (_brain.Body.Group.MimicGroup.CampPoint != null)
                                 _brain.FSM.SetCurrentState(eFSMStateType.CAMP);
                             else if (_brain.Body.Group.LivingLeader == _brain.Body)
-                                _brain.FSM.SetCurrentState(eFSMStateType.IDLE);
+                                _brain.FSM.SetCurrentState(eFSMStateType.WAKING_UP);
                             else
                                 _brain.FSM.SetCurrentState(eFSMStateType.FOLLOW_THE_LEADER);
                         }
@@ -309,6 +313,9 @@ namespace DOL.AI.Brain
                     return;
                 }
             }
+
+            if (_brain.IsMainCC)
+                _brain.CheckMainCC();
 
             if (_brain.IsHealer)
                 _brain.CheckHeals();
@@ -336,6 +343,9 @@ namespace DOL.AI.Brain
 
         public override void Enter()
         {
+            if (!_brain.PvPMode)
+                _brain.AggroRange = 2000;
+
             base.Enter();
         }
 
@@ -351,18 +361,18 @@ namespace DOL.AI.Brain
             if (_brain.PreventCombat || _brain.IsHealer)
                 return;
 
-            if (_brain.CheckProximityAggro(_brain.AggroRange))
+            if (!_brain.HasAggro)
             {
-                _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
-                return;
-            }
+                if (_brain.Body.IsSitting && !_brain.CheckStats(75))
+                    _brain.MimicBody.Sit(false);
 
-            if (!_brain.Body.InCombat)
-            {
                 delayRoam = _brain.CheckDelayRoam();
 
                 if (delayRoam && _brain.Body.IsDestinationValid)
                 {
+                    if (_brain.Debug)
+                        log.Warn(_brain.Body.Name + " delayRoam && _brain.Body.IsDestinationValid");
+
                     _brain.Body.StopMoving();
                 }
                 else if (!delayRoam && !_brain.Body.IsSitting && !_brain.Body.IsMoving && !_brain.Body.movementComponent.HasActiveResetHeadingAction)
@@ -380,6 +390,15 @@ namespace DOL.AI.Brain
                         _nextRoamingTickSet = false;
                         _brain.Body.Roam(Speed);
                     }
+                }
+
+                if (!_brain.PvPMode && delayRoam)
+                    return;
+
+                if (_brain.CheckProximityAggro(_brain.AggroRange))
+                {
+                    _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
+                    return;
                 }
             }
 

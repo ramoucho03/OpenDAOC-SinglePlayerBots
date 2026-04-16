@@ -148,7 +148,7 @@ namespace DOL.AI.Brain
 {
 	public class AbomosSoultrapperBrain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 		public AbomosSoultrapperBrain() : base()
 		{
 			AggroLevel = 100;
@@ -237,9 +237,7 @@ namespace DOL.GS
 			--AddsCount;
 			base.Die(killer);
 		}
-		public override void DropLoot(GameObject killer) //no loot
-		{
-		}
+		public override bool CanDropLoot => false;
 		public override long ExperienceValue => 0;
 		public override bool AddToWorld()
 		{
@@ -275,8 +273,7 @@ namespace DOL.AI.Brain
 {
 	public class AbomosAddBrain : StandardMobBrain
 	{
-		private static readonly log4net.ILog log =
-			log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
 		public AbomosAddBrain()
 			: base()

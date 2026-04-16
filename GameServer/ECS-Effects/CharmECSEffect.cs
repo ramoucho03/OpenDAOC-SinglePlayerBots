@@ -37,7 +37,7 @@ namespace DOL.GS
                 else
                     charmSpellHandler.MessageToCaster(LanguageMgr.GetTranslation(playerCaster.Client, "GamePlayer.GamePet.StartSpell.UnderControl", charmNpc.GetName(0, true)), eChatType.CT_Spell);
 
-                playerCaster.SetControlledBrain(newBrain);
+                playerCaster.AddControlledBrain(newBrain);
             }
 
             ClientService.CreateNpcForPlayers(charmNpc);
@@ -52,10 +52,10 @@ namespace DOL.GS
             ECSGameSpellEffect[] immunityEffects = charmNpc.effectListComponent.GetSpellEffects().Where(e => e.TriggersImmunity).ToArray();
 
             for (int i = 0; i < immunityEffects.Length; i++)
-                EffectService.RequestImmediateCancelEffect(immunityEffects[i]);
+                EffectService.RequestCancelEffect(immunityEffects[i]);
 
             ControlledMobBrain oldBrain = SpellHandler.Caster.ControlledBrain as ControlledMobBrain;
-            SpellHandler.Caster.SetControlledBrain(null);
+            SpellHandler.Caster.RemoveControlledBrain(oldBrain);
             bool keepSongAlive = false;
 
             if (oldBrain != null)
@@ -118,17 +118,8 @@ namespace DOL.GS
                 ECSPulseEffect song = EffectListService.GetPulseEffectOnTarget(SpellHandler.Caster, SpellHandler.Spell);
 
                 if (song != null)
-                    EffectService.RequestImmediateCancelConcEffect(song);
+                    EffectService.RequestCancelConcEffect(song);
             }
-        }
-
-        public static void FindAndCancelEffectOnTarget(GameNPC target)
-        {
-            if (target.Brain is not IControlledBrain)
-                return;
-
-            if (target.effectListComponent.Effects.TryGetValue(eEffect.Charm, out List<ECSGameEffect> charms))
-                EffectService.RequestImmediateCancelEffect(charms.FirstOrDefault());
         }
     }
 }

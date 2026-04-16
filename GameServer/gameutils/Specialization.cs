@@ -225,111 +225,111 @@ namespace DOL.GS
             return GetLinesSpellsForLiving(living, GetSpecLevelForLiving(living));
         }
 
-        /// <summary>
-        /// Getter For Spells with a "step" hint used to display future upgrade
-        /// Retrieve Spell index by SpellLine, List Spell by Level Order
-        /// Select Only enabled Spells by spec or living level constraint.
-        /// </summary>
-        /// <param name="living"></param>
-        /// <param name="step">step is only used when called for pretending some level (for trainer display)</param>
-        /// <returns></returns>
-        public virtual IDictionary<SpellLine, List<Skill>> PretendLinesSpellsForLiving(GameLiving living, int step)
-        {
-            return GetLinesSpellsForLiving(living, step);
-        }
-
-        /// <summary>
-        /// Default Getter For Spells
-        /// Retrieve Spell index by SpellLine, List Spell by Level Order
-        /// Select Only enabled Spells by spec or living level constraint.
-        /// </summary>
-        /// <param name="living"></param>
-        /// <param name="level">level is only used when called for pretending some level (for trainer display)</param>
-        /// <returns></returns>
-        protected virtual IDictionary<SpellLine, List<Skill>> GetLinesSpellsForLiving(GameLiving living, int level)
-        {
-            IDictionary<SpellLine, List<Skill>> dict = new Dictionary<SpellLine, List<Skill>>();
-
-            foreach (SpellLine sl in GetSpellLinesForLiving(living, level))
-            {
-                dict.Add(sl, SkillBase.GetSpellList(sl.KeyName)
-                         .Where(item => item.Level <= sl.Level)
-                         .OrderBy(item => item.Level)
-                         .ThenBy(item => item.ID).Cast<Skill>().ToList());
-            }
-
-            return dict;
-        }
-
-        /// <summary>
-        /// Default getter for Ability
-        /// Return Abilities it lists depending on spec level
-        /// Override to change the condition...
-        /// </summary>
-        /// <param name="living"></param>
-        /// <returns></returns>
-        public virtual List<Ability> GetAbilitiesForLiving(GameLiving living)
-        {
-            return GetAbilitiesForLiving(living, GetSpecLevelForLiving(living));
-        }
-
-        /// <summary>
-        /// Getter for Ability with a "step" hint used to display future upgrade
-        /// Return Abilities it lists depending on spec level
-        /// Override to change the condition...
-        /// </summary>
-        /// <param name="living"></param>
-        /// <param name="step">step is only used when called for pretending some level (for trainer display)</param>
-        /// <returns></returns>
-        public virtual List<Ability> PretendAbilitiesForLiving(GameLiving living, int step)
-        {
-            return SkillBase.GetSpecAbilityList(KeyName, living is GamePlayer ? ((GamePlayer)living).CharacterClass.ID : 0)
-                .Where(k => k.SpecLevelRequirement <= step)
-                .OrderBy(k => k.SpecLevelRequirement).ToList();
-        }
-
-        /// <summary>
-        /// Default getter for Ability
-        /// Return Abilities it lists depending on spec level
-        /// Override to change the condition...
-        /// </summary>
-        /// <param name="living"></param>
-        /// <param name="level">level is only used when called for pretending some level (for trainer display)</param>
-        /// <returns></returns>
-        protected virtual List<Ability> GetAbilitiesForLiving(GameLiving living, int level)
-        {
-            // Select only Enabled and Max Level Abilities
-            List<Ability> abs = SkillBase.GetSpecAbilityList(KeyName, living is IGamePlayer ? ((IGamePlayer)living).CharacterClass.ID : 0);
-
-            // Get order of first appearing skills
-            IOrderedEnumerable<Ability> order = abs.GroupBy(item => item.KeyName)
-                .Select(ins => ins.OrderBy(it => it.SpecLevelRequirement).First())
-                .Where(item => item.SpecLevelRequirement <= level)
-                .OrderBy(item => item.SpecLevelRequirement)
-                .ThenBy(item => item.ID);
-
-            // Get best of skills
-            List<Ability> best = abs.Where(item => item.SpecLevelRequirement <= level)
-                .GroupBy(item => item.KeyName)
-                .Select(ins => ins.OrderByDescending(it => it.SpecLevelRequirement).First()).ToList();
-
-            List<Ability> results = new List<Ability>();
-            // make some kind of "Join" between the order of appearance and the best abilities.
-            foreach (Ability ab in order)
-            {
-                for (int r = 0; r < best.Count; r++)
-                {
-                    if (best[r].ID == ab.ID)
-                    {
-                        results.Add(best[r]);
-                        best.RemoveAt(r);
-                        break;
-                    }
-                }
-            }
-
-            return results;
-        }
+		/// <summary>
+		/// Getter For Spells with a "step" hint used to display future upgrade
+		/// Retrieve Spell index by SpellLine, List Spell by Level Order
+		/// Select Only enabled Spells by spec or living level constraint.
+		/// </summary>
+		/// <param name="living"></param>
+		/// <param name="step">step is only used when called for pretending some level (for trainer display)</param>
+		/// <returns></returns>
+		public virtual IDictionary<SpellLine, List<Skill>> PretendLinesSpellsForLiving(GameLiving living, int step)
+		{
+			return GetLinesSpellsForLiving(living, step);
+		}
+		
+		/// <summary>
+		/// Default Getter For Spells
+		/// Retrieve Spell index by SpellLine, List Spell by Level Order
+		/// Select Only enabled Spells by spec or living level constraint.
+		/// </summary>
+		/// <param name="living"></param>
+		/// <param name="level">level is only used when called for pretending some level (for trainer display)</param>
+		/// <returns></returns>
+		protected virtual IDictionary<SpellLine, List<Skill>> GetLinesSpellsForLiving(GameLiving living, int level)
+		{
+			IDictionary<SpellLine, List<Skill>> dict = new Dictionary<SpellLine, List<Skill>>();
+			
+			foreach (SpellLine sl in GetSpellLinesForLiving(living, level))
+			{
+				dict.Add(sl, SkillBase.GetSpellList(sl.KeyName)
+				         .Where(item => item.Level <= sl.Level)
+				         .OrderBy(item => item.Level)
+				         .ThenBy(item => item.ID).Cast<Skill>().ToList());
+			}
+			
+			return dict;
+		}
+		
+		/// <summary>
+		/// Default getter for Ability
+		/// Return Abilities it lists depending on spec level
+		/// Override to change the condition...
+		/// </summary>
+		/// <param name="living"></param>
+		/// <returns></returns>
+		public virtual List<Ability> GetAbilitiesForLiving(GameLiving living)
+		{
+			return GetAbilitiesForLiving(living, GetSpecLevelForLiving(living));
+		}
+		
+		/// <summary>
+		/// Getter for Ability with a "step" hint used to display future upgrade
+		/// Return Abilities it lists depending on spec level
+		/// Override to change the condition...
+		/// </summary>
+		/// <param name="living"></param>
+		/// <param name="step">step is only used when called for pretending some level (for trainer display)</param>
+		/// <returns></returns>
+		public virtual List<Ability> PretendAbilitiesForLiving(GameLiving living, int step)
+		{
+			return SkillBase.GetSpecAbilityList(KeyName, living is GamePlayer ? ((GamePlayer)living).CharacterClass.ID : 0)
+				.Where(k => k.SpecLevelRequirement <= step)
+				.OrderBy(k => k.SpecLevelRequirement).ToList();
+		}
+		
+		/// <summary>
+		/// Default getter for Ability
+		/// Return Abilities it lists depending on spec level
+		/// Override to change the condition...
+		/// </summary>
+		/// <param name="living"></param>
+		/// <param name="level">level is only used when called for pretending some level (for trainer display)</param>
+		/// <returns></returns>
+		protected virtual List<Ability> GetAbilitiesForLiving(GameLiving living, int level)
+		{
+			// Select only Enabled and Max Level Abilities
+			List<Ability> abs = SkillBase.GetSpecAbilityList(KeyName, living is IGamePlayer ? ((IGamePlayer)living).CharacterClass.ID : 0);
+			
+			// Get order of first appearing skills
+			IOrderedEnumerable<Ability> order = abs.GroupBy(item => item.KeyName)
+				.Select(ins => ins.OrderBy(it => it.SpecLevelRequirement).First())
+				.Where(item => item.SpecLevelRequirement <= level)
+				.OrderBy(item => item.SpecLevelRequirement)
+				.ThenBy(item => item.ID);
+			
+			// Get best of skills
+			List<Ability> best = abs.Where(item => item.SpecLevelRequirement <= level)
+				.GroupBy(item => item.KeyName)
+				.Select(ins => ins.OrderByDescending(it => it.SpecLevelRequirement).First()).ToList();
+			
+			List<Ability> results = new List<Ability>();
+			// make some kind of "Join" between the order of appearance and the best abilities.
+			foreach (Ability ab in order)
+			{
+				for (int r = 0 ; r < best.Count ; r++)
+				{
+					if (best[r].ID == ab.ID)
+					{
+						results.Add(best[r]);
+						best.SwapRemoveAt(r);
+						break;
+					}
+				}
+			}
+			
+			return results;
+		}
 
         /// <summary>
         /// Default Getter For Styles

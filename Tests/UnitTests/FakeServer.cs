@@ -18,7 +18,7 @@ namespace DOL.Tests.Unit.Gameserver
         public override void SendCharStatsUpdate() { }
         public override void SendUpdateWeaponAndArmorStats() { }
         public override void SendUpdateMaxSpeed() { }
-        public override void SendEncumberance() { }
+        public override void SendEncumbrance() { }
         public override void SendStatusUpdate() { }
     }
 
@@ -37,7 +37,6 @@ namespace DOL.Tests.Unit.Gameserver
 
         protected override IObjectDatabase DataBaseImpl => database;
         protected override void CheckAndInitDB() { }
-        public override byte[] AcquirePacketBuffer() => new byte[] { };
         public void SetDatabase(IObjectDatabase database) { this.database = database; }
 
         public static void Load() => LoadTestDouble(new FakeServer());

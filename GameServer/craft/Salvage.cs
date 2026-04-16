@@ -5,7 +5,6 @@ using DOL.Database;
 using DOL.GS.PacketHandler;
 using DOL.GS.SalvageCalc;
 using DOL.Language;
-using log4net;
 
 namespace DOL.GS
 {
@@ -17,7 +16,7 @@ namespace DOL.GS
 		/// <summary>
 		/// Defines a logger for this class.
 		/// </summary>
-		protected static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		protected static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		#region Declaration
 
@@ -340,7 +339,7 @@ namespace DOL.GS
 			InventoryLogging.LogInventoryAction(player, "(salvage)", eInventoryActionType.Craft, itemToSalvage.Template, itemToSalvage.Count);
 
 			Dictionary<int, int> changedSlots = new Dictionary<int, int>(5); // value: < 0 = new item count; > 0 = add to old
-			lock (player.Inventory.LockObject)
+			lock (player.Inventory.Lock)
 			{
 				int count = materialCount;
 				foreach (DbInventoryItem item in player.Inventory.GetItemRange(eInventorySlot.FirstBackpack, eInventorySlot.LastBackpack))

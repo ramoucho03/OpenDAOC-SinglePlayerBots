@@ -2,10 +2,8 @@ using System;
 using System.Collections;
 using System.IO;
 using System.Reflection;
+using DOL.GameServerConsole;
 using DOL.GS;
-using DOL.GS.PacketHandler;
-using DOLGameServerConsole;
-using log4net;
 
 namespace DOL.DOLServer.Actions
 {
@@ -14,11 +12,6 @@ namespace DOL.DOLServer.Actions
 	/// </summary>
 	public class ConsoleStart : IAction
 	{
-		/// <summary>
-		/// Defines a logger for this class.
-		/// </summary>
-		private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
-
 		/// <summary>
 		/// returns the name of this action
 		/// </summary>
@@ -48,14 +41,14 @@ namespace DOL.DOLServer.Actions
 
 		private static bool StartServer()
 		{
-			Console.WriteLine("Starting the server");
+			Console.WriteLine("Starting GameServer");
 			bool start = GameServer.Instance.Start();
 			return start;
 		}
 
 		public void OnAction(Hashtable parameters)
 		{
-			Console.WriteLine("Starting GameServer ... please wait a moment!");
+			Console.WriteLine("Starting...");
 			FileInfo configFile;
 			FileInfo currentAssembly = null;
 			if (parameters["-config"] != null)
@@ -95,52 +88,49 @@ namespace DOL.DOLServer.Actions
 			}
 
 			bool run = true;
+
 			while (run)
 			{
-				Console.Write("> ");
 				string line = Console.ReadLine();
 
-				if (line != null)
+				if (line == null)
+					continue;
+
+				switch (line.ToLower())
 				{
-					switch (line.ToLower())
+					case "exit":
+						run = false;
+						break;
+					case "clear":
+						Console.Clear();
+						break;
+					default:
 					{
-						case "exit":
-							run = false;
+						if (line.Length <= 0)
 							break;
-						case "stacktrace":
-							log.Debug(PacketProcessor.GetConnectionThreadpoolStacks());
-							break;
-						case "clear":
-							Console.Clear();
-							break;
-						default:
-							if (line.Length <= 0)
-								break;
-							if (line[0] == '/')
-							{
-								line = line.Remove(0, 1);
-								line = line.Insert(0, "&");
-							}
-							GameClient client = new GameClient(null);
-							client.Out = new ConsolePacketLib();
-							try
-							{
-								bool res = ScriptMgr.HandleCommandNoPlvl(client, line);
-								if (!res)
-								{
-									Console.WriteLine("Unknown command: " + line);
-								}
-							}
-							catch (Exception e)
-							{
-								Console.WriteLine(e.ToString());
-							}
-							break;
+
+						if (line[0] != '/')
+							line = $"/{line}";
+
+						GameClient client = new(null);
+						client.Out = new ConsolePacketLib();
+
+						try
+						{
+							if (!ScriptMgr.HandleCommandNoPlvl(client, $"&{line[1..]}"))
+								Console.WriteLine($"Unknown command: {line}");
+						}
+						catch (Exception e)
+						{
+							Console.WriteLine(e.ToString());
+						}
+
+						break;
 					}
 				}
 			}
-			if (GameServer.Instance != null)
-				GameServer.Instance.Stop();
+
+			GameServer.Instance?.Stop();
 		}
 	}
 }

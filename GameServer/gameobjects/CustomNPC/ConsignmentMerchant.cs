@@ -1,16 +1,16 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using DOL.Database;
 using DOL.GS.Housing;
 using DOL.GS.PacketHandler;
-using log4net;
 
 namespace DOL.GS
 {
     public class GameConsignmentMerchant : GameNPC, IGameInventoryObject
     {
-        private static new readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
         public const int CONSIGNMENT_SIZE = 100;
         public const int CONSIGNMENT_OFFSET = 1350; // Clients send the same slots as a housing vault.
@@ -19,7 +19,7 @@ namespace DOL.GS
 
         protected Dictionary<string, GamePlayer> _observers = [];
         protected long _money;
-        protected object _moneyLock = new();
+        protected readonly Lock _moneyLock = new();
 
         /// <summary>
         /// First slot of the client window that shows this inventory
@@ -41,7 +41,8 @@ namespace DOL.GS
         /// </summary>
         public virtual int LastDbSlot => (int) eInventorySlot.Consignment_Last;
 
-        public object LockObject { get; } = new();
+        private readonly Lock _lock = new();
+        public Lock Lock => _lock;
 
         private static Dictionary<string, GameLocation> _tokenDestinations =
             new()
@@ -195,7 +196,7 @@ namespace DOL.GS
             if (!CanHandleMove(player, fromClientSlot, toClientSlot))
                 return false;
 
-            lock (LockObject)
+            lock (Lock)
             {
                 if (fromClientSlot == toClientSlot)
                     return false;
@@ -206,7 +207,12 @@ namespace DOL.GS
                     {
                         // ... consignment merchant.
                         if (HasPermissionToMove(player))
-                            GameInventoryObjectExtensions.NotifyObservers(this, player, _observers, GameInventoryObjectExtensions.MoveItem(this, player, fromClientSlot, toClientSlot, count));
+                        {
+                            var updatedItems = GameInventoryObjectExtensions.MoveItem(this, player, fromClientSlot, toClientSlot, count);
+
+                            if (updatedItems.Count > 0)
+                                GameInventoryObjectExtensions.NotifyObservers(this, player, _observers, updatedItems);
+                        }
                         else
                             return false;
                     }
@@ -230,7 +236,10 @@ namespace DOL.GS
                         {
                             // Allow a move only if the player with permission is standing in front of the CM.
                             // This prevents moves if player has owner permission but is viewing from the Market Explorer.
-                            GameInventoryObjectExtensions.NotifyObservers(this, player, _observers, GameInventoryObjectExtensions.MoveItem(this, player, fromClientSlot, toClientSlot, count));
+                            var updatedItems = GameInventoryObjectExtensions.MoveItem(this, player, fromClientSlot, toClientSlot, count);
+
+                            if (updatedItems.Count > 0)
+                                GameInventoryObjectExtensions.NotifyObservers(this, player, _observers, updatedItems);
                         }
                         else
                         {
@@ -251,7 +260,10 @@ namespace DOL.GS
                             return false;
                         }
 
-                        GameInventoryObjectExtensions.NotifyObservers(this, player, _observers, GameInventoryObjectExtensions.MoveItem(this, player, fromClientSlot, toClientSlot, count));
+                        var updatedItems = GameInventoryObjectExtensions.MoveItem(this, player, fromClientSlot, toClientSlot, count);
+
+                        if (updatedItems.Count > 0)
+                            GameInventoryObjectExtensions.NotifyObservers(this, player, _observers, updatedItems);
                     }
                     else
                         return false;
@@ -404,7 +416,7 @@ namespace DOL.GS
             player.TempProperties.RemoveProperty(CONSIGNMENT_BUY_ITEM);
             DbInventoryItem item = null;
 
-            lock (LockObject)
+            lock (Lock)
             {
                 if (fromClientSlot != eInventorySlot.Invalid)
                 {
@@ -427,7 +439,7 @@ namespace DOL.GS
                 if (usingMarketExplorer && ServerProperties.Properties.MARKET_FEE_PERCENT > 0)
                     purchasePrice += purchasePrice * ServerProperties.Properties.MARKET_FEE_PERCENT / 100;
 
-                lock (player.Inventory.LockObject)
+                lock (player.Inventory.Lock)
                 {
                     if (purchasePrice <= 0)
                     {
@@ -483,7 +495,10 @@ namespace DOL.GS
                     if (ServerProperties.Properties.MARKET_ENABLE_LOG)
                         log.Debug($"CM: {player.Name}:{player.Client.Account.Name} purchased '{item.Name}' for {purchasePrice} from consignment merchant on lot {HouseNumber}.");
 
-                    GameInventoryObjectExtensions.NotifyObservers(this, player, _observers, GameInventoryObjectExtensions.MoveItem(this, player, fromClientSlot, toClientSlot, (ushort) item.Count));
+                    var updatedItems = GameInventoryObjectExtensions.MoveItem(this, player, fromClientSlot, toClientSlot, (ushort) item.Count);
+
+                    if (updatedItems.Count > 0)
+                        GameInventoryObjectExtensions.NotifyObservers(this, player, _observers, updatedItems);
                 }
             }
         }

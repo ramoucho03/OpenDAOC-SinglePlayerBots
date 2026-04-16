@@ -23,9 +23,7 @@ namespace DOL.GS
         {
             get { return 10000; }
         }
-        public override void DropLoot(GameObject killer)//no loot
-        {
-        }
+        public override bool CanDropLoot => false;
         public override void Die(GameObject killer)
         {
             base.Die(null); // null to not gain experience
@@ -59,7 +57,7 @@ namespace DOL.AI.Brain
 {
     public class OIBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         public OIBrain()
             : base()
         {
@@ -316,7 +314,7 @@ namespace DOL.GS
 {
     public class Olcasgean : GameEpicBoss
     {
-        private static new readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         public Olcasgean()
             : base()
         {
@@ -538,7 +536,7 @@ namespace DOL.AI.Brain
 {
     public class OlcasgeanBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         public OlcasgeanBrain()
             : base()
         {
@@ -848,7 +846,7 @@ namespace DOL.GS
 {
     public class Olcasgean2 : GameEpicBoss
     {
-        private static new readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         public Olcasgean2()
             : base()
         {
@@ -1050,7 +1048,7 @@ namespace DOL.AI.Brain
 {
     public class OlcasgeanBrain2 : StandardMobBrain
     {
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         public OlcasgeanBrain2()
             : base()
         {
@@ -1098,7 +1096,7 @@ namespace DOL.GS
 {
     public class AirPrimal : GameEpicBoss
     {
-        private static new readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public AirPrimal()
             : base()
@@ -1193,7 +1191,7 @@ namespace DOL.AI.Brain
 {
     public class AirPrimalBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         public AirPrimalBrain()
             : base()
         {
@@ -1522,7 +1520,7 @@ namespace DOL.GS
 {
     public class WaterPrimal : GameEpicBoss
     {
-        private static new readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public WaterPrimal()
             : base()
@@ -1633,7 +1631,7 @@ namespace DOL.AI.Brain
 {
     public class WaterPrimalBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         public WaterPrimalBrain()
             : base()
         {
@@ -1835,7 +1833,7 @@ namespace DOL.GS
 {
     public class FirePrimal : GameEpicBoss
     {
-        private static new readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public FirePrimal()
             : base()
@@ -1918,7 +1916,7 @@ namespace DOL.AI.Brain
 {
     public class FirePrimalBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         public FirePrimalBrain()
             : base()
         {
@@ -2059,7 +2057,7 @@ namespace DOL.GS
 {
     public class TrailOfFire : GameNPC
     {
-        private static new readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public TrailOfFire()
             : base()
@@ -2193,7 +2191,7 @@ namespace DOL.AI.Brain
 {
     public class TrailOfFireBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         public TrailOfFireBrain()
             : base()
         {
@@ -2217,7 +2215,7 @@ namespace DOL.GS
 {
     public class EarthPrimal : GameEpicBoss
     {
-        private static new readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public EarthPrimal()
             : base()
@@ -2298,7 +2296,7 @@ namespace DOL.AI.Brain
 {
     public class EarthPrimalBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         public EarthPrimalBrain()
             : base()
         {
@@ -2412,7 +2410,7 @@ namespace DOL.GS
 {
     public class GuardianEarthmender : GameNPC
     {
-        private static new readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public GuardianEarthmender()
             : base()
@@ -2512,7 +2510,7 @@ namespace DOL.AI.Brain
 {
     public class GuardianEarthmenderBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         public GuardianEarthmenderBrain()
             : base()
         {
@@ -2619,7 +2617,7 @@ namespace DOL.GS
 {
     public class MagicalEarthmender : GameNPC
     {
-        private static new readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public MagicalEarthmender()
             : base()
@@ -2722,7 +2720,7 @@ namespace DOL.AI.Brain
 {
     public class MagicalEarthmenderBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         public MagicalEarthmenderBrain()
             : base()
         {
@@ -2829,7 +2827,7 @@ namespace DOL.GS
 {
     public class NaturalEarthmender : GameNPC
     {
-        private static new readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public NaturalEarthmender()
             : base()
@@ -2929,7 +2927,7 @@ namespace DOL.AI.Brain
 {
     public class NaturalEarthmenderBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         public NaturalEarthmenderBrain()
             : base()
         {
@@ -3036,7 +3034,7 @@ namespace DOL.GS
 {
     public class ShadowyEarthmender : GameNPC
     {
-        private static new readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public ShadowyEarthmender()
             : base()
@@ -3136,7 +3134,7 @@ namespace DOL.AI.Brain
 {
     public class ShadowyEarthmenderBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         public ShadowyEarthmenderBrain()
             : base()
         {
@@ -3273,9 +3271,7 @@ namespace DOL.GS
             get { return 5000; }
         }
         public override int MeleeAttackRange => 200;
-        public override void DropLoot(GameObject killer)//no loot
-        {
-        }
+        public override bool CanDropLoot => false;
         public override void Die(GameObject killer)
         {
             base.Die(null); // null to not gain experience
@@ -3312,7 +3308,7 @@ namespace DOL.AI.Brain
 {
     public class VortexBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         public VortexBrain()
             : base()
         {
@@ -3397,7 +3393,7 @@ namespace DOL.AI.Brain
 {
     public class WaterfallAntipassBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         public WaterfallAntipassBrain()
             : base()
         {
@@ -3479,7 +3475,7 @@ namespace DOL.AI.Brain
 {
     public class OlcasgeanEffectBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         public OlcasgeanEffectBrain()
             : base()
         {

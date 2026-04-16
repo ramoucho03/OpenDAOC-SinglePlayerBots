@@ -13,11 +13,12 @@ namespace DOL.AI
         private long _nextThinkTick;
 
         public FSM FSM { get; set; }
-        public EntityManagerId EntityManagerId { get; set; } = new(EntityManager.EntityType.Brain, false);
+        public EntityManagerId EntityManagerId { get; set; } = new(EntityManager.EntityType.Brain);
         public virtual GameNPC Body { get; set; }
         public virtual bool IsActive => Body != null && Body.IsAlive && Body.ObjectState == GameObject.eObjectState.Active && Body.IsVisibleToPlayers;
         public virtual int ThinkInterval { get; set; } = 2500;
         public virtual ref long NextThinkTick => ref _nextThinkTick;
+        protected virtual int ThinkOffsetOnStart => Util.Random(750, 3000);
 
         /// <summary>
         /// Returns the string representation of the ABrain
@@ -39,7 +40,15 @@ namespace DOL.AI
         /// <returns>true if started</returns>
         public virtual bool Start()
         {
-            return EntityManager.Add(this);
+            if (EntityManager.Add(this))
+            {
+                // Offset the first think tick by a random amount so that not too many are grouped in one server tick.
+                // We also delay the first think tick a bit because clients tend to send positive LoS checks when they shouldn't.
+                NextThinkTick = GameLoop.GameLoopTime + ThinkOffsetOnStart;
+                return true;
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -52,14 +61,12 @@ namespace DOL.AI
                 return false; // Prevents overrides from doing any redundant work. Maybe counter intuitive.
 
             bool wasReturningToSpawnPoint = Body.IsReturningToSpawnPoint;
-            Body.StopMoving();
-            Body.TargetObject = null;
-            FSM?.SetCurrentState(eFSMStateType.IDLE);
 
             // Without `IsActive` check, charming a NPC that's returning to spawn would teleport it.
             if (wasReturningToSpawnPoint && !IsActive)
                 Body.MoveTo(Body.CurrentRegionID, Body.SpawnPoint.X, Body.SpawnPoint.Y, Body.SpawnPoint.Z, Body.SpawnHeading);
 
+            FSM?.SetCurrentState(eFSMStateType.WAKING_UP);
             return EntityManager.Remove(this);
         }
 

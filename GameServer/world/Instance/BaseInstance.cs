@@ -14,7 +14,7 @@ namespace DOL.GS
     ///</summary>
     public class BaseInstance : Region
     {
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
 		/// <summary>
         /// Creates an instance object. This shouldn't be used directly - Please use WorldMgr.CreateInstance
@@ -411,7 +411,7 @@ namespace DOL.GS
 
 			if (zoneIndex >= 0)
 			{
-				lock (m_lockAreas)
+				lock (_lockAreas)
 				{
 					try
 					{
@@ -461,7 +461,7 @@ namespace DOL.GS
 
 			if (zoneIndex >= 0)
 			{
-				lock (m_lockAreas)
+				lock (_lockAreas)
 				{
 					try
 					{

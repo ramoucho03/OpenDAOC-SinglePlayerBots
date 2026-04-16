@@ -104,9 +104,8 @@ namespace DOL.GS
 			//Calculate the value of items
 			long totalValue = number * template.Price;
 
-			lock (player.Inventory.LockObject)
+			lock (player.Inventory.Lock)
 			{
-
 				if (player.GetCurrentMoney() < totalValue)
 				{
 					player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "GameMerchant.OnPlayerBuy.YouNeed", Money.GetString(totalValue)), eChatType.CT_System, eChatLoc.CL_SystemWindow);
@@ -159,7 +158,7 @@ namespace DOL.GS
 			//Calculate the value of items
 			long totalValue = number * template.Price;
 
-			lock (player.Inventory.LockObject)
+			lock (player.Inventory.Lock)
 			{
 
 				if (player.GetCurrentMoney() < totalValue)
@@ -224,7 +223,7 @@ namespace DOL.GS
 			//Calculate the value of items
 			long totalValue = number * template.Price;
 
-			lock (player.Inventory.LockObject)
+			lock (player.Inventory.Lock)
 			{
 
 				if (player.GetCurrentMoney() < totalValue)
@@ -517,7 +516,7 @@ namespace DOL.GS
 			//Calculate the value of items
 			long totalValue = number * template.Price;
 
-			lock (player.Inventory.LockObject)
+			lock (player.Inventory.Lock)
 			{
 				if (player.BountyPoints < totalValue)
 				{
@@ -680,7 +679,7 @@ namespace DOL.GS
 			//Calculate the value of items
 			long totalValue = number * template.Price;
 
-			lock (player.Inventory.LockObject)
+			lock (player.Inventory.Lock)
 			{
 				if (player.Inventory.CountItemTemplate(m_moneyItem.Item.Id_nb, eInventorySlot.FirstBackpack, eInventorySlot.LastBackpack) < totalValue)
 				{
@@ -858,16 +857,7 @@ namespace DOL.GS
 				}
 			}
 
-			var loyalty = LoyaltyManager.GetPlayerRealmLoyalty(player);
-			if (loyalty.Days > 0)
-			{
-				var discountAmount = (.25 * (loyalty.Days > 30 ? 30 : loyalty.Days) / 30);
-				player.Out.SendMessage($"Your loyalty to your realm grants you a {discountAmount * 100}% discount on item purchases.", eChatType.CT_Merchant,eChatLoc.CL_SystemWindow);
-				Console.WriteLine($"Total Val {totalValue} discount {(1 - discountAmount)} after {(int)(totalValue * (1 - discountAmount))}");
-				totalValue = (int)(totalValue * (1 - discountAmount));
-			}
-			
-			lock (player.Inventory.LockObject)
+			lock (player.Inventory.Lock)
 			{
 				if (player.Inventory.CountItemTemplate(m_moneyItem.Item.Id_nb, eInventorySlot.FirstBackpack, eInventorySlot.LastBackpack) < totalValue)
 				{
@@ -957,16 +947,7 @@ namespace DOL.GS
 				}
 			}
 
-			var loyalty = LoyaltyManager.GetPlayerRealmLoyalty(player);
-			if (loyalty.Days > 0)
-			{
-				var discountAmount = (.25 * (loyalty.Days > 30 ? 30 : loyalty.Days) / 30);
-				player.Out.SendMessage($"Your loyalty to your realm grants you a {discountAmount * 100}% discount on item purchases.", eChatType.CT_Merchant,eChatLoc.CL_SystemWindow);
-				Console.WriteLine($"Total Val {totalValue} discount {(1 - discountAmount)} after {(int)(totalValue * (1 - discountAmount))}");
-				totalValue = (int)(totalValue * (1 - discountAmount));
-			}
-			
-			lock (player.Inventory.LockObject)
+			lock (player.Inventory.Lock)
 			{
 				if (player.Inventory.CountItemTemplate(m_moneyItem.Item.Id_nb, eInventorySlot.FirstBackpack, eInventorySlot.LastBackpack) < totalValue)
 				{

@@ -2,11 +2,11 @@
 using DOL.AI.Brain;
 using DOL.Database;
 using DOL.Events;
+using DOL.GS.API;
 using DOL.GS.Effects;
 using DOL.GS.Keeps;
 using DOL.GS.PacketHandler;
 using DOL.GS.PlayerClass;
-using DOL.GS.PropertyCalc;
 using DOL.GS.Realm;
 using DOL.GS.RealmAbilities;
 using DOL.GS.ServerProperties;
@@ -14,19 +14,21 @@ using DOL.GS.Spells;
 using DOL.GS.Styles;
 using DOL.GS.Utils;
 using DOL.Language;
-using JNogueira.Discord.Webhook.Client;
 using Microsoft.CodeAnalysis;
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Net.Sockets;
+using System.Threading;
 using static DOL.GS.AttackData;
 using static DOL.GS.GamePlayer;
+using static DOL.GS.IGameStaticItemOwner;
 
 namespace DOL.GS.Scripts
 {
-    public class MimicNPC : GameNPC, IGamePlayer
+    public class MimicNPC : GameNPC, IGamePlayer, IGameStaticItemOwner
     {
         private DummyPacketLib _dummyLib;
         private DummyClient _dummyClient;
@@ -36,14 +38,15 @@ namespace DOL.GS.Scripts
         public StyleComponent StyleComponent { get { return styleComponent; } }
         public EffectListComponent EffectListComponent { get { return effectListComponent; } }
 
+        private MimicSpawner _mimicSpawner;
+        public MimicSpawner MimicSpawner
+        {
+            get { return _mimicSpawner; }
+            set { _mimicSpawner = value; }
+        }
+
         public IPacketLib Out { get { return _dummyLib; } }
         public GameClient Client { get { return _dummyClient; } }
-        public GamePlayer Dev { private get; set; }
-
-        public void DevOut(string message)
-        {
-            Dev.Out.SendMessage(message, eChatType.CT_Say, eChatLoc.CL_ChatWindow);
-        }
 
         public bool CanUseSideStyles { get { return StylesSide != null && StylesSide.Count > 0; } }
         public bool CanUseBackStyles { get { return StylesBack != null && StylesBack.Count > 0; } }
@@ -88,9 +91,9 @@ namespace DOL.GS.Scripts
 
         private int m_leftOverSpecPoints = 0;
 
-        public MimicNPC(eMimicClass cClass, byte level, eGender gender = eGender.Neutral, eSpecType spec = eSpecType.None)
+        public MimicNPC(eMimicClass cClass, byte level, eGender gender = eGender.Neutral, eSpecType spec = eSpecType.None) : base(new MimicBrain())
         {
-            _dummyClient = new DummyClient(GameServer.Instance);
+            _dummyClient = new DummyClient(new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp));
             _dummyLib = new DummyPacketLib();
 
             Inventory = new MimicNPCInventory();
@@ -100,6 +103,7 @@ namespace DOL.GS.Scripts
             SetCharacterClass((int)cClass);
             SetRaceAndName();
             SetBrain(cClass);
+            CreateStatistics();
             SetLevel(level);
 
             SetWeapons();
@@ -108,7 +112,7 @@ namespace DOL.GS.Scripts
             SetArmor();
             SetJewelry();
             RefreshItemBonuses();
-            IsCloakHoodUp = Util.RandomBool();
+            IsCloakHoodUp = Util.Random(1) > 0;
 
             Health = MaxHealth;
             Endurance = MaxEndurance;
@@ -120,8 +124,6 @@ namespace DOL.GS.Scripts
             {
                 return 0;
             }));
-
-            Dev = ClientService.GetPlayers()[0];
         }
 
         private void SetBrain(eMimicClass mimicClass)
@@ -272,18 +274,27 @@ namespace DOL.GS.Scripts
                 case 5: armorType = eObjectType.Plate; break;
             }
 
-            MimicEquipment.SetArmor(this, armorType);
+            if (MimicConfig.ARMOR_ROG)
+            {
+                int min = Math.Max(1, Level - 3);
+                int max = Math.Min(51, Level + 3);
+                byte level = (byte)Util.Random(min, max);
+
+                MimicEquipment.SetArmorROG(this, Realm, (eCharacterClass)CharacterClass.ID, level, armorType);
+            }
+            else
+                MimicEquipment.SetArmor(this, armorType);
         }
 
         public override bool Interact(GamePlayer player)
         {
-            if (this.InCombat || !base.Interact(player))
+            if (!base.Interact(player))
                 return false;
 
             player.Out.SendMessage(
                 "---------------------------------------\n" +
                 "[State] [Prevent Combat] [Brain] [Debug]\n\n " +
-                "[Group] - [Leader] - [MainPuller] - [MainCC] - [MainTank] - [MainAssist]\n\n " +
+                "[Group] - [Leader] - [MainPuller] - [MainCC] - [MainTank] - [MainAssist] - [Healer]\n\n " +
                 "[Guard] [Protect] [Intercept]\n\n " +
                 "[Spells] - [Inst Harmful] - [Harmful Spells] - [Inst Misc] - [Misc Spells] - [Inst Heal] - [Heal Spells] - [CC]\n\n " +
                 "[Styles] - [Abilities]\n\n " +
@@ -343,6 +354,9 @@ namespace DOL.GS.Scripts
                     message += "IsMezzed: " + IsMezzed + "\n";
                     message += "IsStunned: " + IsStunned + "\n";
                     message += "IsRooted: " + IsRooted + "\n";
+                    message += "InCombat" + InCombat + "\n";
+                    message += "PvPMode: " + MimicBrain.PvPMode + "\n";
+                    message += "Prevent Combat: " + MimicBrain.PreventCombat;
                     break;
                 }
 
@@ -377,6 +391,7 @@ namespace DOL.GS.Scripts
                 case "MainCC": Group?.MimicGroup.SetMainCC(this); break;
                 case "MainTank": Group?.MimicGroup.SetMainTank(this); break;
                 case "MainAssist": Group?.MimicGroup.SetMainAssist(this); break;
+                case "Healer": Group?.MimicGroup.SetHealer(this); break;
 
                 case "Guard":
                 {
@@ -592,22 +607,35 @@ namespace DOL.GS.Scripts
 
                 case "Stats":
                 {
-                    message = string.Format("Level: {0}\n Str: {1}\n Con: {2}\n Dex: {3}\n Qui: {4}\n Int: {5}\n Pie: {6}\n Emp: {7}\n Cha: {8}\n" +
-                                            " HP: {9}\n AF: {10}\n, End: {11}\n Power: {12}\n",
-                                            Level,
-                                            Strength,
-                                            Constitution,
-                                            Dexterity,
-                                            Quickness,
-                                            Intelligence,
-                                            Piety,
-                                            Empathy,
-                                            Charisma,
-                                            Health,
-                                            EffectiveOverallAF,
-                                            Endurance,
-                                            Mana);
+                    message = "Level: " + Level + "\n" +
 
+                   "Str: " + GetBaseStat(eStat.STR) + " (" + Strength + ")" +
+                   GetModifiedStats(eStat.STR, eProperty.Strength) +
+
+                   "Con: " + GetBaseStat(eStat.CON) + " (" + Constitution + ")" +
+                    GetModifiedStats(eStat.CON, eProperty.Constitution) +
+
+                   "Dex: " + GetBaseStat(eStat.DEX) + " (" + Dexterity + ")" +
+                   GetModifiedStats(eStat.DEX, eProperty.Dexterity) +
+
+                   "Qui: " + GetBaseStat(eStat.QUI) + " (" + Quickness + ")" +
+                   GetModifiedStats(eStat.QUI, eProperty.Quickness);
+
+                    switch (CharacterClass.ManaStat)
+                    {
+                        case eStat.UNDEFINED: break;
+
+                        case eStat.INT: message += "Int: " + GetBaseStat(eStat.INT) + " (" + Intelligence + ")" + GetModifiedStats(eStat.INT, eProperty.Intelligence); break;
+                        case eStat.PIE: message += "Pie: " + GetBaseStat(eStat.PIE) + " (" + Piety + ")" + GetModifiedStats(eStat.PIE, eProperty.Piety); break;
+                        case eStat.EMP: message += "Emp: " + GetBaseStat(eStat.EMP) + " (" + Empathy + ")" + GetModifiedStats(eStat.EMP, eProperty.Empathy); break;
+                        case eStat.CHR: message += "Cha: " + GetBaseStat(eStat.CHR) + " (" + Charisma + ")" + GetModifiedStats(eStat.CHR, eProperty.Charisma); break;
+                    }
+
+                    message += "Health: " + Health + "/" + MaxHealth + " (" + HealthPercent + "%)\n" +
+                               "End: " + Endurance + "/" + MaxEndurance + " (" + EndurancePercent + "%)\n" +
+                               "Power: " + Mana + "/" + MaxMana + " (" + ManaPercent + "%)\n" +
+                               "AF: " + EffectiveOverallAF + "\n" +
+                               "Conc: " + Concentration + "/" + MaxConcentration + "\n";
                     break;
                 }
 
@@ -625,16 +653,18 @@ namespace DOL.GS.Scripts
 
                 case "Inventory":
                 {
+                    message = Money.GetString(GetCurrentMoney()) + "\n";
+
                     ICollection<DbInventoryItem> items = Inventory.GetItemRange(eInventorySlot.FirstBackpack, eInventorySlot.LastBackpack);
 
                     if (items != null && items.Any())
                     {
                         int index = 1;
                         foreach (DbInventoryItem item in items)
-                            message += "[" + index + "]" + ". " + item.Name;
+                            message += "[" + index + "]" + ". " + item.Name + "\n";
                     }
                     else
-                        message = "Inventory is empty";
+                        message += "Inventory is empty";
 
                     break;
                 }
@@ -704,6 +734,14 @@ namespace DOL.GS.Scripts
             }
 
             return base.SayReceive(source, str);
+        }
+
+        private string GetModifiedStats(eStat stat, eProperty property)
+        {
+            string str = " Item: " + GetModifiedFromItems(property) +
+                         " Buffs: " + GetModifiedFromBuffs(property) + "\n";
+
+            return str;
         }
 
         public override bool ReceiveItem(GameLiving source, DbInventoryItem item)
@@ -798,6 +836,230 @@ namespace DOL.GS.Scripts
             UpdateNPCEquipmentAppearance();
 
             return true;
+        }
+
+        #region Money
+
+        /// true if this player want to receive loot with autosplit between members of group
+        /// </summary>
+        protected bool m_autoSplitLoot = true;
+
+        /// <summary>
+        /// Gets/sets the autosplit for loot
+        /// </summary>
+        public bool AutoSplitLoot
+        {
+            get { return m_autoSplitLoot; }
+            set { m_autoSplitLoot = value; }
+        }
+
+        /// <summary>
+        /// Player Mithril Amount
+        /// </summary>
+        public virtual int Mithril { get { return m_Mithril; } protected set { m_Mithril = value; } }
+        protected int m_Mithril = 0;
+
+        /// <summary>
+        /// Player Platinum Amount
+        /// </summary>
+        public virtual int Platinum { get { return m_Platinum; } protected set { m_Platinum = value; } }
+        protected int m_Platinum = 0;
+
+        /// <summary>
+        /// Player Gold Amount
+        /// </summary>
+        public virtual int Gold { get { return m_Gold; } protected set { m_Gold = value; } }
+        protected int m_Gold = 0;
+
+        /// <summary>
+        /// Player Silver Amount
+        /// </summary>
+        public virtual int Silver { get { return m_Silver; } protected set { m_Silver = value; } }
+        protected int m_Silver = 0;
+
+        /// <summary>
+        /// Player Copper Amount
+        /// </summary>
+        public virtual int Copper { get { return m_Copper; } protected set { m_Copper = value; } }
+        protected int m_Copper = 0;
+
+        /// <summary>
+        /// Gets the money value this player owns
+        /// </summary>
+        /// <returns></returns>
+        public virtual long GetCurrentMoney()
+        {
+            return Money.GetMoney(Mithril, Platinum, Gold, Silver, Copper);
+        }
+
+        public long ApplyGuildDues(long money)
+        {
+            Guild guild = Guild;
+
+            if (guild == null || !guild.IsGuildDuesOn())
+                return money;
+
+            long moneyToGuild = money * guild.GetGuildDuesPercent() / 100;
+
+            if (moneyToGuild <= 0 || !guild.AddToBank(moneyToGuild, false))
+                return money;
+
+            return money - moneyToGuild;
+        }
+
+        /// <summary>
+        /// Adds money to this player
+        /// </summary>
+        /// <param name="money">money to add</param>
+        public virtual void AddMoney(long money)
+        {
+            AddMoney(money, null, eChatType.CT_System, eChatLoc.CL_SystemWindow);
+        }
+
+        /// <summary>
+        /// Adds money to this player
+        /// </summary>
+        /// <param name="money">money to add</param>
+        /// <param name="messageFormat">null if no message or "text {0} text"</param>
+        public virtual void AddMoney(long money, string messageFormat)
+        {
+            AddMoney(money, messageFormat, eChatType.CT_System, eChatLoc.CL_SystemWindow);
+        }
+
+        /// <summary>
+        /// Adds money to this player
+        /// </summary>
+        /// <param name="money">money to add</param>
+        /// <param name="messageFormat">null if no message or "text {0} text"</param>
+        /// <param name="ct">message chat type</param>
+        /// <param name="cl">message chat location</param>
+        public virtual void AddMoney(long money, string messageFormat, eChatType ct, eChatLoc cl)
+        {
+            long newMoney = GetCurrentMoney() + money;
+
+            Copper = Money.GetCopper(newMoney);
+            Silver = Money.GetSilver(newMoney);
+            Gold = Money.GetGold(newMoney);
+            Platinum = Money.GetPlatinum(newMoney);
+            Mithril = Money.GetMithril(newMoney);
+        }
+
+        /// <summary>
+        /// Removes money from the player
+        /// </summary>
+        /// <param name="money">money value to subtract</param>
+        /// <returns>true if successfull, false if player doesn't have enough money</returns>
+        public virtual bool RemoveMoney(long money)
+        {
+            return RemoveMoney(money, null, eChatType.CT_System, eChatLoc.CL_SystemWindow);
+        }
+
+        /// <summary>
+        /// Removes money from the player
+        /// </summary>
+        /// <param name="money">money value to subtract</param>
+        /// <param name="messageFormat">null if no message or "text {0} text"</param>
+        /// <returns>true if successfull, false if player doesn't have enough money</returns>
+        public virtual bool RemoveMoney(long money, string messageFormat)
+        {
+            return RemoveMoney(money, messageFormat, eChatType.CT_System, eChatLoc.CL_SystemWindow);
+        }
+
+        /// <summary>
+        /// Removes money from the player
+        /// </summary>
+        /// <param name="money">money value to subtract</param>
+        /// <param name="messageFormat">null if no message or "text {0} text"</param>
+        /// <param name="ct">message chat type</param>
+        /// <param name="cl">message chat location</param>
+        /// <returns>true if successfull, false if player doesn't have enough money</returns>
+        public virtual bool RemoveMoney(long money, string messageFormat, eChatType ct, eChatLoc cl)
+        {
+            if (money > GetCurrentMoney())
+                return false;
+
+            long newMoney = GetCurrentMoney() - money;
+
+            Mithril = Money.GetMithril(newMoney);
+            Platinum = Money.GetPlatinum(newMoney);
+            Gold = Money.GetGold(newMoney);
+            Silver = Money.GetSilver(newMoney);
+            Copper = Money.GetCopper(newMoney);
+
+            return true;
+        }
+
+        #endregion Money
+
+        public bool TryAutoPickUpMoney(GameMoney money)
+        {
+            return TryPickUpMoney(this, money) is not TryPickUpResult.DOES_NOT_HANDLE;
+        }
+
+        public bool TryAutoPickUpItem(WorldInventoryItem inventoryItem)
+        {
+            return TryPickUpItem(this, inventoryItem) is not TryPickUpResult.DOES_NOT_HANDLE;
+        }
+
+        public TryPickUpResult TryPickUpMoney(IGamePlayer source, GameMoney money)
+        {
+            if (this != source)
+            {
+                if (log.IsErrorEnabled)
+                    log.Error($"The passed down {nameof(source)} isn't equal to 'this'. Money pick up aborted. ({nameof(source)}: {source}) (this: {this})");
+
+                return TryPickUpResult.DOES_NOT_HANDLE;
+            }
+
+            long moneyToPlayer = ApplyGuildDues(money.TotalCopper);
+
+            if (moneyToPlayer > 0)
+                AddMoney(moneyToPlayer);
+
+            money.RemoveFromWorld();
+            return TryPickUpResult.SUCCESS;
+        }
+
+        public TryPickUpResult TryPickUpItem(IGamePlayer source, WorldInventoryItem item)
+        {
+            if (this != source)
+            {
+                if (log.IsErrorEnabled)
+                    log.Error($"The passed down {nameof(source)} isn't equal to 'this'. Item pick up aborted. ({nameof(source)}: {source}) (this: {this})");
+
+                return TryPickUpResult.DOES_NOT_HANDLE;
+            }
+
+            //if (MimicConfig.PLAYER_LOOTMASTER)
+            //    if (source is MimicNPC && source.Group != null && source.Group.LivingLeader is GamePlayer)
+            //    {
+                    
+            //    }
+
+            if (!GiveItem(this, item.Item))
+                return TryPickUpResult.FAILED;
+
+            Message.SystemToOthers(this, LanguageMgr.GetTranslation(Client.Account.Language, "GamePlayer.PickupObject.GroupMemberPicksUp", Name, item.Item.GetName(1, false)), eChatType.CT_System);
+            item.RemoveFromWorld();
+            return TryPickUpResult.SUCCESS;
+
+            static bool GiveItem(IGamePlayer player, DbInventoryItem item)
+            {
+                if (item.IsStackable)
+                    return player.Inventory.AddTemplate(item, item.Count, eInventorySlot.FirstBackpack, eInventorySlot.LastBackpack);
+
+                return player.Inventory.AddItem(eInventorySlot.FirstEmptyBackpack, item);
+            }
+        }
+
+        /// <summary>
+        /// Checks to see if an object is viewable from the players perspective
+        /// </summary>
+        /// <param name="obj">The Object to be seen</param>
+        /// <returns>True/False</returns>
+        public bool CanSeeObject(GameObject obj)
+        {
+            return IsWithinRadius(obj, WorldMgr.VISIBILITY_DISTANCE);
         }
 
         public void SpendSpecPoints(byte level, byte previousLevel)
@@ -1552,7 +1814,7 @@ namespace DOL.GS.Scripts
         {
             PlayerRace playerRace = CharacterClass.EligibleRaces[Util.Random(CharacterClass.EligibleRaces.Count - 1)];
 
-            Gender = Util.RandomBool() ? eGender.Female : eGender.Male;
+            Gender = Util.Random(1) > 0 ? eGender.Female : eGender.Male;
             Race = (short)playerRace.ID;
             Model = (ushort)playerRace.GetModel(Gender);
             Size = (byte)Util.Random(45, 60);
@@ -1597,10 +1859,13 @@ namespace DOL.GS.Scripts
 
         public override bool AddToWorld()
         {
+            RandomNumberDeck = new PlayerDeck();
+
             if (!(base.AddToWorld()))
                 return false;
 
-            RandomNumberDeck = new PlayerDeck();
+            UpdateNPCEquipmentAppearance();
+            UpdateEncumbrance(true);
 
             return true;
         }
@@ -1617,6 +1882,7 @@ namespace DOL.GS.Scripts
                 return false;
 
             Duel?.Stop();
+            MimicSpawner?.Remove(this);
 
             if (ControlledBrain != null)
                 CommandNpcRelease();
@@ -1626,8 +1892,6 @@ namespace DOL.GS.Scripts
 
         public double SpecLock { get; set; }
         public long LastWorldUpdate { get; set; }
-
-        private PlayerDeck _randomNumberDeck;
 
         #region Client/Character/VariousFlags
 
@@ -1685,9 +1949,6 @@ namespace DOL.GS.Scripts
         /// </summary>
         public static readonly string LAST_USED_ITEM_SPELL = "last_used_item_spell";
 
-        public static readonly string REALM_LOYALTY_KEY = "realm_loyalty";
-        public static readonly string CURRENT_LOYALTY_KEY = "current_loyalty_days";
-
         /// <summary>
         /// Effectiveness of the rez sick that should be applied. This is set by rez spells just before rezzing.
         /// </summary>
@@ -1697,6 +1958,22 @@ namespace DOL.GS.Scripts
         /// Array that stores ML step completition
         /// </summary>
         private ArrayList m_mlSteps = new ArrayList();
+
+        protected bool m_usedetailedcombatlog = false;
+
+        public bool UseDetailedCombatLog
+        {
+            get { return false; }
+            set { m_usedetailedcombatlog = value; }
+        }
+
+        eXPLogState _xpLogState;
+
+        public eXPLogState XPLogState
+        {
+            get { return eXPLogState.Off; }
+            set { _xpLogState = value; }
+        }
 
         /// <summary>
         /// Gets or sets the targetObject's visibility
@@ -1715,17 +1992,7 @@ namespace DOL.GS.Scripts
 
         public override int TargetInViewAlwaysTrueMinRange => (TargetObject is GamePlayer targetPlayer && targetPlayer.IsMoving) ? 100 : 64;
 
-        public PlayerDeck RandomNumberDeck
-        {
-            get
-            {
-                if (_randomNumberDeck == null)
-                    _randomNumberDeck = new PlayerDeck();
-
-                return _randomNumberDeck;
-            }
-            set { _randomNumberDeck = value; }
-        }
+        public PlayerDeck RandomNumberDeck { get; set; }
 
         /// <summary>
         /// Holds the ground target visibility flag
@@ -1788,6 +2055,7 @@ namespace DOL.GS.Scripts
             get { return _wasMovedByCorpseSummoner; }
             set { _wasMovedByCorpseSummoner = value; }
         }
+
 
         #region Database Accessor
 
@@ -1891,14 +2159,15 @@ namespace DOL.GS.Scripts
             set { if (DBCharacter != null) DBCharacter.BindHouseHeading = value; }
         }
 
+        long _deathTime;
         /// <summary>
         /// Gets or sets the DeathTime for this player
         /// (delegate to property in DBCharacter)
         /// </summary>
         public long DeathTime
         {
-            get { return DBCharacter != null ? DBCharacter.DeathTime : 0; }
-            set { if (DBCharacter != null) DBCharacter.DeathTime = value; }
+            get { return _deathTime; }
+            set { _deathTime = value; }
         }
 
         /// <summary>
@@ -1967,8 +2236,10 @@ namespace DOL.GS.Scripts
         /// </summary>
         public string AccountName
         {
-            get { return DBCharacter != null ? DBCharacter.AccountName : string.Empty; }
+            get { return string.Empty; }
         }
+
+        DateTime _creationDate;
 
         /// <summary>
         /// Gets CreationDate for this player
@@ -1976,7 +2247,8 @@ namespace DOL.GS.Scripts
         /// </summary>
         public DateTime CreationDate
         {
-            get { return DBCharacter != null ? DBCharacter.CreationDate : DateTime.MinValue; }
+            get { return _creationDate; }
+            set { _creationDate = value; }
         }
 
         /// <summary>
@@ -1985,7 +2257,7 @@ namespace DOL.GS.Scripts
         /// </summary>
         public DateTime LastPlayed
         {
-            get { return DBCharacter != null ? DBCharacter.LastPlayed : DateTime.MinValue; }
+            get { return DateTime.Now; }
         }
 
         /// <summary>
@@ -2017,18 +2289,22 @@ namespace DOL.GS.Scripts
 
         #endregion Database Accessor
 
+        /// <summary>
+        /// Holds the GameLiving that is the steed of this player as weakreference
+        /// </summary>
+        protected WeakReference m_steed;
+        /// <summary>
+        /// Holds the Steed of this player
+        /// </summary>
+        public GameNPC Steed
+        {
+            get { return null; }
+            set { m_steed.Target = value; }
+        }
+
         #endregion Client/Character/VariousFlags
 
         #region Combat timer
-
-        /// <summary>
-        /// gets the DamageRvR Memory of this player
-        /// </summary>
-        public override long DamageRvRMemory
-        {
-            get => m_damageRvRMemory;
-            set => m_damageRvRMemory = value;
-        }
 
         public override long LastAttackTickPvE
         {
@@ -2077,7 +2353,7 @@ namespace DOL.GS.Scripts
             set
             {
                 bool wasInCombat = InCombat;
-                base.LastAttackTickPvP = value;
+                base.LastAttackedByEnemyTickPvP = value;
                 //if (!wasInCombat && InCombat)
                 //    Out.SendUpdateMaxSpeed();
 
@@ -2649,8 +2925,6 @@ namespace DOL.GS.Scripts
                 }
             }
 
-            //Update health&sit state first!
-            m_isDead = false;
             Health = MaxHealth;
             Endurance = MaxEndurance;
             Mana = MaxMana;
@@ -2658,32 +2932,7 @@ namespace DOL.GS.Scripts
             StartEnduranceRegeneration();
             LastDeathPvP = false;
 
-            var maxChargeItems = Properties.MAX_CHARGE_ITEMS;
-            /*
-            foreach (var item in Inventory.EquippedItems)
-            {
-                //max 2 charges
-                if (item.SpellID > 0 && SelfBuffChargeIDs.Contains(item.SpellID) && LoyaltyManager.GetPlayerRealmLoyalty(this).Days > 30)
-                {
-                    if(ActiveBuffCharges < maxChargeItems)
-                        UseItemCharge(item, (int)eUseType.use1);
-                    else
-                    {
-                        Out.SendMessage("You may only use two buff charge effects. This item fails to affect you.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
-                    }
-                }
-
-                //max 2 charges
-                if (item.SpellID1 > 0 && SelfBuffChargeIDs.Contains(item.SpellID1) && LoyaltyManager.GetPlayerRealmLoyalty(this).Days > 30)
-                {
-                    if(ActiveBuffCharges < maxChargeItems)
-                        UseItemCharge(item, (int)eUseType.use2);
-                    else
-                    {
-                        Out.SendMessage("You may only use two buff charge effects. This item fails to affect you.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
-                    }
-                }
-            }*/
+            var maxChargeItems = ServerProperties.Properties.MAX_CHARGE_ITEMS;
 
             //UpdatePlayerStatus();
 
@@ -2725,7 +2974,7 @@ namespace DOL.GS.Scripts
             TempProperties.RemoveProperty(DEATH_CONSTITUTION_LOSS_PROPERTY);
 
             //Reset last valide position array to prevent /stuck avec /release
-            lock (m_lastUniqueLocations)
+            lock (_lastUniqueLocationsLock)
             {
                 for (int i = 0; i < m_lastUniqueLocations.Length; i++)
                 {
@@ -2798,9 +3047,7 @@ namespace DOL.GS.Scripts
         /// </summary>
         public virtual void OnRevive(DOLEvent e, object sender, EventArgs args)
         {
-            GamePlayer player = (GamePlayer)sender;
-            //effectListComponent.CancelAll();
-            m_isDead = false;
+            IGamePlayer player = sender as IGamePlayer;
 
             bool applyRezSick = true;
 
@@ -2824,18 +3071,20 @@ namespace DOL.GS.Scripts
                 switch (DeathType)
                 {
                     case eDeathType.RvR:
-                    {
-                        Spell rvrIllness = SkillBase.GetSpellByID(8181);
-                        CastSpell(rvrIllness, SkillBase.GetSpellLine(GlobalSpellsLines.Realm_Spells));
-                        break;
-                    }
+                    SpellLine rvrsick = SkillBase.GetSpellLine(GlobalSpellsLines.Realm_Spells);
+                    if (rvrsick == null) return;
+                    Spell rvrillness = SkillBase.FindSpell(8181, rvrsick);
+                    //player.CastSpell(rvrillness, rvrsick);
+                    CastSpell(rvrillness, rvrsick);
+                    break;
                     case eDeathType.PvP: //PvP sickness is the same as PvE sickness - Curable
                     case eDeathType.PvE:
-                    {
-                        Spell pveIllness = SkillBase.GetSpellByID(2435);
-                        CastSpell(pveIllness, SkillBase.GetSpellLine(GlobalSpellsLines.Realm_Spells));
-                        break;
-                    }
+                    SpellLine pvesick = SkillBase.GetSpellLine(GlobalSpellsLines.Realm_Spells);
+                    if (pvesick == null) return;
+                    Spell pveillness = SkillBase.FindSpell(2435, pvesick);
+                    //player.CastSpell(pveillness, pvesick);
+                    CastSpell(pveillness, pvesick);
+                    break;
                 }
             }
 
@@ -3029,14 +3278,22 @@ namespace DOL.GS.Scripts
             get { return GetModified(eProperty.Charisma); }
         }
 
-        protected IPlayerStatistics m_statistics = null;
+        protected PlayerStatistics m_statistics = null;
 
         /// <summary>
         /// Get the statistics for this player
         /// </summary>
-        public virtual IPlayerStatistics Statistics
+        public virtual PlayerStatistics Statistics
         {
             get { return m_statistics; }
+        }
+
+        /// <summary>
+        /// Create played statistics for this player
+        /// </summary>
+        public virtual void CreateStatistics()
+        {
+            m_statistics = new PlayerStatistics(this);
         }
 
         #endregion Stats
@@ -3111,19 +3368,9 @@ namespace DOL.GS.Scripts
             if (Health < MaxHealth)
                 ChangeHealth(this, eHealthChangeType.Regenerate, GetModified(eProperty.HealthRegenerationAmount));
 
-            bool atMaxHealth = Health >= MaxHealth;
-
-            if (DamageRvRMemory > 0)
+            if (Health >= MaxHealth)
             {
-                if (atMaxHealth)
-                    DamageRvRMemory = 0;
-                else
-                    DamageRvRMemory -= Math.Max(GetModified(eProperty.HealthRegenerationAmount), 0);
-            }
-
-            if (atMaxHealth)
-            {
-                lock (m_xpGainers.SyncRoot)
+                lock (XpGainersLock)
                 {
                     m_xpGainers.Clear();
                 }
@@ -3217,17 +3464,6 @@ namespace DOL.GS.Scripts
             return rate;
         }
 
-        protected bool m_isDead = false;
-
-        /// <summary>
-        /// returns if this living is alive
-        /// </summary>
-        public override bool IsAlive
-        {
-            //get { return Health > 0; }
-            get { return !m_isDead; }
-        }
-
         /// <summary>
         /// Gets/sets the object health
         /// </summary>
@@ -3246,9 +3482,6 @@ namespace DOL.GS.Scripts
 
                 int oldPercent = HealthPercent;
                 base.Health = value;
-
-                if (m_health == 0)
-                    m_isDead = true;
 
                 if (oldPercent != HealthPercent)
                 {
@@ -3413,6 +3646,8 @@ namespace DOL.GS.Scripts
             get { return GetModified(eProperty.MaxConcentration); }
         }
 
+        public override bool IsWorthReward => false;
+
         #region Calculate Fall Damage
 
         /// <summary>
@@ -3558,6 +3793,7 @@ namespace DOL.GS.Scripts
         /// (KeyName -> Specialization)
         /// </summary>
         protected readonly Dictionary<string, Specialization> m_specialization = new Dictionary<string, Specialization>();
+        protected readonly Lock _specializationLock = new();
 
         /// <summary>
         /// Holds the Spell lines the player can use
@@ -3567,17 +3803,7 @@ namespace DOL.GS.Scripts
         /// <summary>
         /// Object to use when locking the SpellLines list
         /// </summary>
-        protected readonly Object lockSpellLinesList = new Object();
-
-        ///// <summary>
-        ///// Holds all styles of the player
-        ///// </summary>
-        //protected readonly Dictionary<int, Style> m_styles = new Dictionary<int, Style>();
-
-        ///// <summary>
-        ///// Used to lock the style list
-        ///// </summary>
-        //protected readonly Object lockStyleList = new Object();
+        protected readonly Lock _spellLinesListLock = new();
 
         /// <summary>
         /// Temporary Stats Boni
@@ -3759,7 +3985,7 @@ namespace DOL.GS.Scripts
             if (skill == null)
                 return;
 
-            lock (((ICollection)m_specialization).SyncRoot)
+            lock (_specializationLock)
             {
                 if (m_specialization.TryGetValue(skill.KeyName, out Specialization specialization))
                 {
@@ -3783,7 +4009,7 @@ namespace DOL.GS.Scripts
         {
             Specialization playerSpec = null;
 
-            lock (((ICollection)m_specialization).SyncRoot)
+            lock (_specializationLock)
             {
                 if (!m_specialization.TryGetValue(specKeyName, out playerSpec))
                     return false;
@@ -3801,7 +4027,7 @@ namespace DOL.GS.Scripts
         /// <returns>true if removed</returns>
         protected virtual bool RemoveSpellLine(SpellLine line)
         {
-            lock (lockSpellLinesList)
+            lock (_spellLinesListLock)
             {
                 if (!m_spellLines.Contains(line))
                 {
@@ -4051,7 +4277,7 @@ namespace DOL.GS.Scripts
         {
             List<Specialization> list;
 
-            lock (((ICollection)m_specialization).SyncRoot)
+            lock (_specializationLock)
             {
                 // sort by Level and ID to simulate "addition" order... (try to sort your DB if you want to change this !)
                 list = m_specialization.Select(item => item.Value).OrderBy(it => it.LevelRequired).ThenBy(it => it.ID).ToList();
@@ -4080,7 +4306,7 @@ namespace DOL.GS.Scripts
         {
             Specialization spec = null;
 
-            lock (((ICollection)m_specialization).SyncRoot)
+            lock (_specializationLock)
             {
                 foreach (KeyValuePair<string, Specialization> entry in m_specialization)
                 {
@@ -4157,7 +4383,7 @@ namespace DOL.GS.Scripts
 
         public virtual void RemoveAllAbilities()
         {
-            lock (m_lockAbilities)
+            lock (_abilitiesLock)
             {
                 m_abilities.Clear();
             }
@@ -4165,7 +4391,7 @@ namespace DOL.GS.Scripts
 
         public virtual void RemoveAllSpecs()
         {
-            lock (((ICollection)m_specialization).SyncRoot)
+            lock (_specializationLock)
             {
                 m_specialization.Clear();
             }
@@ -4173,7 +4399,7 @@ namespace DOL.GS.Scripts
 
         public virtual void RemoveAllSpellLines()
         {
-            lock (lockSpellLinesList)
+            lock (_spellLinesListLock)
             {
                 m_spellLines.Clear();
             }
@@ -4197,7 +4423,7 @@ namespace DOL.GS.Scripts
         {
             bool hasit = false;
 
-            lock (((ICollection)m_specialization).SyncRoot)
+            lock (_specializationLock)
             {
                 hasit = m_specialization.ContainsKey(keyName);
             }
@@ -4216,7 +4442,7 @@ namespace DOL.GS.Scripts
             Specialization spec = null;
             int level = 0;
 
-            lock (((ICollection)m_specialization).SyncRoot)
+            lock (_specializationLock)
             {
                 if (m_specialization.TryGetValue(keyName, out spec))
                     level = m_specialization[keyName].Level;
@@ -4241,7 +4467,7 @@ namespace DOL.GS.Scripts
 
             Specialization spec = null;
             int level = 0;
-            lock (((ICollection)m_specialization).SyncRoot)
+            lock (_specializationLock)
             {
                 if (!m_specialization.TryGetValue(keyName, out spec))
                 {
@@ -4294,7 +4520,7 @@ namespace DOL.GS.Scripts
             SpellLine oldline = GetSpellLine(line.KeyName);
             if (oldline == null)
             {
-                lock (lockSpellLinesList)
+                lock (_spellLinesListLock)
                 {
                     m_spellLines.Add(line);
                 }
@@ -4313,7 +4539,7 @@ namespace DOL.GS.Scripts
         public virtual List<SpellLine> GetSpellLines()
         {
             List<SpellLine> list = new List<SpellLine>();
-            lock (lockSpellLinesList)
+            lock (_spellLinesListLock)
             {
                 list = new List<SpellLine>(m_spellLines);
             }
@@ -4328,7 +4554,7 @@ namespace DOL.GS.Scripts
         /// <returns></returns>
         public virtual SpellLine GetSpellLine(string keyname)
         {
-            lock (lockSpellLinesList)
+            lock (_spellLinesListLock)
             {
                 foreach (SpellLine line in m_spellLines)
                 {
@@ -4432,7 +4658,7 @@ namespace DOL.GS.Scripts
         /// <returns></returns>
         public virtual List<Tuple<Skill, Skill>> GetAllUsableSkills(bool update = false)
         {
-            List<Tuple<Skill, Skill>> results = new List<Tuple<Skill, Skill>>();
+            List<Tuple<Skill, Skill>> results = [];
 
             if (!update)
             {
@@ -4596,7 +4822,7 @@ namespace DOL.GS.Scripts
             LoadClassSpecializations(sendMessages);
 
             // lock specialization while refreshing...
-            lock (((ICollection)m_specialization).SyncRoot)
+            lock (_specializationLock)
             {
                 foreach (Specialization spec in m_specialization.Values)
                 {
@@ -4826,9 +5052,6 @@ namespace DOL.GS.Scripts
         /// <summary>
         /// Called when this player gains realm points
         /// </summary>
-        /// <param name="amount"></param>
-        /// <param name="modify"></param>
-        /// <param name="sendMessage"></param>
         public void GainRealmPoints(long amount, bool modify, bool sendMessage)
         {
             GainRealmPoints(amount, modify, true, true);
@@ -4871,23 +5094,16 @@ namespace DOL.GS.Scripts
                 {
                     amount += (amount * rpBonus) / 100;
                 }
-
-                #region Kill Streak
-
-                int killBonus = (int)((0.05 * (KillStreak > 10 ? 10 : KillStreak)) * amount);
-                //Out.SendMessage($"{KillStreak} kill streak! ({killBonus} RPs)", eChatType.CT_System, eChatLoc.CL_SystemWindow);
-                amount += killBonus;
-
-                #endregion Kill Streak
             }
 
             if (notify)
                 base.GainRealmPoints(amount);
 
             RealmPoints += amount;
+            m_statistics.AddToTotalRealmPointsEarned((uint)amount);
 
             //if (m_guild != null && Client.Account.PrivLevel == 1)
-            //    m_guild.RealmPoints += amount;
+                //m_guild.RealmPoints += amount;
 
             if (sendMessage == true && amount > 0)
                 while (RealmPoints >= CalculateRPsFromRealmLevel(RealmLevel + 1) && RealmLevel < (REALMPOINTS_FOR_LEVEL.Length - 1))
@@ -4903,17 +5119,11 @@ namespace DOL.GS.Scripts
                     }
                     else
                         Notify(GamePlayerEvent.RLLevelUp, this);
-                    //if (CanGenerateNews && ((RealmLevel >= 40 && RealmLevel % 10 == 0) || RealmLevel >= 60))
+
+                    //if (GameServer.ServerRules.CanGenerateNews(this) && ((RealmLevel >= 40 && RealmLevel % 10 == 0) || RealmLevel >= 60))
                     //{
-                    //    string message = LanguageMgr.GetTranslation(Client.Account.Language, "GamePlayer.GainRealmPoints.ReachedRankNews", Name, RealmLevel + 10, LastPositionUpdateZone.Description);
                     //    string newsmessage = LanguageMgr.GetTranslation(Client.Account.Language, "GamePlayer.GainRealmPoints.ReachedRankNews", Name, RealmLevel + 10, LastPositionUpdateZone.Description);
-                    //    NewsMgr.CreateNews(newsmessage, Realm, eNewsType.RvRLocal, true);
-                    //}
-                    //if (CanGenerateNews && RealmPoints >= 1000000 && RealmPoints - amount < 1000000)
-                    //{
-                    //    string message = LanguageMgr.GetTranslation(Client.Account.Language, "GamePlayer.GainRealmPoints.Earned", Name, LastPositionUpdateZone.Description);
-                    //    string newsmessage = LanguageMgr.GetTranslation(Client.Account.Language, "GamePlayer.GainRealmPoints.Earned", Name, LastPositionUpdateZone.Description);
-                    //    NewsMgr.CreateNews(newsmessage, Realm, eNewsType.RvRLocal, true);
+                    //    NewsMgr.CreateNews(newsmessage, this.Realm, eNewsType.RvRLocal, true);
                     //}
                 }
 
@@ -5313,13 +5523,7 @@ namespace DOL.GS.Scripts
         /// <summary>
         /// Money value of this player
         /// </summary>
-        public override long MoneyValue
-        {
-            get
-            {
-                return 5 * prcRestore[Level < GamePlayer.prcRestore.Length ? Level : GamePlayer.prcRestore.Length - 1];
-            }
-        }
+        public override long MoneyValue => 3 * prcRestore[Level < prcRestore.Length ? Level : prcRestore.Length - 1];
 
         #endregion Realm-/Region-/Bount-/Skillpoints...
 
@@ -5361,12 +5565,12 @@ namespace DOL.GS.Scripts
         public virtual long GetExperienceNeededForLevel(int level)
         {
             if (level > MaxLevel)
-                return GetScaledExperienceAmountForLevel(MaxLevel);
+                return GetExperienceAmountForLevel(MaxLevel);
 
             if (level <= 0)
-                return GetScaledExperienceAmountForLevel(0);
+                return GetExperienceAmountForLevel(0);
 
-            return GetScaledExperienceAmountForLevel(level - 1);
+            return GetExperienceAmountForLevel(level - 1);
         }
 
         /// <summary>
@@ -5379,18 +5583,6 @@ namespace DOL.GS.Scripts
             try
             {
                 return XPForLevel[level];
-            }
-            catch
-            {
-                return 0;
-            }
-        }
-
-        public static long GetScaledExperienceAmountForLevel(int level)
-        {
-            try
-            {
-                return ScaledXPForLevel[level];
             }
             catch
             {
@@ -5445,65 +5637,6 @@ namespace DOL.GS.Scripts
             6899999950, // xp to level 39
             8599999950, // xp to level 40
             12899999950, // xp to level 41
-            20699999950, // xp to level 42
-            29999999950, // xp to level 43
-            40799999950, // xp to level 44
-            53999999950, // xp to level 45
-            69599999950, // xp to level 46
-            88499999950, // xp to level 47
-            110999999950, // xp to level 48
-            137999999950, // xp to level 49
-            169999999950, // xp to level 50
-            999999999950, // xp to level 51
-        };
-
-        /// <summary>
-        /// A table that holds the required XP/Level
-        /// This must include a final entry for MaxLevel + 1
-        /// </summary>
-        private static readonly long[] ScaledXPForLevel =
-        {
-            0, // xp to level 1
-            50, // xp to level 2
-            250, // xp to level 3
-            850, // xp to level 4
-            2300, // xp to level 5
-            6350, // xp to level 6
-            15950, // xp to level 7
-            37950, // xp to level 8
-            88950, // xp to level 9
-            203950, // xp to level 10
-            459950, // xp to level 11
-            839950, // xp to level 12
-            1399950, // xp to level 13
-            2199950, // xp to level 14
-            3399950, // xp to level 15
-            6499938, // xp to level 16
-            9953937, // xp to level 17
-            14985937, // xp to level 18
-            22399936, // xp to level 19
-            33410936, // xp to level 20
-            49659935, // xp to level 21
-            71656935, // xp to level 22
-            101639934, // xp to level 23
-            142309934, // xp to level 24
-            196979933, // xp to level 25
-            269999933, // xp to level 26
-            367199932, // xp to level 27
-            493199932, // xp to level 28
-            662399931, // xp to level 29
-            889599931, // xp to level 30
-            1189999930, // xp to level 31
-            1579199930, // xp to level 32
-            2087399929, // xp to level 33
-            2759899929, // xp to level 34
-            3643199928, // xp to level 35
-            4813999928, // xp to level 36
-            6277999927, // xp to level 37
-            8084999927, // xp to level 38
-            10211999926, // xp to level 39
-            12813999926, // xp to level 40
-            16382999937, // xp to level 41
             20699999950, // xp to level 42
             29999999950, // xp to level 43
             40799999950, // xp to level 44
@@ -5637,86 +5770,6 @@ namespace DOL.GS.Scripts
                 Out.SendMessage($"You may not gain experience while in a battlegroup.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
                 return;
             }
-
-            int numCurrentLoyalDays = this.TempProperties.GetProperty<int>(CURRENT_LOYALTY_KEY);
-            //check for cached loyalty days, and grab value if needed
-            if (numCurrentLoyalDays == 0)
-            {
-                DbAccountXRealmLoyalty realmLoyalty = DOLDB<DbAccountXRealmLoyalty>.SelectObject(DB.Column("AccountID").IsEqualTo(this.Client.Account.ObjectId).And(DB.Column("Realm").IsEqualTo(this.Realm)));
-                if (realmLoyalty == null)
-                {
-                    DbAccountXRealmLoyalty newLoyalty = new DbAccountXRealmLoyalty();
-                    newLoyalty.AccountId = this.Client.Account.ObjectId;
-                    newLoyalty.Realm = (int)this.Realm;
-                    newLoyalty.LoyalDays = 1;
-                    numCurrentLoyalDays = 1;
-                    newLoyalty.LastLoyaltyUpdate = DateTime.Now;
-                    GameServer.Database.AddObject(newLoyalty);
-                }
-                else
-                {
-                    numCurrentLoyalDays = realmLoyalty.LoyalDays;
-                }
-
-                this.TempProperties.SetProperty(CURRENT_LOYALTY_KEY, numCurrentLoyalDays);
-            }
-
-            //check for realm loyalty
-            var loyaltyCheck = this.TempProperties.GetProperty<DateTime>(REALM_LOYALTY_KEY);
-
-            if (loyaltyCheck < DateTime.Now.AddDays(-1))
-            {
-                List<DbAccountXRealmLoyalty> rloyal = new List<DbAccountXRealmLoyalty>(DOLDB<DbAccountXRealmLoyalty>.SelectObjects(DB.Column("AccountID").IsEqualTo(this.Client.Account.ObjectId)));
-                bool realmFound = false;
-                foreach (var rl in rloyal)
-                {
-                    if (rl.Realm == (int)this.Realm)
-                    {
-                        if (rl.LastLoyaltyUpdate < DateTime.Now.AddDays(-1))
-                            rl.LoyalDays++;
-                        numCurrentLoyalDays = rl.LoyalDays;
-                        realmFound = true;
-                    }
-                    else
-                    {
-                        //reduce loyalty
-                        if (rl.LoyalDays < 2 || arguments.XPSource is eXPSource.Player)
-                        {
-                            rl.LoyalDays = 0;
-                        }
-                        else
-                        {
-                            rl.LoyalDays--;
-                            rl.LoyalDays--;
-                        }
-
-                        if (rl.LoyalDays < rl.MinimumLoyalDays)
-                            rl.LoyalDays = rl.MinimumLoyalDays;
-                    }
-
-                    rl.LastLoyaltyUpdate = DateTime.Now;
-                    GameServer.Database.SaveObject(rl);
-                }
-
-                if (realmFound == false)
-                {
-                    DbAccountXRealmLoyalty newLoyalty = new DbAccountXRealmLoyalty();
-                    newLoyalty.AccountId = this.Client.Account.ObjectId;
-                    newLoyalty.Realm = (int)this.Realm;
-                    newLoyalty.LoyalDays = 1;
-                    numCurrentLoyalDays = 1;
-                    newLoyalty.LastLoyaltyUpdate = DateTime.Now;
-                    GameServer.Database.AddObject(newLoyalty);
-                }
-
-                this.TempProperties.SetProperty(REALM_LOYALTY_KEY, DateTime.Now);
-                this.TempProperties.SetProperty(CURRENT_LOYALTY_KEY, numCurrentLoyalDays);
-            }
-
-            //if (arguments.XPSource is eXPSource.Player && !this.CurrentZone.IsBG)
-            //{
-            //    LoyaltyManager.HandlePVPKill(this);
-            //}
 
             long baseXp = arguments.ExpBase;
 
@@ -5912,6 +5965,15 @@ namespace DOL.GS.Scripts
             LoadClassSpecializations(false);
             SpendSpecPoints(Level, previouslevel);
 
+            //if (Level == MaxLevel)
+            //{
+            //    if (GameServer.ServerRules.CanGenerateNews(this))
+            //    {
+            //        string newsmessage = LanguageMgr.GetTranslation(Client.Account.Language, "GamePlayer.OnLevelUp.Reached", Name, Level, LastPositionUpdateZone.Description);
+            //        NewsMgr.CreateNews(newsmessage, Realm, eNewsType.PvE, true);
+            //    }
+            //}
+
             //level 20 changes realm title and gives 1 realm skill point
             if (Level == 20)
                 GainRealmPoints(0);
@@ -5983,27 +6045,6 @@ namespace DOL.GS.Scripts
             }
 
             Emote(eEmote.LvlUp);
-
-            // Level up pets and subpets
-            if (ServerProperties.Properties.PET_LEVELS_WITH_OWNER &&
-                ControlledBrain is ControlledMobBrain brain && brain.Body is GameSummonedPet pet)
-            {
-                if (pet.SetPetLevel())
-                {
-                    if (ServerProperties.Properties.PET_SCALE_SPELL_MAX_LEVEL > 0 && pet.Spells.Count > 0)
-                        pet.SortSpells();
-
-                    brain.UpdatePetWindow();
-                }
-
-                // subpets
-                if (pet.ControlledNpcList != null)
-                    foreach (ABrain subBrain in pet.ControlledNpcList)
-                        if (subBrain != null && subBrain.Body is GameSummonedPet subPet)
-                            if (subPet.SetPetLevel()) // Levels up subpet
-                                if (ServerProperties.Properties.PET_SCALE_SPELL_MAX_LEVEL > 0)
-                                    subPet.SortSpells();
-            }
 
             // save player to database
             //SaveIntoDatabase();
@@ -6099,14 +6140,14 @@ namespace DOL.GS.Scripts
 
         #region Combat
 
-        public override int CalculateCastingTime(SpellLine line, Spell spell)
+        public override int CalculateCastingTime(SpellHandler spellHandler)
         {
             int castTime;
 
-            if (!CharacterClass.CanChangeCastingSpeed(line, spell))
-                castTime = spell.CastTime;
+            if (!CharacterClass.CanChangeCastingSpeed(spellHandler.SpellLine, spellHandler.Spell))
+                castTime = spellHandler.Spell.CastTime;
             else
-                castTime = base.CalculateCastingTime(line, spell);
+                castTime = base.CalculateCastingTime(spellHandler);
 
             return castTime;
         }
@@ -6228,7 +6269,7 @@ namespace DOL.GS.Scripts
                 if (spell.InstrumentRequirement != 0)
                 {
                     Out.SendMessage(LanguageMgr.GetTranslation(Client.Account.Language, "GamePlayer.SwitchWeapon.SpellCancelled"), eChatType.CT_SpellResisted, eChatLoc.CL_SystemWindow);
-                    EffectService.RequestImmediateCancelConcEffect(EffectListService.GetPulseEffectOnTarget(this, spell));
+                    EffectService.RequestCancelConcEffect(EffectListService.GetPulseEffectOnTarget(this, spell));
                 }
             }
 
@@ -6280,7 +6321,7 @@ namespace DOL.GS.Scripts
             }
 
             if (ObjectState == eObjectState.Active)
-                UpdateEquipmentAppearance();
+                UpdateNPCEquipmentAppearance();
         }
 
         /// <summary>
@@ -6330,12 +6371,10 @@ namespace DOL.GS.Scripts
         public override void OnAttackedByEnemy(AttackData ad)
         {
             base.OnAttackedByEnemy(ad);
+            MimicBrain.OnAttackedByEnemy(ad);
 
-            if (ControlledBrain != null && ControlledBrain is ControlledMobBrain)
-            {
-                var brain = (ControlledMobBrain)ControlledBrain;
+            if (ControlledBrain != null && ControlledBrain is ControlledMobBrain brain)
                 brain.OnOwnerAttacked(ad);
-            }
 
             switch (ad.AttackResult)
             {
@@ -6372,7 +6411,7 @@ namespace DOL.GS.Scripts
                 }
                 case eAttackResult.Blocked:
                 {
-                    DbInventoryItem reactiveItem = Inventory.GetItem(eInventorySlot.LeftHandWeapon);
+                    DbInventoryItem reactiveItem = ActiveLeftWeapon;
                     if (reactiveItem != null && reactiveItem.Object_Type == (int)eObjectType.Shield)
                     {
                         TryReactiveEffect(reactiveItem, ad.Attacker);
@@ -6394,6 +6433,8 @@ namespace DOL.GS.Scripts
             }
         }
 
+        public override bool CanDropLoot => false;
+
         /// <summary>
         /// Launch any reactive effect on an item
         /// </summary>
@@ -6409,39 +6450,42 @@ namespace DOL.GS.Scripts
                 {
                     SpellLine reactiveEffectLine = SkillBase.GetSpellLine(GlobalSpellsLines.Item_Effects);
 
-                    if (reactiveItem.ProcSpellID != 0)
+                    if (reactiveEffectLine != null)
                     {
-                        Spell spell = SkillBase.GetSpellByID(reactiveItem.ProcSpellID);
-
-                        if (spell != null)
+                        if (reactiveItem.ProcSpellID != 0)
                         {
-                            int chance = reactiveItem.ProcChance > 0 ? reactiveItem.ProcChance : 10;
+                            Spell spell = SkillBase.FindSpell(reactiveItem.ProcSpellID, reactiveEffectLine);
 
-                            if (Util.Chance(chance))
+                            if (spell != null)
                             {
-                                ISpellHandler spellHandler = ScriptMgr.CreateSpellHandler(this, spell, reactiveEffectLine);
-                                if (spellHandler != null)
+                                int chance = reactiveItem.ProcChance > 0 ? reactiveItem.ProcChance : 10;
+
+                                if (Util.Chance(chance))
                                 {
-                                    spellHandler.StartSpell(target, reactiveItem);
+                                    ISpellHandler spellHandler = ScriptMgr.CreateSpellHandler(this, spell, reactiveEffectLine);
+                                    if (spellHandler != null)
+                                    {
+                                        spellHandler.StartSpell(target, reactiveItem);
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    if (reactiveItem.ProcSpellID1 != 0)
-                    {
-                        Spell spell = SkillBase.GetSpellByID(reactiveItem.ProcSpellID1);
-
-                        if (spell != null)
+                        if (reactiveItem.ProcSpellID1 != 0)
                         {
-                            int chance = reactiveItem.ProcChance > 0 ? reactiveItem.ProcChance : 10;
+                            Spell spell = SkillBase.FindSpell(reactiveItem.ProcSpellID1, reactiveEffectLine);
 
-                            if (Util.Chance(chance))
+                            if (spell != null)
                             {
-                                ISpellHandler spellHandler = ScriptMgr.CreateSpellHandler(this, spell, reactiveEffectLine);
-                                if (spellHandler != null)
+                                int chance = reactiveItem.ProcChance > 0 ? reactiveItem.ProcChance : 10;
+
+                                if (Util.Chance(chance))
                                 {
-                                    spellHandler.StartSpell(target, reactiveItem);
+                                    ISpellHandler spellHandler = ScriptMgr.CreateSpellHandler(this, spell, reactiveEffectLine);
+                                    if (spellHandler != null)
+                                    {
+                                        spellHandler.StartSpell(target, reactiveItem);
+                                    }
                                 }
                             }
                         }
@@ -6454,12 +6498,6 @@ namespace DOL.GS.Scripts
         {
             if (Duel != null && !IsDuelPartner(source as GameLiving))
                 Duel.Stop();
-
-            if (source is IGamePlayer || (source is GameNPC npc && npc.Brain is IControlledBrain brain && brain.GetLivingOwner() is IGamePlayer) || source is GameSiegeWeapon)
-            {
-                if (Realm != source.Realm && source.Realm != 0)
-                    DamageRvRMemory += damageAmount + criticalAmount;
-            }
 
             base.TakeDamage(source, damageType, damageAmount, criticalAmount);
 
@@ -6594,7 +6632,7 @@ namespace DOL.GS.Scripts
                     eaf = eafcap;
                 eaf += (int)Math.Min(Level * 1.875, SpecBuffBonusCategory[(int)eProperty.ArmorFactor])
                        - DebuffCategory[(int)eProperty.ArmorFactor]
-                       + BuffBonusCategory4[(int)eProperty.ArmorFactor]
+                       + OtherBonus[(int)eProperty.ArmorFactor]
                        + Math.Min(Level, ItemBonus[(int)eProperty.ArmorFactor]);
 
                 eaf = (int)(eaf * BuffBonusMultCategory1.Get((int)eProperty.ArmorFactor));
@@ -6919,80 +6957,6 @@ namespace DOL.GS.Scripts
             return false;
         }
 
-        public override void OnAttackEnemy(AttackData ad)
-        {
-            //Console.WriteLine(string.Format("OnAttack called on {0}", Name));
-
-            // Note that this function is called whenever an attack is made, regardless of whether that attack was successful.
-            // i.e. missed melee swings and resisted spells still trigger
-
-            if (effectListComponent is null)
-                return;
-
-            Stealth(false);
-
-            //Cancel SpeedOfTheRealm (Hastener Speed)
-            if (effectListComponent.Effects.ContainsKey(eEffect.MovementSpeedBuff))
-            {
-                var effects = effectListComponent.GetSpellEffects(eEffect.MovementSpeedBuff);
-
-                for (int i = 0; i < effects.Count; i++)
-                {
-                    if (effects[i] is null)
-                        continue;
-
-                    var spellEffect = effects[i] as ECSGameSpellEffect;
-                    if (spellEffect != null && spellEffect.Name.ToLower().Equals("speed of the realm"))
-                    {
-                        EffectService.RequestImmediateCancelEffect(effects[i]);
-                    }
-                }
-            }
-
-            if (ad != null && ad.Damage > 0)
-                TryCancelMovementSpeedBuffs(true);
-
-            var oProcEffects = effectListComponent.GetSpellEffects(eEffect.OffensiveProc);
-            //OffensiveProcs
-            if (ad != null && ad.Attacker == this && oProcEffects != null && ad.AttackType != AttackData.eAttackType.Spell && ad.AttackResult != eAttackResult.Missed)
-            {
-                for (int i = 0; i < oProcEffects.Count; i++)
-                {
-                    var oProcEffect = oProcEffects[i];
-
-                    (oProcEffect.SpellHandler as OffensiveProcSpellHandler).EventHandler(ad);
-                }
-            }
-
-            DirtyTricksECSGameEffect dt = (DirtyTricksECSGameEffect)EffectListService.GetAbilityEffectOnTarget(this, eEffect.DirtyTricks);
-            if (dt != null)
-            {
-                foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
-                    player.Out.SendSpellEffectAnimation(this, ad.Target, 471, 0, false, 1);
-
-                dt.EventHandler(ad);
-            }
-
-            TripleWieldECSGameEffect tw = (TripleWieldECSGameEffect)EffectListService.GetAbilityEffectOnTarget(this, eEffect.TripleWield);
-            if (tw != null)
-            {
-                tw.EventHandler(ad);
-            }
-
-            if (ad.Target is IGamePlayer && ad.Target != this)
-            {
-                LastAttackTickPvP = GameLoop.GameLoopTime;
-            }
-            else
-            {
-                LastAttackTickPvE = GameLoop.GameLoopTime;
-            }
-
-            // Don't cancel offensive focus spell
-            if (ad.AttackType != eAttackType.Spell)
-                CancelFocusSpell();
-        }
-
         /// <summary>
         /// Stores the amount of realm points gained by other players on last death
         /// </summary>
@@ -7008,58 +6972,13 @@ namespace DOL.GS.Scripts
         }
 
         /// <summary>
-        /// Method to broadcast Player to Discord
-        /// </summary>
-        /// <param name="message">The message</param>
-        /// <param name="realm">The realm</param>
-        public static void BroadcastDeathOnDiscord(string message, string name, string lastname, string playerClass, int level, long playedTime)
-        {
-            int color = 0;
-            TimeSpan timeLived = TimeSpan.FromSeconds(playedTime);
-            string timeLivedString = timeLived.Days + "d " + timeLived.Hours + "h " + timeLived.Minutes + "m ";
-
-            string playerName = "";
-            if (lastname != "")
-                playerName = name + " " + lastname;
-            else
-                playerName = name;
-
-            var DiscordObituaryHook =
-                "https://discord.com/api/webhooks/929154632389910558/kfJbtzDC9JzyOXvZ0rYUwaPM31LRUebGzDZKSczUKDk_4YyHmB-WJVsh7pJoa4M9-D1U"; // Make it a property later
-            var client = new DiscordWebhookClient(DiscordObituaryHook);
-
-            // Create your DiscordMessage with all parameters of your message.
-            var discordMessage = new DiscordMessage(
-                "",
-                username: "Atlas Obituary",
-                avatarUrl: "https://cdn.discordapp.com/attachments/919610633656369214/928726197645496382/skull2.png",
-                tts: false,
-                embeds: new[]
-                {
-                    new DiscordMessageEmbed(
-                        author: new DiscordMessageEmbedAuthor(playerName),
-                        color: color,
-                        description: message,
-                        fields: new[]
-                        {
-                            new DiscordMessageEmbedField("Level", level.ToString()),
-                            new DiscordMessageEmbedField("Class", playerClass),
-                            new DiscordMessageEmbedField("Time alive", timeLivedString)
-                        }
-                    )
-                }
-            );
-            client.SendToDiscord(discordMessage);
-        }
-
-        /// <summary>
         /// Called when the player dies
         /// </summary>
         /// <param name="killer">the killer</param>
         public override void ProcessDeath(GameObject killer)
         {
             // Ambient trigger upon killing player
-            if (killer is GameNPC)
+            if (killer is GameNPC && killer is not MimicNPC)
                 (killer as GameNPC).FireAmbientSentence(GameNPC.eAmbientTrigger.killing, killer as GameLiving);
 
             CharacterClass.Die(killer);
@@ -7134,6 +7053,7 @@ namespace DOL.GS.Scripts
             }
 
             Duel?.Stop();
+            MimicSpawner?.Remove(this);
 
             eChatType messageType;
 
@@ -7200,6 +7120,8 @@ namespace DOL.GS.Scripts
                 //Message.SystemToOthers(Client, LanguageMgr.GetTranslation(this, "GamePlayer.Duel.Die.KillerWinsDuel", killer.Name), eChatType.CT_Emote);
 
                 Release(m_releaseType, false);
+
+                _deathTime = PlayedTime;
             }
 
             //lock (m_LockObject)
@@ -7422,8 +7344,8 @@ namespace DOL.GS.Scripts
             }
             finally
             {
-                //isDying flag is ALWAYS set to false even if exception happens so it can get remove from the list
-                isDeadOrDying = false;
+                if (IsBeingHandledByReaperService)
+                    base.ProcessDeath(killer);
             }
         }
 
@@ -7444,33 +7366,13 @@ namespace DOL.GS.Scripts
                 }
             }
 
-            if (CurrentZone.IsRvR)
-            {
-                var activeConquest = ConquestService.ConquestManager.ActiveObjective;
-                int baseContribution = enemy.RealmPointsValue / 2; //todo turn it into a server prop?
-
-                if (activeConquest != null && GetDistance(new Point2D(activeConquest.Keep.X, activeConquest.Keep.Y)) <=
-                    ServerProperties.Properties.MAX_CONQUEST_RANGE)
-                {
-                    //TODO: add something here
-                    if (Group != null)
-                    {
-                        //activeConquest.Contribute(this, (baseContribution/Group.MemberCount) + 20); //offset to minimize the grouping penalty by a bit
-                    }
-                    else
-                    {
-                        //activeConquest.Contribute(this, baseContribution);
-                    }
-                }
-            }
-
             base.EnemyKilled(enemy);
         }
 
         /// <summary>
         /// Check this flag to see wether this living is involved in combat
         /// </summary>
-        public override bool InCombat => base.InCombat || MimicBrain.HasAggro;
+        //public override bool InCombat => base.InCombat || MimicBrain.HasAggro;
 
         #endregion Combat
 
@@ -7576,10 +7478,10 @@ namespace DOL.GS.Scripts
             }
 
             if (effectListComponent.ContainsEffectForEffectType(eEffect.Stealth))
-                EffectService.RequestImmediateCancelEffect(EffectListService.GetEffectOnTarget(this, eEffect.Stealth), false);
+                EffectService.RequestCancelEffect(EffectListService.GetEffectOnTarget(this, eEffect.Stealth), false);
 
             if (effectListComponent.ContainsEffectForEffectType(eEffect.Vanish))
-                EffectService.RequestImmediateCancelEffect(EffectListService.GetEffectOnTarget(this, eEffect.Vanish));
+                EffectService.RequestCancelEffect(EffectListService.GetEffectOnTarget(this, eEffect.Vanish));
         }
 
         // UncoverStealthAction is what unstealths player if they are too close to mobs.
@@ -7632,6 +7534,9 @@ namespace DOL.GS.Scripts
 
                 foreach (GameNPC npc in mimic.GetNPCsInRadius(1024))
                 {
+                    if (npc is MimicNPC)
+                        continue;
+
                     // Friendly mobs do not uncover stealthed players
                     if (!GameServer.ServerRules.IsAllowedToAttack(npc, mimic, true))
                         continue;
@@ -7639,7 +7544,7 @@ namespace DOL.GS.Scripts
                     // Npc with player owner don't uncover
                     if (npc.Brain != null
                         && (npc.Brain as IControlledBrain) != null
-                        && (npc.Brain as IControlledBrain).GetPlayerOwner() != null)
+                        && (npc.Brain as IControlledBrain).GetIPlayerOwner() != null)
                         continue;
 
                     double npcLevel = Math.Max(npc.Level, 1.0);
@@ -7647,8 +7552,13 @@ namespace DOL.GS.Scripts
                     double detectRadius = 125.0 + ((npcLevel - stealthLevel) * 20.0);
 
                     // we have detect hidden and enemy don't = higher range
-                    if (npc.HasAbility("Detect Hidden") && EffectListService.GetAbilityEffectOnTarget(mimic, eEffect.Camouflage) == null)
+                    if (npc.HasAbility(GS.Abilities.DetectHidden) &&
+                        !mimic.HasAbility(GS.Abilities.DetectHidden) &&
+                        !mimic.effectListComponent.ContainsEffectForEffectType(eEffect.Camouflage) &&
+                        !mimic.effectListComponent.ContainsEffectForEffectType(eEffect.Vanish))
+                    {
                         detectRadius += 125;
+                    }
 
                     if (detectRadius < 126) detectRadius = 126;
 
@@ -7712,228 +7622,210 @@ namespace DOL.GS.Scripts
             }
         }
 
-        /// <summary>
-        /// Checks whether this player can detect stealthed enemy
-        /// </summary>
-        /// <param name="enemy"></param>
-        /// <returns>true if enemy can be detected</returns>
-        public virtual bool CanDetect(IGamePlayer enemy)
+       public virtual bool CanDetect(GameObject enemy)
         {
-            if (enemy.CurrentRegionID != CurrentRegionID)
-                return false;
+            if (!enemy.IsStealthed || Client.Account.PrivLevel > 1)
+                return true;
 
             if (!IsAlive)
                 return false;
 
-            if (enemy.EffectList.GetOfType<VanishEffect>() != null)
-                return false;
-
-            if (Client.Account.PrivLevel > 1)
-                return true;
-
-            if (enemy.Client.Account.PrivLevel > 1)
-                return false;
-
-            if (effectListComponent.ContainsEffectForEffectType(eEffect.TrueSight))
-                return true;
-
-            if (HasAbilityType(typeof(AtlasOF_SeeHidden))
-                && (enemy.CharacterClass is ClassMinstrel
-                     || enemy.CharacterClass is ClassRanger
-                     || enemy.CharacterClass is ClassHunter
-                     || enemy.CharacterClass is ClassScout)
-                && IsWithinRadius((GameObject)enemy, 650)
-                && !enemy.EffectListComponent.ContainsEffectForEffectType(eEffect.Camouflage))
+            switch (enemy.GameObjectType)
             {
-                return true;
+                case eGameObjectType.NPC when enemy is IGamePlayer:
+                case eGameObjectType.PLAYER:
+                {
+                    IGamePlayer enemyPlayer = enemy as IGamePlayer;
+
+                    // Own group is always visible.
+                    if (enemyPlayer.Group != null && Group != null && enemyPlayer.Group == Group)
+                        return true;
+
+                    // Why is this still using the old effect list and vanish effect?
+                    if (enemyPlayer.EffectList.GetOfType<VanishEffect>() != null || enemyPlayer.Client.Account.PrivLevel > 1)
+                        return false;
+
+                    // This ignores the hard cap.
+                    if (effectListComponent.ContainsEffectForEffectType(eEffect.TrueSight))
+                        return true;
+
+                    /*
+                     * http://www.critshot.com/forums/showthread.php?threadid=3142
+                     * The person doing the looking has a chance to find them based on their level, minus the stealthed person's stealth spec.
+                     *
+                     * -Normal detection range = (enemy lvl  your stealth spec) * 20 + 125
+                     * -Detect Hidden Range = (enemy lvl  your stealth spec) * 50 + 250
+                     * -See Hidden range = 2700 - (38 * your stealth spec)
+                     */
+
+                    int enemyStealthLevel = Math.Min(50, enemyPlayer.GetModifiedSpecLevel(Specs.Stealth));
+                    int levelDiff = Math.Max(0, Level - enemyStealthLevel);
+                    int range = 0;
+
+                    // Detect Hidden works only if the enemy doesn't have it or camouflage or vanish.
+                    // According to https://disorder.dk/daoc/stealth/, it's possible that the range per level difference is supposed to be 50 even when Detect Hidden is cancelled out.
+                    if (HasAbility(GS.Abilities.DetectHidden) &&
+                        !enemyPlayer.HasAbility(GS.Abilities.DetectHidden) &&
+                        !enemyPlayer.EffectListComponent.ContainsEffectForEffectType(eEffect.Camouflage) &&
+                        !enemyPlayer.EffectListComponent.ContainsEffectForEffectType(eEffect.Vanish))
+                    {
+                        range = levelDiff * 50 + 250;
+                    }
+                    else
+                        range = levelDiff * 20 + 125;
+
+                    // See Hidden only works against non assassin classes, if they don't have Camouflage enabled.
+                    if (HasAbilityType(typeof(AtlasOF_SeeHidden)) &&
+                        !enemyPlayer.CharacterClass.IsAssassin &&
+                        !enemyPlayer.EffectListComponent.ContainsEffectForEffectType(eEffect.Camouflage))
+                    {
+                        https://forums.freddyshouse.com/threads/scouts-and-stealth.139740/
+                        range = Math.Max(range, 2700 - 36 * enemyStealthLevel);
+                    }
+
+                    // Mastery of Stealth
+                    // Disabled. This is NF MoS. OF Version does not add range, only movement speed.
+                    /*RAPropertyEnhancer mos = GetAbility<MasteryOfStealthAbility>();
+                    if (mos != null && !enemyHasCamouflage)
+                    {
+                        if (!HasAbility(Abilities.DetectHidden) || !enemy.HasAbility(Abilities.DetectHidden))
+                            range += mos.GetAmountForLevel(CalculateSkillLevel(mos));
+                    }*/
+
+                    range += BaseBuffBonusCategory[(int)eProperty.Skill_Stealth];
+
+                    // //Buff (Stealth Detection)
+                    // //Increases the target's ability to detect stealthed players and monsters.
+                    // GameSpellEffect iVampiirEffect = SpellHandler.FindEffectOnTarget((GameLiving)this, "VampiirStealthDetection");
+                    // if (iVampiirEffect != null)
+                    //     range += (int)iVampiirEffect.Spell.Value;
+                             //
+                    // //Infill Only - Greater Chance to Detect Stealthed Enemies for 1 minute
+                    // //after executing a klling blow on a realm opponent.
+                    // GameSpellEffect HeightenedAwareness = SpellHandler.FindEffectOnTarget((GameLiving)this, "HeightenedAwareness");
+                    // if (HeightenedAwareness != null)
+                    //     range += (int)HeightenedAwareness.Spell.Value;
+                    //
+                    // //Nightshade Only - Greater chance of remaining hidden while stealthed for 1 minute
+                    // //after executing a killing blow on a realm opponent.
+                    // GameSpellEffect SubtleKills = SpellHandler.FindEffectOnTarget((GameLiving)enemy, "SubtleKills");
+                    // if (SubtleKills != null)
+                    // {
+                    //     range -= (int)SubtleKills.Spell.Value;
+                    //     if (range < 0) range = 0;
+                    // }
+                    //
+                    // // Apply Blanket of camouflage effect
+                    // GameSpellEffect iSpymasterEffect1 = SpellHandler.FindEffectOnTarget((GameLiving)enemy, "BlanketOfCamouflage");
+                    // if (iSpymasterEffect1 != null)
+                    // {
+                    //     range -= (int)iSpymasterEffect1.Spell.Value;
+                    //     if (range < 0) range = 0;
+                    // }
+                    //
+                    // // Apply Lookout effect
+                    // GameSpellEffect iSpymasterEffect2 = SpellHandler.FindEffectOnTarget((GameLiving)this, "Loockout");
+                    // if (iSpymasterEffect2 != null)
+                    //     range += (int)iSpymasterEffect2.Spell.Value;
+                    //
+                    // // Apply Prescience node effect
+                    // GameSpellEffect iConvokerEffect = SpellHandler.FindEffectOnTarget((GameLiving)enemy, "Prescience");
+                    // if (iConvokerEffect != null)
+                    //     range += (int)iConvokerEffect.Spell.Value;
+
+                    // Hard cap.
+                    if (range > 1900)
+                        range = 1900;
+
+                    return IsWithinRadius(enemy, range);
+                }
+                case eGameObjectType.NPC:
+                {
+                    // Custom feature to make stealthed NPCs actually invisible.
+                    // Currently disabled.
+                    return true;
+                    int detectionRange = Math.Clamp(1500 + (Level - enemy.Level) * 50, 500, 3000);
+                    return IsWithinRadius(enemy, detectionRange);
+                }
+                default:
+                    return true;
             }
-
-            /*
-             * http://www.critshot.com/forums/showthread.php?threadid=3142
-             * The person doing the looking has a chance to find them based on their level, minus the stealthed person's stealth spec.
-             *
-             * -Normal detection range = (enemy lvl  your stealth spec) * 20 + 125
-             * -Detect Hidden Range = (enemy lvl  your stealth spec) * 50 + 250
-             * -See Hidden range = 2700 - (38 * your stealth spec)
-             */
-
-            int EnemyStealthLevel = enemy.GetModifiedSpecLevel(Specs.Stealth);
-
-            if (EnemyStealthLevel > 50)
-                EnemyStealthLevel = 50;
-
-            int levelDiff = Level - EnemyStealthLevel;
-
-            if (levelDiff < 0)
-                levelDiff = 0;
-
-            int range = 0;
-            bool enemyHasCamouflage = EffectListService.GetAbilityEffectOnTarget((GameLiving)enemy, eEffect.Camouflage) != null;
-            bool enemyHasVanish = EffectListService.GetAbilityEffectOnTarget((GameLiving)enemy, eEffect.Vanish) != null;
-            if (HasAbility("Detect Hidden") && !enemyHasVanish && !enemyHasCamouflage)
-            {
-                // we have detect hidden and enemy don't = higher range
-                range = levelDiff * 50 + 250; // Detect Hidden advantage
-                //range = levelDiff * 50 + 300; // Detect Hidden advantage
-            }
-            else
-            {
-                //range = levelDiff * 20 + 125; // Normal detection range
-                range = levelDiff * 20 + 125;
-            }
-
-            //if (ConquestService.ConquestManager.IsPlayerNearFlag(this))
-            //{
-            //    range += 50;
-            //}
-
-            // Mastery of Stealth Bonus
-            /*
-             //removed, this is NF MoStealth. OF Version does not add range, only movespeed
-            RAPropertyEnhancer mos = GetAbility<MasteryOfStealthAbility>();
-            if (mos != null && !enemyHasCamouflage)
-                if (!HasAbility(Abilities.DetectHidden) || !enemy.HasAbility(Abilities.DetectHidden))
-                    range += mos.GetAmountForLevel(CalculateSkillLevel(mos));
-            */
-            range += BaseBuffBonusCategory[(int)eProperty.Skill_Stealth];
-
-            // //Buff (Stealth Detection)
-            // //Increases the target's ability to detect stealthed players and monsters.
-            // GameSpellEffect iVampiirEffect = SpellHandler.FindEffectOnTarget((GameLiving)this, "VampiirStealthDetection");
-            // if (iVampiirEffect != null)
-            //     range += (int)iVampiirEffect.Spell.Value;
-            //
-            // //Infill Only - Greater Chance to Detect Stealthed Enemies for 1 minute
-            // //after executing a klling blow on a realm opponent.
-            // GameSpellEffect HeightenedAwareness = SpellHandler.FindEffectOnTarget((GameLiving)this, "HeightenedAwareness");
-            // if (HeightenedAwareness != null)
-            //     range += (int)HeightenedAwareness.Spell.Value;
-            //
-            // //Nightshade Only - Greater chance of remaining hidden while stealthed for 1 minute
-            // //after executing a killing blow on a realm opponent.
-            // GameSpellEffect SubtleKills = SpellHandler.FindEffectOnTarget((GameLiving)enemy, "SubtleKills");
-            // if (SubtleKills != null)
-            // {
-            //     range -= (int)SubtleKills.Spell.Value;
-            //     if (range < 0) range = 0;
-            // }
-            //
-            // // Apply Blanket of camouflage effect
-            // GameSpellEffect iSpymasterEffect1 = SpellHandler.FindEffectOnTarget((GameLiving)enemy, "BlanketOfCamouflage");
-            // if (iSpymasterEffect1 != null)
-            // {
-            //     range -= (int)iSpymasterEffect1.Spell.Value;
-            //     if (range < 0) range = 0;
-            // }
-            //
-            // // Apply Lookout effect
-            // GameSpellEffect iSpymasterEffect2 = SpellHandler.FindEffectOnTarget((GameLiving)this, "Loockout");
-            // if (iSpymasterEffect2 != null)
-            //     range += (int)iSpymasterEffect2.Spell.Value;
-            //
-            // // Apply Prescience node effect
-            // GameSpellEffect iConvokerEffect = SpellHandler.FindEffectOnTarget((GameLiving)enemy, "Prescience");
-            // if (iConvokerEffect != null)
-            //     range += (int)iConvokerEffect.Spell.Value;
-
-            //Hard cap is 1900
-            if (range > 1900)
-                range = 1900;
-
-            //everyone can see your own group stealthed
-            else if (enemy.Group != null && Group != null && enemy.Group == Group)
-            {
-                range = 2500;
-            }
-
-            // Fin
-            // vampiir stealth range, uncomment when add eproperty stealthrange i suppose
-            return IsWithinRadius((GameObject)enemy, range);
         }
 
         #endregion Stealth / Wireframe
 
         #region Equipment/Encumberance
 
-        /// <summary>
-        /// Gets the total possible Encumberance
-        /// </summary>
-        public virtual int MaxEncumberance
+        public int MaxCarryingCapacity
         {
             get
             {
-                double enc = (double)Strength;
-                RAPropertyEnhancer ab = GetAbility<AtlasOF_LifterAbility>();
-                if (ab != null)
-                    enc *= 1 + ((double)ab.Amount / 100);
+                double result = Strength;
+                RAPropertyEnhancer lifter = GetAbility<AtlasOF_LifterAbility>();
 
-                return (int)enc;
+                if (lifter != null)
+                    result *= 1 + lifter.Amount * 0.01;
+
+                return (int)result;
             }
         }
 
-        /// <summary>
-        /// Gets the current Encumberance
-        /// </summary>
-        public virtual int Encumberance
-        {
-            get { return Inventory.InventoryWeight; }
-        }
+        private int _previousInventoryWeight;
+        private int _previousMaxCarryingCapacity;
 
-        /// <summary>
-        /// The Encumberance state of this player
-        /// </summary>
-        protected bool m_overencumbered = true;
+        public bool IsEncumbered { get; set; }
+        public double MaxSpeedModifierFromEncumbrance { get; set; }
 
-        /// <summary>
-        /// Gets/Set the players Encumberance state
-        /// </summary>
-        public bool IsOverencumbered
+        public void UpdateEncumbrance(bool forced = false)
         {
-            get { return m_overencumbered; }
-            set { m_overencumbered = value; }
+            int inventoryWeight = Inventory.InventoryWeight;
+            int maxCarryingCapacity = MaxCarryingCapacity;
+
+            if (!forced && _previousInventoryWeight == inventoryWeight && _previousMaxCarryingCapacity == maxCarryingCapacity)
+                return;
+
+            double maxCarryingCapacityRatio = maxCarryingCapacity * 0.35;
+            double newMaxSpeedModifier = 1 - inventoryWeight / maxCarryingCapacityRatio + maxCarryingCapacity / maxCarryingCapacityRatio;
+
+            if (forced || MaxSpeedModifierFromEncumbrance != newMaxSpeedModifier)
+            {
+                if (inventoryWeight > maxCarryingCapacity)
+                {
+                    IsEncumbered = true;
+                    string message;
+
+                    if (movementComponent.MaxSpeedPercent <= 0)
+                        message = "GamePlayer.UpdateEncumbrance.EncumberedCannotMove";
+                    else
+                        message = "GamePlayer.UpdateEncumbrance.EncumberedMoveSlowly";
+
+                    Out.SendMessage(LanguageMgr.GetTranslation(Client.Account.Language, message), eChatType.CT_Important, eChatLoc.CL_SystemWindow);
+                }
+                else
+                    IsEncumbered = false;
+
+                MaxSpeedModifierFromEncumbrance = newMaxSpeedModifier;
+            }
+
+            _previousInventoryWeight = inventoryWeight;
+            _previousMaxCarryingCapacity = maxCarryingCapacity;
+            //Out.SendEncumbrance();
         }
 
         /// <summary>
         /// Updates the appearance of the equipment this player is using
         /// </summary>
-        public virtual void UpdateEquipmentAppearance()
+        public void UpdateEquipmentAppearance()
         {
             foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
-            {
-                if (player == null)
-                    continue;
-
-                player.Out.SendLivingEquipmentUpdate(this);
-            }
-        }
-
-        /// <summary>
-        /// Updates Encumberance and its effects
-        /// </summary>
-        public void UpdateEncumberance()
-        {
-            if (Inventory.InventoryWeight > MaxEncumberance)
-            {
-                //IsOverencumbered = true;
-                // Out.SendUpdateMaxSpeed();
-                //   if (MaxSpeed == 0)
-                //   Out.SendMessage(LanguageMgr.GetTranslation(Client.Account.Language, "PropertyCalc.MaxSpeed.YouAreEncumbered"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
-                // else
-                // Out.SendMessage(LanguageMgr.GetTranslation(Client.Account.Language, "GamePlayer.UpdateEncumberance.EncumberedMoveSlowly"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
-            }
-            else if (IsOverencumbered)
-            {
-                //IsOverencumbered = false;
-                //Out.SendUpdateMaxSpeed();
-            }
-            //Out.SendEncumberance();
+                    player.Out.SendLivingEquipmentUpdate(this);
         }
 
         public override void UpdateHealthManaEndu()
         {
             //Out.SendCharStatsUpdate();
             //Out.SendUpdateWeaponAndArmorStats();
-            //UpdateEncumberance();
+            UpdateEncumbrance();
             //UpdatePlayerStatus();
             base.UpdateHealthManaEndu();
         }
@@ -8110,29 +8002,6 @@ namespace DOL.GS.Scripts
                     TempProperties.SetProperty("ITEMREUSEDELAY" + item.Id_nb, CurrentRegion.Time);
             }
 
-            // This was used during Atlas to only allow two self buff charges.
-            /*// Max 2 charges.
-            if (item.SpellID > 0 && SelfBuffChargeIDs.Contains(item.SpellID) && LoyaltyManager.GetPlayerRealmLoyalty(this).Days > 30)
-            {
-                if (ActiveBuffCharges < 2)
-                    UseItemCharge(item, (int) eUseType.Use1);
-                else
-                {
-                    Out.SendMessage("You may only use two buff charge effects. This item fails to affect you.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
-                }
-            }
-
-            // Max 2 charges.
-            if (item.SpellID1 > 0 && SelfBuffChargeIDs.Contains(item.SpellID1) && LoyaltyManager.GetPlayerRealmLoyalty(this).Days > 30)
-            {
-                if (ActiveBuffCharges < 2)
-                    UseItemCharge(item, (int) eUseType.Use2);
-                else
-                {
-                    Out.SendMessage("You may only use two buff charge effects. This item fails to affect you.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
-                }
-            }*/
-
             _statsSenderOnEquipmentChange ??= new(this, OnStatsSendCompletionAfterEquipmentChange);
         }
 
@@ -8141,7 +8010,7 @@ namespace DOL.GS.Scripts
         private int OnStatsSendCompletionAfterEquipmentChange()
         {
             _statsSenderOnEquipmentChange = null;
-            return 0; // Must return 0 to stop the timer. This is just to make `OnTick` cleaner.
+            return 0;
         }
 
         public class StatsSenderOnEquipmentChange : ECSGameTimerWrapperBase
@@ -8160,6 +8029,8 @@ namespace DOL.GS.Scripts
             {
                 if (Owner.ObjectState is not eObjectState.Active)
                     return _onCompletion();
+
+                Owner.UpdateEncumbrance();
 
                 if (!IsAlive)
                     return _onCompletion();
@@ -8396,7 +8267,7 @@ namespace DOL.GS.Scripts
 
         public virtual void RefreshItemBonuses()
         {
-            m_itemBonus = new PropertyIndexer();
+            ItemBonus = new();
             string slotToLoad = string.Empty;
             switch (VisibleActiveWeaponSlots)
             {
@@ -8533,7 +8404,7 @@ namespace DOL.GS.Scripts
                 //Out.SendUpdateWeaponAndArmorStats();
                 //Out.SendUpdateMaxSpeed();
                 //Out.SendEncumberance();
-                // Out.SendUpdatePlayerSkills();
+                //Out.SendUpdatePlayerSkills();
                 //UpdatePlayerStatus();
 
                 if (IsAlive)
@@ -8560,37 +8431,10 @@ namespace DOL.GS.Scripts
 
         #region Shade
 
-        protected ShadeECSGameEffect m_ShadeEffect = null;
-
-        /// <summary>
-        /// The shade effect of this player
-        /// </summary>
-        public ShadeECSGameEffect ShadeEffect
-        {
-            get { return m_ShadeEffect; }
-            set { m_ShadeEffect = value; }
-        }
-
         /// <summary>
         /// Gets flag indication whether player is in shade mode
         /// </summary>
-        public bool IsShade
-        {
-            get
-            {
-                bool shadeModel = Model == ShadeModel;
-                return m_ShadeEffect != null ? true : shadeModel;
-            }
-        }
-
-        /// <summary>
-        /// Create a shade effect for this player.
-        /// </summary>
-        /// <returns></returns>
-        protected virtual ShadeECSGameEffect CreateShadeEffect()
-        {
-            return CharacterClass.CreateShadeEffect();
-        }
+        public bool HasShadeModel => Model == ShadeModel;
 
         /// <summary>
         /// The model ID used on character creation.
@@ -8599,7 +8443,7 @@ namespace DOL.GS.Scripts
         {
             get
             {
-                return Model;
+                return (ushort)m_client.Account.Characters[m_client.ActiveCharIndex].CreationModel;
             }
         }
 
@@ -8653,10 +8497,9 @@ namespace DOL.GS.Scripts
         /// <param name="state">The new state.</param>
         public virtual void Shade(bool state)
         {
-            CharacterClass.Shade(state);
+            CharacterClass.Shade(state, out _);
         }
-
-        #endregion Shade
+        #endregion
 
         #region Guild
 
@@ -8994,7 +8837,7 @@ namespace DOL.GS.Scripts
             else
             {
                 if (effectListComponent.ContainsEffectForEffectType(eEffect.Sprint))
-                    EffectService.RequestImmediateCancelEffect(EffectListService.GetEffectOnTarget(this, eEffect.Sprint), false);
+                    EffectService.RequestCancelEffect(EffectListService.GetEffectOnTarget(this, eEffect.Sprint), false);
 
                 return false;
             }
@@ -9071,6 +8914,7 @@ namespace DOL.GS.Scripts
         /// Holds unique locations array
         /// </summary>
         protected readonly GameLocation[] m_lastUniqueLocations;
+        protected readonly Lock _lastUniqueLocationsLock = new();
 
         /// <summary>
         /// Gets unique locations array
@@ -9079,6 +8923,8 @@ namespace DOL.GS.Scripts
         {
             get { return m_lastUniqueLocations; }
         }
+
+        public object GameStaticItemOwnerComparand => AccountName;
 
         ///// <summary>
         ///// Updates Health, Mana, Sitting, Endurance, Concentration and Alive status to client
@@ -9092,23 +8938,33 @@ namespace DOL.GS.Scripts
 
         #region ControlledNpc
 
-        /// <summary>
-        /// Sets the controlled object for this player
-        /// (delegates to CharacterClass)
-        /// </summary>
-        /// <param name="controlledNpc"></param>
-        public override void SetControlledBrain(IControlledBrain controlledBrain)
+        public override bool AddControlledBrain(IControlledBrain controlledBrain)
         {
-            if (controlledBrain == ControlledBrain)
-                return;
+            return SetControlledBrain(controlledBrain);
+        }
 
-            //if (controlledBrain.Owner != this)
-            //throw new ArgumentException("ControlledNpc with wrong owner is set (mimic=" + Name + ", owner=" + controlledBrain.Owner.Name + ")", "controlledNpc");
+        public override bool RemoveControlledBrain(IControlledBrain controlledBrain)
+        {
+            if (ControlledBrain == controlledBrain)
+                return SetControlledBrain(null);
 
-            if (ControlledBrain == null)
-                InitControlledBrainArray(1);
+            return false;
+        }
 
-            ControlledBrain = controlledBrain;
+        private bool SetControlledBrain(IControlledBrain controlledBrain)
+        {
+            try
+            {
+                CharacterClass.SetControlledBrain(controlledBrain);
+                return true;
+            }
+            catch (Exception e)
+            {
+                if (log.IsErrorEnabled)
+                    log.Error(e);
+
+                return false;
+            }
         }
 
         /// <summary>
@@ -9302,5 +9158,40 @@ namespace DOL.GS.Scripts
         }
 
         #endregion ControlledNpc
+
+        // TODO: Add statistics and viewing the information. For now, used for IGamePlayer and some calls as needed.
+        #region Statistics
+        public void UpdateKillStatsOnPlayerKill(eRealm killedPlayerRealm, bool deathBlow, bool soloKill, int realmPointsEarned)
+        {
+        }
+
+        public virtual int DeathsPvP
+        {
+            get => DBCharacter != null ? DBCharacter.DeathsPvP : 0;
+            set
+            {
+                if (DBCharacter != null)
+                    DBCharacter.DeathsPvP = value;
+            }
+        }
+
+        /// <summary>
+        /// Subtracts the current time from the last time the character was saved
+        /// and adds it in the form of seconds to player.PlayedTime
+        /// for the /played command.
+        /// </summary>
+        public long PlayedTime
+        {
+            get
+            {
+                DateTime rightNow = DateTime.Now;
+                DateTime creation = CreationDate;
+
+                TimeSpan newPlayed = rightNow.Subtract(creation);
+                return (long)newPlayed.TotalSeconds;
+            }
+        }
+
+        #endregion Statistics
     }
 }

@@ -52,7 +52,7 @@ namespace DOL.GS.Commands
 		)]
 	public class PlayerCommandHandler : AbstractCommandHandler, ICommandHandler
 	{
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public void OnCommand(GameClient client, string[] args)
         {
@@ -422,7 +422,7 @@ namespace DOL.GS.Commands
 						player.MLLine = line;
 						player.SaveIntoDatabase();
 						player.RefreshSpecDependantSkills(true);
-						player.Out.SendUpdatePlayerSkills();
+						player.Out.SendUpdatePlayerSkills(true);
 						player.Out.SendUpdatePlayer();
 						player.Out.SendMasterLevelWindow((byte)player.MLLevel);
 						client.Out.SendMessage(player.Name + " Master Line is set to " + line + "!", eChatType.CT_Important, eChatLoc.CL_SystemWindow);
@@ -1277,7 +1277,7 @@ namespace DOL.GS.Commands
 
                         m_hasEffect = false;
 
-                        lock (player.EffectList)
+                        lock (player.EffectList.Lock)
                         {
                             foreach (GameSpellEffect effect in player.EffectList)
                             {
@@ -1295,7 +1295,7 @@ namespace DOL.GS.Commands
                             return;
                         }
 
-                        lock (player.EffectList)
+                        lock (player.EffectList.Lock)
                         {
                             foreach (GameSpellEffect effect in player.EffectList)
                             {
@@ -2321,10 +2321,7 @@ namespace DOL.GS.Commands
 			text.Add("  - Guild : " + player.GuildName + " " + (player.GuildRank != null ? "Rank: " + player.GuildRank.RankLevel.ToString() : ""));
 			text.Add("  - XPs/RPs/BPs : " + player.Experience + " xp, " + player.RealmPoints + " rp, " + player.BountyPoints + " bp");
 
-            if (player.DamageRvRMemory > 0)
-                text.Add("  - Damage RvR Memory: " + player.DamageRvRMemory);
-			
-            if (player.Champion)
+			if (player.Champion)
 			{
 				text.Add("  - Champion :  CL " + player.ChampionLevel + ", " + player.ChampionExperience + " clxp");
 
@@ -2477,7 +2474,7 @@ namespace DOL.GS.Commands
             target.OnLevelUp(0);
 
             target.Out.SendUpdatePlayer();
-            target.Out.SendUpdatePlayerSkills();
+            target.Out.SendUpdatePlayerSkills(true);
             target.Out.SendUpdatePoints();
         }
 	}

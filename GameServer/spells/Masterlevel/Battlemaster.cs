@@ -11,7 +11,7 @@ namespace DOL.GS.Spells
 {
     //http://www.camelotherald.com/masterlevels/ma.php?ml=Battlemaster
     #region Battlemaster-1
-    [SpellHandlerAttribute("MLEndudrain")]
+    [SpellHandler(eSpellType.MLEndudrain)]
     public class MLEndudrain : MasterlevelHandling
     {
         public MLEndudrain(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
@@ -42,7 +42,7 @@ namespace DOL.GS.Spells
     #endregion
 
     #region Battlemaster-2
-    [SpellHandlerAttribute("KeepDamageBuff")]
+    [SpellHandler(eSpellType.KeepDamageBuff)]
     public class KeepDamageBuff : MasterlevelBuffHandling
     {
         public override eProperty Property1 { get { return eProperty.KeepDamage; } }
@@ -52,7 +52,7 @@ namespace DOL.GS.Spells
     #endregion
 
     #region Battlemaster-3
-    [SpellHandlerAttribute("MLManadrain")]
+    [SpellHandler(eSpellType.MLManadrain)]
     public class MLManadrain : MasterlevelHandling
     {
         public MLManadrain(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
@@ -78,7 +78,7 @@ namespace DOL.GS.Spells
     #endregion
 
     #region Battlemaster-4
-    [SpellHandlerAttribute("Grapple")]
+    [SpellHandler(eSpellType.Grapple)]
     public class Grapple : MasterlevelHandling
     {
         private int check = 0;
@@ -171,10 +171,10 @@ namespace DOL.GS.Spells
 
     //ml5 in database Target shood be Group if PvP..Realm if RvR..Value = spell proc'd (a.k the 80value dd proc)
     #region Battlemaster-5
-    [SpellHandler("EssenceFlamesProc")]
+    [SpellHandler(eSpellType.EssenceFlamesProc)]
     public class EssenceFlamesProcSpellHandler : OffensiveProcSpellHandler
     {
-		private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
 		/// <summary>
         /// Handler fired whenever effect target is attacked
@@ -200,7 +200,7 @@ namespace DOL.GS.Spells
                 if (sender is GamePlayer)
                 {
                     GamePlayer player = (GamePlayer)sender;
-                    DbInventoryItem leftWeapon = player.Inventory.GetItem(eInventorySlot.LeftHandWeapon);
+                    DbInventoryItem leftWeapon = player.ActiveLeftWeapon;
                     // if we can use left weapon, we have currently a weapon in left hand and we still have endurance,
                     // we can assume that we are using the two weapons.
                     if (player.attackComponent.CanUseLefthandedWeapon && leftWeapon != null && leftWeapon.Object_Type != (int)eObjectType.Shield)
@@ -267,7 +267,7 @@ namespace DOL.GS.Spells
 
 	#region Battlemaster-6
 	// LifeFlight
-    [SpellHandler("ThrowWeapon")]
+    [SpellHandler(eSpellType.ThrowWeapon)]
     public class ThrowWeaponSpellHandler : DirectDamageSpellHandler
  	{
         #region Disarm Weapon
@@ -385,7 +385,7 @@ namespace DOL.GS.Spells
                         resultByte = 2;
                         if (ad.Target != null && ad.Target.Inventory != null)
                         {
-                            DbInventoryItem lefthand = ad.Target.Inventory.GetItem(eInventorySlot.LeftHandWeapon);
+                            DbInventoryItem lefthand = ad.Target.ActiveLeftWeapon;
                             if (lefthand != null && lefthand.Object_Type == (int)eObjectType.Shield)
                             {
                                 defendersWeapon = lefthand.Model;
@@ -488,7 +488,7 @@ namespace DOL.GS.Spells
 
 					// critical hit
 					if (ad.CriticalDamage > 0)
-                        player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "GamePlayer.Attack.Critical", ad.Target.GetName(0, false), ad.CriticalDamage) + $" ({ad.Attacker.attackComponent.AttackCriticalChance(null, ad.Weapon)}%)", eChatType.CT_YouHit, eChatLoc.CL_SystemWindow);
+                        player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "GamePlayer.Attack.Critical", ad.Target.GetName(0, false), ad.CriticalDamage) + $" ({ad.CriticalChance}%)", eChatType.CT_YouHit, eChatLoc.CL_SystemWindow);
 					break;
 			}
         }
@@ -551,10 +551,8 @@ namespace DOL.GS.Spells
             {
                 Attacker = player,
                 Target = target,
-                Damage = 0,
-                CriticalDamage = 0,
                 Interval = player.AttackSpeed(weapon),
-                DamageType = player.attackComponent.AttackDamageType(weapon),
+                DamageType = player.attackComponent.AttackDamageType(weapon, null),
                 Weapon = weapon,
                 IsOffHand = weapon.Hand == 2
             };
@@ -572,14 +570,15 @@ namespace DOL.GS.Spells
                     ad.AttackType = AttackData.eAttackType.MeleeTwoHand;
                     break;
             }
+
+            double effectiveness = CalculateDamageEffectiveness();
+
             //Throw Weapon is subject to all the conventional attack results, parry, evade, block, etc.
-            ad.AttackResult = ad.Target.attackComponent.CalculateEnemyAttackResult(null, ad, weapon);
+            ad.AttackResult = ad.Target.attackComponent.CalculateEnemyAttackResult(null, ad, weapon, ref effectiveness);
 
             if (ad.AttackResult == eAttackResult.HitUnstyled || ad.AttackResult == eAttackResult.HitStyle)
             {
-                //we only need to calculate the damage if the attack was a success.
-                double effectiveness = CalculateDamageEffectiveness();
-                double damage = player.attackComponent.AttackDamage(weapon, out _) * effectiveness;
+                double damage = player.attackComponent.AttackDamage(weapon, null, out _) * effectiveness;
 
                 if (target is GamePlayer)
                     ad.ArmorHitLocation = ((GamePlayer)target).CalculateArmorHitLocation(ad);
@@ -616,12 +615,16 @@ namespace DOL.GS.Spells
                 damage += resistModifier;
                 ad.Modifier += resist;
                 ad.Damage = (int)damage;
-                ad.Damage = Math.Min(ad.Damage, (int)(player.attackComponent.AttackDamage(weapon, out _) * effectiveness));
+                ad.Damage = Math.Min(ad.Damage, (int)(player.attackComponent.AttackDamage(weapon, null, out _) * effectiveness));
                 ad.Damage = (int)(ad.Damage * ServerProperties.Properties.PVP_MELEE_DAMAGE);
+
                 if (ad.Damage == 0)
                     ad.AttackResult = eAttackResult.Missed;
                 else
-                    ad.CriticalDamage = player.attackComponent.CalculateMeleeCriticalDamage(ad, null, weapon);
+                {
+                    ad.CriticalChance = player.attackComponent.CalculateCriticalChance(null);
+                    ad.CriticalDamage = player.attackComponent.CalculateCriticalDamage(ad);
+                }
 
                 static int GetDamageResist(GameLiving living, eResist resistType)
                 {
@@ -662,7 +665,7 @@ namespace DOL.GS.Spells
 
     //essence debuff
     #region Battlemaster-7
-    [SpellHandlerAttribute("EssenceSearHandler")]
+    [SpellHandler(eSpellType.EssenceSearHandler)]
     public class EssenceSearHandler : SpellHandler
     {
         public override double CalculateSpellResistChance(GameLiving target) { return 0; }
@@ -678,7 +681,7 @@ namespace DOL.GS.Spells
             {
                 GamePlayer player = effect.Owner as GamePlayer;
                 player.Out.SendCharStatsUpdate();
-                player.UpdateEncumberance();
+                player.UpdateEncumbrance();
                 player.UpdatePlayerStatus();
                 player.Out.SendUpdatePlayer();
             }
@@ -723,7 +726,7 @@ namespace DOL.GS.Spells
     #endregion
 
     #region Battlemaster-8
-    [SpellHandlerAttribute("BodyguardHandler")]
+    [SpellHandler(eSpellType.BodyguardHandler)]
     public class BodyguardHandler : SpellHandler
     {
         public override bool CheckBeginCast(GameLiving selectedTarget)
@@ -751,7 +754,7 @@ namespace DOL.GS.Spells
 
     //for ML9 in the database u have to add  EssenceDampenHandler  in type (its a new method customly made) 
     #region Battlemaster-9
-    [SpellHandlerAttribute("EssenceDampenHandler")]
+    [SpellHandler(eSpellType.EssenceDampenHandler)]
     public class EssenceDampenHandler : SpellHandler
     {
         protected int DexDebuff = 0;

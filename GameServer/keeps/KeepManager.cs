@@ -2,9 +2,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using DOL.Database;
 using DOL.GS.Scripts;
-using log4net;
 
 namespace DOL.GS.Keeps
 {
@@ -19,6 +19,7 @@ namespace DOL.GS.Keeps
 		/// list of all keeps
 		/// </summary>
 		protected Hashtable m_keepList = new Hashtable();
+		private readonly Lock _lock = new();
 
 		public virtual Hashtable Keeps
 		{
@@ -36,9 +37,9 @@ namespace DOL.GS.Keeps
 			get { return m_frontierRegionsList; }
 		}
 
-		private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
-		public ILog Log
+		public Logging.Logger Log
 		{
 			get { return log; }
 		}
@@ -74,7 +75,7 @@ namespace DOL.GS.Keeps
 			if (!ServerProperties.Properties.LOAD_KEEPS)
 				return true;
 
-			lock (m_keepList.SyncRoot)
+			lock (_lock)
 			{
 				m_keepList.Clear();
 
@@ -132,7 +133,7 @@ namespace DOL.GS.Keeps
 				if (ServerProperties.Properties.USE_NEW_KEEPS == 0 || ServerProperties.Properties.USE_NEW_KEEPS == 2)
 					keepcomponents = DOLDB<DbKeepComponent>.SelectObjects(DB.Column("Skin").IsLessThan(20));
 				else if (ServerProperties.Properties.USE_NEW_KEEPS == 1)
-					keepcomponents = DOLDB<DbKeepComponent>.SelectObjects(DB.Column("Skin").IsGreatherThan(20));
+					keepcomponents = DOLDB<DbKeepComponent>.SelectObjects(DB.Column("Skin").IsGreaterThan(20));
 
 				if (keepcomponents != null)
 				{
@@ -417,7 +418,7 @@ namespace DOL.GS.Keeps
 			List<AbstractGameKeep> closeKeeps = new List<AbstractGameKeep>();
 			long radiussqrt = radius * radius;
 
-			lock (m_keepList.SyncRoot)
+			lock (_lock)
 			{
 				foreach (AbstractGameKeep keep in m_keepList.Values)
 				{
@@ -450,7 +451,7 @@ namespace DOL.GS.Keeps
 		{
 			AbstractGameKeep closestKeep = null;
 
-			lock (m_keepList.SyncRoot)
+			lock (_lock)
 			{
 				long radiussqrt = radius * radius;
 				long lastKeepDistance = radiussqrt;
@@ -486,7 +487,7 @@ namespace DOL.GS.Keeps
 		public virtual int GetTowerCountByRealm(eRealm realm)
 		{
 			int index = 0;
-			lock (m_keepList.SyncRoot)
+			lock (_lock)
 			{
 				foreach (AbstractGameKeep keep in m_keepList.Values)
 				{
@@ -509,7 +510,7 @@ namespace DOL.GS.Keeps
 			realmXTower.Add(eRealm.Hibernia, 0);
 			realmXTower.Add(eRealm.Midgard, 0);
 
-			lock (m_keepList.SyncRoot)
+			lock (_lock)
 			{
 				foreach (AbstractGameKeep keep in m_keepList.Values)
 				{
@@ -535,7 +536,7 @@ namespace DOL.GS.Keeps
 			realmXTower.Add(eRealm.Midgard, 0);
 			realmXTower.Add(eRealm.None, 0);
 
-			lock (m_keepList.SyncRoot)
+			lock (_lock)
 			{
 				foreach (AbstractGameKeep keep in m_keepList.Values)
 				{
@@ -557,7 +558,7 @@ namespace DOL.GS.Keeps
 		public virtual int GetKeepCountByRealm(eRealm realm)
 		{
 			int index = 0;
-			lock (m_keepList.SyncRoot)
+			lock (_lock)
 			{
 				foreach (AbstractGameKeep keep in m_keepList.Values)
 				{
@@ -778,7 +779,7 @@ namespace DOL.GS.Keeps
 
 		public virtual void UpdateBaseLevels()
 		{
-			lock (m_keepList.SyncRoot)
+			lock (_lock)
 			{
 				foreach (AbstractGameKeep keep in m_keepList.Values)
 				{
@@ -852,7 +853,7 @@ namespace DOL.GS.Keeps
 		public virtual AbstractGameKeep GetKeepsShortName(string shortname)
 		{
 
-			lock (m_keepList.SyncRoot)
+			lock (_lock)
 			{
 				foreach (AbstractGameKeep keep in m_keepList.Values)
 				{

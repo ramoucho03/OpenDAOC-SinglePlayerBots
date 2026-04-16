@@ -59,8 +59,8 @@ namespace DOL.GS.RealmAbilities
                                                + m_range + " unit radius by 100%.";
             m_dbspell.Message1 = "You are grappled and cannot move.";
             m_dbspell.Message2 = "{0}'s is grappled and cannot move!";
-            m_spell = new Spell(m_dbspell, caster.Level);
-            m_spellline = new SpellLine("RAs", "RealmAbilities", "RealmAbilities", true);
+			m_spell = new Spell(m_dbspell, caster.Level);
+            m_spellline = GlobalSpellsLines.RealmSpellsSpellLine;
         }
 
         public override void Execute(GameLiving living)

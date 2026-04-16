@@ -4,7 +4,6 @@ using System.Linq;
 using System.Reflection;
 using DOL.GS.Commands;
 using DOL.GS.RealmAbilities;
-using log4net;
 
 namespace DOL.GS.PacketHandler.Client.v168
 {
@@ -18,7 +17,7 @@ namespace DOL.GS.PacketHandler.Client.v168
 		/// <summary>
 		/// Defines a logger for this class.
 		/// </summary>
-		private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		public void HandlePacket(GameClient client, GSPacketIn packet)
 		{
@@ -79,7 +78,7 @@ namespace DOL.GS.PacketHandler.Client.v168
 						client.Player.RefreshSpecDependantSkills(false);
 						client.Player.Out.SendUpdatePlayer();
 						client.Player.Out.SendUpdatePoints();
-						client.Player.Out.SendUpdatePlayerSkills();
+						client.Player.Out.SendUpdatePlayerSkills(true);
 						client.Player.UpdatePlayerStatus();
 						client.Player.Out.SendChampionTrainerWindow(idLine);
 
@@ -153,7 +152,7 @@ namespace DOL.GS.PacketHandler.Client.v168
 							client.Player.AddRealmAbility(ra, true);
 							client.Out.SendUpdatePoints();
 							client.Out.SendUpdatePlayer();
-							client.Out.SendUpdatePlayerSkills();
+							client.Out.SendUpdatePlayerSkills(true);
 							client.Out.SendTrainerWindow();
 						}
 						else
@@ -301,7 +300,7 @@ namespace DOL.GS.PacketHandler.Client.v168
 							client.Out.SendUpdatePlayer();
 							client.Out.SendCharResistsUpdate();
 							client.Out.SendCharStatsUpdate();
-							client.Out.SendUpdatePlayerSkills();
+							client.Out.SendUpdatePlayerSkills(true);
 							client.Out.SendTrainerWindow();
 							trained = true;
 						}

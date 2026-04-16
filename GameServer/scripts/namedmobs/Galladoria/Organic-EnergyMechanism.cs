@@ -10,8 +10,7 @@ namespace DOL.GS
 {
     public class OrganicEnergyMechanism : GameEpicBoss
     {
-        private static new readonly log4net.ILog log =
-            log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public OrganicEnergyMechanism()
             : base()
@@ -101,7 +100,7 @@ namespace DOL.AI.Brain
 {
     public class OrganicEnergyMechanismBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         public OrganicEnergyMechanismBrain()
             : base()
         {
@@ -367,7 +366,7 @@ namespace DOL.GS
 {
     public class OEMAdd : GameNPC
     {
-        private static new readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public OEMAdd()
             : base()
@@ -401,9 +400,7 @@ namespace DOL.GS
             get { return 5000; }
         }
         public override int MeleeAttackRange => 350;
-        public override void DropLoot(GameObject killer) //no loot
-        {
-        }
+        public override bool CanDropLoot => false;
         public override void Die(GameObject killer)
         {
             base.Die(null); //null to not gain experience
@@ -428,7 +425,6 @@ namespace DOL.GS
             Gender = eGender.Neutral;
             MeleeDamageType = eDamageType.Slash;
             Faction = FactionMgr.GetFactionByID(96);
-            IsWorthReward = false; //worth no reward
 
             BodyType = 1;
             MaxSpeedBase = 245;
@@ -444,8 +440,7 @@ namespace DOL.AI.Brain
 {
     public class OEMAddBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log =
-            log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public OEMAddBrain()
             : base()
@@ -456,7 +451,6 @@ namespace DOL.AI.Brain
 
         public override void Think()
         {
-            Body.IsWorthReward = false; //worth no reward
             if (Body.InCombat && HasAggro && Body.TargetObject != null)
             {
                 GameLiving target = Body.TargetObject as GameLiving;

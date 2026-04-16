@@ -4,7 +4,6 @@ using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using DOL.Database;
-using log4net;
 
 namespace DOL.GS.ServerProperties
 {
@@ -17,7 +16,7 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// Defines a logger for this class.
 		/// </summary>
-		private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		/// <summary>
 		/// Init the properties
@@ -314,11 +313,6 @@ namespace DOL.GS.ServerProperties
 		#endregion
 
 		#region LOGGING
-		/// <summary>
-		/// Turn on logging of player vs player kills
-		/// </summary>
-		[ServerProperty("system", "log_pvp_kills", "Turn on logging of pvp kills?", false)]
-		public static bool LOG_PVP_KILLS;
 
 		/// <summary>
 		/// Log All GM commands
@@ -700,7 +694,7 @@ namespace DOL.GS.ServerProperties
 		[ServerProperty("world", "check_los_before_aggro_fnf", "Should we perform LoS checks before allowing FnF turrets to aggro from proximity. If false, they will attempt to cast behind walls.", true)]
 		public static bool CHECK_LOS_BEFORE_AGGRO_FNF;
 
-		[ServerProperty("world", "enable_pet_ranged_attack_los_checks", "Should we perform LoS checks before allowing archer NPCs to attack.", true)]
+		[ServerProperty("world", "check_los_before_npc_ranged_attack", "Should we perform LoS checks before allowing archer NPCs to attack.", true)]
 		public static bool CHECK_LOS_BEFORE_NPC_RANGED_ATTACK;
 
 		[ServerProperty("world", "check_los_during_ranged_attack_minimum_interval", "The minimum interval (milliseconds) between two LoS checks performed during a ranged attack.", 200)]
@@ -767,12 +761,6 @@ namespace DOL.GS.ServerProperties
 		/// </summary>
 		[ServerProperty("rates", "XP_Cap_Percent", "Maximum XP a player can earn given in percent of their level. Default is 125%", 125)]
 		public static int XP_CAP_PERCENT;
-
-		/// <summary>
-		/// Xp Cap for a player in a group.  Given in percent of level.  Default is 125%
-		/// </summary>
-		[ServerProperty("rates", "XP_Group_Cap_Percent", "Maximum XP a player can earn while in a group, given in percent of their level. Default is 125%", 125)]
-		public static int XP_GROUP_CAP_PERCENT;
 
 		/// <summary>
 		/// Xp Cap for a player vs player kill.  Given in percent of level.  Default is 125%
@@ -1021,12 +1009,6 @@ namespace DOL.GS.ServerProperties
 		public static double MOB_AUTOSET_INT_MULTIPLIER;
 
 		/// <summary>
-		/// Do pets level up with their owner?
-		/// </summary>
-		[ServerProperty("npc", "pet_levels_with_owner", "Do pets level up with their owner? ", false)]
-		public static bool PET_LEVELS_WITH_OWNER;
-
-		/// <summary>
 		/// Base Value to use when auto-setting pet STR stat.
 		/// </summary>
 		[ServerProperty("npc", "pet_autoset_str_base", "Base Value to use when auto-setting Pet STR stat. ", (short)30)]
@@ -1216,7 +1198,7 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// Scale pet spell values according to their level?
 		/// </summary>
-		[ServerProperty("npc", "pet_scale_spell_max_level", "Disabled if 0 or less. If greater than 0, this value is the level at which pets cast their spells at 100% effectivness, so choose spells for pets assuming they're at the level set here. Live is max pet level, 44 or 50 depending on patch.", 0)]
+		[ServerProperty("npc", "pet_scale_spell_max_level", "Disabled if 0 or less. If greater than 0, this value is the level at which pets cast their spells at 100% effectiveness, so choose spells for pets assuming they're at the level set here. Live is max pet level, 44 or 50 depending on patch.", 44)]
 		public static int PET_SCALE_SPELL_MAX_LEVEL;
 
 		/// <summary>
@@ -1339,37 +1321,37 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// PvP Immunity Timer - Killed by Mobs
 		/// </summary>
-		[ServerProperty("pvp", "Timer_Killed_By_Mob", "Immunity Timer When player killed in PvP, in seconds", 30)] //30 seconds default
+		[ServerProperty("pvp", "Timer_Killed_By_Mob", "Immunity Timer When player killed in PvP, in seconds", 30)]
 		public static int TIMER_KILLED_BY_MOB;
 
 		/// <summary>
 		/// PvP Immunity Timer - Killed by Player
 		/// </summary>
-		[ServerProperty("pvp", "Timer_Killed_By_Player", "Immunity Timer When player killed in PvP, in seconds", 120)] //2 min default
+		[ServerProperty("pvp", "Timer_Killed_By_Player", "Immunity Timer When player killed in PvP, in seconds", 120)]
 		public static int TIMER_KILLED_BY_PLAYER;
 
 		/// <summary>
 		/// PvP Immunity Timer - Region Changed
 		/// </summary>
-		[ServerProperty("pvp", "Timer_Region_Changed", "Immunity Timer when player changes regions, in seconds", 30)] //30 seconds default
+		[ServerProperty("pvp", "Timer_Region_Changed", "Immunity Timer when player changes regions, in seconds", 10)]
 		public static int TIMER_REGION_CHANGED;
 
 		/// <summary>
 		/// PvP Immunity Timer - Game Entered
 		/// </summary>
-		[ServerProperty("pvp", "Timer_Game_Entered", "Immunity Timer when player enters the game, in seconds", 10)] //10 seconds default
+		[ServerProperty("pvp", "Timer_Game_Entered", "Immunity Timer when player enters the game, in seconds", 10)]
 		public static int TIMER_GAME_ENTERED;
 
 		/// <summary>
 		/// PvP Immunity Timer - Teleport
 		/// </summary>
-		[ServerProperty("pvp", "Timer_PvP_Teleport", "Immunity Timer when player teleports within the same region, in seconds", 30)] //30 seconds default
+		[ServerProperty("pvp", "Timer_PvP_Teleport", "Immunity Timer when player teleports within the same region, in seconds", 30)]
 		public static int TIMER_PVP_TELEPORT;
 
 		/// <summary>
 		/// Time after a relic lost in nature is returning to his ReturnRelicPad pad
 		/// </summary>
-		[ServerProperty("pvp", "Relic_Return_Time", "A lost relic will automatically returns to its defined point, in seconds", 20 * 60)] //20 mins default
+		[ServerProperty("pvp", "Relic_Return_Time", "A lost relic will automatically returns to its defined point, in seconds", 20 * 60)]
 		public static int RELIC_RETURN_TIME;
 
 		/// <summary>
@@ -1425,18 +1407,6 @@ namespace DOL.GS.ServerProperties
 		/// </summary>
 		[ServerProperty("pvp", "pvp_realm_timer_minutes", "# of minutes an account must wait to change realms after PvP combat. 0 disables the timer", 0)]
 		public static int PVP_REALM_TIMER_MINUTES; 
-		
-		[ServerProperty("conquest", "flag_capture_radius", "How far away can players capture an objective?", 750)]
-		public static ushort FLAG_CAPTURE_RADIUS;
-		
-		[ServerProperty("conquest", "flag_capture_time", "How long does it take to capture a flag?", 20)]
-		public static int FLAG_CAPTURE_TIME;
-		
-		[ServerProperty("conquest", "subtick_rp_award", "How many RPs awarded for a participation tick?", 200)]
-		public static int SUBTICK_RP_AWARD;
-		
-		[ServerProperty("conquest", "conquest_capture_award", "How many RPs/orbs awarded for capturing the conquest target?", 1000)]
-		public static int CONQUEST_CAPTURE_AWARD;
 
 		#endregion
 
@@ -1959,6 +1929,12 @@ namespace DOL.GS.ServerProperties
 		public static double MAX_CAMP_BONUS;
 
 		/// <summary>
+		/// Max camp bonus
+		/// </summary>
+		[ServerProperty("pve", "max_dungeon_camp_bonus", "Max camp bonus, 0.55 = 55%", 0.66)]
+		public static double MAX_DUNGEON_CAMP_BONUS;
+
+		/// <summary>
 		/// Minimum privilege level to be able to enter Atlantis through teleporters.
 		/// </summary>
 		[ServerProperty("pve", "atlantis_teleport_plvl", "Set the minimum privilege level required to enter Atlantis zones.", 2)]
@@ -2320,10 +2296,16 @@ namespace DOL.GS.ServerProperties
 		public static int GUILD_NUM;
 
 		/// <summary>
-		/// This enables or disables new guild dues. Live standard is 2% dues
+		/// This enables or disables new guild dues.
 		/// </summary>
-		[ServerProperty("guild", "new_guild_dues", "Guild dues can be set from 1-100% if enabled, or standard 2% if not", false)]
+		[ServerProperty("guild", "new_guild_dues", "Guild dues can be set from 1-100% if enabled, or standard 2% if not", true)]
 		public static bool NEW_GUILD_DUES;
+
+		/// <summary>
+		/// This sets the guild dues max value to 0~100%.
+		/// </summary>
+		[ServerProperty("guild", "guild_dues_max_value", "Guild dues can be set from 1-100%", 25)]
+		public static int GUILD_DUES_MAX_VALUE;
 
 		/// <summary>
 		/// Do we allow guild members from other realms
@@ -2493,13 +2475,6 @@ namespace DOL.GS.ServerProperties
 		[ServerProperty("account", "total_accounts_allowed_sameip", "Total number of account allowed for the same IP", 20)]
 		public static int TOTAL_ACCOUNTS_ALLOWED_SAMEIP;
 
-		/// <summary>
-		/// Should we backup deleted characters and not delete associated content?
-		/// </summary>
-		[ServerProperty("account", "backup_deleted_characters", "Should we backup deleted characters and not delete associated content?", true)]
-		public static bool BACKUP_DELETED_CHARACTERS;
-
-
 		#endregion
 
 		#region ATLAS
@@ -2538,109 +2513,19 @@ namespace DOL.GS.ServerProperties
 		/// </summary>
 		[ServerProperty("server", "max_entities", "Maximum numbers of entities allowed", 150000)]
 		public static int MAX_ENTITIES;
-		
-		/// <summary>
-		/// Max duration of a Conquest Task in minutes
-		/// </summary>
-		[ServerProperty("conquest", "max_conquest_task_duration", "Max duration of a Conquest Task in minutes", 90)]
-		public static int MAX_CONQUEST_TASK_DURATION;
-		
-		/// <summary>
-		/// Time (in minutes) of the overall conquest window and cooldown
-		/// </summary>
-		[ServerProperty("conquest", "conquest_cycle_timer", "Time (in minutes) of the overall conquest window and cooldown", 90)]
-		public static int CONQUEST_CYCLE_TIMER;
-		
-		/// <summary>
-		/// Time (in seconds) of the duration between conquest objective point tallies
-		/// </summary>
-		[ServerProperty("conquest", "conquest_tally_interval", "Time (in seconds) of the duration between conquest objective point tallies", 300)]
-		public static int CONQUEST_TALLY_INTERVAL;
-		
-		/// <summary>
-		/// Max range to contribute to a conquest target
-		/// </summary>
-		[ServerProperty("conquest", "max_conquest_range", "Max range to contribute to a conquest target", 15000)]
-		public static int MAX_CONQUEST_RANGE;
-		
-		/// <summary>
-		/// Max reward (in RP value) for any given subtask interval
-		/// </summary>
-		[ServerProperty("conquest", "max_subtask_rp_reward", "Max reward (in RP value) for any given subtask interval", 5000)]
-		public static int MAX_SUBTASK_RP_REWARD;
-		
-		/// <summary>
-		/// Max reward (in RP value) for a keep capture
-		/// </summary>
-		[ServerProperty("conquest", "max_keep_conquest_rp_reward", "Max reward (in RP value) for a keep capture", 25000)]
-		public static int MAX_KEEP_CONQUEST_RP_REWARD;
-		
-		/// <summary>
-		/// Bounty Poster duration in minutes
-		/// </summary>
-		[ServerProperty("bounty", "bounty_duration", "Bounty Poster duration in minutes", 30)]
-		public static int BOUNTY_DURATION;
-		
-		/// <summary>
-		/// Bounty minimum reward in gold
-		/// </summary>
-		[ServerProperty("bounty", "bounty_min_reward", "Bounty minimum reward in gold", 50)]
-		public static int BOUNTY_MIN_REWARD;
-		
-		/// <summary>
-		/// Bounty maximum reward in gold
-		/// </summary>
-		[ServerProperty("bounty", "bounty_max_reward", "Bounty maximum reward in gold", 1000)]
-		public static int BOUNTY_MAX_REWARD;
-		
-		/// <summary>
-		/// Minimum Realm Loyalty in days to post a bounty
-		/// </summary>
-		[ServerProperty("bounty", "bounty_min_loyalty", "Minimum Realm Loyalty in days to post a bounty", 3)]
-		public static int BOUNTY_MIN_LOYALTY;
-		
-		/// <summary>
-		/// Bounty Reward payout rate - enter 1 for 100% (no Realm Tax), default is 0.9 for 10% tax
-		/// </summary>
-		[ServerProperty("bounty", "bounty_payout_rate", "Bounty Reward payout rate - 1 for 100% (no Realm Tax), default is 0.9 for 10% tax", 0.9)]
-		public static double BOUNTY_PAYOUT_RATE;
-		
-		/// <summary>
-		/// Bounty expire check interval in seconds
-		/// </summary>
-		[ServerProperty("bounty", "bounty_check_interval", "Bounty expire check interval in seconds", 60)]
-		public static int BOUNTY_CHECK_INTERVAL;
 
-		/// <summary>
-		/// Bounty Reward payout rate - enter 1 for 100% (no Realm Tax), default is 0.9 for 10% tax
-		/// </summary>
-		[ServerProperty("predator", "predator_reward_multiplier", "Multiplier applied to normal RP value.", 1.5)]
-		public static double PREDATOR_REWARD_MULTIPLIER;
-		
 		/// <summary>
 		/// Enforces the check on the link between game account and Discord
 		/// </summary>
 		[ServerProperty("atlas", "force_discord_link", "Enforces the check on the link between game account and Discord", false)]
 		public static bool FORCE_DISCORD_LINK;
-		
+
 		/// <summary>
 		/// Set the password to access certain API commands as shutdown
 		/// </summary>
 		[ServerProperty("atlas", "api_password", "Set the password to access certain API commands as shutdown", "")]
 		public static string API_PASSWORD;
-		
-		/// <summary>
-		/// Bounty expire check interval in seconds
-		/// </summary>
-		[ServerProperty("predator", "queued_player_insert_interval", "How long to wait between trying to insert new players into system, in seconds", 10)]
-		public static int QUEUED_PLAYER_INSERT_INTERVAL;
-		
-		[ServerProperty("predator", "predator_abuse_timeout", "Time a player is prevented from rejoining Predator after leaving RvR/joining group, in minutes", 10)]
-		public static int PREDATOR_ABUSE_TIMEOUT;
-		
-		[ServerProperty("predator", "out_of_bounds_timeout", "Time a player is allowed to leave a valid hunting zone before disqualification, in seconds", 180)]
-		public static long OUT_OF_BOUNDS_TIMEOUT;
-		
+
 		[ServerProperty("beta", "orbs_fire_sale", "All items at the orbs merchant will be free if set to true", false)]
 		public static bool ORBS_FIRE_SALE;
 		

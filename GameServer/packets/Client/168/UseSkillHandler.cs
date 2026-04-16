@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Reflection;
 using DOL.GS.ServerProperties;
 using DOL.GS.Styles;
-using log4net;
 
 namespace DOL.GS.PacketHandler.Client.v168
 {
@@ -13,7 +12,7 @@ namespace DOL.GS.PacketHandler.Client.v168
         /// <summary>
         /// Defines a logger for this class.
         /// </summary>
-        private static readonly ILog Log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
         public void HandlePacket(GameClient client, GSPacketIn packet)
         {
@@ -93,7 +92,7 @@ namespace DOL.GS.PacketHandler.Client.v168
                 if (sk is Spell spell && spell.IsPulsing && player.ActivePulseSpells.ContainsKey(spell.SpellType))
                 {
                     ECSPulseEffect effect = EffectListService.GetPulseEffectOnTarget(player, spell);
-                    EffectService.RequestImmediateCancelConcEffect(effect);
+                    EffectService.RequestCancelConcEffect(effect);
 
                     if (spell.InstrumentRequirement == 0)
                         player.Out.SendMessage("You cancel your effect.", eChatType.CT_Spell, eChatLoc.CL_SystemWindow);
@@ -114,17 +113,7 @@ namespace DOL.GS.PacketHandler.Client.v168
                 handler?.Execute(specialization, player);
             }
             else if (sk is Ability ability)
-            {
-                IAbilityActionHandler handler = SkillBase.GetAbilityActionHandler(ability.KeyName);
-
-                if (handler != null)
-                {
-                    handler.Execute(ability, player);
-                    return;
-                }
-
-                ability.Execute(player);
-            }
+                player.castingComponent.RequestStartUseAbility(ability);
             else if (sk is Spell spell)
             {
                 if (sksib is SpellLine spellLine)

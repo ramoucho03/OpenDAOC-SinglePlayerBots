@@ -80,7 +80,7 @@ namespace DOL.AI.Brain
 {
     public class OtryggBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public OtryggBrain()
             : base()
@@ -200,9 +200,7 @@ namespace DOL.GS
             PetsCount--;
             base.Die(killer);
         }
-        public override void DropLoot(GameObject killer) //no loot
-        {
-        }
+        public override bool CanDropLoot => false;
         public static int PetsCount = 0;
         #region Stats
         public override short Charisma { get => base.Charisma; set => base.Charisma = 200; }
@@ -241,7 +239,7 @@ namespace DOL.AI.Brain
 {
     public class OtryggAddBrain : StandardMobBrain
     {
-        private static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         public OtryggAddBrain()
             : base()
         {
