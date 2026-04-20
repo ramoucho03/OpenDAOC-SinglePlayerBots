@@ -3,13 +3,15 @@ namespace DOL.GS
     /// <summary>
     /// Ability-Based Effect
     /// </summary>
-    public class ECSGameAbilityEffect : ECSGameEffect
+    public class ECSGameAbilityEffect : ECSGameEffect, IPooledList<ECSGameAbilityEffect>
     {
         public override string Name { get { return "Default Ability Name"; } }
 
-        public ECSGameAbilityEffect(ECSGameEffectInitParams initParams) : base(initParams)
+        public ECSGameAbilityEffect(in ECSGameEffectInitParams initParams) : base(initParams) { }
+
+        public override long GetNextTick()
         {
-            //EffectService.RequestStartEffect(this);
+            return NextTick > 0 ? NextTick : base.GetNextTick();
         }
     }
 }

@@ -6,9 +6,11 @@ namespace DOL.GS.Spells
 {
 	public interface ISpellHandler
 	{
+		string ShortDescription { get; }
+
 		GameLiving Target { get; }
 
-        ECSGameSpellEffect CreateECSEffect(ECSGameEffectInitParams initParams);
+		ECSGameSpellEffect CreateECSEffect(in ECSGameEffectInitParams initParams);
 
         /// <summary>
         /// Starts the spell, without displaying cast message etc.
@@ -77,13 +79,10 @@ namespace DOL.GS.Spells
         ECSPulseEffect PulseEffect { get; }
 
 		/// <summary>
-		/// Determines wether this spell is compatible with given spell
-		/// and therefore overwritable by better versions
-		/// spells that are overwritable do not stack
+		/// Determines whether effects created by this and compare are allowed to stack.
 		/// </summary>
-		/// <param name="compare"></param>
-		/// <returns></returns>
-		bool IsOverwritable(ECSGameSpellEffect compare);
+		bool HasConflictingEffectWith(ISpellHandler compare);
+
 		/// <summary>
 		/// Determines wether new spell is better than old spell and should disable it
 		/// </summary>
@@ -106,11 +105,6 @@ namespace DOL.GS.Spells
 		bool AllowCoexisting { get; }
 
 		long CastStartTick { get; }
-		/// <summary>
-		/// Should this spell use the minimum variance for the type?
-		/// Followup style effects, for example, always use the minimum variance
-		/// </summary>
-		bool UseMinVariance { get; set; }
 
         /// <summary>
         /// Actions to take when the effect starts
@@ -181,10 +175,12 @@ namespace DOL.GS.Spells
         /// </summary>
         SpellLine SpellLine { get; }
 
-        /// <summary>
-        /// The DelveInfo
-        /// </summary>
-        IList<string> DelveInfo { get; }
+		SpellCostType CostType { get; }
+
+		/// <summary>
+		/// The DelveInfo
+		/// </summary>
+		IList<string> DelveInfo { get; }
 
         /// <summary>
         /// Current depth of delve info
@@ -196,13 +192,6 @@ namespace DOL.GS.Spells
 		int OnRestoredEffectExpires(GameSpellEffect effect, int[] RestoreVars, bool noMessages);
 		bool CheckBeginCast(GameLiving selectedTarget);
 		bool CheckConcentrationCost(bool quiet);
-
-		/// <summary>
-		/// Calculates the range to target needed to cast the spell
-		/// </summary>
-		/// <returns>Modified Spell Range</returns>
-		int CalculateSpellRange();
-		void TooltipDelve(ref DOL.GS.PacketHandler.MiniDelveWriter dw);
 	}
 
     /// <summary>

@@ -1,120 +1,135 @@
 using System;
-using System.Collections;
+using System.Buffers;
 using DOL.GS.PacketHandler;
+using DOL.GS.ServerProperties;
 
 namespace DOL.GS.Spells
 {
-	[SpellHandler(eSpellType.SpreadHeal)]
-	public class SpreadhealSpellHandler : HealSpellHandler
-	{
-		// constructor
-		public SpreadhealSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) {}
+    [SpellHandler(eSpellType.SpreadHeal)]
+    public class SpreadhealSpellHandler : HealSpellHandler
+    {
+        public override string ShortDescription => $"Heals group members for {Spell.Value}, prioritizing the most injured ones.";
 
-		/// <summary>
-		/// Heals targets group
-		/// </summary>
-		/// <param name="target"></param>
-		/// <param name="amount">amount of hit points to heal</param>
-		/// <returns>true if heal was done</returns>
-		public override bool HealTarget(GameLiving target, double amount)
-		{
-			Hashtable injuredTargets = new Hashtable();
-			GameLiving mostInjuredLiving = target;
-			double mostInjuredPercent = mostInjuredLiving.Health / (float)mostInjuredLiving.MaxHealth;
+        public SpreadhealSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
 
-			int minHealVariance;
-			int maxHealVariance;
-			int targetHealCap;
+        private readonly record struct InjuredTarget(GameLiving Living, double HealthPercent);
 
-			CalculateHealVariance(out minHealVariance, out maxHealVariance);
+        public override bool HealTarget(GameLiving target, double amount, bool affectedByDisease)
+        {
+            InjuredTarget[] injuredTargetsPool = ArrayPool<InjuredTarget>.Shared.Rent(Properties.GROUP_MAX_MEMBER);
+            (GameLiving Target, int UncappedHeal)[] healAmountsPool = null;
 
-			if (minHealVariance >= maxHealVariance)
-			{
-				targetHealCap = maxHealVariance;
-			}
-			else
-			{
-				targetHealCap = Util.Random(minHealVariance, maxHealVariance);
-			}
+            try
+            {
+                Span<InjuredTarget> injuredTargets = new(injuredTargetsPool, 0, Properties.GROUP_MAX_MEMBER);
+                int injuredCount = 0;
 
-			int groupHealCap = targetHealCap;
+                GameLiving mostInjuredLiving = null;
+                double mostInjuredPercent = 1.0;
 
-			Group group = target.Group;
-			if (group != null)
-			{
-				groupHealCap *= group.MemberCount;
-				targetHealCap *= 2;
+                CalculateDamageVariance(null, out double min, out double max);
 
-				foreach (GameLiving living in group.GetMembersInTheGroup())
-				{
-					if (!living.IsAlive) continue;
-					//heal only if target is in range
-					if (target.IsWithinRadius(living, m_spell.Range))
-					{
-						double livingHealthPercent = living.Health / (double)living.MaxHealth;
-						if (livingHealthPercent < 1)
-						{
-							injuredTargets.Add(living, livingHealthPercent);
-							if (livingHealthPercent < mostInjuredPercent)
-							{
-								mostInjuredLiving = living;
-								mostInjuredPercent = livingHealthPercent;
-							}
-						}
-					}
-				}
-			}
-			else
-			{
-				// heal caster
-				if (mostInjuredPercent < 1)
-					injuredTargets.Add(target, mostInjuredPercent);
-			}
+                double variance = min + Caster.GetPseudoDoubleIncl(RandomDeckEvent.DamageVariance) * (max - min);
+                int targetHealCap = (int) (m_spell.Value * variance);
+                int groupHealCap = targetHealCap;
+                Group group = target.Group;
 
+                if (group is null)
+                {
+                    double healthPercent = target.Health / (double) target.MaxHealth;
 
-			if (mostInjuredPercent >= 1)
-			{
-				//all are healed, 1/2 power
-				SendEffectAnimation(target, 0, false, 0);
-				MessageToCaster("Your group is already fully healed!", eChatType.CT_SpellResisted);
-				return false;
-			}
+                    if (healthPercent < 1.0)
+                    {
+                        injuredTargets[injuredCount++] = new(target, healthPercent);
+                        mostInjuredLiving = target;
+                        mostInjuredPercent = healthPercent;
+                    }
+                }
+                else
+                {
+                    groupHealCap *= group.MemberCount;
+                    targetHealCap *= 2;
 
-			double bestHealPercent = targetHealCap / (double)mostInjuredLiving.MaxHealth;
-			double totalHealed = 0;
-			Hashtable healAmount = new Hashtable();
+                    foreach (GameLiving living in group.GetMembersInTheGroup())
+                    {
+                        if (!living.IsAlive || !target.IsWithinRadius(living, m_spell.Range))
+                            continue;
 
+                        double livingHealthPercent = living.Health / (double)living.MaxHealth;
 
-			IDictionaryEnumerator iter = injuredTargets.GetEnumerator();
-			//calculate heal for all targets
-			while (iter.MoveNext())
-			{
-				GameLiving healTarget = iter.Key as GameLiving;
-				double targetHealthPercent = (double) iter.Value;
-				//targets hp percent after heal is same as mostInjuredLiving
-				double targetHealPercent = bestHealPercent + mostInjuredPercent - targetHealthPercent;
-				int targetHeal = (int) (healTarget.MaxHealth * targetHealPercent);
+                        if (livingHealthPercent >= 1.0)
+                            continue;
 
-				if (targetHeal > 0)
-				{
-					totalHealed += targetHeal;
-					healAmount.Add(healTarget, targetHeal);
-				}
-			}
+                        injuredTargets[injuredCount++] = new(living, livingHealthPercent);
 
-			iter = healAmount.GetEnumerator();
-			//reduce healed hp according to targetHealCap and heal targets
-			while (iter.MoveNext())
-			{
-				GameLiving healTarget = iter.Key as GameLiving;
-				double uncappedHeal = (int) iter.Value;
-				int reducedHeal = (int) Math.Min(targetHealCap, uncappedHeal * (groupHealCap / totalHealed));
+                        if (livingHealthPercent < mostInjuredPercent)
+                        {
+                            mostInjuredLiving = living;
+                            mostInjuredPercent = livingHealthPercent;
+                        }
+                    }
+                }
 
-				//heal target
-				base.HealTarget(healTarget, reducedHeal);
-			}
+                if (mostInjuredLiving is null)
+                {
+                    SendEffectAnimation(target, 0, false, 0);
+                    MessageToCaster("Your group is already fully healed!", eChatType.CT_SpellResisted);
+                    return false;
+                }
 
-			return true;
-		}
-	}
+                healAmountsPool = ArrayPool<(GameLiving, int)>.Shared.Rent(injuredCount);
+                Span<(GameLiving, int)> healAmounts = new(healAmountsPool, 0, injuredCount);
+                double totalHealed = 0;
+
+                // Calculate initial heal for all targets.
+                for (int i = 0; i < injuredCount; i++)
+                {
+                    InjuredTarget injured = injuredTargets[i];
+                    double targetHealPercent = targetHealCap / (double) mostInjuredLiving.MaxHealth + mostInjuredPercent - injured.HealthPercent;
+                    int targetHeal = (int) (injured.Living.MaxHealth * targetHealPercent);
+
+                    if (targetHeal > 0)
+                    {
+                        totalHealed += targetHeal;
+                        healAmounts[i] = (injured.Living, targetHeal);
+                    }
+                    else
+                        healAmounts[i] = (injured.Living, 0);
+                }
+
+                if (totalHealed <= 0)
+                    return false;
+
+                bool isCasterDiseased = affectedByDisease && Caster.IsDiseased;
+
+                if (isCasterDiseased)
+                    MessageToCaster("Your healing is reduced by disease!", eChatType.CT_SpellResisted);
+
+                // Reduce healed hp according to groupHealCap and apply the heal.
+                foreach (var (healTarget, uncappedHeal) in healAmounts)
+                {
+                    if (uncappedHeal <= 0)
+                        continue;
+
+                    double healRatio = groupHealCap / totalHealed;
+                    int reducedHeal = (int) Math.Min(targetHealCap, uncappedHeal * healRatio);
+
+                    if (isCasterDiseased)
+                        reducedHeal /= 2;
+
+                    if (reducedHeal > 0)
+                        base.HealTarget(healTarget, reducedHeal, false);
+                }
+
+                return true;
+            }
+            finally
+            {
+                ArrayPool<InjuredTarget>.Shared.Return(injuredTargetsPool);
+
+                if (healAmountsPool != null)
+                    ArrayPool<(GameLiving, int)>.Shared.Return(healAmountsPool);
+            }
+        }
+    }
 }

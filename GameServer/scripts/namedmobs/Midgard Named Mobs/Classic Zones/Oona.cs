@@ -47,10 +47,7 @@ namespace DOL.GS
 				}
 			}
 		}
-		public override double AttackDamage(DbInventoryItem weapon)
-		{
-			return base.AttackDamage(weapon) * Strength / 100;
-		}
+
 		public override int MeleeAttackRange => 350;
 		public override bool HasAbility(string keyName)
 		{
@@ -241,12 +238,11 @@ namespace DOL.AI.Brain
 					spell.Name = "Aurora Blast";
 					spell.Range = 1650;
 					spell.SpellID = 12004;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Uninterruptible = true;
 					spell.MoveCast = true;
 					spell.Type = eSpellType.DirectDamageNoVariance.ToString();					
 					m_OonaDD = new Spell(spell, 60);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_OonaDD);
 				}
 				return m_OonaDD;
 			}
@@ -270,12 +266,11 @@ namespace DOL.AI.Brain
 					spell.Name = "Bolt of Uncreation";
 					spell.Range = 1800;
 					spell.SpellID = 12005;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Uninterruptible = true;
 					spell.MoveCast = true;
 					spell.Type = eSpellType.Bolt.ToString();
 					m_OonaBolt = new Spell(spell, 60);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_OonaBolt);
 				}
 				return m_OonaBolt;
 			}

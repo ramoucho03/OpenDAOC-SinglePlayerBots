@@ -39,7 +39,7 @@ namespace DOL.AI.Brain
 		private bool mobHasAggro = false;
 		public void BroadcastMessage(String message)
 		{
-			foreach (GamePlayer player in Body.GetPlayersInRadius(WorldMgr.OBJ_UPDATE_DISTANCE))
+			foreach (GamePlayer player in Body.GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
 			{
 				player.Out.SendMessage(message, eChatType.CT_Broadcast, eChatLoc.CL_ChatWindow);
 			}
@@ -93,11 +93,10 @@ namespace DOL.AI.Brain
 					spell.Name = "Frost Blast";
 					spell.Range = 1500;
 					spell.SpellID = 11941;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Type = eSpellType.DirectDamageNoVariance.ToString();
 					spell.Uninterruptible = true;
 					m_SpriggitDD = new Spell(spell, 20);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_SpriggitDD);
 				}
 				return m_SpriggitDD;
 			}
@@ -123,11 +122,10 @@ namespace DOL.AI.Brain
 					spell.Name = "Root";
 					spell.Range = 1500;
 					spell.SpellID = 11942;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Type = eSpellType.SpeedDecrease.ToString();
 					spell.Uninterruptible = true;
 					m_SpriggitRoot = new Spell(spell, 20);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_SpriggitRoot);
 				}
 				return m_SpriggitRoot;
 			}

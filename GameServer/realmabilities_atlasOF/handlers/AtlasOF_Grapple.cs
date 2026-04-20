@@ -42,8 +42,8 @@ namespace DOL.GS.RealmAbilities
             m_dbspell.Icon = 4226;
             m_dbspell.ClientEffect = 2758;
             m_dbspell.Damage = 0;
-            m_dbspell.DamageType = (int)m_damageType;
-            m_dbspell.Target = "Enemy";
+			m_dbspell.DamageType = (int)m_damageType;
+            m_dbspell.Target = eSpellTarget.ENEMY.ToString();
             m_dbspell.Radius = 0;
             m_dbspell.Type = eSpellType.SpeedDecrease.ToString();
             m_dbspell.Value = 99;
@@ -65,28 +65,34 @@ namespace DOL.GS.RealmAbilities
 
         public override void Execute(GameLiving living)
         {
-            if (CheckPreconditions(living, DEAD | SITTING | MEZZED | STUNNED)) return;
-            GamePlayer caster = living as GamePlayer;
-            if (caster == null)
-                return;
+            //if (CheckPreconditions(living, DEAD | SITTING | MEZZED | STUNNED)) return;
+            //IGamePlayer caster = living as IGamePlayer;
+            //if (caster == null)
+            //    return;
 
-            CreateSpell(caster);
+            //CreateSpell(caster);
 
-            foreach (GamePlayer playerInRadius in caster.GetPlayersInRadius(m_range))
-            {
-                if (playerInRadius.Realm != caster.Realm || caster.IsDuelPartner(playerInRadius))
-                    CastSpellOn(playerInRadius, caster);
-            }
+            //foreach (GamePlayer playerInRadius in caster.GetPlayersInRadius(m_range))
+            //{
+            //    if (playerInRadius.Realm != caster.Realm || caster.IsDuelPartner(playerInRadius))
+            //        CastSpellOn(playerInRadius, caster);
+            //}
 
-            foreach (GameNPC npc in caster.GetNPCsInRadius(m_range))
-            {
-                CastSpellOn(npc, caster);
-            }
+            //foreach (GameNPC npc in caster.GetNPCsInRadius(m_range))
+            //{
+            //    if (npc is IGamePlayer)
+            //    {
+            //        if (playerInRadius.Realm != caster.Realm || caster.IsDuelPartner(playerInRadius))
+            //            CastSpellOn(playerInRadius, caster);
+            //    }
+            //    else
+            //        CastSpellOn(npc, caster);
+            //}
 
             // We do not need to handle disabling the skill here. This ability casts a spell and is linked to that spell.
             // The spell casting code will disable this ability in SpellHandler's FinishSpellcast().
 
-            DisableSkill(caster);
+            //DisableSkill(caster);
         }
 
         public void CastSpellOn(GameLiving target, GameLiving caster)
@@ -94,7 +100,9 @@ namespace DOL.GS.RealmAbilities
             if (target.IsAlive && m_spell != null)
             {
                 ISpellHandler dd = ScriptMgr.CreateSpellHandler(caster, m_spell, m_spellline);
-                if (caster is GamePlayer p) p.Out.SendMessage($"You grapple {target.Name} and they are slowed!", eChatType.CT_Spell, eChatLoc.CL_SystemWindow);
+                if (caster is GamePlayer p) 
+                    p.Out.SendMessage($"You grapple {target.Name} and they are slowed!", eChatType.CT_Spell, eChatLoc.CL_SystemWindow);
+
                 dd.StartSpell(target);
             }
         }

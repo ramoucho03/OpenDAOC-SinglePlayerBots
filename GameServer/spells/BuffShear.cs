@@ -1,22 +1,3 @@
-/*
- * DAWN OF LIGHT - The first free open source DAoC server emulator
- * 
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- * 
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
- *
- */
-
 using System;
 using System.Collections.Generic;
 using DOL.AI.Brain;
@@ -147,13 +128,6 @@ namespace DOL.GS.Spells
                 mez.Cancel(false);
                 return;
             }
-			if (target is GameNPC)
-			{
-				GameNPC npc = (GameNPC)target;
-				IOldAggressiveBrain aggroBrain = npc.Brain as IOldAggressiveBrain;
-				if (aggroBrain != null)
-					aggroBrain.AddToAggroList(Caster, 1);
-			}
 
 			//check for spell.
 			foreach (GameSpellEffect effect in target.EffectList.GetAllOfType<GameSpellEffect>())
@@ -189,23 +163,18 @@ namespace DOL.GS.Spells
 			*/
 		}
 
-		/// <summary>
-		/// When spell was resisted
-		/// </summary>
-		/// <param name="target">the target that resisted the spell</param>
-		protected override void OnSpellResisted(GameLiving target)
+		protected override void OnSpellNegated(GameLiving target, SpellNegatedReason reason)
 		{
-			base.OnSpellResisted(target);
+			base.OnSpellNegated(target, reason);
+
 			if (Spell.Damage == 0 && Spell.CastTime == 0)
-			{
 				target.StartInterruptTimer(target.SpellInterruptDuration, AttackData.eAttackType.Spell, Caster);
-			}
 		}
 
 		/// <summary>
 		/// Delve Info
 		/// </summary>
-		public override IList<string> DelveInfo 
+		public override IList<string> DelveInfo
 		{
 			get 
 			{
@@ -230,7 +199,7 @@ namespace DOL.GS.Spells
 
 				list.Add("Function: " + (Spell.SpellType.ToString() == string.Empty ? "(not implemented)" : Spell.SpellType.ToString()));
 				list.Add(" "); //empty line
-				list.Add(Spell.Description);
+				list.Add(ShortDescription);
 				list.Add(" "); //empty line
 				list.Add("Type: " + DelveSpellType);
 				list.Add("Maximum strength of buffs removed: " + Spell.Value);
@@ -268,13 +237,6 @@ namespace DOL.GS.Spells
 			if (!target.IsAlive || target.ObjectState != GameLiving.eObjectState.Active) return;
 
 			target.StartInterruptTimer(target.SpellInterruptDuration, AttackData.eAttackType.Spell, Caster);
-			if (target is GameNPC)
-			{
-				GameNPC npc = (GameNPC)target;
-				IOldAggressiveBrain aggroBrain = npc.Brain as IOldAggressiveBrain;
-				if (aggroBrain != null)
-					aggroBrain.AddToAggroList(Caster, 1);
-			}
 
 			//check for spell.
 			foreach (GameSpellEffect effect in target.EffectList.GetAllOfType<GameSpellEffect>())

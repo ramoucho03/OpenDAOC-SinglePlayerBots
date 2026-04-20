@@ -13,77 +13,60 @@ namespace DOL.Logging
         private BlockingCollection<LogEntry> _loggingQueue;
         private CancellationTokenSource _cancellationTokenSource;
         private Logger _logger;
-        private Lock _lock = new();
         private bool _running;
 
         public void Start()
         {
-            lock (_lock)
-            {
-                if (_running)
-                    return;
+            if (Interlocked.CompareExchange(ref _running, true, false))
+                return;
 
-                _logger = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
-                _cancellationTokenSource = new();
-                _loggingQueue = new(new ConcurrentQueue<LogEntry>(), CAPACITY);
-                _thread = new Thread(new ThreadStart(Run))
-                {
-                    Name = nameof(LogEntryQueueProcessor),
-                    IsBackground = true,
-                    Priority = ThreadPriority.BelowNormal
-                };
-                _thread.Start();
-                _running = true;
-            }
+            _logger = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
+            _cancellationTokenSource = new();
+            _loggingQueue = new(new ConcurrentQueue<LogEntry>(), CAPACITY);
+            _thread = new(new ThreadStart(Run))
+            {
+                Name = nameof(LogEntryQueueProcessor),
+                IsBackground = true,
+                Priority = ThreadPriority.BelowNormal
+            };
+            _thread.Start();
         }
 
         public void Stop()
         {
-            lock (_lock)
-            {
-                if (!_running)
-                    return;
+            if (!Interlocked.CompareExchange(ref _running, false, true))
+                return;
 
-                if (Thread.CurrentThread != _thread)
-                {
-                    _cancellationTokenSource.Cancel();
-                    _thread.Join();
-                }
+            _cancellationTokenSource.Cancel();
 
-                _running = false;
-                _thread = null;
-                _loggingQueue.Dispose();
-                _loggingQueue = null;
-                _cancellationTokenSource.Dispose();
-                _cancellationTokenSource = null;
-                _logger = null;
-            }
+            if (Thread.CurrentThread != _thread && _thread.IsAlive)
+                _thread.Join();
+
+            _loggingQueue.Dispose();
+            _cancellationTokenSource.Dispose();
         }
 
         public void EnqueueMessage(LogEntry logEntry)
         {
-            if (!_running)
-                return;
-
             try
             {
                 _loggingQueue.Add(logEntry);
             }
-            catch (NullReferenceException) { }
             catch (ObjectDisposedException) { }
         }
 
         public void TryEnqueueMessage(LogEntry logEntry)
         {
-            if (!_running)
-                return;
+            bool added = false;
 
             try
             {
-                _loggingQueue.TryAdd(logEntry);
+                added = _loggingQueue.TryAdd(logEntry);
             }
-            catch (NullReferenceException) { }
             catch (ObjectDisposedException) { }
+
+            if (!added)
+                logEntry.ReturnRentedArgs();
         }
 
         private void Run()
@@ -98,11 +81,14 @@ namespace DOL.Logging
                 }
                 catch (OperationCanceledException)
                 {
-                    _logger.Info($"Thread \"{_thread.Name}\" was cancelled");
+                    break;
                 }
                 catch (ThreadInterruptedException)
                 {
-                    _logger.Info($"Thread \"{_thread.Name}\" was interrupted");
+                    if (_logger.IsWarnEnabled)
+                        _logger.Warn($"Thread \"{Thread.CurrentThread.Name}\" was interrupted");
+
+                    break;
                 }
                 catch (Exception e)
                 {
@@ -111,7 +97,9 @@ namespace DOL.Logging
                 }
             }
 
-            // Clear the queue.
+            if (_logger.IsInfoEnabled)
+                _logger.Info($"Thread \"{Thread.CurrentThread.Name}\" is stopping");
+
             while (_loggingQueue.TryTake(out LogEntry logEntry))
                 logEntry.Log();
         }

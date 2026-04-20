@@ -4,10 +4,9 @@ namespace DOL.GS.Effects
 {
     public class AtlasOF_ForestheartAmbusherECSEffect : ECSGameAbilityEffect
     {
-        public AtlasOF_ForestheartAmbusherECSEffect(ECSGameEffectInitParams initParams) : base(initParams)
+        public AtlasOF_ForestheartAmbusherECSEffect(in ECSGameEffectInitParams initParams) : base(initParams)
         {
             EffectType = eEffect.ForestheartAmbusher;
-            EffectService.RequestStartEffect(this);
         }
 
         public override ushort Icon => 4268;
@@ -40,7 +39,7 @@ namespace DOL.GS.Effects
 
         public void Cancel(bool playerCancel)
         {
-            EffectService.RequestCancelEffect(this, playerCancel);
+            End(playerCancel);
             OnStopEffect();
         }
     }

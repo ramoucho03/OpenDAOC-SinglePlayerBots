@@ -57,13 +57,7 @@ namespace DOL.GS
             set => m_z = value;
         }
 
-        public override void Clear()
-        {
-            base.Clear();
-            Z = 0;
-        }
-
-        #endregion IPoint3D Members
+		#endregion
 
         /// <summary>
         /// Creates the string representation of this point
@@ -168,19 +162,14 @@ namespace DOL.GS
             return true;
         }
 
-        public bool IsWithinRadius(Vector3 point, int radius, bool ignoreZ = false)
-        {
-            if (ignoreZ || point.Z == 0 || Z == 0)
-                return Vector2.DistanceSquared(new Vector2(X, Y), point.ToVector2()) <= radius * radius;
+		public bool IsWithinRadius(Vector3 point, int radius, bool ignoreZ = false)
+		{
+			if (ignoreZ || point.Z == 0 || Z == 0)
+				return Vector2.DistanceSquared(new Vector2(X, Y), point.AsVector2()) <= radius * radius;
 
-            return Vector3.DistanceSquared(new Vector3(X, Y, Z), point) <= radius * radius;
-        }
-
-        public bool IsSamePosition(Point3D point)
-        {
-            return X == point.X && Y == point.Y && Z == point.Z;
-        }
-    }
+			return Vector3.DistanceSquared(new Vector3(X, Y, Z), point) <= radius * radius;
+		}
+	}
 
     public class Point3DFloat
     {

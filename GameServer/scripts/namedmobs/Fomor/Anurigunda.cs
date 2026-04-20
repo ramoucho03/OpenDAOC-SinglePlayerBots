@@ -223,13 +223,12 @@ namespace DOL.AI.Brain
 					spell.Range = 0;
 					spell.Radius = 350;
 					spell.SpellID = 11839;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Type = eSpellType.DamageOverTime.ToString();
 					spell.Uninterruptible = true;
 					spell.MoveCast = true;
 					spell.DamageType = (int)eDamageType.Heat;
 					m_FireGroundDD = new Spell(spell, 70);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_FireGroundDD);
 				}
 				return m_FireGroundDD;
 			}
@@ -284,10 +283,7 @@ namespace DOL.GS
 				default: return 25;// dmg reduction for rest resists
 			}
 		}
-		public override double AttackDamage(DbInventoryItem weapon)
-		{
-			return base.AttackDamage(weapon) * Strength / 70;
-		}
+
 		List<int> Id_npctemplates = new List<int>()
 		{
 			60160948,60160946,60160979,60161009

@@ -38,12 +38,12 @@ namespace DOL.GS.PropertyCalc
         {
             IGamePlayer player = living as IGamePlayer;
 
-            if(player == null)
+            if (player == null)
             {
                 return 0;
             }
 
-            return Math.Min(living.ItemBonus[(int) property], 25);
+            return Math.Min(living.ItemBonus[property], 25);
         }
     }
 }

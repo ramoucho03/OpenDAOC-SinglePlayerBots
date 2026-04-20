@@ -7,28 +7,24 @@ namespace DOL.GS
     {
         private int _nextTickDamage;
 
-        public BleedECSEffect(ECSGameEffectInitParams initParams) : base(initParams)
+        public BleedECSEffect(in ECSGameEffectInitParams initParams) : base(initParams)
         {
             _nextTickDamage = (int) SpellHandler.Spell.Damage;
-            EffectService.RequestStartEffect(this);
         }
 
-        public override bool IsBetterThan(ECSGameSpellEffect effect)
+        public override bool IsBetterThan(ECSGameEffect effect)
         {
-            return effect is BleedECSEffect otherBleedEffect && _nextTickDamage > otherBleedEffect._nextTickDamage;
+            return effect is BleedECSEffect otherBleedEffect && _nextTickDamage >= otherBleedEffect._nextTickDamage;
         }
 
         public override void OnEffectPulse()
         {
-            if (!Owner.IsAlive)
-                EffectService.RequestCancelEffect(this);
-
             if (SpellHandler is not StyleBleeding bleedHandler)
                 return;
 
             if (OwnerPlayer != null)
             {
-                bleedHandler.MessageToLiving(Owner, bleedHandler.Spell.Message1, eChatType.CT_YouWereHit);
+                bleedHandler.MessageToLiving(Owner, bleedHandler.Spell.Message1, eChatType.CT_System);
                 Message.SystemToArea(Owner, Util.MakeSentence(bleedHandler.Spell.Message2, Owner.GetName(0, false)), eChatType.CT_YouHit, Owner);
             }
 

@@ -1,286 +1,224 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading;
 using DOL.AI.Brain;
 using DOL.Database;
 using DOL.Events;
 using DOL.GS.Effects;
 using DOL.GS.PacketHandler;
+using DOL.GS.Quests;
+using DOL.GS.Scripts;
+using DOL.GS.ServerProperties;
 using DOL.Language;
+using DOL.Logging;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using System.Text;
+using System.Threading;
 using static DOL.GS.GameObject;
 using static DOL.GS.IGameStaticItemOwner;
-using DOL.GS.Scripts;
 
 namespace DOL.GS
 {
-	/// <summary>
-	/// This class represents a Group inside the game
-	/// </summary>
-	public class Group : IGameStaticItemOwner
-	{
-        #region constructor and members
-
+    /// <summary>
+    /// This class represents a Group inside the game
+    /// </summary>
+    public class Group : IGameStaticItemOwner
+    {
         public MimicGroup MimicGroup;
 
-        /// <summary>
-        /// Default Constructor with GamePlayer Leader.
-        /// </summary>
-        /// <param name="leader"></param>
-        public Group(GamePlayer leader)
-			: this((GameLiving)leader)
-		{
-		}
-		
-		/// <summary>
-		/// Default Constructor with GameLiving Leader.
-		/// </summary>
-		/// <param name="leader"></param>
-		public Group(GameLiving leader)
-		{
-			LivingLeader = leader;
-			m_groupMembers = new ReaderWriterList<GameLiving>(ServerProperties.Properties.GROUP_MAX_MEMBER);
-            MimicGroup = new MimicGroup(leader);
+        private readonly List<GameLiving> _groupMembers;
+        private readonly Lock _groupMembersLock = new();
+        private AbstractMission _mission;
+
+        public byte MemberCount
+        {
+            get
+            {
+                lock (_groupMembersLock)
+                {
+                    return (byte) _groupMembers.Count;
+                }
+            }
         }
-		
-		/// <summary>
-		/// This holds all players inside the group
-		/// </summary>
-		protected readonly ReaderWriterList<GameLiving> m_groupMembers;
-		protected readonly Lock _groupMembersLock = new();
 
-        #endregion constructor and members
+        public GameLiving LivingLeader { get; private set; }
 
-        #region Leader / Member
-
-        /// <summary>
-        /// Gets/sets the group Player leader
-        /// </summary>
         public GamePlayer Leader
         {
-            get { return LivingLeader as GamePlayer; }
-            private set { LivingLeader = value; }
+            get => LivingLeader as GamePlayer;
+            private set => LivingLeader = value;
         }
 
-		/// <summary>
-		/// Gets/sets the group Living leader
-		/// </summary>
-		public GameLiving LivingLeader { get; protected set; }
-		
-		/// <summary>
-		/// Returns the number of players inside this group
-		/// </summary>
-		public byte MemberCount
-		{
-			get { return (byte)m_groupMembers.Count; }
-		}
+        public bool AutosplitLoot { get; set; } = true;
+        public bool AutosplitCoins { get; set; } = true;
+        public byte Status { get; set; } = 0x0A;
 
-		#endregion
-
-		#region mission
-
-		/// <summary>
-		/// This Group Mission.
-		/// </summary>
-		private Quests.AbstractMission m_mission = null;
-		
-		/// <summary>
-		/// Group Mission
-		/// </summary>
-		public Quests.AbstractMission Mission
-		{
-			get { return m_mission; }
-			set
-			{
-				m_mission = value;
-				foreach (GamePlayer player in m_groupMembers.OfType<GamePlayer>())
-				{
-					player.Out.SendQuestListUpdate();
-					if (value != null)
-						player.Out.SendMessage(m_mission.Description, eChatType.CT_System, eChatLoc.CL_SystemWindow);
-				}
-			}
-		}
-
-		#endregion
-
-		#region autosplit
-
-		/// <summary>
-		/// Gets or sets the group's autosplit loot flag
-		/// </summary>
-		protected bool m_autosplitLoot = true;
-		
-		/// <summary>
-		/// Gets or sets the group's autosplit loot flag
-		/// </summary>
-		public bool AutosplitLoot
-		{
-			get { return m_autosplitLoot; }
-			set { m_autosplitLoot = value; }
-		}
-
-        /// <summary>
-        /// Gets or sets the group's autosplit coins flag
-        /// </summary>
-        protected bool m_autosplitCoins = true;
-
-		/// <summary>
-		/// Gets or sets the group's autosplit coins flag
-		/// </summary>
-		public bool AutosplitCoins
-		{
-			get { return m_autosplitCoins; }
-			set { m_autosplitCoins = value; }
-		}
-
-		#endregion
-
-		#region lfg status
-
-		/// <summary>
-		/// This holds the status of the group
-		/// eg. looking for members etc ...
-		/// </summary>
-		protected byte m_status = 0x0A;
-
-		/// <summary>
-		/// Gets or sets the status of this group
-		/// </summary>
-		public byte Status
-		{
-			get { return m_status; }
-			set { m_status = value; }
-		}
-
-        #endregion
-
-        #region managing members
-
-        /// <summary>
-        /// Gets all members of the group
-        /// </summary>
-        /// <returns>Array of GameLiving in this group</returns>
-        public ICollection<GameLiving> GetMembersInTheGroup()
-		{
-			return m_groupMembers.ToArray();
-		}
-		
-		/// <summary>
-		/// Gets all players of the group
-		/// </summary>
-		/// <returns>Array of GamePlayers in this group</returns>
-		public ICollection<GamePlayer> GetPlayersInTheGroup()
-		{
-			return m_groupMembers.OfType<GamePlayer>().ToArray();
-		}
-
-        public ICollection<IGamePlayer> GetIPlayersInTheGroup()
+        public AbstractMission Mission
         {
-            return m_groupMembers.OfType<IGamePlayer>().ToArray();
-        }
-        /// <summary>
-        /// Adds a living to the group
-        /// </summary>
-        /// <param name="living">GameLiving to be added to the group</param>
-        /// <returns>true if added successfully</returns>
-        public virtual bool AddMember(GameLiving living) 
-		{
-			if (!m_groupMembers.FreezeWhile<bool>(l => { if (l.Count >= ServerProperties.Properties.GROUP_MAX_MEMBER || l.Count >= (byte.MaxValue - 1))
-															return false;
-													
-														if (l.Contains(living))
-															return false;
-													
-														l.Add(living);
-														living.Group = this;
-														living.GroupIndex = (byte)(l.Count - 1);
-														return true; }))
-				return false;
-
-            GamePlayer player = living as GamePlayer;
-            MimicNPC mimic = living as MimicNPC;
-
-            if (player?.Duel != null)
-                player.Duel.Stop();
-            else if (mimic?.Duel != null)
-                mimic.Duel.Stop();
-
-            UpdateGroupWindow();
-            // update icons of joined player to everyone in the group
-            UpdateMember(living, true, false);
-
-            // update all icons for just joined player
-            if (player != null)
-                player.Out.SendGroupMembersUpdate(true, true);
-
-            SendMessageToGroupMembers(string.Format("{0} has joined the group.", living.Name), eChatType.CT_System, eChatLoc.CL_SystemWindow);
-            GameEventMgr.Notify(GroupEvent.MemberJoined, this, new MemberJoinedEventArgs(living));
-
-            // Part of the hack to make friendly pets untargetable (or targetable again) with TAB on a PvP server.
-            // We could also check for non controlled pets (turrets for example) around the player, but it isn't very important.
-            if (GameServer.Instance.Configuration.ServerType == EGameServerType.GST_PvP)
+            get => _mission;
+            set
             {
-                IControlledBrain controlledBrain = player.ControlledBrain;
-                Guild playerGuild = player.Guild;
-                bool updateOneself = false;
+                _mission = value;
 
-                // Update how the added player sees their pet and themself.
-                if (controlledBrain != null)
+                foreach (GamePlayer groupMember in GetPlayersInTheGroup())
                 {
-                    SendControlledBodyGuildID(player, playerGuild, controlledBrain.Body);
-                    updateOneself = true;
+                    groupMember.Out.SendQuestListUpdate();
+
+                    if (value != null)
+                        groupMember.Out.SendMessage(_mission.Description, eChatType.CT_System, eChatLoc.CL_SystemWindow);
                 }
+            }
+        }
 
-                // Let's all be friends.
-                foreach (GamePlayer groupMember in m_groupMembers.OfType<GamePlayer>().Where(x => x != player))
-                {
-                    Guild groupMemberGuild = groupMember.Guild;
+        public Group(GamePlayer leader) : this((GameLiving) leader) { }
 
-                    if (controlledBrain != null)
-                    {
-                        // Update how the group member sees the added player's pet and themself.
-                        SendControlledBodyGuildID(groupMember, groupMemberGuild, controlledBrain.Body);
-                        groupMember.Out.SendObjectGuildID(groupMember, groupMemberGuild ?? Guild.DummyGuild);
-                    }
+        public Group(GameLiving leader)
+        {
+            LivingLeader = leader;
+            MimicGroup = new MimicGroup(leader);
+            _groupMembers = new(Properties.GROUP_MAX_MEMBER);
+        }
 
-                    IControlledBrain groupMemberControlledBrain = groupMember.ControlledBrain;
+        public List<GameLiving> GetMembersInTheGroup()
+        {
+            List<GameLiving> temp = GameLoop.GetListForTick<GameLiving>();
 
-                    if (groupMemberControlledBrain != null)
-                    {
-                        // Update how the added player sees the group member's pet and themself.
-                        SendControlledBodyGuildID(player, playerGuild, groupMemberControlledBrain.Body);
-                        updateOneself = true;
-                    }
-                }
-
-                if (updateOneself)
-                    player.Out.SendObjectGuildID(player, playerGuild ?? Guild.DummyGuild);
+            lock (_groupMembersLock)
+            {
+                temp.AddRange(_groupMembers);
             }
 
+            return temp;
+        }
+
+        public List<GamePlayer> GetPlayersInTheGroup()
+        {
+            List<GamePlayer> temp = GameLoop.GetListForTick<GamePlayer>();
+
+            lock (_groupMembersLock)
+            {
+                foreach (GameLiving groupMember in _groupMembers)
+                {
+                    if (groupMember is GamePlayer player)
+                        temp.Add(player);
+                }
+            }
+
+            return temp;
+        }
+
+        public List<IGamePlayer> GetIPlayersInTheGroup()
+        {
+            List<IGamePlayer> temp = new List<IGamePlayer>();
+
+            lock (_groupMembersLock)
+            {
+                foreach (GameLiving groupMember in _groupMembers)
+                {
+                    if (groupMember is IGamePlayer player)
+                        temp.Add(player);
+                }
+            }
+
+            return temp;
+        }
+
+        public bool AddMember(GameLiving living)
+        {
+            int memberCount;
+
+            lock (_groupMembersLock)
+            {
+                if (_groupMembers.Count >= Properties.GROUP_MAX_MEMBER || living.Group != null)
+                    return false;
+
+                _groupMembers.Add(living);
+                memberCount = _groupMembers.Count;
+                living.Group = this;
+                living.GroupIndex = (byte) (memberCount - 1);
+            }
+
+            SendMessageToGroupMembers($"{living.Name} has joined the group.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+
+            if (living is IGamePlayer player)
+            {
+                if (player is GamePlayer)
+                    ((GamePlayer)player).Duel?.Stop();
+                else if (player is MimicNPC)
+                    ((MimicNPC)player).Duel?.Stop();
+
+                player.Out.SendGroupMembersUpdate(true, true);
+
+                // Part of the hack to make friendly pets untargetable (or targetable again) with TAB on a PvP server.
+                // We could also check for non controlled pets (turrets for example) around the player, but it isn't very important.
+                if (GameServer.Instance.Configuration.ServerType is EGameServerType.GST_PvP)
+                {
+                    IControlledBrain controlledBrain = player.ControlledBrain;
+                    Guild playerGuild = player.Guild;
+                    bool updateOneself = false;
+
+                    // Update how the added player sees their pet and themself.
+                    if (controlledBrain != null)
+                    {
+                        SendControlledBodyGuildID(player, playerGuild, controlledBrain.Body);
+                        updateOneself = true;
+                    }
+
+                    // Let's all be friends.
+                    foreach (GamePlayer groupMember in GetPlayersInTheGroup())
+                    {
+                        if (groupMember == living)
+                            continue;
+
+                        Guild groupMemberGuild = groupMember.Guild;
+
+                        if (controlledBrain != null)
+                        {
+                            // Update how the group member sees the added player's pet and themself.
+                            SendControlledBodyGuildID(groupMember, groupMemberGuild, controlledBrain.Body);
+                            groupMember.Out.SendObjectGuildID(groupMember, groupMemberGuild ?? Guild.DummyGuild);
+                        }
+
+                        IControlledBrain groupMemberControlledBrain = groupMember.ControlledBrain;
+
+                        if (groupMemberControlledBrain != null)
+                        {
+                            // Update how the added player sees the group member's pet and themself.
+                            SendControlledBodyGuildID(player, playerGuild, groupMemberControlledBrain.Body);
+                            updateOneself = true;
+                        }
+                    }
+
+                    if (updateOneself)
+                        player.Out.SendObjectGuildID((GameObject)player, playerGuild ?? Guild.DummyGuild);
+                }
+            }
+
+            UpdateMember(living, true, true);
+            UpdateGroupWindow();
+
+            GameEventMgr.Notify(GroupEvent.MemberJoined, this, new MemberJoinedEventArgs(living));
             return true;
         }
 
-        /// <summary>
-        /// Removes a living from the group
-        /// </summary>
-        /// <param name="living">GameLiving to be removed</param>
-        /// <returns>true if removed, false if not</returns>
-        public virtual bool RemoveMember(GameLiving living)
+        public bool RemoveMember(GameLiving living)
         {
-            if (!m_groupMembers.TryRemove(living))
-                return false;
+            lock (_groupMembersLock)
+            {
+                if (!_groupMembers.Remove(living))
+                    return false;
 
-            if (MemberCount < 1)
-                DisbandGroup();
+                living.Group = null;
+                living.GroupIndex = 0xFF;
 
-            living.Group = null;
-            living.GroupIndex = 0xFF;
-            IGamePlayer player = living as IGamePlayer;
+                if (_groupMembers.Count < 1)
+                    DisbandGroup();
+            }
+
+            SendMessageToGroupMembers($"{living.Name} has left the group.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
 
             // Update Player.
-            if (player != null)
+            if (living is IGamePlayer player)
             {
                 player.Out.SendGroupWindowUpdate();
                 player.Out.SendQuestListUpdate();
@@ -296,30 +234,28 @@ namespace DOL.GS
                         {
                             if (abilityEffect is GuardECSGameEffect guard)
                             {
-                                if (guard.Source is GamePlayer && guard.Target is GamePlayer)
-                                    EffectService.RequestCancelEffect(guard);
+                                if (guard.Source is IGamePlayer && guard.Target is IGamePlayer)
+                                    _ = guard.End();
                             }
 
                             continue;
                         }
-
                         case eEffect.Protect:
                         {
                             if (abilityEffect is ProtectECSGameEffect protect)
                             {
-                                if (protect.Source is GamePlayer && protect.Target is GamePlayer)
-                                    EffectService.RequestCancelEffect(protect);
+                                if (protect.Source is IGamePlayer && protect.Target is IGamePlayer)
+                                    _ = protect.End();
                             }
 
                             continue;
                         }
-
                         case eEffect.Intercept:
                         {
                             if (abilityEffect is InterceptECSGameEffect intercept)
                             {
-                                if (intercept.Source is GamePlayer && intercept.Target is GamePlayer)
-                                    EffectService.RequestCancelEffect(intercept);
+                                if (intercept.Source is IGamePlayer && intercept.Target is IGamePlayer)
+                                    _ = intercept.End();
                             }
 
                             continue;
@@ -329,7 +265,7 @@ namespace DOL.GS
 
                 // Part of the hack to make friendly pets untargetable (or targetable again) with TAB on a PvP server.
                 // We could also check for non controlled pets (turrets for example) around the player, but it isn't very important.
-                if (GameServer.Instance.Configuration.ServerType == EGameServerType.GST_PvP)
+                if (GameServer.Instance.Configuration.ServerType is EGameServerType.GST_PvP)
                 {
                     IControlledBrain controlledBrain = player.ControlledBrain;
                     Guild playerGuild = player.Guild;
@@ -338,12 +274,15 @@ namespace DOL.GS
                     // Update how the removed player sees their pet and themself.
                     if (controlledBrain != null)
                     {
-                        SendControlledBodyGuildID((GamePlayer)player, playerGuild, controlledBrain.Body);
+                        SendControlledBodyGuildID(player, playerGuild, controlledBrain.Body);
                         updateOneself = true;
                     }
 
-                    foreach (GamePlayer groupMember in m_groupMembers.OfType<GamePlayer>())
+                    foreach (GamePlayer groupMember in GetPlayersInTheGroup())
                     {
+                        if (groupMember == living)
+                            continue;
+
                         Guild groupMemberGuild = groupMember.Guild;
 
                         if (playerGuild == null || groupMemberGuild == null || playerGuild != groupMemberGuild)
@@ -358,63 +297,53 @@ namespace DOL.GS
                             // Update how the removed player sees the group member's pet and themself.
                             if (groupMemberControlledBrain != null)
                             {
-                                SendControlledBodyGuildID((GamePlayer)player, groupMember.Guild, groupMemberControlledBrain.Body);
+                                SendControlledBodyGuildID(player, groupMemberGuild, groupMemberControlledBrain.Body);
                                 updateOneself = true;
                             }
                         }
                     }
 
                     if (updateOneself)
-                        player.Out.SendObjectGuildID((GamePlayer)player, playerGuild ?? Guild.DummyGuild);
+                        player.Out.SendObjectGuildID((GameObject)player, playerGuild ?? Guild.DummyGuild);
+
+                    if (player is MimicNPC mimic)
+                    {
+                        mimic.StopCurrentSpellcast();
+                        mimic.CancelAllConcentrationEffects();
+                        mimic.Brain.FSM.SetCurrentState(eFSMStateType.WAKING_UP);
+                    }
                 }
 
                 player.Out.SendMessage("You leave your group.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
                 player.Notify(GamePlayerEvent.LeaveGroup, player);
             }
 
-            UpdateGroupWindow();
-            SendMessageToGroupMembers(string.Format("{0} has left the group.", living.Name), eChatType.CT_System, eChatLoc.CL_SystemWindow);
-
-            // only one member left?
-            if (MemberCount == 1)
+            lock (_groupMembersLock)
             {
-                // RR4: Group is disbanded, ending mission group if any
-                RemoveMember(m_groupMembers.First());
-            }
+                int memberCount = _groupMembers.Count;
 
-            // Update all members
-            if (MemberCount > 1 && LivingLeader == living)
-            {
-                LivingLeader = m_groupMembers.First();
-                //            var newLeader = m_groupMembers.OfType<GamePlayer>().First();
-
-                //if (newLeader != null)
-                //{
-                //	LivingLeader = newLeader;
-                //	SendMessageToGroupMembers(string.Format("{0} is the new group leader.", Leader.Name), eChatType.CT_System, eChatLoc.CL_SystemWindow);
-                //}
-                //else
-                //{
-                //	// Set aother Living Leader.
-                //	LivingLeader = m_groupMembers.First();
-                //}
-            }
-
-            if (player is MimicNPC mimic)
-            {
-                mimic.StopCurrentSpellcast();
-                mimic.CancelAllConcentrationEffects();
-				mimic.Brain.FSM.SetCurrentState(eFSMStateType.WAKING_UP);
+                if (memberCount == 1)
+                {
+                    // Disband the group.
+                    _ = RemoveMember(_groupMembers[0]);
+                }
+                else if (memberCount > 1 && LivingLeader == living)
+                {
+                    // Assign a new leader.
+                    LivingLeader = _groupMembers.OfType<GamePlayer>().FirstOrDefault() ?? _groupMembers[0];
+                    SendMessageToGroupMembers($"{LivingLeader.Name} is the new group leader.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                }
             }
 
             UpdateGroupIndexes();
+            UpdateGroupWindow();
             GameEventMgr.Notify(GroupEvent.MemberDisbanded, this, new MemberDisbandedEventArgs(living));
             return true;
         }
 
         // Part of the hack to make friendly pets untargetable (or targetable again) with TAB on a PvP server.
         // Calls 'SendObjectGuildID' on the player and looks for all controlled NPCs controlled by 'controlledBody' recursively.
-        private static void SendControlledBodyGuildID(GamePlayer player, Guild playerGuild, GameNPC controlledBody)
+        private static void SendControlledBodyGuildID(IGamePlayer player, Guild playerGuild, GameNPC controlledBody)
         {
             IControlledBrain[] npcControlledBrains = controlledBody.ControlledNpcList;
 
@@ -427,407 +356,306 @@ namespace DOL.GS
             player.Out.SendObjectGuildID(controlledBody, playerGuild ?? Guild.DummyGuild);
         }
 
-        /// <summary>
-        /// Clear this group
-        /// </summary>
         public void DisbandGroup()
         {
-            GroupMgr.RemoveGroup(this);
+            _ = GroupMgr.RemoveGroup(this);
+            Mission?.ExpireMission();
 
-            if (Mission != null)
-                Mission.ExpireMission();
-
-            LivingLeader = null;
-            m_groupMembers.Clear();
+            lock (_groupMembersLock)
+            {
+                LivingLeader = null;
+                _groupMembers.Clear();
+            }
         }
 
-        /// <summary>
-        /// Updates player indexes
-        /// </summary>
         private void UpdateGroupIndexes()
         {
-            m_groupMembers.FreezeWhile(l =>
+            lock (_groupMembersLock)
             {
-                for (byte ind = 0; ind < l.Count; ind++)
-                    l[ind].GroupIndex = ind;
-            });
+                for (int i = 0; i < _groupMembers.Count; i++)
+                    _groupMembers[i].GroupIndex = (byte) i;
+            }
         }
 
-        /// <summary>
-        /// Makes living current leader of the group
-        /// </summary>
-        /// <param name="living"></param>
-        /// <returns></returns>
         public bool MakeLeader(GameLiving living)
         {
-            bool allOk = m_groupMembers.FreezeWhile<bool>(l =>
+            GameLiving oldLeader;
+
+            lock (_groupMembersLock)
             {
-                if (!l.Contains(living))
+                if (LivingLeader == living || living == null || living.Group != this)
                     return false;
 
-                byte ind = living.GroupIndex;
-                var oldLeader = l[0];
-                l[ind] = oldLeader;
-                l[0] = living;
+                byte index = living.GroupIndex;
+
+                oldLeader = _groupMembers[0];
+                _groupMembers[index] = oldLeader;
+                _groupMembers[0] = living;
                 LivingLeader = living;
                 living.GroupIndex = 0;
-                oldLeader.GroupIndex = ind;
-
-                return true;
-            });
-            if (allOk)
-            {
-                // all went ok
-                UpdateGroupWindow();
-                SendMessageToGroupMembers(string.Format("{0} is the new group leader.", Leader.Name), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                oldLeader.GroupIndex = index;
             }
 
-			return allOk;
-		}
+            UpdateMembers([oldLeader, living], true, true);
+            UpdateGroupWindow();
+            SendMessageToGroupMembers($"{Leader.Name} is the new group leader.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+            return true;
+        }
 
-		/// <summary>
-		/// Makes living current leader of the group
-		/// </summary>
-		/// <param name="living"></param>
-		/// <returns></returns>
-		public bool SwitchPlayers(GameLiving source, GameLiving target)
-		{
-			bool allOk = m_groupMembers.FreezeWhile<bool>(l => {
-				if (!l.Contains(source))
-					return false;
-				if (!l.Contains(target))
-					return false;
-														
-				byte sourceInd = source.GroupIndex;
-				byte targetInd = target.GroupIndex;
-				
-				source.GroupIndex = targetInd;
-				l[targetInd] = source;
-				target.GroupIndex = sourceInd;
-				l[sourceInd] = target;
-
-                return true;
-            });
-            if (allOk)
+        public bool SwitchPlayers(GameLiving source, GameLiving target)
+        {
+            lock (_groupMembersLock)
             {
-                // all went ok
-                UpdateGroupWindow();
-                SendMessageToGroupMembers(string.Format("Switched group member {0} with {1}", source.Name, target.Name), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                if (source == target || !_groupMembers.Contains(source) || !_groupMembers.Contains(target))
+                    return false;
+
+                byte sourceIndex = source.GroupIndex;
+                byte targetIndex = target.GroupIndex;
+
+                source.GroupIndex = targetIndex;
+                _groupMembers[targetIndex] = source;
+                target.GroupIndex = sourceIndex;
+                _groupMembers[sourceIndex] = target;
             }
 
-            return allOk;
+            UpdateMembers([source, target], true, true);
+            UpdateGroupWindow();
+            SendMessageToGroupMembers($"Switched group member {source.Name} with {target.Name}", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+            return true;
         }
 
         public GamePlayer GetMemberByIndex(byte index)
         {
-            GamePlayer player = m_groupMembers.FreezeWhile<GamePlayer>(l =>
-            {
-                GamePlayer player = l[index] as GamePlayer;
+            GamePlayer player = null;
 
-                if (player == null)
-                    return null;
-
-                return player;
-            });
-            if (player != null)
+            lock (_groupMembersLock)
             {
-                // all went ok
-                UpdateGroupWindow();
+                player = _groupMembers.Count > index ? _groupMembers[index] as GamePlayer : null;
             }
 
-			return player;
-		}
+            return player;
+        }
 
-		#endregion
-
-		#region messaging
-
-		/// <summary>
-		/// Sends a message to all group members with an object from
-		/// </summary>
-		/// <param name="from">GameLiving source of the message</param>
-		/// <param name="msg">message string</param>
-		/// <param name="type">message type</param>
-		/// <param name="loc">message location</param>
-		public virtual void SendMessageToGroupMembers(GameLiving from, string msg, eChatType type, eChatLoc loc)
-		{
-			string message;
-			if (from != null)
-			{
-				message = string.Format("[Party] {0}: \"{1}\"", from.GetName(0, true), msg);
-			}
-			else
-			{
-				message = string.Format("[Party] {0}", msg);
-			}
-
+        public virtual void SendMessageToGroupMembers(GameLiving from, string msg, eChatType type, eChatLoc loc)
+        {
+            string message = from != null ? $"[Party] {from.GetName(0, true)}: \"{msg}\"" : $"[Party] {msg}";
             SendMessageToGroupMembers(message, type, loc);
         }
 
-		/// <summary>
-		/// Send Raw Message to all group members.
-		/// </summary>
-		/// <param name="msg">message string</param>
-		/// <param name="type">message type</param>
-		/// <param name="loc">message location</param>
-		public virtual void SendMessageToGroupMembers(string msg, eChatType type, eChatLoc loc)
-		{
-			foreach (GamePlayer player in GetPlayersInTheGroup())
-				player.Out.SendMessage(msg, type, loc);
-		}
+        public virtual void SendMessageToGroupMembers(string msg, eChatType type, eChatLoc loc)
+        {
+            foreach (GamePlayer player in GetPlayersInTheGroup())
+                player.Out.SendMessage(msg, type, loc);
+        }
 
-		#endregion
+        public void UpdateMember(GameLiving living, bool updateIcons, bool updateOtherRegions)
+        {
+            UpdateMembers([living], updateIcons, updateOtherRegions);
+        }
 
-		#region update group
+        public void UpdateMembers(ReadOnlySpan<GameLiving> livings, bool updateIcons, bool updateOtherRegions)
+        {
+            foreach (GameLiving living in livings)
+            {
+                if (living.Group != this)
+                    continue;
 
-		/// <summary>
-		/// Updates a group member to all other living in the group
-		/// </summary>
-		/// <param name="living">living to update</param>
-		/// <param name="updateIcons">Do icons need an update</param>
-		/// <param name="updateOtherRegions">Should updates be sent to players in other regions</param>
-		public void UpdateMember(GameLiving living, bool updateIcons, bool updateOtherRegions)
-		{
-			if (living.Group != this)
-				return;
-			
-			foreach (var player in GetPlayersInTheGroup())
-			{
-				if (updateOtherRegions || player.CurrentRegion == living.CurrentRegion)
-					player.Out.SendGroupMemberUpdate(updateIcons, true, living);
-			}
-		}
+                foreach (GamePlayer player in GetPlayersInTheGroup())
+                {
+                    if (updateOtherRegions || player.CurrentRegion == living.CurrentRegion)
+                        player.Out.SendGroupMemberUpdate(updateIcons, true, living);
+                }
+            }
+        }
 
-		/// <summary>
-		/// Updates all group members to one member
-		/// </summary>
-		/// <param name="player">The player that should receive updates</param>
-		/// <param name="updateIcons">Do icons need an update</param>
-		/// <param name="updateOtherRegions">Should updates be sent to players in other regions</param>
-		public void UpdateAllToMember(GamePlayer player, bool updateIcons, bool updateOtherRegions)
-		{
-			if (player.Group != this)
-				return;
-			
-			foreach (GameLiving living in m_groupMembers)
-			{
-				if (updateOtherRegions || living.CurrentRegion == player.CurrentRegion)
-				{
-					player.Out.SendGroupMemberUpdate(updateIcons, true, living);
-				}
-			}
-		}
+        public void UpdateAllToMember(GamePlayer player, bool updateIcons, bool updateOtherRegions)
+        {
+            if (player.Group != this)
+                return;
 
-		/// <summary>
-		/// Updates the group window to all players
-		/// </summary>
-		public void UpdateGroupWindow()
-		{
-			foreach (GamePlayer player in GetPlayersInTheGroup())
-				player.Out.SendGroupWindowUpdate();
-		}
+            foreach (GameLiving living in GetMembersInTheGroup())
+            {
+                if (updateOtherRegions || living.CurrentRegion == player.CurrentRegion)
+                    player.Out.SendGroupMemberUpdate(updateIcons, true, living);
+            }
+        }
 
-		#endregion
+        public void UpdateGroupWindow()
+        {
+            foreach (GamePlayer player in GetPlayersInTheGroup())
+                player.Out.SendGroupWindowUpdate();
+        }
 
-		#region utils
+        public string Name => $"{(Leader == null || MemberCount <= 0 ? "leaderless" : $"{Leader.Name}'s")} group (size: {MemberCount})";
 
-		public string Name => $"{(Leader == null || MemberCount <= 0 ? "leaderless" : $"{Leader.Name}'s")} group (size: {MemberCount})";
+        public object GameStaticItemOwnerComparand => null;
 
-		public object GameStaticItemOwnerComparand => null;
+        public TryPickUpResult TryAutoPickUpMoney(GameMoney money)
+        {
+            return TryPickUpMoney(Leader, money);
+        }
 
-		public bool TryAutoPickUpMoney(GameMoney money)
-		{
-			return TryPickUpMoney(Leader, money) is not TryPickUpResult.DOES_NOT_HANDLE;
-		}
+        public TryPickUpResult TryAutoPickUpItem(WorldInventoryItem inventoryItem)
+        {
+            // We don't care if players have auto loot enabled, or if they can see the item (the item isn't added to the world yet anyway), or who attacked last, etc.
+            return TryPickUpItem(Leader, inventoryItem);
+        }
 
-		public bool TryAutoPickUpItem(WorldInventoryItem inventoryItem)
-		{
-			// We don't care if players have auto loot enabled, or if they can see the item (the item isn't added to the world yet anyway), or who attacked last, etc.
-			return TryPickUpItem(Leader, inventoryItem) is not TryPickUpResult.DOES_NOT_HANDLE;
-		}
+        public TryPickUpResult TryPickUpMoney(IGamePlayer source, GameMoney money)
+        {
+            money.AssertLockAcquisition();
 
-		public TryPickUpResult TryPickUpMoney(IGamePlayer source, GameMoney money)
-		{
-			if (!AutosplitCoins)
-				return TryPickUpResult.DOES_NOT_HANDLE;
+            if (!AutosplitCoins)
+                return TryPickUpResult.DoesNotWant;
 
-			List<IGamePlayer> eligibleMembers = new(8);
+            List<IGamePlayer> eligibleMembers = new(8);
 
-			// Members must be in visible range.
-			foreach (IGamePlayer member in GetIPlayersInTheGroup())
-			{
-				// Ignores `GamePlayer.AutoSplitLoot`.
-				if (member.ObjectState is eObjectState.Active && member.CanSeeObject(money))
-					eligibleMembers.Add(member);
-			}
+            // Members must be in visible range.
+            foreach (IGamePlayer member in GetIPlayersInTheGroup())
+            {
+                // Ignores `GamePlayer.AutoSplitLoot`.
+                if (member.ObjectState is eObjectState.Active && member.CanSeeObject(money))
+                    eligibleMembers.Add(member);
+            }
 
-			if (eligibleMembers.Count == 0)
-			{
-				source.Out.SendMessage(LanguageMgr.GetTranslation(source.Client.Account.Language, "GamePlayer.PickupObject.NoOneGroupWantsMoney"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
-				return TryPickUpResult.FAILED;
-			}
+            if (eligibleMembers.Count == 0)
+            {
+                source.Out.SendMessage(LanguageMgr.GetTranslation(source.Client.Account.Language, "GamePlayer.PickupObject.NoOneGroupWantsMoney"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                return TryPickUpResult.Blocked;
+            }
 
-			SplitMoneyBetweenEligibleMembers(eligibleMembers, money);
-			money.RemoveFromWorld();
-			return TryPickUpResult.SUCCESS;
+            SplitMoneyBetweenEligibleMembers(eligibleMembers, money);
+            _ = money.RemoveFromWorld();
+            return TryPickUpResult.Success;
 
-			static void SplitMoneyBetweenEligibleMembers(List<IGamePlayer> eligibleMembers, GameMoney money)
-			{
-				long splitMoney = (long) Math.Ceiling((double) money.TotalCopper / eligibleMembers.Count);
-				long moneyToPlayer;
+            static void SplitMoneyBetweenEligibleMembers(List<IGamePlayer> eligibleMembers, GameMoney money)
+            {
+                long splitMoney = (long) Math.Ceiling((double) money.Value / eligibleMembers.Count);
+                long moneyToPlayer;
 
-				foreach (IGamePlayer eligibleMember in eligibleMembers)
-				{
-					moneyToPlayer = eligibleMember.ApplyGuildDues(splitMoney);
+                foreach (IGamePlayer eligibleMember in eligibleMembers)
+                {
+                    moneyToPlayer = eligibleMember.ApplyGuildDues(splitMoney);
 
-					if (moneyToPlayer > 0)
-					{
-						if (eligibleMember is GamePlayer player)
-						{
-							player.AddMoney(moneyToPlayer, LanguageMgr.GetTranslation(eligibleMember.Client.Account.Language, eligibleMembers.Count > 1 ? "GamePlayer.PickupObject.YourLootShare" : "GamePlayer.PickupObject.YouPickUp", Money.GetString(splitMoney)));
-							InventoryLogging.LogInventoryAction("(ground)", player, eInventoryActionType.Loot, splitMoney);
-						}
-						else
-							eligibleMember.AddMoney(moneyToPlayer);	
-					}
-				}
-			}
-		}
+                    if (moneyToPlayer > 0)
+                    {
+                        eligibleMember.AddMoney(moneyToPlayer, LanguageMgr.GetTranslation(eligibleMember.Client.Account.Language, eligibleMembers.Count > 1 ? "GamePlayer.PickupObject.YourLootShare" : "GamePlayer.PickupObject.YouPickUp", Money.GetString(splitMoney)));
+                        InventoryLogging.LogInventoryAction("(ground)", (GameObject)eligibleMember, eInventoryActionType.Loot, splitMoney);
+                    }
+                }
+            }
+        }
 
-		public TryPickUpResult TryPickUpItem(IGamePlayer source, WorldInventoryItem item)
-		{
-			// A group is only able to pick up items if auto split is enabled. Otherwise, solo logic should apply.
-			// Group members are filtered to exclude far away players or players with auto split solo enabled.
-			// A player with enough room in his inventory is chosen randomly.
-			// If there is none, the item should simply stays on the ground.
-			if (!AutosplitLoot)
-				return TryPickUpResult.DOES_NOT_HANDLE;
+        public TryPickUpResult TryPickUpItem(IGamePlayer source, WorldInventoryItem item)
+        {
+            item.AssertLockAcquisition();
 
-			List<IGamePlayer> eligibleMembers = new(8);
+            // A group is only able to pick up items if auto split is enabled. Otherwise, solo logic should apply.
+            // Group members are filtered to exclude far away players or players with auto split solo enabled.
+            // A player with enough room in his inventory is chosen randomly.
+            // If there is none, the item should simply stays on the ground.
+            // Items discarded by players can only be picked up by those same players.
+            if (!AutosplitLoot || item.IsPlayerDiscarded)
+                return TryPickUpResult.DoesNotWant;
 
-			// Members must be in visible range.
-			foreach (IGamePlayer member in GetIPlayersInTheGroup())
-			{
-				if (member.ObjectState is eObjectState.Active && member.AutoSplitLoot && !(member is MimicNPC && MimicConfig.PLAYER_LOOTMASTER) && member.CanSeeObject(item))
-					eligibleMembers.Add(member);
-			}
+            List<IGamePlayer> eligibleMembers = new(8);
 
-			if (eligibleMembers.Count == 0)
-			{
-				source.Out.SendMessage(LanguageMgr.GetTranslation(source.Client.Account.Language, "GamePlayer.PickupObject.NoOneWantsThis", item.Name), eChatType.CT_System, eChatLoc.CL_SystemWindow);
-				return TryPickUpResult.FAILED;
-			}
+            // Members must be in visible range.
+            foreach (IGamePlayer member in GetIPlayersInTheGroup())
+            {
+                if (member.ObjectState is eObjectState.Active && member.AutoSplitLoot && member.CanSeeObject(item))
+                    eligibleMembers.Add(member);
+            }
 
-			if (!GiveItemToRandomEligibleMember(eligibleMembers, item.Item, out IGamePlayer eligibleMember))
-				return TryPickUpResult.FAILED;
+            if (eligibleMembers.Count == 0)
+            {
+                source.Out.SendMessage(LanguageMgr.GetTranslation(source.Client.Account.Language, "GamePlayer.PickupObject.NoOneWantsThis", item.Name), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                return TryPickUpResult.Blocked;
+            }
 
-			Message.SystemToOthers((GameObject)source, LanguageMgr.GetTranslation(source.Client.Account.Language, "GamePlayer.PickupObject.GroupMemberPicksUp", Name, item.Item.GetName(1, false)), eChatType.CT_System);
-			SendMessageToGroupMembers(LanguageMgr.GetTranslation(source.Client.Account.Language, "GamePlayer.PickupObject.Autosplit", item.Item.GetName(1, true), eligibleMember.Name), eChatType.CT_System, eChatLoc.CL_SystemWindow);
-			
-			if (eligibleMember is GamePlayer player)
-				InventoryLogging.LogInventoryAction("(ground)", player, eInventoryActionType.Loot, item.Item.Template, item.Item.IsStackable ? item.Item.Count : 1);
+            if (!GiveItemToRandomEligibleMember(eligibleMembers, item.Item, out IGamePlayer eligibleMember))
+                return TryPickUpResult.Blocked;
 
-			item.RemoveFromWorld();
+            Message.SystemToOthers((GameObject)source, LanguageMgr.GetTranslation(source.Client.Account.Language, "GamePlayer.PickupObject.GroupMemberPicksUp", Name, item.Item.GetName(1, false)), eChatType.CT_System);
+            SendMessageToGroupMembers(LanguageMgr.GetTranslation(source.Client.Account.Language, "GamePlayer.PickupObject.Autosplit", item.Item.GetName(1, true), eligibleMember.Name), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+            InventoryLogging.LogInventoryAction("(ground)", (GameObject)eligibleMember, eInventoryActionType.Loot, item.Item.Template, item.Item.IsStackable ? item.Item.Count : 1);
+            _ = item.RemoveFromWorld();
+            return TryPickUpResult.Success;
 
-			return TryPickUpResult.SUCCESS;
+            static bool GiveItemToRandomEligibleMember(List<IGamePlayer> eligibleMembers, DbInventoryItem item, out IGamePlayer eligibleMember)
+            {
+                int randomIndex;
+                int lastIndex;
 
-			static bool GiveItemToRandomEligibleMember(List<IGamePlayer> eligibleMembers, DbInventoryItem item, out IGamePlayer eligibleMember)
-			{
-				int randomIndex;
-				int lastIndex;
+                do
+                {
+                    lastIndex = eligibleMembers.Count - 1;
+                    randomIndex = Util.Random(0, lastIndex);
+                    eligibleMember = eligibleMembers[randomIndex];
 
-				do
-				{
-					lastIndex = eligibleMembers.Count - 1;
-					randomIndex = Util.Random(0, lastIndex);
-					eligibleMember = eligibleMembers[randomIndex];
+                    if (GiveItem(eligibleMember, item))
+                        return true;
 
-					if (GiveItem(eligibleMember, item))
-						return true;
+                    eligibleMember.Out.SendMessage(LanguageMgr.GetTranslation(eligibleMember.Client.Account.Language, "GamePlayer.PickupObject.BackpackFull"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    eligibleMembers.SwapRemoveAt(randomIndex);
+                } while (eligibleMembers.Count > 0);
 
-					eligibleMember.Out.SendMessage(LanguageMgr.GetTranslation(eligibleMember.Client.Account.Language, "GamePlayer.PickupObject.BackpackFull"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
-					eligibleMembers.SwapRemoveAt(randomIndex);
-				} while (eligibleMembers.Count > 0);
+                return false;
 
-				return false;
+                static bool GiveItem(IGamePlayer player, DbInventoryItem item)
+                {
+                    return item.IsStackable ?
+                        player.Inventory.AddTemplate(item, item.Count, eInventorySlot.FirstBackpack, eInventorySlot.LastBackpack) :
+                        player.Inventory.AddItem(eInventorySlot.FirstEmptyBackpack, item);
+                }
+            }
+        }
 
-				static bool GiveItem(IGamePlayer player, DbInventoryItem item)
-				{
-					if (item.IsStackable)
-						return player.Inventory.AddTemplate(item, item.Count, eInventorySlot.FirstBackpack, eInventorySlot.LastBackpack);
+        public bool IsGroupInCombat()
+        {
+            lock (_groupMembers)
+            {
+                return _groupMembers.Any(static m => m.InCombat);
+            }
+        }
 
-					return player.Inventory.AddItem(eInventorySlot.FirstEmptyBackpack, item);
-				}
-			}
-		}
+        public bool IsInTheGroup(GameLiving living)
+        {
+            lock (_groupMembers)
+            {
+                return _groupMembers.Contains(living);
+            }
+        }
 
-		/// <summary>
-		/// If at least one player is in combat group is in combat
-		/// </summary>
-		/// <returns>true if group in combat</returns>
-		public bool IsGroupInCombat()
-		{
-			return m_groupMembers.Any(m => m.InCombat);
-		}
+        public string GroupMemberString(IGamePlayer player)
+        {
+            StringBuilder text = new(64);
+            BattleGroup battlegroup = player.TempProperties.GetProperty<BattleGroup>(BattleGroup.BATTLEGROUP_PROPERTY);
 
-		/// <summary>
-		/// Checks if a living is inside the group
-		/// </summary>
-		/// <param name="living">GameLiving to check</param>
-		/// <returns>true if the player is in the group</returns>
-		public virtual bool IsInTheGroup(GameLiving living)
-		{
-			return m_groupMembers.Contains(living);
-		}
+            foreach (IGamePlayer groupMember in GetIPlayersInTheGroup())
+            {
+                if (battlegroup.IsInTheBattleGroup(groupMember))
+                {
+                    if (battlegroup.Members.Contains(groupMember))
+                        _ = text.Append("<Leader> ");
 
-		/// <summary>
-		///  This is NOT to be used outside of Battelgroup code.
-		/// </summary>
-		/// <param name="player">Input from battlegroups</param>
-		/// <returns>A string of group members</returns>
-		public string GroupMemberString(GamePlayer player)
-		{
-			lock (_groupMembersLock)
-			{
-				StringBuilder text = new StringBuilder(64); //create the string builder
-				text.Length = 0;
-				BattleGroup mybattlegroup = player.TempProperties.GetProperty<BattleGroup>(BattleGroup.BATTLEGROUP_PROPERTY);
-				foreach (GamePlayer plr in m_groupMembers)
-				{
-					if (mybattlegroup.IsInTheBattleGroup(plr))
-					{
-						if ((bool)mybattlegroup.Members[plr] == true)
-						{
-							text.Append("<Leader> ");
-						}
-						text.Append("(I)");
-					}
-					text.Append(plr.Name + " ");
-				}
-				return text.ToString();
-			}
-		}
+                    _ = text.Append("(I)");
+                }
 
-		/// <summary>
-		///  This is NOT to be used outside of Battelgroup code.
-		/// </summary>
-		/// <param name="player">Input from battlegroups</param>
-		/// <returns>A string of group members</returns>
-		public string GroupMemberClassString(GamePlayer player)
-		{
-			lock (_groupMembersLock)
-			{
-				StringBuilder text = new StringBuilder(64); //create the string builder
-				text.Length = 0;
-				BattleGroup mybattlegroup = player.TempProperties.GetProperty<BattleGroup>(BattleGroup.BATTLEGROUP_PROPERTY);
-				foreach (GamePlayer plr in m_groupMembers)
-				{
-					text.Append($"{plr.Name} ({plr.CharacterClass.Name}) ");
-				}
-				return text.ToString();
-			}
-		}
+                _ = text.Append($"{groupMember.Name} ");
+            }
 
-		#endregion
-	}
+            return text.ToString();
+        }
+
+        public string GroupMemberClassString()
+        {
+            StringBuilder text = new(64);
+
+            foreach (IGamePlayer groupMember in GetIPlayersInTheGroup())
+                _ = text.Append($"{groupMember.Name} ({groupMember.CharacterClass.Name}) ");
+
+            return text.ToString();
+        }
+    }
 }

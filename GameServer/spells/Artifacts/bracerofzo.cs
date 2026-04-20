@@ -29,7 +29,7 @@ namespace DOL.GS.Spells
 			{
 				String errorMessage = String.Format("NPC template {0} is missing, spell ID = {1}", Spell.LifeDrainReturn, Spell.ID);
 				if (log.IsWarnEnabled) log.Warn(errorMessage);
-				if (player.Client.Account.PrivLevel > 1) MessageToCaster(errorMessage, eChatType.CT_Skill);
+				if (player.Client.Account.PrivLevel > 1) MessageToCaster(errorMessage, eChatType.CT_Items);
 				return;
 			}
 
@@ -48,7 +48,7 @@ namespace DOL.GS.Spells
                 deamons[i].Level = 36;
                 deamons[i].Flags |= GameNPC.eFlags.FLYING;
                 deamons[i].AddToWorld();
-				(deamons[i].Brain as IOldAggressiveBrain).AddToAggroList(Caster.TargetObject as GameLiving, 1);
+				(deamons[i].Brain as IOldAggressiveBrain).AddToAggroList(Caster.TargetObject as GameLiving);
 				(deamons[i].Brain as ProcPetBrain).Think();
             }			
 		}

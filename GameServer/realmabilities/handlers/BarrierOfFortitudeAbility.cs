@@ -21,15 +21,15 @@ namespace DOL.GS.RealmAbilities
 				return;
 
 			GamePlayer player = living as GamePlayer;
-			IEnumerable<GamePlayer> playersInGroup;
+			List<GamePlayer> playersInGroup = GameLoop.GetListForTick<GamePlayer>();;
 			bool success;
 
 			SendCastMessage(player);
 
 			if (player.Group != null)
-				playersInGroup = player.Group.GetPlayersInTheGroup().Where(x => x.IsAlive && player.IsWithinRadius(player, m_range));
+				playersInGroup.AddRange(player.Group.GetPlayersInTheGroup().Where(x => x.IsAlive && player.IsWithinRadius(player, m_range)));
 			else
-				playersInGroup = new List<GamePlayer>() { player };
+				playersInGroup.Add(player);
 
 			foreach (GamePlayer playerInGroup in playersInGroup)
 			{
@@ -43,7 +43,7 @@ namespace DOL.GS.RealmAbilities
 				SendCasterSpellEffect(playerInGroup, 10535, success);
 				
 				if (success)
-					new BunkerOfFaithECSEffect(new ECSGameEffectInitParams(playerInGroup, m_duration, GetAbsorbAmount(), CreateSpell(player)));
+					ECSGameEffectFactory.Create(new(playerInGroup, m_duration, 1, CreateSpell(player)), static (in i) => new BunkerOfFaithECSEffect(i));
 			}
 
 			DisableSkill(player);
@@ -57,10 +57,10 @@ namespace DOL.GS.RealmAbilities
 			m_dbspell.ClientEffect = 4242;
 			m_dbspell.Damage = 0;
 			m_dbspell.DamageType = 0;
-			m_dbspell.Target = "Group";
+			m_dbspell.Target = eSpellTarget.GROUP.ToString();
 			m_dbspell.Radius = 0;
 			m_dbspell.Type = eSpellType.ArmorAbsorptionBuff.ToString();
-			m_dbspell.Value = 50;
+			m_dbspell.Value = GetAbsorbAmount();
 			m_dbspell.Duration = 30;
 			m_dbspell.Pulse = 0;
 			m_dbspell.PulsePower = 0;

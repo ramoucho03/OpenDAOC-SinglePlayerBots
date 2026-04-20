@@ -1,12 +1,13 @@
 ﻿using DOL.Database;
 using DOL.GS.PacketHandler;
+using DOL.GS.Styles;
 using DOL.Language;
 
 namespace DOL.GS
 {
     public class PlayerAttackAction : AttackAction
     {
-        private GamePlayer _playerOwner;
+        private readonly GamePlayer _playerOwner;
 
         public PlayerAttackAction(GamePlayer owner) : base(owner)
         {
@@ -31,6 +32,18 @@ namespace DOL.GS
         protected override bool PrepareMeleeAttack()
         {
             _combatStyle = StyleComponent.GetStyleToUse();
+
+            // Check if we still have enough endurance for the style and update `_weapon` if needed.
+            if (_combatStyle != null)
+            {
+                DbInventoryItem styleWeapon = (eObjectType) _combatStyle.WeaponTypeRequirement is eObjectType.Shield ? _leftWeapon : _weapon;
+
+                if (styleWeapon != null && !StyleProcessor.CheckEnduranceCost(_playerOwner, styleWeapon, _combatStyle))
+                    _combatStyle = null;
+                else
+                    _weapon = styleWeapon;
+            }
+
             return base.PrepareMeleeAttack();
         }
 
@@ -62,7 +75,7 @@ namespace DOL.GS
             if (base.FinalizeMeleeAttack())
             {
                 if (_playerOwner.UseDetailedCombatLog)
-                    _playerOwner.Out.SendMessage($"Attack Speed: {_interval / 1000.0}s", eChatType.CT_DamageAdd, eChatLoc.CL_SystemWindow);
+                    _playerOwner.Out.SendMessage($"Attack Speed: {_interval / 1000.0}s", eChatType.CT_ResistsChanged, eChatLoc.CL_SystemWindow);
 
                 StyleComponent.NextCombatStyle = null;
                 StyleComponent.NextCombatBackupStyle = null;
@@ -93,8 +106,8 @@ namespace DOL.GS
 
             if (stopAttack)
             {
+                _playerOwner.rangeAttackComponent.RangedAttackState = eRangedAttackState.None;
                 AttackComponent.StopAttack();
-                CleanUp();
                 return false;
             }
 

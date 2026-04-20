@@ -1,34 +1,34 @@
 using System.Reflection;
+using System.Threading.Tasks;
 using DOL.Database;
+using DOL.Logging;
 
 namespace DOL.GS.PacketHandler.Client.v168
 {
     [PacketHandlerAttribute(PacketHandlerType.TCP, eClientPackets.WorldInitRequest, "Handles world init replies", eClientStatus.LoggedIn)]
-    public class WorldInitRequestHandler : IPacketHandler
+    public class WorldInitRequestHandler : PacketHandler
     {
-        /// <summary>
-        /// Defines a logger for this class.
-        /// </summary>
-        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
-        public void HandlePacket(GameClient client, GSPacketIn packet)
+        protected async override void HandlePacketInternal(GameClient client, GSPacketIn packet)
         {
-            // Instantiate 'GamePlayer'. Previous versions are handled in 'CharacterSelectRequestHandler'.
-            if (client.Version >= GameClient.eClientVersion.Version1124)
-                HandlePacket1124(client, packet);
-
-            GamePlayer player = client.Player;
-
-            if (player == null)
-                return;
-
             if (client.ClientState is not GameClient.eClientState.CharScreen and not GameClient.eClientState.Playing)
                 return;
 
-            if (client.Player.ObjectState is not GameObject.eObjectState.Inactive)
+            // Only load the player if we're coming from the char screen. This will also update the internal cache of the player's skills.
+            bool loadPlayer = client.Account.Characters != null && client.ClientState is GameClient.eClientState.CharScreen;
+
+            if (loadPlayer)
+                await HandlePacketInternal(client, packet);
+
+            GamePlayer player = client.Player;
+
+            if (player == null || client.Player.ObjectState is not GameObject.eObjectState.Inactive)
                 return;
 
-            //check emblems at world load before any updates
+            client.ClientState = GameClient.eClientState.WorldEnter;
+
+            // Check emblems at world load before any updates.
             if (player.Inventory != null)
             {
                 lock (player.Inventory.Lock)
@@ -56,8 +56,11 @@ namespace DOL.GS.PacketHandler.Client.v168
                 }
             }
 
-            bool wasOnCharScreen = player.Client.ClientState is GameClient.eClientState.CharScreen;
-            player.Client.ClientState = GameClient.eClientState.WorldEnter;
+            if (loadPlayer)
+            {
+                player.SwitchQuiver((eActiveQuiverSlot) (player.DBCharacter.ActiveWeaponSlot & 0xF0), false);
+                player.SwitchWeapon((eActiveWeaponSlot) (player.DBCharacter.ActiveWeaponSlot & 0x0F));
+            }
 
             // 0x88 - Position
             // 0x6D - FriendList
@@ -93,13 +96,9 @@ namespace DOL.GS.PacketHandler.Client.v168
 
             if (!player.AddToWorld())
             {
-                log.ErrorFormat("Failed to add player to the region! {0}", player.ToString());
-
                 if (player.Client != null)
                 {
                     player.Client.Out.SendPlayerQuit(true);
-                    player.Client.Player.SaveIntoDatabase();
-                    player.Client.Player.Quit(true);
                     player.Client.Disconnect();
                 }
 
@@ -117,10 +116,10 @@ namespace DOL.GS.PacketHandler.Client.v168
             //TODO 0xDD - Conc Buffs // 0 0 0 0
             //Now find the friends that are online
             player.Out.SendUpdateMaxSpeed(); // Speed after conc buffs
-            player.Out.SendStatusUpdate();
+            // player.Out.SendStatusUpdate(); // Doesn't seem work.
             player.Out.SendInventoryItemsUpdate(eInventoryWindowType.Equipment, player.Inventory.EquippedItems);
             player.Out.SendInventoryItemsUpdate(eInventoryWindowType.Inventory, player.Inventory.GetItemRange(eInventorySlot.FirstBackpack, eInventorySlot.LastBagHorse));
-            player.Out.SendUpdatePlayerSkills(wasOnCharScreen);   //TODO Insert 0xBE - 08 Various in SendUpdatePlayerSkills() before send spells
+            player.Out.SendUpdatePlayerSkills(loadPlayer);   //TODO Insert 0xBE - 08 Various in SendUpdatePlayerSkills() before send spells
             player.Out.SendUpdateCraftingSkills(); // ^
             player.Out.SendUpdatePlayer();
             player.Out.SendUpdateMoney();
@@ -130,7 +129,7 @@ namespace DOL.GS.PacketHandler.Client.v168
             player.Out.SendUpdateIcons(null, ref effectsCount);
             player.Out.SendUpdateWeaponAndArmorStats();
             player.Out.SendQuestListUpdate();
-            player.Out.SendStatusUpdate();
+            // player.Out.SendStatusUpdate(); // Doesn't seem to work and is redundant.
             player.Out.SendUpdatePoints();
             player.Out.SendConcentrationList();
             // Visual 0x4C - Color Name style (0 0 5 0 0 0 0 0) for RvR or (0 0 5 1 0 0 0 0) for PvP
@@ -144,45 +143,37 @@ namespace DOL.GS.PacketHandler.Client.v168
                                                 //GSMessages.SendDebugMode(client,client.Account.PrivLevel>1);
             player.UpdateEncumbrance(); // Update encumbrance on init.
 
-            // Don't unstealth GMs.
-            if (player.Client.Account.PrivLevel > 1)
-                player.GMStealthed = player.IsStealthed;
-            else
-                player.Stealth(false);
+            // Automatically stealth GM/Admin players.
+            player.Stealth((ePrivLevel) player.Client.Account.PrivLevel >= ePrivLevel.GM);
 
             player.Out.SendSetControlledHorse(player);
 
             if (log.IsDebugEnabled)
                 log.DebugFormat($"Client {player.Client.Account.Name}({player.Name} PID:{player.Client.SessionID} OID:{player.ObjectID}) entering Region {player.CurrentRegion.Description}(ID:{player.CurrentRegionID})");
 
-            static void HandlePacket1124(GameClient client, GSPacketIn packet)
+            static async Task HandlePacketInternal(GameClient client, GSPacketIn packet)
             {
-                byte charIndex = (byte)packet.ReadByte(); // character account location
+                byte charIndex = (byte) packet.ReadByte();
+                bool charFound = false;
+                string selectedChar = string.Empty;
+                int realmOffset = charIndex - (client.Account.Realm * 10 - 10);
+                int charSlot = client.Account.Realm * 100 + realmOffset;
 
-                // some funkiness going on below here. Could use some safeguards to ensure a character is loaded correctly
-                if (client.Account.Characters != null && client.ClientState is GameClient.eClientState.CharScreen)
+                for (int i = 0; i < client.Account.Characters.Length; i++)
                 {
-                    bool charFound = false;
-                    string selectedChar = string.Empty;
-                    int realmOffset = charIndex - (client.Account.Realm * 10 - 10);
-                    int charSlot = client.Account.Realm * 100 + realmOffset;
-
-                    for (int i = 0; i < client.Account.Characters.Length; i++)
+                    if (client.Account.Characters[i] != null && client.Account.Characters[i].AccountSlot == charSlot)
                     {
-                        if (client.Account.Characters[i] != null && client.Account.Characters[i].AccountSlot == charSlot)
-                        {
-                            charFound = true;
-                            selectedChar = client.Account.Characters[i].Name;
-                            client.LoadPlayer(i);
-                            break;
-                        }
+                        charFound = true;
+                        selectedChar = client.Account.Characters[i].Name;
+                        await client.LoadPlayer(i);
+                        break;
                     }
-
-                    if (!charFound)
-                        client.ActiveCharIndex = -1;
-                    else
-                        AuditMgr.AddAuditEntry(client, AuditType.Character, AuditSubtype.CharacterLogin, "", selectedChar);
                 }
+
+                if (!charFound)
+                    client.ActiveCharIndex = -1;
+                else
+                    AuditMgr.AddAuditEntry(client, AuditType.Character, AuditSubtype.CharacterLogin, "", selectedChar);
             }
         }
     }

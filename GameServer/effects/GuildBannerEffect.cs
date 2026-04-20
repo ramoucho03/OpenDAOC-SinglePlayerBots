@@ -1,23 +1,3 @@
-/*
- * DAWN OF LIGHT - The first free open source DAoC server emulator
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
- *
- */
-
-using System;
 using System.Collections.Generic;
 using DOL.Language;
 
@@ -195,24 +175,24 @@ namespace DOL.GS.Effects
 		{
 			int effValue = (int)(Effectiveness*10);
 			base.Start(m_owner);
-			m_owner.OtherBonus[(int)eProperty.Resist_Body] += effValue;
-			m_owner.OtherBonus[(int)eProperty.Resist_Cold] += effValue;
-			m_owner.OtherBonus[(int)eProperty.Resist_Energy] += effValue;
-			m_owner.OtherBonus[(int)eProperty.Resist_Heat] += effValue;
-			m_owner.OtherBonus[(int)eProperty.Resist_Matter] += effValue;
-			m_owner.OtherBonus[(int)eProperty.Resist_Spirit] += effValue;
+			m_owner.OtherBonus[eProperty.Resist_Body] += effValue;
+			m_owner.OtherBonus[eProperty.Resist_Cold] += effValue;
+			m_owner.OtherBonus[eProperty.Resist_Energy] += effValue;
+			m_owner.OtherBonus[eProperty.Resist_Heat] += effValue;
+			m_owner.OtherBonus[eProperty.Resist_Matter] += effValue;
+			m_owner.OtherBonus[eProperty.Resist_Spirit] += effValue;
 			SendUpdates(m_owner);
 		}
 
 		public override void Stop()
 		{
 			int effValue = (int)(Effectiveness * 10);
-			m_owner.OtherBonus[(int)eProperty.Resist_Body] -= effValue;
-			m_owner.OtherBonus[(int)eProperty.Resist_Cold] -= effValue;
-			m_owner.OtherBonus[(int)eProperty.Resist_Energy] -= effValue;
-			m_owner.OtherBonus[(int)eProperty.Resist_Heat] -= effValue;
-			m_owner.OtherBonus[(int)eProperty.Resist_Matter] -= effValue;
-			m_owner.OtherBonus[(int)eProperty.Resist_Spirit] -= effValue;
+			m_owner.OtherBonus[eProperty.Resist_Body] -= effValue;
+			m_owner.OtherBonus[eProperty.Resist_Cold] -= effValue;
+			m_owner.OtherBonus[eProperty.Resist_Energy] -= effValue;
+			m_owner.OtherBonus[eProperty.Resist_Heat] -= effValue;
+			m_owner.OtherBonus[eProperty.Resist_Matter] -= effValue;
+			m_owner.OtherBonus[eProperty.Resist_Spirit] -= effValue;
 			base.Stop();
 			SendUpdates(m_owner);
 		}
@@ -260,18 +240,18 @@ namespace DOL.GS.Effects
 		{
 			base.Start(target);
 			int effValue = (int)(Effectiveness * 6);			
-			m_owner.OtherBonus[(int)eProperty.Resist_Crush] += effValue;
-			m_owner.OtherBonus[(int)eProperty.Resist_Slash] += effValue;
-			m_owner.OtherBonus[(int)eProperty.Resist_Thrust] += effValue;
+			m_owner.OtherBonus[eProperty.Resist_Crush] += effValue;
+			m_owner.OtherBonus[eProperty.Resist_Slash] += effValue;
+			m_owner.OtherBonus[eProperty.Resist_Thrust] += effValue;
 			SendUpdates(m_owner);
 		}
 
 		public override void Stop()
 		{
 			int effValue = (int)(Effectiveness * 6);
-			m_owner.OtherBonus[(int)eProperty.Resist_Crush] -= effValue;
-			m_owner.OtherBonus[(int)eProperty.Resist_Slash] -= effValue;
-			m_owner.OtherBonus[(int)eProperty.Resist_Thrust] -= effValue;
+			m_owner.OtherBonus[eProperty.Resist_Crush] -= effValue;
+			m_owner.OtherBonus[eProperty.Resist_Slash] -= effValue;
+			m_owner.OtherBonus[eProperty.Resist_Thrust] -= effValue;
 			base.Stop();
 			SendUpdates(m_owner);
 		}
@@ -319,18 +299,18 @@ namespace DOL.GS.Effects
 		{
 			base.Start(target);
 			int effValue = (int)(Effectiveness * 6);
-			m_owner.BaseBuffBonusCategory[(int)eProperty.MesmerizeDurationReduction] += effValue;
-			m_owner.BaseBuffBonusCategory[(int)eProperty.SpeedDecreaseDurationReduction] += effValue;
-			m_owner.BaseBuffBonusCategory[(int)eProperty.StunDurationReduction] += effValue;
+			m_owner.BaseBuffBonusCategory[eProperty.MesmerizeDurationReduction] += effValue;
+			m_owner.BaseBuffBonusCategory[eProperty.SpeedDecreaseDurationReduction] += effValue;
+			m_owner.BaseBuffBonusCategory[eProperty.StunDurationReduction] += effValue;
 			SendUpdates(m_owner);
 		}
 
 		public override void Stop()
 		{
 			int effValue = (int)(Effectiveness * 6);
-			m_owner.BaseBuffBonusCategory[(int)eProperty.MesmerizeDurationReduction] -= effValue;
-			m_owner.BaseBuffBonusCategory[(int)eProperty.SpeedDecreaseDurationReduction] -= effValue;
-			m_owner.BaseBuffBonusCategory[(int)eProperty.StunDurationReduction] -= effValue;			
+			m_owner.BaseBuffBonusCategory[eProperty.MesmerizeDurationReduction] -= effValue;
+			m_owner.BaseBuffBonusCategory[eProperty.SpeedDecreaseDurationReduction] -= effValue;
+			m_owner.BaseBuffBonusCategory[eProperty.StunDurationReduction] -= effValue;			
 			base.Stop();
 			SendUpdates(m_owner);
 		}

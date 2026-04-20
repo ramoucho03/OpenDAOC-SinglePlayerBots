@@ -6,7 +6,7 @@
     </PropertyGroup>
     <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
     <PropertyGroup>
-        <TargetFramework>net9.0</TargetFramework>
+        <TargetFramework>net10.0</TargetFramework>
         <OutputType>Exe</OutputType>
         <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
         <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
@@ -30,8 +30,8 @@
     </PropertyGroup>
     <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
         <DefineConstants>DEBUG;TRACE</DefineConstants>
-        <Optimize>False</Optimize>
-        <DebugType>Full</DebugType>
+        <Optimize>false</Optimize>
+        <DebugType>full</DebugType>
         <DebugSymbols>true</DebugSymbols>
         <RemoveIntegerChecks>false</RemoveIntegerChecks>
         <ErrorReport>prompt</ErrorReport>
@@ -39,15 +39,13 @@
     <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
         <DefineConstants>TRACE</DefineConstants>
         <Optimize>true</Optimize>
-        <DebugType>None</DebugType>
-        <DebugSymbols>false</DebugSymbols>
+        <DebugType>full</DebugType>
+        <DebugSymbols>true</DebugSymbols>
         <RemoveIntegerChecks>false</RemoveIntegerChecks>
     </PropertyGroup>
     <ItemGroup>
-        <PackageReference Include="log4net" Version="3.3.0" />
-        <PackageReference Include="Microsoft.AspNetCore.SpaServices.Extensions" Version="9.0.1" />
-        <PackageReference Include="OpenTelemetry.Api" Version="1.15.2" />
-        <PackageReference Include="System.ServiceProcess.ServiceController" Version="9.0.1" />
+        <PackageReference Include="Microsoft.AspNetCore.SpaServices.Extensions" Version="10.0.3" />
+        <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.3" />
         <ProjectReference Include="..\GameServer\GameServer.csproj" Name="GameServer" />
         <Content Include=".\config\serverconfig.xml">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>

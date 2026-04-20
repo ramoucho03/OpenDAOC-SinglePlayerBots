@@ -1,50 +1,72 @@
 using System;
-using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
-using System.Threading.Tasks;
+using DOL.Logging;
+using DOL.Timing;
 using ECS.Debug;
 
 namespace DOL.GS
 {
-    public class ReaperService
+    public sealed class ReaperService : GameServiceBase
     {
-        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
-        private const string SERVICE_NAME = nameof(ReaperService);
-        private static List<LivingBeingKilled> _list;
-        private static int _entityCount;
+        private static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
-        public static void Tick()
+        private ServiceObjectView<LivingBeingKilled> _view;
+
+        public static ReaperService Instance { get; }
+
+        static ReaperService()
         {
-            GameLoop.CurrentServiceTick = SERVICE_NAME;
-            Diagnostics.StartPerfCounter(SERVICE_NAME);
-            _list = EntityManager.UpdateAndGetAll<LivingBeingKilled>(EntityManager.EntityType.LivingBeingKilled, out int lastValidIndex);
-            Parallel.For(0, lastValidIndex + 1, TickInternal);
-
-            if (Diagnostics.CheckEntityCounts)
-                Diagnostics.PrintEntityCount(SERVICE_NAME, ref _entityCount, _list.Count);
-
-            Diagnostics.StopPerfCounter(SERVICE_NAME);
+            Instance = new();
         }
 
-        private static void TickInternal(int index)
+        public override void Tick()
         {
-            LivingBeingKilled livingBeingKilled = _list[index];
-
-            if (livingBeingKilled?.EntityManagerId.IsSet != true)
-                return;
-
-            if (Diagnostics.CheckEntityCounts)
-                Interlocked.Increment(ref _entityCount);
+            ProcessPostedActionsParallel();
 
             try
             {
-                livingBeingKilled.Killed.ProcessDeath(livingBeingKilled.Killer);
-                EntityManager.Remove(livingBeingKilled);
+                _view = ServiceObjectStore.UpdateAndGetView<LivingBeingKilled>(ServiceObjectType.LivingBeingKilled);
             }
             catch (Exception e)
             {
-                ServiceUtils.HandleServiceException(e, SERVICE_NAME, livingBeingKilled, livingBeingKilled.Killed);
+                if (log.IsErrorEnabled)
+                    log.Error($"{nameof(ServiceObjectStore.UpdateAndGetView)} failed. Skipping this tick.", e);
+
+                return;
+            }
+
+            _view.ExecuteForEach(TickInternal);
+
+            if (Diagnostics.CheckServiceObjectCount)
+                Diagnostics.PrintServiceObjectCount(ServiceName, ref EntityCount, _view.TotalValidCount);
+        }
+
+        private static void TickInternal(LivingBeingKilled livingBeingKilled)
+        {
+            try
+            {
+                if (Diagnostics.CheckServiceObjectCount)
+                    Interlocked.Increment(ref Instance.EntityCount);
+
+                long startTick = MonotonicTime.NowMs;
+                livingBeingKilled.Killed.ProcessDeath(livingBeingKilled.Killer);
+                long stopTick = MonotonicTime.NowMs;
+
+                if (stopTick - startTick > Diagnostics.LongTickThreshold)
+                    log.Warn($"Long {Instance.ServiceName}.{nameof(Tick)} for {livingBeingKilled} Time: {stopTick - startTick}ms");
+            }
+            catch (Exception e)
+            {
+                GameServiceUtils.HandleServiceException(e, Instance.ServiceName, livingBeingKilled, livingBeingKilled.Killed);
+            }
+            finally
+            {
+                if (livingBeingKilled != null)
+                {
+                    ServiceObjectStore.Remove(livingBeingKilled);
+                    livingBeingKilled.Killed.OnReaperServiceHandlingComplete();
+                }
             }
         }
 
@@ -54,31 +76,22 @@ namespace DOL.GS
         }
     }
 
-    // Temporary objects to be added to 'EntityManager' and consumed by 'ReaperService', representing a living object being killed and waiting to be processed.
-    public class LivingBeingKilled : IManagedEntity
+    // Temporary objects to be added to `ServiceObjectStore` and consumed by `ReaperService`, representing a living object being killed and waiting to be processed.
+    public class LivingBeingKilled : IServiceObject
     {
         public GameLiving Killed { get; private set; }
         public GameObject Killer { get; private set; }
-        public EntityManagerId EntityManagerId { get; set; }
+        public ServiceObjectId ServiceObjectId { get; } = new(ServiceObjectType.LivingBeingKilled);
 
         private LivingBeingKilled(GameLiving killed, GameObject killer)
         {
             Initialize(killed, killer);
-            EntityManagerId = new EntityManagerId(EntityManager.EntityType.LivingBeingKilled, CleanUp);
         }
 
         public static void Create(GameLiving killed, GameObject killer)
         {
-            if (EntityManager.TryReuse(EntityManager.EntityType.LivingBeingKilled, out LivingBeingKilled livingBeingKilled, out int index))
-            {
-                livingBeingKilled.Initialize(killed, killer);
-                livingBeingKilled.EntityManagerId.Value = index;
-            }
-            else
-            {
-                livingBeingKilled = new LivingBeingKilled(killed, killer);
-                EntityManager.Add(livingBeingKilled);
-            }
+            LivingBeingKilled livingBeingKilled = new(killed, killer);
+            ServiceObjectStore.Add(livingBeingKilled);
         }
 
         private void Initialize(GameLiving killed, GameObject killer)
@@ -87,10 +100,9 @@ namespace DOL.GS
             Killer = killer;
         }
 
-        private void CleanUp()
+        public override string ToString()
         {
-            Killed = null;
-            Killer = null;
+            return $"(Killed: {Killed}) (Killer: {Killer})";
         }
     }
 }

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using DOL.Database;
 using DOL.GS.Housing;
 using DOL.GS.PacketHandler;
@@ -12,9 +11,6 @@ namespace DOL.GS
         private static new readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public const string EXPLORER_ITEM_LIST = "MarketExplorerItems";
-
-        private readonly Lock _lock = new();
-        public Lock Lock => _lock;
 
         public override bool Interact(GamePlayer player)
         {
@@ -38,22 +34,28 @@ namespace DOL.GS
             return true;
         }
 
-        public virtual string GetOwner(GamePlayer player)
+        public virtual string GetOwner()
         {
-            return player.InternalID;
+            return string.Empty;
         }
 
-        public virtual Dictionary<int, DbInventoryItem> GetClientInventory(GamePlayer player)
+        public virtual Dictionary<int, DbInventoryItem> GetClientInventory()
         {
             return null;
+        }
+
+        public virtual bool TryGetItem(int slot, out DbInventoryItem item)
+        {
+            item = null;
+            return false;
         }
 
         /// <summary>
         /// List of items in this objects inventory
         /// </summary>
-        public virtual IList<DbInventoryItem> DBItems(GamePlayer player = null)
+        public virtual IEnumerable<DbInventoryItem> GetDbItems()
         {
-            return MarketCache.Items;
+            throw new NotImplementedException();
         }
 
         /// <summary>
@@ -76,70 +78,44 @@ namespace DOL.GS
         /// </summary>
         public virtual int LastDbSlot => (int) eInventorySlot.Consignment_Last;
 
-        public static eRealm GetRealmOfLot(ushort houseNumber)
-        {
-            if (houseNumber <= 1382)
-                return eRealm.Albion;
-            else if (houseNumber <= 2573)
-                return eRealm.Midgard;
-            else if (houseNumber <= 4398)
-                return eRealm.Hibernia;
-
-            return eRealm.None;
-        }
-
         /// <summary>
         /// Search the MarketCache.
         /// </summary>
         public virtual bool SearchInventory(GamePlayer player, MarketSearch.SearchData searchData)
         {
             MarketSearch marketSearch = new(player);
+            List<DbInventoryItem> items = marketSearch.FindItems(searchData);
 
-            if (marketSearch.FindItemsInList(DBItems(), searchData) is List<DbInventoryItem> items)
+            if (items.Count == 0)
             {
-                int maxPerPage = 20;
-                byte maxPages = (byte) (Math.Ceiling((double) items.Count / maxPerPage) - 1);
-                int first = searchData.page * maxPerPage;
-                int last = first + maxPerPage;
-                List<DbInventoryItem> list = [];
-                int index = 0;
-
-                foreach (DbInventoryItem item in items)
-                {
-                    if (index >= first && index <= last)
-                    {
-                        if (GetRealmOfLot(item.OwnerLot) != player.Realm)
-                        {
-                            if (ServerProperties.Properties.MARKET_ENABLE_LOG)
-                                log.Debug($"Not adding item '{item.Name}' to the return search since its from different realm.");
-                        }
-                        else
-                            list.Add(item);
-                    }
-
-                    index++;
-                }
-
                 if (ServerProperties.Properties.MARKET_ENABLE_LOG)
-                    log.Debug($"Current list find size is '{list.Count}'.");
+                    log.Debug("There is something wrong with the returned search...");
 
-                if (searchData.page == 0)
-                    player.Out.SendMessage($"Items returned: {items.Count}", eChatType.CT_Important, eChatLoc.CL_SystemWindow);
-
-                if (items.Count == 0)
-                    player.Out.SendMarketExplorerWindow(list, 0, 0);
-                else if (searchData.page <= maxPages)
-                {
-                    player.Out.SendMessage($"Moving to page {searchData.page + 1}.", eChatType.CT_Important, eChatLoc.CL_SystemWindow);
-                    player.Out.SendMarketExplorerWindow(list, searchData.page, maxPages);
-                }
-
-                // Save the last search list in case we buy an item from it.
-                player.TempProperties.SetProperty(EXPLORER_ITEM_LIST, list);
+                return false;
             }
-            else if (ServerProperties.Properties.MARKET_ENABLE_LOG)
-                log.Debug("There is something wrong with the returned search...");
 
+            int maxPerPage = 20;
+            byte maxPages = (byte) (Math.Ceiling((double) items.Count / maxPerPage) - 1);
+            int first = searchData.page * maxPerPage;
+            int count = Math.Min(maxPerPage, items.Count - first);
+            List<DbInventoryItem> list = items.GetRange(first, Math.Max(0, count));
+
+            if (ServerProperties.Properties.MARKET_ENABLE_LOG)
+                log.Debug($"Current list find size is '{list.Count}'.");
+
+            if (searchData.page == 0)
+                player.Out.SendMessage($"Items returned: {items.Count}", eChatType.CT_Important, eChatLoc.CL_SystemWindow);
+
+            if (items.Count == 0)
+                player.Out.SendMarketExplorerWindow(list, 0, 0);
+            else if (searchData.page <= maxPages)
+            {
+                player.Out.SendMessage($"Moving to page {searchData.page + 1}.", eChatType.CT_Important, eChatLoc.CL_SystemWindow);
+                player.Out.SendMarketExplorerWindow(list, searchData.page, maxPages);
+            }
+
+            // Save the last search list in case we buy an item from it.
+            player.TempProperties.SetProperty(EXPLORER_ITEM_LIST, list);
             return true;
         }
 
@@ -178,17 +154,24 @@ namespace DOL.GS
             return false;
         }
 
-        public virtual bool OnAddItem(GamePlayer player, DbInventoryItem item)
+        public virtual bool OnAddItem(GamePlayer player, DbInventoryItem item, int previousSlot)
         {
             return true;
         }
+
+        public virtual bool OnRemoveItem(GamePlayer player, DbInventoryItem item, int previousSlot)
+        {
+            return true;
+        }
+
+        public virtual bool OnMoveItem(GamePlayer player, DbInventoryItem firstItem, int previousFirstSlot, DbInventoryItem secondItem, int previousSecondSlot)
+        {
+            return true;
+        }
+
+        public virtual void OnItemManipulationError(GamePlayer player) { }
 
         public virtual bool SetSellPrice(GamePlayer player, eInventorySlot clientSlot, uint price)
-        {
-            return true;
-        }
-
-        public virtual bool OnRemoveItem(GamePlayer player, DbInventoryItem item)
         {
             return true;
         }
@@ -206,7 +189,7 @@ namespace DOL.GS
 
             player.ActiveInventoryObject?.RemoveObserver(player);
             player.ActiveInventoryObject = consignmentMerchant;
-            player.Out.SendInventoryItemsUpdate(consignmentMerchant.GetClientInventory(player), eInventoryWindowType.ConsignmentViewer);
+            player.Out.SendInventoryItemsUpdate(consignmentMerchant.GetClientInventory(), eInventoryWindowType.ConsignmentViewer);
             consignmentMerchant.AddObserver(player);
         }
 

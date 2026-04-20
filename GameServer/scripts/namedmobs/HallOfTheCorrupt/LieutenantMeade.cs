@@ -73,10 +73,7 @@ namespace DOL.GS
                 }
             }
         }
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * Strength / 150;
-        }
+
         public override int MeleeAttackRange => 350;
         public override bool HasAbility(string keyName)
         {
@@ -195,23 +192,10 @@ namespace DOL.AI.Brain
                 FSM.SetCurrentState(eFSMStateType.RETURN_TO_SPAWN);
                 this.Body.Health = this.Body.MaxHealth;              
                 CanWalk = false;
-                lock (Body.effectListComponent.EffectsLock)
-                {
-                    var effects = Body.effectListComponent.GetAllPulseEffects();
-                    for (int i = 0; i < effects.Count; i++)
-                    {
-                        ECSPulseEffect effect = effects[i];
-                        if (effect == null)
-                            continue;
+                var effects = Body.effectListComponent.GetPulseEffects();
 
-                        if (effect == null)
-                            continue;
-                        if (effect.SpellHandler.Spell.Pulse == 1)
-                        {
-                            EffectService.RequestCancelConcEffect(effect);//cancel here all pulse effect
-                        }
-                    }
-                }
+                for (int i = 0; i < effects.Count; i++)
+                    effects[i].End();//cancel here all pulse effect
             }
             if (Body.InCombat && HasAggro)
             {
@@ -299,7 +283,6 @@ namespace DOL.AI.Brain
                     spell.MoveCast = true;
                     spell.DamageType = (int)eDamageType.Spirit;
                     m_Meade_Pulse = new Spell(spell, 70);
-                    SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_Meade_Pulse);
                 }
                 return m_Meade_Pulse;
             }

@@ -98,10 +98,7 @@ namespace DOL.GS.Scripts
             return true;
         }
 
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * Strength / 100 * ServerProperties.Properties.EPICS_DMG_MULTIPLIER;
-        }
+
         public override int MeleeAttackRange => 450;
         public override bool HasAbility(string keyName)
         {
@@ -283,7 +280,6 @@ namespace DOL.GS.Scripts
             foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
             {
                 player.KillsLegion++;
-                player.Achieve(AchievementUtils.AchievementNames.Legion_Kills);
                 count++;
             }
             return count;
@@ -556,18 +552,21 @@ namespace DOL.AI.Brain
             if (Body.TargetObject != null && HasAggro)
             {
                 GameLiving target = Body.TargetObject as GameLiving;
+
                 if (Util.Chance(100))
                 {
                     if (target.effectListComponent.ContainsEffectForEffectType(eEffect.Bladeturn) && target != null && target.IsAlive)
                     {
-                        var effect = EffectListService.GetEffectOnTarget(target, eEffect.Bladeturn);
+                        ECSGameEffect effect = EffectListService.GetEffectOnTarget(target, eEffect.Bladeturn);
+
                         if (effect != null)
                         {
-                            EffectService.RequestCancelEffect(effect);//remove bladeturn effect here
+                            effect.End();//remove bladeturn effect here
                             bladeturnConsumed++;
-                            if(target is GamePlayer player)
+
+                            if (target is GamePlayer player)
                             {
-                                if (player != null && player.IsAlive)
+                                if (player.IsAlive)
                                     player.Out.SendMessage("Legion consume your bladeturn effect!", eChatType.CT_Say, eChatLoc.CL_ChatWindow);
                             }
                         }
@@ -632,12 +631,12 @@ namespace DOL.AI.Brain
         List<GamePlayer> randomlyPickedPlayers = new List<GamePlayer>();
         public void BroadcastMessage(String message)
         {
-            foreach (GamePlayer player in Body.GetPlayersInRadius(WorldMgr.OBJ_UPDATE_DISTANCE))
+            foreach (GamePlayer player in Body.GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
             {
                 player.Out.SendMessage(message, eChatType.CT_Broadcast, eChatLoc.CL_ChatWindow);
             }
         }
-        public static List<t> GetRandomElements<t>(IEnumerable<t> list, int elementsCount)//pick X elements from list
+        public static List<T> GetRandomElements<T>(IEnumerable<T> list, int elementsCount)//pick X elements from list
         {
             return list.OrderBy(x => Guid.NewGuid()).Take(elementsCount).ToList();
         }
@@ -705,10 +704,9 @@ namespace DOL.AI.Brain
                     spell.Range = 0;
                     spell.Radius = 1000;
                     spell.SpellID = 12013;
-                    spell.Target = "Enemy";
+                    spell.Target = eSpellTarget.ENEMY.ToString();
                     spell.Type = eSpellType.DirectDamageNoVariance.ToString();
                     m_LegionLifetapAoe = new Spell(spell, 60);
-                    SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_LegionLifetapAoe);
                 }
                 return m_LegionLifetapAoe;
             }
@@ -828,10 +826,7 @@ namespace DOL.GS
 
             return base.HasAbility(keyName);
         }
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * Strength / 100 * ServerProperties.Properties.EPICS_DMG_MULTIPLIER;
-        }
+
         public override int MaxHealth
         {
             get { return 600000; }

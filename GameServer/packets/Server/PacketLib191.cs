@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Reflection;
 using DOL.GS.Effects;
 
@@ -42,7 +44,7 @@ namespace DOL.GS.PacketHandler
 					playerStatus |= 0x10;
 				if (!sameRegion)
 					playerStatus |= 0x20;
-				if (living.DebuffCategory[(int)eProperty.SpellRange] != 0 || living.DebuffCategory[(int)eProperty.ArcheryRange] != 0)
+				if (living.DebuffCategory[eProperty.SpellRange] != 0 || living.DebuffCategory[eProperty.ArcheryRange] != 0)
 					playerStatus |= 0x40;
 
 				pak.WriteByte(playerStatus);
@@ -85,42 +87,46 @@ namespace DOL.GS.PacketHandler
 			if (m_gameClient.Player == null)
 				return;
 
-			using (GSTCPPacketOut pak = new GSTCPPacketOut(GetPacketCode(eServerPackets.ConcentrationList)))
+			using (var pak = PooledObjectFactory.GetForTick<GSTCPPacketOut>().Init(GetPacketCode(eServerPackets.ConcentrationList)))
 			{
-				lock (m_gameClient.Player.effectListComponent.ConcentrationEffectsLock)
+				List<ECSGameSpellEffect> concentrationEffects = m_gameClient.Player.effectListComponent.GetConcentrationEffects();
+				pak.WriteByte((byte) concentrationEffects.Count);
+				pak.WriteByte(0); // unknown
+				pak.WriteByte(0); // unknown
+				pak.WriteByte(0); // unknown
+
+				for (int i = 0; i < concentrationEffects.Count; i++)
 				{
-					pak.WriteByte((byte)(m_gameClient.Player.effectListComponent.ConcentrationEffects.Count));
+					IConcentrationEffect effect = concentrationEffects[i];
+					pak.WriteByte((byte) i);
 					pak.WriteByte(0); // unknown
-					pak.WriteByte(0); // unknown
-					pak.WriteByte(0); // unknown
-
-					var effects = m_gameClient.Player?.effectListComponent.ConcentrationEffects;
-
-					if (effects == null)
-						return;
-
-					for (int i = 0; i < effects.Count; i++)
-					{
-						IConcentrationEffect effect = effects[i];
-						pak.WriteByte((byte)i);
-						pak.WriteByte(0); // unknown
-						pak.WriteByte(effect.Concentration);
-						pak.WriteShort(effect.Icon);
-						if (effect.Name.Length > 14)
-							pak.WritePascalString(effect.Name.Substring(0, 12) + "..");
-						else
-							pak.WritePascalString(effect.Name);
-						if (effect.OwnerName.Length > 14)
-							pak.WritePascalString(effect.OwnerName.Substring(0, 12) + "..");
-						else
-							pak.WritePascalString(effect.OwnerName);
-					}
+					pak.WriteByte(effect.Concentration);
+					pak.WriteShort(effect.Icon);
+					WriteTruncatedName(pak, effect.Name);
+					WriteTruncatedName(pak, effect.OwnerName);
 				}
 
 				SendTCP(pak);
 			}
 
-			SendStatusUpdate(); // send status update for convenience, mostly the conc has changed
+			SendStatusUpdate();
+
+			static void WriteTruncatedName(GSTCPPacketOut pak, ReadOnlySpan<char> text)
+			{
+				const int MAX_LENGTH = 14;
+				const int TRUNCATE_LENGTH = 12;
+
+				if (text.Length > MAX_LENGTH)
+				{
+					Span<char> buffer = stackalloc char[MAX_LENGTH];
+					text[..TRUNCATE_LENGTH].CopyTo(buffer);
+					buffer[12] = '.';
+					buffer[13] = '.';
+					pak.WritePascalString(buffer);
+				}
+				else
+					pak.WritePascalString(text);
+			}
 		}
 
 		/// <summary>

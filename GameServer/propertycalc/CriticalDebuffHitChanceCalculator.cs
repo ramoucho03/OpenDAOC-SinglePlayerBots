@@ -21,7 +21,7 @@ namespace DOL.GS.PropertyCalc
 
         public override int CalcValue(GameLiving living, eProperty property)
         {
-            int chance = living.AbilityBonus[(int) property];
+            int chance = living.AbilityBonus[property];
 
             if (living is NecromancerPet necroPet && necroPet.Brain is IControlledBrain necroBrain && necroBrain.GetIPlayerOwner() is IGamePlayer playerOwner)
                 chance += playerOwner.GetAbility<RealmAbilities.AtlasOF_WildArcanaAbility>()?.Amount ?? 0;

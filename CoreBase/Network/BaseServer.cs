@@ -13,13 +13,18 @@ namespace DOL.Network
     public class BaseServer
     {
         private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
-        public static readonly Encoding defaultEncoding = CodePagesEncodingProvider.Instance.GetEncoding(1252);
+
+        public static readonly Encoding DefaultEncoding = CodePagesEncodingProvider.Instance.GetEncoding(1252);
+
+        [ThreadStatic]
+        private static Encoder _encoder;
 
         private const int UDP_RECEIVE_BUFFER_SIZE = 8192;
         private const int UDP_RECEIVE_BUFFER_CHUNK_SIZE = 64; // This should be increased if someday clients send UDP packets larger than this.
 
         private Socket _listen;
         private Socket _udpSocket;
+        private SessionIdAllocator _sessionIdAllocator = new();
 
         public BaseServerConfig Configuration { get; }
         public bool IsRunning => _listen != null; // Not a great way to check if the server is running.
@@ -27,6 +32,12 @@ namespace DOL.Network
         protected BaseServer(BaseServerConfig config)
         {
             Configuration = config ?? throw new ArgumentNullException(nameof(config));
+        }
+
+        public static Encoder GetEncoder()
+        {
+            // Returns a thread static `Encoder` that must be reset after use.
+            return _encoder ??= DefaultEncoding.GetEncoder();
         }
 
         public virtual bool Start()
@@ -97,7 +108,10 @@ namespace DOL.Network
                         return false;
 
                     _listen.Listen(100);
-                    log.Info("Server is now listening to incoming connections!");
+
+                    if (log.IsInfoEnabled)
+                        log.Info($"Server is now listening for incoming connections on {Configuration.IP}:{Configuration.Port}");
+
                     SocketAsyncEventArgs listenArgs = CreateSocketAsyncEventArgs();
 
                     while (!_listen.AcceptAsync(listenArgs))
@@ -124,7 +138,7 @@ namespace DOL.Network
 
             void StartUdpThread()
             {
-                if (!_udpSocket.IsBound)
+                if (!IsUdpSocketBound())
                     return;
 
                 ConcurrentQueue<int> availablePositions = [];
@@ -139,7 +153,6 @@ namespace DOL.Network
                 // This is probably a bit more complicated than it should be if we consider the fact that clients only send UDP packets to notify the server that they can receive UDP packets.
                 // Since only one buffer is used and shared, this requires some synchronization to prevent `ReceiveFromAsync` from overwriting data that isn't processed yet.
                 // For this reason, the buffer is split in chunks of `UDP_RECEIVE_BUFFER_CHUNK_SIZE` bytes. This assumes no packet can be larger than this.
-                // Keep in mind that this is ran by worker threads, outside of the game loop, which may cause issues if clients start sending other packets this way.
 
                 Task.Run(async () =>
                 {
@@ -226,8 +239,9 @@ namespace DOL.Network
                     if (listenArgs.SocketError is SocketError.ConnectionReset)
                         return;
 
+                    SessionId sessionId = new(_sessionIdAllocator);
                     baseClient = GetNewClient(socket);
-                    baseClient.OnConnect(); // Must be called before `Receive` since `Receive` ends up calling `OnDisconnect` if it fails.
+                    baseClient.OnConnect(sessionId); // Must be called before `Receive` since `Receive` ends up calling `OnDisconnect` if it fails.
                     // Don't call `Receive` here, the client service may be already doing it and it isn't thread safe.
                 }
                 catch (Exception e)
@@ -293,6 +307,11 @@ namespace DOL.Network
             return true;
         }
 
+        public bool IsUdpSocketBound()
+        {
+            return _udpSocket != null && _udpSocket.IsBound;
+        }
+
         public bool SendUdp(SocketAsyncEventArgs socketAsyncEventArgs)
         {
             return _udpSocket.SendToAsync(socketAsyncEventArgs);
@@ -306,7 +325,6 @@ namespace DOL.Network
                 {
                     _listen.Close();
                     _listen = null;
-                    log.Info("Server is no longer listening for incoming connections");
                 }
             }
             catch (Exception e)
@@ -328,9 +346,6 @@ namespace DOL.Network
                 if (log.IsErrorEnabled)
                     log.Error(e);
             }
-
-            if (log.IsInfoEnabled)
-                log.Info("Server stopped");
         }
 
         protected virtual void OnUdpReceive(byte[] buffer, int offset, int size, EndPoint endPoint) { }

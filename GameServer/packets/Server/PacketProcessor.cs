@@ -1,58 +1,70 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Threading;
-using DOL.GS.ServerProperties;
+using DOL.Logging;
 using DOL.Network;
-using ECS.Debug;
-using static DOL.GS.GameClient;
 
 namespace DOL.GS.PacketHandler
 {
     public class PacketProcessor
     {
-        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
-        private const int SAVED_PACKETS_COUNT = 16;
+        private const int SEND_ARGS_POOL_SIZE = 4;
+
         private static Dictionary<string, IPacketHandler[]> _cachedPacketHandlerSearchResults = [];
         private static Dictionary<string, List<PacketHandlerAttribute>> _cachedPreprocessorSearchResults = [];
         private static Lock _loadPacketHandlersLock = new();
+        private static long _sendBufferPoolExhaustedCount;
 
-        private GameClient _client;
+        private readonly GameClient _client;
+        private readonly PacketPreprocessing _packetPreprocessor = new();
         private IPacketHandler[] _packetHandlers = new IPacketHandler[256];
-        private PacketPreprocessing _packetPreprocessor = new();
-        private Queue<IPacket> _savedPackets = new(SAVED_PACKETS_COUNT);
-        private readonly Lock _savedPacketsLock = new();
 
-        private ConcurrentQueue<GSTCPPacketOut> _tcpPacketQueue = [];
-        private ConcurrentQueue<GSUDPPacketOut> _udpToTcpPacketQueue = [];
-        private ConcurrentQueue<SocketAsyncEventArgs> _tcpSendArgsPool = [];
-        private SocketAsyncEventArgs _tcpSendArgs;
-        private int _tcpSendBufferPosition;
+        private readonly DrainArray<GSTCPPacketOut> _tcpPacketQueue = new();
+        private readonly DrainArray<GSUDPPacketOut> _udpToTcpPacketQueue = new();
+        private readonly ConcurrentQueue<SocketAsyncEventArgs> _tcpSendArgsPool = [];
 
-        private ConcurrentQueue<GSUDPPacketOut> _udpPacketQueue = [];
-        private ConcurrentQueue<SocketAsyncEventArgs> _udpSendArgsPool = [];
-        private SocketAsyncEventArgs _udpSendArgs;
-        private int _udpSendBufferPosition;
+        private readonly DrainArray<GSUDPPacketOut> _udpPacketQueue = new();
+        private readonly ConcurrentQueue<SocketAsyncEventArgs> _udpSendArgsPool = [];
         private uint _udpCounter;
 
-        public IPacketEncoding Encoding { get; } = new PacketEncoding168();
+        private readonly SendContext _sendContext = new();
 
-        static PacketProcessor()
-        {
-            if (Properties.SAVE_PACKETS && log.IsWarnEnabled)
-                log.Warn($"\"{nameof(Properties.SAVE_PACKETS)}\" is true. This reduces performance and should only be enabled for debugging a specific issue.");
-        }
+        public static long SendBufferPoolExhaustedCount => Volatile.Read(ref _sendBufferPoolExhaustedCount);
+        public IPacketEncoding Encoding { get; } = new PacketEncoding168();
 
         public PacketProcessor(GameClient client)
         {
             _client = client;
-            GetAvailableTcpSendArgs();
-            GetAvailableUdpSendArgs();
+            CreateTcpSendArgs();
+            CreateUdpSendArgs();
             LoadPacketHandlers();
+
+            void CreateTcpSendArgs()
+            {
+                for (int i = 0; i < SEND_ARGS_POOL_SIZE; i++)
+                {
+                    SocketAsyncEventArgs args = new();
+                    args.SetBuffer(new byte[BaseClient.TCP_SEND_BUFFER_SIZE], 0, 0);
+                    args.Completed += OnTcpSendCompletion;
+                    _tcpSendArgsPool.Enqueue(args);
+                }
+            }
+
+            void CreateUdpSendArgs()
+            {
+                for (int i = 0; i < SEND_ARGS_POOL_SIZE; i++)
+                {
+                    SocketAsyncEventArgs args = new();
+                    args.SetBuffer(new byte[BaseClient.UDP_SEND_BUFFER_SIZE], 0, 0);
+                    args.Completed += OnUdpSendCompletion;
+                    _udpSendArgsPool.Enqueue(args);
+                }
+            }
 
             void LoadPacketHandlers()
             {
@@ -95,7 +107,9 @@ namespace DOL.GS.PacketHandler
                 }
 
                 _cachedPreprocessorSearchResults.TryGetValue(version, out List<PacketHandlerAttribute> attributes);
-                log.Info($"Loaded {attributes.Count} preprocessors from cache for {version}");
+
+                if (log.IsInfoEnabled)
+                    log.Info($"Loaded {attributes.Count} preprocessors from cache for {version}");
 
                 foreach (PacketHandlerAttribute attribute in attributes)
                     _packetPreprocessor.RegisterPacketDefinition(attribute.Code, attribute.PreprocessorID);
@@ -123,8 +137,11 @@ namespace DOL.GS.PacketHandler
                             int packetCode = packetHandlerAttributes[0].Code;
                             IPacketHandler handler = Activator.CreateInstance(type) as IPacketHandler;
 
-                            if (packetHandlers[packetCode] != null)
-                                log.Info($"Overwriting Client Packet Code {packetCode}, with handler {handler.GetType().FullName}");
+                            if (log.IsDebugEnabled)
+                            {
+                                if (packetHandlers[packetCode] != null)
+                                    log.Debug($"Overwriting Client Packet Code {packetCode}, with handler {handler.GetType().FullName}");
+                            }
 
                             packetHandlers[packetCode] = handler;
 
@@ -140,32 +157,9 @@ namespace DOL.GS.PacketHandler
             }
         }
 
-        public void OnUdpEndpointSet(IPEndPoint endPoint)
-        {
-            _udpSendArgs.RemoteEndPoint = endPoint;
-        }
-
-        public IPacket[] GetLastPackets()
-        {
-            lock (_savedPacketsLock)
-            {
-                return _savedPackets.ToArray();
-            }
-        }
-
-        public void ClearPendingOutboundPackets()
-        {
-            _tcpPacketQueue.Clear();
-            _udpPacketQueue.Clear();
-            _udpToTcpPacketQueue.Clear();
-            _tcpSendBufferPosition = 0;
-            _udpSendBufferPosition = 0;
-        }
-
         public void ProcessInboundPacket(GSPacketIn packet)
         {
-            int code = packet.ID;
-            SavePacket(packet);
+            int code = packet.Code;
 
             if (code >= _packetHandlers.Length)
             {
@@ -187,18 +181,15 @@ namespace DOL.GS.PacketHandler
 
             if (!_packetPreprocessor.CanProcessPacket(_client, packet))
             {
-                log.Info($"Preprocessor prevents handling of a packet with packet.ID={packet.ID}");
+                if (log.IsInfoEnabled)
+                    log.Info($"Preprocessor prevents handling of a packet with packet.ID={packet.Code}");
+
                 return;
             }
 
             try
             {
-                long startTick = GameLoop.GetCurrentTime();
                 packetHandler.HandlePacket(_client, packet);
-                long stopTick = GameLoop.GetCurrentTime();
-
-                if (stopTick - startTick > Diagnostics.LongTickThreshold)
-                    log.Warn($"Long {nameof(PacketProcessor)}.{nameof(ProcessInboundPacket)} (code: 0x{packet.ID:X}) for {_client.Player?.Name}({_client.Player?.ObjectID}) Time: {stopTick - startTick}ms");
             }
             catch (Exception e)
             {
@@ -212,26 +203,33 @@ namespace DOL.GS.PacketHandler
 
         public void QueuePacket(GSTCPPacketOut packet)
         {
-            if (_client.ClientState is eClientState.Disconnected or eClientState.Linkdead)
+            if (!_client.Socket.Connected)
+            {
+                packet.ReleasePooledObject();
                 return;
+            }
 
             // This is dangerous if the same packet is passed down to multiple `PacketProcessor` at the same time.
             if (!packet.IsSizeSet)
                 packet.WritePacketLength();
 
-            _tcpPacketQueue.Enqueue(packet);
+            try
+            {
+                _tcpPacketQueue.Add(packet);
+            }
+            catch (Exception e)
+            {
+                if (log.IsErrorEnabled)
+                    log.Error($"{nameof(QueuePacket)} failed when adding to {nameof(_tcpPacketQueue)}. Skipping this packet.", e);
+            }
         }
 
         public void QueuePacket(GSUDPPacketOut packet, bool forced)
         {
-            if (_client.ClientState is eClientState.Disconnected or eClientState.Linkdead)
-                return;
-
-            if (_client.ClientState is eClientState.Playing)
+            if (!_client.Socket.Connected)
             {
-                // The rate at which clients send `UDPInitRequestHandler` may vary depending on their version (1.127 = 65 seconds).
-                if (ServiceUtils.ShouldTick(_client.UdpPingTime + 70000))
-                    _client.UdpConfirm = false;
+                packet.ReleasePooledObject();
+                return;
             }
 
             // This is dangerous if the same packet is passed down to multiple `PacketProcessor` at the same time.
@@ -239,28 +237,90 @@ namespace DOL.GS.PacketHandler
                 packet.WritePacketLength();
 
             // If UDP is unavailable, send via TCP instead.
-            if (_udpSendArgs.RemoteEndPoint != null && (forced || _client.UdpConfirm))
-                _udpPacketQueue.Enqueue(packet);
+            if (_client.UdpEndPoint != null && (_client.UdpConfirm || forced) && GameServer.Instance.IsUdpSocketBound())
+            {
+                try
+                {
+                   _udpPacketQueue.Add(packet);
+                }
+                catch (Exception e)
+                {
+                    if (log.IsErrorEnabled)
+                        log.Error($"{nameof(QueuePacket)} failed when adding to {nameof(_udpPacketQueue)}. Skipping this packet.", e);
+                }
+            }
             else
-                _udpToTcpPacketQueue.Enqueue(packet);
+            {
+                try
+                {
+                    _udpToTcpPacketQueue.Add(packet);
+                }
+                catch (Exception e)
+                {
+                    if (log.IsErrorEnabled)
+                        log.Error($"{nameof(QueuePacket)} failed when adding to {nameof(_udpToTcpPacketQueue)}. Skipping this packet.", e);
+                }
+            }
         }
 
         public void SendPendingPackets()
         {
-            while (_tcpPacketQueue.TryDequeue(out GSTCPPacketOut packet))
-                AppendTcpPacketToTcpSendBuffer(packet);
+            if (!_client.Socket.Connected)
+                return;
 
-            while (_udpToTcpPacketQueue.TryDequeue(out GSUDPPacketOut packet))
-                AppendUdpPacketToTcpSendBuffer(packet);
+            try
+            {
+                _tcpPacketQueue.DrainTo(static (packet, processor) => processor.ProcessTcpPacket(packet), this);
+                _udpToTcpPacketQueue.DrainTo(static (packet, processor) => processor.ProcessUdpAsTcpPacket(packet), this);
+            }
+            catch (Exception e)
+            {
+                if (log.IsErrorEnabled)
+                    log.Error($"{nameof(SendPendingPackets)} failed during queue drain. Some packets may be lost.", e);
+            }
+            finally
+            {
+                if (_sendContext.CurrentArgs != null && _sendContext.Position > 0)
+                    SendTcpAndResetContext();
+            }
 
-            SendTcp();
+            try
+            {
+                _udpPacketQueue.DrainTo(static (packet, processor) => processor.ProcessUdpPacket(packet), this);
+            }
+            catch (Exception e)
+            {
+                if (log.IsErrorEnabled)
+                    log.Error($"{nameof(SendPendingPackets)} failed during queue drain. Some packets may be lost.", e);
+            }
+            finally
+            {
+                if (_sendContext.CurrentArgs != null && _sendContext.Position > 0)
+                    SendUdpAndResetContext();
+            }
+        }
 
-            while (_udpPacketQueue.TryDequeue(out GSUDPPacketOut packet))
-                AppendUdpPacketToUdpSendBuffer(packet);
+        public void Dispose()
+        {
+            while (_tcpSendArgsPool.TryDequeue(out SocketAsyncEventArgs tcpSendArgs))
+                tcpSendArgs.Dispose();
 
-            SendUdp();
+            while (_udpSendArgsPool.TryDequeue(out SocketAsyncEventArgs udpSendArgs))
+                udpSendArgs.Dispose();
 
-            void AppendTcpPacketToTcpSendBuffer(GSTCPPacketOut packet)
+            // Drain all pending packets on the next game loop tick to avoid concurrent modification issues.
+            GameLoopThreadPool.Context.Post(static state =>
+            {
+                PacketProcessor packetProcessor = state as PacketProcessor;
+                packetProcessor._tcpPacketQueue.DrainTo(static packet => packet.ReleasePooledObject());
+                packetProcessor._udpToTcpPacketQueue.DrainTo(static packet => packet.ReleasePooledObject());
+                packetProcessor._udpPacketQueue.DrainTo(static packet => packet.ReleasePooledObject());
+            }, this);
+        }
+
+        private void ProcessTcpPacket(GSTCPPacketOut packet)
+        {
+            try
             {
                 byte[] packetBuffer = packet.GetBuffer();
                 int packetSize = (int) packet.Length;
@@ -268,32 +328,55 @@ namespace DOL.GS.PacketHandler
                 if (!ValidatePacketSize(packetBuffer, packetSize))
                     return;
 
-                if (_tcpSendArgs.Buffer == null)
-                    return;
-
-                SavePacket(packet);
-                int nextPosition = _tcpSendBufferPosition + packetSize;
-
-                // If the send buffer is full, send whatever we have.
-                if (nextPosition > _tcpSendArgs.Buffer.Length)
+                if (_sendContext.CurrentArgs == null)
                 {
-                    if (!SendTcp())
+                    _sendContext.CurrentArgs = GetAvailableTcpSendArgs();
+
+                    if (_sendContext.CurrentArgs == null)
                         return;
 
-                    nextPosition = _tcpSendBufferPosition + packetSize;
-
-                    // If there still isn't enough room, we'll have to discard the packet.
-                    if (nextPosition > _tcpSendArgs.Buffer.Length)
-                        return;
-
-                    nextPosition = packetSize;
+                    _sendContext.Position = 0;
                 }
 
-                Buffer.BlockCopy(packetBuffer, 0, _tcpSendArgs.Buffer, _tcpSendBufferPosition, packetSize);
-                _tcpSendBufferPosition = nextPosition;
-            }
+                // If the current packet doesn't fit, send the current buffer and get a new one.
+                if (_sendContext.Position + packetSize > _sendContext.CurrentArgs.Buffer.Length)
+                {
+                    SendTcpAndResetContext();
+                    _sendContext.CurrentArgs = GetAvailableTcpSendArgs();
 
-            void AppendUdpPacketToTcpSendBuffer(GSUDPPacketOut packet)
+                    if (_sendContext.CurrentArgs == null)
+                        return;
+                }
+
+                try
+                {
+                    Buffer.BlockCopy(packetBuffer, 0, _sendContext.CurrentArgs.Buffer, _sendContext.Position, packetSize);
+                }
+                catch (Exception e)
+                {
+                    if (log.IsErrorEnabled)
+                    {
+                        log.Error($"Failed to copy packet data to send buffer. " +
+                            $"(Position: {_sendContext.Position}) " +
+                            $"(Buffer Size: {_sendContext.CurrentArgs.Buffer.Length}) " +
+                            $"(Client: {_client})\n" +
+                            $"{packet.ToHumanReadable()}", e);
+                    }
+
+                    return;
+                }
+
+                _sendContext.Position += packetSize;
+            }
+            finally
+            {
+                packet.ReleasePooledObject();
+            }
+        }
+
+        private void ProcessUdpAsTcpPacket(GSUDPPacketOut packet)
+        {
+            try
             {
                 byte[] packetBuffer = packet.GetBuffer();
                 int packetSize = (int) packet.Length - 2;
@@ -301,35 +384,58 @@ namespace DOL.GS.PacketHandler
                 if (!ValidatePacketSize(packetBuffer, packetSize))
                     return;
 
-                if (_tcpSendArgs.Buffer == null)
-                    return;
-
-                SavePacket(packet);
-                int nextPosition = _tcpSendBufferPosition + packetSize;
-
-                // If the send buffer is full, send whatever we have.
-                if (nextPosition > _tcpSendArgs.Buffer.Length)
+                if (_sendContext.CurrentArgs == null)
                 {
-                    if (!SendTcp())
+                    _sendContext.CurrentArgs = GetAvailableTcpSendArgs();
+
+                    if (_sendContext.CurrentArgs == null)
                         return;
 
-                    nextPosition = _tcpSendBufferPosition + packetSize;
+                    _sendContext.Position = 0;
+                }
 
-                    // If there still isn't enough room, we'll have to discard the packet.
-                    if (nextPosition > _tcpSendArgs.Buffer.Length)
+                // If the current packet doesn't fit, send the current buffer and get a new one.
+                if (_sendContext.Position + packetSize > _sendContext.CurrentArgs.Buffer.Length)
+                {
+                    SendTcpAndResetContext();
+                    _sendContext.CurrentArgs = GetAvailableTcpSendArgs();
+
+                    if (_sendContext.CurrentArgs == null)
                         return;
-
-                    nextPosition = packetSize;
                 }
 
                 // Transform the UDP packet into a TCP one.
-                Buffer.BlockCopy(packetBuffer, 4, _tcpSendArgs.Buffer, _tcpSendBufferPosition + 2, packetSize - 2);
-                _tcpSendArgs.Buffer[_tcpSendBufferPosition] = packetBuffer[0];
-                _tcpSendArgs.Buffer[_tcpSendBufferPosition + 1] = packetBuffer[1];
-                _tcpSendBufferPosition = nextPosition;
-            }
+                try
+                {
+                    Buffer.BlockCopy(packetBuffer, 4, _sendContext.CurrentArgs.Buffer, _sendContext.Position + 2, packetSize - 2);
+                }
+                catch (Exception e)
+                {
+                    if (log.IsErrorEnabled)
+                    {
+                        log.Error($"Failed to copy packet data to send buffer. " +
+                            $"(Position: {_sendContext.Position}) " +
+                            $"(Buffer Size: {_sendContext.CurrentArgs.Buffer.Length}) " +
+                            $"(Client: {_client})\n" +
+                            $"{packet.ToHumanReadable()}", e);
+                    }
 
-            void AppendUdpPacketToUdpSendBuffer(GSUDPPacketOut packet)
+                    return;
+                }
+
+                _sendContext.CurrentArgs.Buffer[_sendContext.Position] = packetBuffer[0];
+                _sendContext.CurrentArgs.Buffer[_sendContext.Position + 1] = packetBuffer[1];
+                _sendContext.Position += packetSize;
+            }
+            finally
+            {
+                packet.ReleasePooledObject();
+            }
+        }
+
+        private void ProcessUdpPacket(GSUDPPacketOut packet)
+        {
+            try
             {
                 byte[] packetBuffer = packet.GetBuffer();
                 int packetSize = (int) packet.Length;
@@ -337,119 +443,166 @@ namespace DOL.GS.PacketHandler
                 if (!ValidatePacketSize(packetBuffer, packetSize))
                     return;
 
-                if (_udpSendArgs.Buffer == null)
+                if (_sendContext.CurrentArgs == null)
+                {
+                    _sendContext.CurrentArgs = GetAvailableUdpSendArgs();
+
+                    if (_sendContext.CurrentArgs == null)
+                        return;
+
+                    _sendContext.Position = 0;
+                }
+
+                // If the current packet doesn't fit, send the current buffer and get a new one.
+                if (_sendContext.Position + packetSize > _sendContext.CurrentArgs.Buffer.Length)
+                {
+                    SendUdpAndResetContext();
+                    _sendContext.CurrentArgs = GetAvailableUdpSendArgs();
+
+                    if (_sendContext.CurrentArgs == null)
+                        return;
+                }
+
+                try
+                {
+                    Buffer.BlockCopy(packetBuffer, 0, _sendContext.CurrentArgs.Buffer, _sendContext.Position, packetSize);
+                }
+                catch (Exception e)
+                {
+                    if (log.IsErrorEnabled)
+                    {
+                        log.Error($"Failed to copy packet data to send buffer. " +
+                            $"(Position: {_sendContext.Position}) " +
+                            $"(Buffer Size: {_sendContext.CurrentArgs.Buffer.Length}) " +
+                            $"(Client: {_client})\n" +
+                            $"{packet.ToHumanReadable()}", e);
+                    }
+
                     return;
-
-                SavePacket(packet);
-                int nextPosition = _udpSendBufferPosition + packetSize;
-
-                // If the send buffer is full, send whatever we have.
-                if (nextPosition > _udpSendArgs.Buffer.Length)
-                {
-                    if (!SendUdp())
-                        return;
-
-                    nextPosition = _udpSendBufferPosition + packetSize;
-
-                    // If there still isn't enough room, we'll have to discard the packet.
-                    if (nextPosition > _udpSendArgs.Buffer.Length)
-                        return;
-
-                    nextPosition = packetSize;
                 }
 
-                // Add `_udpCounter` to the packet's content.
-                Buffer.BlockCopy(packetBuffer, 0, _udpSendArgs.Buffer, _udpSendBufferPosition, packetSize);
-                _udpCounter++; // Let it overflow.
-                _udpSendArgs.Buffer[_udpSendBufferPosition + 2] = (byte) (_udpCounter >> 8);
-                _udpSendArgs.Buffer[_udpSendBufferPosition + 3] = (byte) _udpCounter;
-                _udpSendBufferPosition = nextPosition;
+                // Add `_udpCounter` to the packet's content. Let it overflow.
+                _udpCounter++;
+                _sendContext.CurrentArgs.Buffer[_sendContext.Position + 2] = (byte) (_udpCounter >> 8);
+                _sendContext.CurrentArgs.Buffer[_sendContext.Position + 3] = (byte) _udpCounter;
+                _sendContext.Position += packetSize;
+            }
+            finally
+            {
+                packet.ReleasePooledObject();
+            }
+        }
+
+        private bool ValidatePacketSize(byte[] packetBuffer, int packetSize)
+        {
+            if (packetSize <= 2048)
+                return true;
+
+            if (log.IsErrorEnabled)
+            {
+                string account = _client.Account != null ? _client.Account.Name : _client.TcpEndpointAddress;
+                string description = $"Discarding oversized packet. Packet code: 0x{packetBuffer[2]:X2}, account: {account}, packet size: {packetSize}.";
+                log.Error($"{Marshal.ToHexDump(description, packetBuffer)}\n{Environment.StackTrace}");
             }
 
-            bool ValidatePacketSize(byte[] packetBuffer, int packetSize)
+            // Cannot enqueue packets here.
+            GameLoopThreadPool.Context.Post(static state =>
             {
-                if (packetSize <= 2048)
-                    return true;
+                var s = ((GameClient Client, byte Code, int Size)) state;
+                s.Client.Out.SendMessage($"Oversized packet detected and discarded (code: 0x{s.Code:X2}) (size: {s.Size}). Please report this issue!", eChatType.CT_Staff, eChatLoc.CL_SystemWindow);
+            }, (_client, packetBuffer[2], packetSize));
 
+            return false;
+        }
+
+        private void SendTcpAndResetContext()
+        {
+            try
+            {
+                if (!_client.Socket.Connected)
+                {
+                    OnFailure();
+                    return;
+                }
+
+                _sendContext.CurrentArgs.SetBuffer(0, _sendContext.Position);
+
+                if (!_client.SendAsync(_sendContext.CurrentArgs))
+                    OnTcpSendCompletion(null, _sendContext.CurrentArgs);
+            }
+            catch (ObjectDisposedException)
+            {
+                OnFailure();
+            }
+            catch (SocketException e)
+            {
+                if (log.IsDebugEnabled)
+                    log.Debug($"Socket exception on TCP send (Client: {_client}) (Code: {e.SocketErrorCode})");
+
+                OnFailure();
+            }
+            catch (Exception e)
+            {
                 if (log.IsErrorEnabled)
-                {
-                    string account = _client.Account != null ? _client.Account.Name : _client.TcpEndpointAddress;
-                    string description = $"Discarding oversized packet. Packet code: 0x{packetBuffer[2]:X2}, account: {account}, packet size: {packetSize}.";
-                    log.Error($"{Marshal.ToHexDump(description, packetBuffer)}\n{Environment.StackTrace}");
-                }
+                    log.Error($"Unhandled exception on TCP send (Client: {_client}): {e}");
 
-                _client.Out.SendMessage($"Oversized packet detected and discarded (code: 0x{packetBuffer[2]:X2}) (size: {packetSize}). Please report this issue!", eChatType.CT_Staff, eChatLoc.CL_SystemWindow);
-                return false;
+                OnFailure();
+            }
+            finally
+            {
+                _sendContext.CurrentArgs = null;
+                _sendContext.Position = 0;
             }
 
-            bool SendTcp()
+            void OnFailure()
+            {
+                _tcpSendArgsPool.Enqueue(_sendContext.CurrentArgs);
+            }
+        }
+
+        private void SendUdpAndResetContext()
+        {
+            try
             {
                 if (!_client.Socket.Connected)
-                    return false;
-
-                try
                 {
-                    if (_tcpSendBufferPosition > 0)
-                    {
-                        _tcpSendArgs.SetBuffer(0, _tcpSendBufferPosition);
-
-                        if (_client.SendAsync(_tcpSendArgs))
-                            GetAvailableTcpSendArgs();
-
-                        _tcpSendBufferPosition = 0;
-                    }
-
-                    return true;
-                }
-                catch (ObjectDisposedException) { }
-                catch (SocketException e)
-                {
-                    if (log.IsDebugEnabled)
-                        log.Debug($"Socket exception on TCP send (Client: {_client}) (Code: {e.SocketErrorCode})");
-                }
-                catch (Exception e)
-                {
-                    if (log.IsErrorEnabled)
-                        log.Error($"Unhandled exception on TCP send (Client: {_client}): {e}");
+                    OnFailure();
+                    return;
                 }
 
-                return false;
+                _sendContext.CurrentArgs.SetBuffer(0, _sendContext.Position);
+
+                if (!GameServer.Instance.SendUdp(_sendContext.CurrentArgs))
+                    OnUdpSendCompletion(null, _sendContext.CurrentArgs);
+            }
+            catch (ObjectDisposedException)
+            {
+                OnFailure();
+            }
+            catch (SocketException e)
+            {
+                if (log.IsDebugEnabled)
+                    log.Debug($"Socket exception on UDP send (Client: {_client}) (Code: {e.SocketErrorCode})");
+
+                OnFailure();
+            }
+            catch (Exception e)
+            {
+                if (log.IsErrorEnabled)
+                    log.Error($"Unhandled exception on UDP send (Client: {_client}): {e}");
+
+                OnFailure();
+            }
+            finally
+            {
+                _sendContext.CurrentArgs = null;
+                _sendContext.Position = 0;
             }
 
-            bool SendUdp()
+            void OnFailure()
             {
-                // Not technically needed to send UDP.
-                if (!_client.Socket.Connected)
-                    return false;
-
-                try
-                {
-                    if (_udpSendBufferPosition > 0)
-                    {
-                        _udpSendArgs.SetBuffer(0, _udpSendBufferPosition);
-
-                        if (GameServer.Instance.SendUdp(_udpSendArgs))
-                            GetAvailableUdpSendArgs();
-
-                        _udpSendBufferPosition = 0;
-                    }
-
-                    return true;
-                }
-                catch (ObjectDisposedException) { }
-                catch (SocketException e)
-                {
-                    if (log.IsDebugEnabled)
-                        log.Debug($"Socket exception on UDP send (Client: {_client}) (Code: {e.SocketErrorCode})");
-                }
-                catch (Exception e)
-                {
-                    if (log.IsErrorEnabled)
-                        log.Error($"Unhandled exception on UDP send (Client: {_client}): {e}");
-                }
-
                 _client.UdpConfirm = false;
-                return false;
+                _udpSendArgsPool.Enqueue(_sendContext.CurrentArgs);
             }
         }
 
@@ -469,58 +622,44 @@ namespace DOL.GS.PacketHandler
             return (ushort) (val2 - ((val1 + val2) << 8));
         }
 
-        private void GetAvailableTcpSendArgs()
+        private SocketAsyncEventArgs GetAvailableTcpSendArgs()
         {
-            if (_tcpSendArgsPool.TryDequeue(out SocketAsyncEventArgs tcpSendArgs))
+            if (!_tcpSendArgsPool.TryDequeue(out SocketAsyncEventArgs args))
             {
-                tcpSendArgs.SetBuffer(0, 0);
-                _tcpSendArgs = tcpSendArgs;
-                return;
+                Interlocked.Increment(ref _sendBufferPoolExhaustedCount);
+                return null;
             }
 
-            _tcpSendArgs = new();
-            _tcpSendArgs.SetBuffer(new byte[BaseClient.TCP_SEND_BUFFER_SIZE], 0, 0);
-            _tcpSendArgs.Completed += OnTcpSendCompletion;
-
-            void OnTcpSendCompletion(object sender, SocketAsyncEventArgs tcpSendArgs)
-            {
-                _tcpSendArgsPool.Enqueue(tcpSendArgs);
-            }
+            return args;
         }
 
-        private void GetAvailableUdpSendArgs()
+        private SocketAsyncEventArgs GetAvailableUdpSendArgs()
         {
-            if (_udpSendArgsPool.TryDequeue(out SocketAsyncEventArgs udpSendArgs))
+            if (!_udpSendArgsPool.TryDequeue(out SocketAsyncEventArgs args))
             {
-                udpSendArgs.SetBuffer(0, 0);
-                udpSendArgs.RemoteEndPoint = _client.UdpEndPoint;
-                _udpSendArgs = udpSendArgs;
-                return;
+                Interlocked.Increment(ref _sendBufferPoolExhaustedCount);
+                return null;
             }
 
-            _udpSendArgs = new();
-            _udpSendArgs.SetBuffer(new byte[BaseClient.UDP_SEND_BUFFER_SIZE], 0, 0);
-            _udpSendArgs.Completed += OnUdpSendCompletion;
-            _udpSendArgs.RemoteEndPoint = _client.UdpEndPoint;
-
-            void OnUdpSendCompletion(object sender, SocketAsyncEventArgs udpSendArgs)
-            {
-                _udpSendArgsPool.Enqueue(udpSendArgs);
-            }
+            // UdpEndPoint shouldn't change, but can be set a bit late.
+            args.RemoteEndPoint = _client.UdpEndPoint;
+            return args;
         }
 
-        private void SavePacket(IPacket packet)
+        private void OnTcpSendCompletion(object sender, SocketAsyncEventArgs args)
         {
-            if (!Properties.SAVE_PACKETS)
-                return;
+            _tcpSendArgsPool.Enqueue(args);
+        }
 
-            lock (_savedPacketsLock)
-            {
-                while (_savedPackets.Count >= SAVED_PACKETS_COUNT)
-                    _savedPackets.Dequeue();
+        private void OnUdpSendCompletion(object sender, SocketAsyncEventArgs args)
+        {
+            _udpSendArgsPool.Enqueue(args);
+        }
 
-                _savedPackets.Enqueue(packet);
-            }
+        private class SendContext
+        {
+            public SocketAsyncEventArgs CurrentArgs;
+            public int Position;
         }
     }
 }

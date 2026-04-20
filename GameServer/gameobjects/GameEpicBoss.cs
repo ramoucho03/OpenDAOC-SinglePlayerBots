@@ -1,12 +1,10 @@
 using System;
 using DOL.GS;
-using DOL.GS.ServerProperties;
 
 namespace DOL.GS
 {
     public class GameEpicBoss : GameNPC, IGameEpicNpc
     {
-        public override bool CanAwardKillCredit => true;
         public override double MaxHealthScalingFactor => 1.5;
         public double DefaultArmorFactorScalingFactor => 1.6;
         public int ArmorFactorScalingFactorPetCap => 24;
@@ -16,7 +14,6 @@ namespace DOL.GS
         {
             DamageFactor = 2.25;
             ArmorFactorScalingFactor = DefaultArmorFactorScalingFactor;
-            OrbsReward = Properties.EPICBOSS_ORBS;
         }
 
         public override void ReturnToSpawnPoint(short speed)
@@ -64,10 +61,10 @@ namespace DOL.AI.Brain
                 Body.Z = Body.SpawnPoint.Z;
                 Body.Heading = Body.SpawnHeading;
 
-                foreach (ECSGameEffect effect in Body.effectListComponent.GetAllEffects())
+                foreach (ECSGameEffect effect in Body.effectListComponent.GetEffects())
                 {
                     if (effect.SpellHandler.Spell.IsHarmful)
-                        EffectService.RequestCancelEffect(effect);
+                        effect.End();
                 }
 
                 ClearAggroList();// clear aggro list

@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using DOL.AI.Brain;
 using DOL.Database;
 using DOL.Events;
@@ -69,7 +68,7 @@ namespace DOL.AI.Brain
 
         public void BroadcastMessage(String message)
         {
-            foreach (GamePlayer player in Body.GetPlayersInRadius(WorldMgr.OBJ_UPDATE_DISTANCE))
+            foreach (GamePlayer player in Body.GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
             {
                 player.Out.SendMessage(message, eChatType.CT_Broadcast, eChatLoc.CL_SystemWindow);
             }
@@ -329,10 +328,7 @@ namespace DOL.GS
                 default: return 70;// dmg reduction for rest resists
             }
         }
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * Strength / 100 * ServerProperties.Properties.EPICS_DMG_MULTIPLIER;
-        }
+
         public override int MaxHealth
         {
             get { return 250000; }
@@ -372,7 +368,7 @@ namespace DOL.GS
         #region Custom Methods
         public void BroadcastMessage(String message)
         {
-            foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.OBJ_UPDATE_DISTANCE))
+            foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
             {
                 player.Out.SendMessage(message, eChatType.CT_Broadcast, eChatLoc.CL_ChatWindow);
             }
@@ -400,7 +396,6 @@ namespace DOL.GS
             foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
             {
                 player.KillsEpicBoss++;
-                player.Achieve(AchievementUtils.AchievementNames.Epic_Boss_Kills);
                 count++;
             }
             return count;
@@ -518,11 +513,10 @@ namespace DOL.GS
                     spell.Damage = 450;
                     spell.Range = 1800;
                     spell.SpellID = 11901;
-                    spell.Target = "Enemy";
+                    spell.Target = eSpellTarget.ENEMY.ToString();
                     spell.Type = eSpellType.DirectDamageNoVariance.ToString();
                     spell.DamageType = (int)eDamageType.Matter;
                     m_OlcasgeanDD = new Spell(spell, 70);
-                    SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_OlcasgeanDD);
                 }
                 return m_OlcasgeanDD;
             }
@@ -600,7 +594,7 @@ namespace DOL.AI.Brain
         }
         public void BroadcastMessage(String message)
         {
-            foreach (GamePlayer player in Body.GetPlayersInRadius(WorldMgr.OBJ_UPDATE_DISTANCE))
+            foreach (GamePlayer player in Body.GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
             {
                 player.Out.SendMessage(message, eChatType.CT_Broadcast, eChatLoc.CL_SystemWindow);
             }
@@ -828,11 +822,10 @@ namespace DOL.AI.Brain
                     spell.Radius = 350;
                     spell.Range = 1800;
                     spell.SpellID = 11717;
-                    spell.Target = "Enemy";
+                    spell.Target = eSpellTarget.ENEMY.ToString();
                     spell.Type = eSpellType.DirectDamageNoVariance.ToString();
                     spell.DamageType = (int)eDamageType.Matter;
                     m_OlcasgeanDD = new Spell(spell, 70);
-                    SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_OlcasgeanDD);
                 }
                 return m_OlcasgeanDD;
             }
@@ -861,10 +854,7 @@ namespace DOL.GS
                 default: return 70;// dmg reduction for rest resists
             }
         }
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * Strength / 100 * ServerProperties.Properties.EPICS_DMG_MULTIPLIER;
-        }
+
         public override int MaxHealth
         {
             get { return 250000; }
@@ -904,7 +894,7 @@ namespace DOL.GS
         #region Custom Methods
         public void BroadcastMessage(String message)
         {
-            foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.OBJ_UPDATE_DISTANCE))
+            foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
             {
                 player.Out.SendMessage(message, eChatType.CT_Broadcast, eChatLoc.CL_ChatWindow);
             }
@@ -932,7 +922,6 @@ namespace DOL.GS
             foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
             {
                 player.KillsEpicBoss++;
-                player.Achieve(AchievementUtils.AchievementNames.Epic_Boss_Kills);
                 count++;
             }
             return count;
@@ -1030,11 +1019,10 @@ namespace DOL.GS
                     spell.Damage = 450;
                     spell.Range = 1800;
                     spell.SpellID = 12011;
-                    spell.Target = "Enemy";
+                    spell.Target = eSpellTarget.ENEMY.ToString();
                     spell.Type = eSpellType.DirectDamageNoVariance.ToString();
                     spell.DamageType = (int)eDamageType.Matter;
                     m_OlcasgeanDD2 = new Spell(spell, 70);
-                    SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_OlcasgeanDD2);
                 }
                 return m_OlcasgeanDD2;
             }
@@ -1191,102 +1179,79 @@ namespace DOL.AI.Brain
 {
     public class AirPrimalBrain : StandardMobBrain
     {
-        private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
-        public AirPrimalBrain()
-            : base()
+        private class CastDdTimer : ECSGameTimerWrapperBase
+        {
+            private AirPrimalBrain _brain;
+
+            public GamePlayer Target { get; set; }
+
+            public CastDdTimer(AirPrimalBrain brain, GameObject owner) : base(owner)
+            {
+                _brain = brain;
+                Start(1500);
+            }
+
+            protected override int OnTick(ECSGameTimer timer)
+            {
+                _brain.CastDD(Target);
+                return 0;
+            }
+        }
+
+        private CastDdTimer _castDdTimer;
+
+        public AirPrimalBrain(): base()
         {
             AggroLevel = 100;
             AggroRange = 0;
             ThinkInterval = 2000;
+            _castDdTimer = new(this, Body);
         }
 
-        private GameLiving randomtarget = null;
-        private GameLiving RandomTarget
+        public void CastDD(GamePlayer target)
         {
-            get { return randomtarget; }
-            set { randomtarget = value; }
+            GameObject previousTarget = Body.TargetObject;
+            Body.TargetObject = target;
+            Body.CastSpell(AirDD, SkillBase.GetSpellLine(GlobalSpellsLines.Mob_Spells));
+            Body.TargetObject = previousTarget;
         }
-        List<GamePlayer> inRangeLiving;
+
+        public void CastMez(GamePlayer target)
+        {
+            GameObject previousTarget = Body.TargetObject;
+            Body.TargetObject = target;
+            Body.CastSpell(Mezz, SkillBase.GetSpellLine(GlobalSpellsLines.Mob_Spells));
+            Body.TargetObject = previousTarget;
+        }
+
         public void PickRandomTarget()
         {
-            List<GameLiving> enemies = AggroList.Keys.ToList();
+            if (_castDdTimer.IsAlive)
+                return;
+
+            List<GamePlayer> enemies = GameLoop.GetListForTick<GamePlayer>();
 
             foreach (GamePlayer player in Body.GetPlayersInRadius(1100))
             {
-                if (player != null)
-                {
-                    if (player.IsAlive && player.Client.Account.PrivLevel == 1)
-                    {
-                        if (player.GetDistanceTo(Body) < 1100 && player.IsVisibleTo(Body))
-                            AggroList.TryAdd(player, new());
-                        else
-                            AggroList.TryRemove(RandomTarget, out _);
-                    }
-                }
+                if (GameServer.ServerRules.IsAllowedToAttack(Body, player, true))
+                    enemies.Add(player);
             }
 
             if (enemies.Count == 0)
                 return;
-            else
+
+            GamePlayer randomTarget = enemies[Util.Random(0, enemies.Count - 1)];
+
+            if (Util.Chance(15))
             {
-                List<GameLiving> damage_enemies = new List<GameLiving>();
-                for (int i = 0; i < enemies.Count; i++)
-                {
-                    if (enemies[i] == null)
-                        continue;
-                    if (!(enemies[i] is GameLiving))
-                        continue;
-                    if (!(enemies[i] as GameLiving).IsAlive)
-                        continue;
-                    GameLiving living = null;
-                    living = enemies[i] as GameLiving;
-                    if (living.IsVisibleTo(Body) && Body.TargetInView)
-                    {
-                        damage_enemies.Add(enemies[i] as GameLiving);
-                    }
-                }
-
-                if (damage_enemies.Count > 0)
-                {
-                    RandomTarget = damage_enemies[Util.Random(0, damage_enemies.Count - 1)];
-                    if (RandomTarget.IsVisibleTo(Body) && Body.TargetInView)
-                    {
-                        PrepareToDD();
-                        if (Util.Chance(15) && RandomTarget != null)
-                        {
-                            Body.TargetObject = RandomTarget;
-                            if (!RandomTarget.effectListComponent.ContainsEffectForEffectType(eEffect.Mez))
-                            {
-                                Body.CastSpell(Mezz, SkillBase.GetSpellLine(GlobalSpellsLines.Mob_Spells));
-                                AggroList.TryRemove(RandomTarget, out _);
-                            }
-                        }
-                    }
-                    else
-                        AggroList.TryRemove(RandomTarget, out _);
-                }
+                if (!randomTarget.effectListComponent.ContainsEffectForEffectType(eEffect.Mez))
+                    CastMez(randomTarget);
             }
+
+            _castDdTimer.Target = randomTarget;
+            _castDdTimer.Start();
         }
 
-        private int CastDD(ECSGameTimer timer)
-        {
-            GameObject oldTarget = Body.TargetObject;
-
-            Body.TargetObject = RandomTarget;
-            if (Body.TargetObject != null)
-            {
-                Body.CastSpell(AirDD, SkillBase.GetSpellLine(GlobalSpellsLines.Mob_Spells));
-                AggroList.TryRemove(RandomTarget, out _);
-            }
-            RandomTarget = null;
-            if (oldTarget != null) Body.TargetObject = oldTarget;
-            return 0;
-        }
-
-        private void PrepareToDD()
-        {
-            new ECSGameTimer(Body, new ECSGameTimer.ECSTimerCallback(CastDD), 1200);
-        }
         public static bool path1 = false;
         public static bool path2 = false;
         public static bool path3 = false;
@@ -1332,8 +1297,6 @@ namespace DOL.AI.Brain
             Point3D point11 = new Point3D();
             point11.X = 40355; point11.Y = 61543; point11.Z = 12372;
 
-            if (inRangeLiving == null)
-                inRangeLiving = new List<GamePlayer>();
             if (Body.InCombatInLast(20 * 1000) == false && this.Body.InCombatInLast(25 * 1000))
             {
                 Body.Health = Body.MaxHealth;
@@ -1467,13 +1430,12 @@ namespace DOL.AI.Brain
                     spell.Damage = 600;
                     spell.Range = 1200;
                     spell.SpellID = 11718;
-                    spell.Target = "Enemy";
+                    spell.Target = eSpellTarget.ENEMY.ToString();
                     spell.Type = eSpellType.DirectDamageNoVariance.ToString();
                     spell.Uninterruptible = true;
                     spell.MoveCast = true;
                     spell.DamageType = (int)eDamageType.Spirit;
                     m_AirDD = new Spell(spell, 70);
-                    SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_AirDD);
                 }
                 return m_AirDD;
             }
@@ -1497,13 +1459,12 @@ namespace DOL.AI.Brain
                     spell.Radius = 350;
                     spell.SpellID = 11719;
                     spell.Duration = 60;
-                    spell.Target = "Enemy";
+                    spell.Target = eSpellTarget.ENEMY.ToString();
                     spell.Type = "Mesmerize";
                     spell.Uninterruptible = true;
                     spell.MoveCast = true;
                     spell.DamageType = (int)eDamageType.Spirit; //Spirit DMG Type
                     m_mezSpell = new Spell(spell, 70);
-                    SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_mezSpell);
                 }
                 return m_mezSpell;
             }
@@ -1541,10 +1502,7 @@ namespace DOL.GS
             ++OIBrain.DeadPrimalsCount;
             base.Die(killer);
         }
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * Strength / 100 * ServerProperties.Properties.EPICS_DMG_MULTIPLIER;
-        }
+
         public override bool HasAbility(string keyName)
         {
             if (IsAlive && keyName == GS.Abilities.CCImmunity)
@@ -1811,12 +1769,11 @@ namespace DOL.AI.Brain
                     spell.Name = "Machanism Effect";
                     spell.TooltipId = 4323;
                     spell.SpellID = 11865;
-                    spell.Target = "Self";
+                    spell.Target = eSpellTarget.SELF.ToString();
                     spell.Type = eSpellType.PowerRegenBuff.ToString();
                     spell.Uninterruptible = true;
                     spell.MoveCast = true;
                     m_WaterEffect = new Spell(spell, 70);
-                    SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_WaterEffect);
                 }
                 return m_WaterEffect;
             }
@@ -1861,10 +1818,7 @@ namespace DOL.GS
             ++OIBrain.DeadPrimalsCount;
             base.Die(killer);
         }
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * Strength / 100 * ServerProperties.Properties.EPICS_DMG_MULTIPLIER;
-        }
+
         public override bool HasAbility(string keyName)
         {
             if (IsAlive && keyName == GS.Abilities.CCImmunity)
@@ -2039,13 +1993,12 @@ namespace DOL.AI.Brain
                     spell.Name = "Fire Primal Damage Shield";
                     spell.TooltipId = 57;
                     spell.SpellID = 11721;
-                    spell.Target = "Self";
+                    spell.Target = eSpellTarget.SELF.ToString();
                     spell.Type = "DamageShield";
                     spell.Uninterruptible = true;
                     spell.MoveCast = true;
                     spell.DamageType = (int)eDamageType.Heat;
                     m_FireDS = new Spell(spell, 70);
-                    SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_FireDS);
                 }
                 return m_FireDS;
             }
@@ -2174,13 +2127,12 @@ namespace DOL.GS
                     spell.Range = 1200;
                     spell.Radius = 450;
                     spell.SpellID = 11866;
-                    spell.Target = "Area";
+                    spell.Target = eSpellTarget.AREA.ToString();
                     spell.Type = eSpellType.DirectDamageNoVariance.ToString();
                     spell.Uninterruptible = true;
                     spell.MoveCast = true;
                     spell.DamageType = (int)eDamageType.Heat;
                     m_FireGroundDD = new Spell(spell, 70);
-                    SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_FireGroundDD);
                 }
                 return m_FireGroundDD;
             }
@@ -2247,10 +2199,7 @@ namespace DOL.GS
             }
             base.Die(killer);
         }
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * Strength / 100 * ServerProperties.Properties.EPICS_DMG_MULTIPLIER;
-        }
+
         public override bool HasAbility(string keyName)
         {
             if (IsAlive && keyName == GS.Abilities.CCImmunity)
@@ -2386,13 +2335,12 @@ namespace DOL.AI.Brain
                     spell.Range = 1200;
                     spell.Range = 1500;
                     spell.SpellID = 11726;
-                    spell.Target = "Enemy";
+                    spell.Target = eSpellTarget.ENEMY.ToString();
                     spell.Type = "SpeedDecrease";
                     spell.Uninterruptible = true;
                     spell.MoveCast = true;
                     spell.DamageType = (int)eDamageType.Cold;
                     m_EarthRoot = new Spell(spell, 70);
-                    SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_EarthRoot);
                 }
                 return m_EarthRoot;
             }
@@ -2596,12 +2544,11 @@ namespace DOL.AI.Brain
                     spell.Value = 2000;
                     spell.Range = 1500;
                     spell.SpellID = 11722;
-                    spell.Target = "Realm";
+                    spell.Target = eSpellTarget.REALM.ToString();
                     spell.Type = "Heal";
                     spell.Uninterruptible = true;
                     spell.MoveCast = true;
                     m_EarthmenderHeal = new Spell(spell, 70);
-                    SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_EarthmenderHeal);
                 }
                 return m_EarthmenderHeal;
             }
@@ -2806,12 +2753,11 @@ namespace DOL.AI.Brain
                     spell.Value = 2000;
                     spell.Range = 1500;
                     spell.SpellID = 11723;
-                    spell.Target = "Realm";
+                    spell.Target = eSpellTarget.REALM.ToString();
                     spell.Type = "Heal";
                     spell.Uninterruptible = true;
                     spell.MoveCast = true;
                     m_EarthmenderHeal = new Spell(spell, 70);
-                    SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_EarthmenderHeal);
                 }
                 return m_EarthmenderHeal;
             }
@@ -3013,12 +2959,11 @@ namespace DOL.AI.Brain
                     spell.Value = 2000;
                     spell.Range = 1500;
                     spell.SpellID = 11724;
-                    spell.Target = "Realm";
+                    spell.Target = eSpellTarget.REALM.ToString();
                     spell.Type = "Heal";
                     spell.Uninterruptible = true;
                     spell.MoveCast = true;
                     m_EarthmenderHeal = new Spell(spell, 70);
-                    SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_EarthmenderHeal);
                 }
                 return m_EarthmenderHeal;
             }
@@ -3220,12 +3165,11 @@ namespace DOL.AI.Brain
                     spell.Value = 2000;
                     spell.Range = 1500;
                     spell.SpellID = 11725;
-                    spell.Target = "Realm";
+                    spell.Target = eSpellTarget.REALM.ToString();
                     spell.Type = "Heal";
                     spell.Uninterruptible = true;
                     spell.MoveCast = true;
                     m_EarthmenderHeal = new Spell(spell, 70);
-                    SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_EarthmenderHeal);
                 }
                 return m_EarthmenderHeal;
             }
@@ -3276,10 +3220,7 @@ namespace DOL.GS
         {
             base.Die(null); // null to not gain experience
         }
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * Strength / 250 * ServerProperties.Properties.EPICS_DMG_MULTIPLIER;
-        }
+
         public override bool AddToWorld()
         {
             Model = 1269;
@@ -3346,13 +3287,12 @@ namespace DOL.AI.Brain
                     spell.Duration = 36;
                     spell.Range = 500;
                     spell.SpellID = 11727;
-                    spell.Target = "Enemy";
+                    spell.Target = eSpellTarget.ENEMY.ToString();
                     spell.Type = "DamageSpeedDecrease";
                     spell.Uninterruptible = true;
                     spell.MoveCast = true;
                     spell.DamageType = (int)eDamageType.Spirit;
                     m_VortexDD = new Spell(spell, 70);
-                    SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_VortexDD);
                 }
                 return m_VortexDD;
             }

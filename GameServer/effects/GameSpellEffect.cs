@@ -12,6 +12,7 @@ namespace DOL.GS.Effects
 	/// <summary>
 	/// Spell Effect assists SpellHandler with duration spells
 	/// </summary>
+	[Obsolete("Old DoL system, newer effects and spell handlers must use ECSGameEffect and EffectListComponent")]
 	public class GameSpellEffect : IGameEffect, IConcentrationEffect
 	{
 		#region private internal
@@ -209,7 +210,7 @@ namespace DOL.GS.Effects
 				if (Duration == 0)
 					return 0;
 
-				if (m_timer == null || m_timer.CancelEffect)
+				if (m_timer == null || m_timer.IsEnded)
 					return 0;
 				
 				return (int) (Duration - m_timer.ExpireTick);
@@ -235,7 +236,7 @@ namespace DOL.GS.Effects
 		/// </summary>
 		public bool ImmunityState
 		{
-			get { return IsExpired && m_timer != null && !m_timer.CancelEffect; }
+			get { return IsExpired && m_timer != null && m_timer.IsActive; }
 		}
 		
 		#endregion
@@ -409,11 +410,7 @@ namespace DOL.GS.Effects
 							log.WarnFormat("{0}: effect was not added to the effects list, not starting it either. (effect class:{1} spell type:{2} spell name:'{3}')", Owner.Name, GetType().FullName, Spell.SpellType, Name);
 						return;
 					}
-					
-					// Add concentration Effect To Caster List.
-					if (Concentration > 0 && SpellHandler != null && SpellHandler.Caster != null && SpellHandler.Caster.effectListComponent.ConcentrationEffects != null)
-						//SpellHandler.Caster.ConcentrationEffects.Add(this);
-					
+
 					StartTimers();
 				}
 				
@@ -565,10 +562,6 @@ namespace DOL.GS.Effects
 				PulseFreq = effect.PulseFreq;
 				Effectiveness = effect.Effectiveness;
 
-				// Add concentration Effect To Caster List.
-				if (Concentration > 0 && SpellHandler != null && SpellHandler.Caster != null && SpellHandler.Caster.effectListComponent.ConcentrationEffects != null)
-					//SpellHandler.Caster.ConcentrationEffects.Add(this);
-
 				// Restart Effect
 				IsExpired = false;
 				StartTimers();
@@ -612,7 +605,7 @@ namespace DOL.GS.Effects
 			// Duration => 0 = endless until explicit stop
 			if (Duration > 0 || PulseFreq > 0)
 			{
-				m_timer = new(Owner, m_handler, m_duration, m_pulseFreq, Owner.Effectiveness, SpellHandler.Spell.Icon);
+				m_timer = new(new(Owner, m_duration, Owner.Effectiveness, m_handler), m_pulseFreq);
 			}
 		}
 
@@ -623,7 +616,7 @@ namespace DOL.GS.Effects
 		{
 			if (m_timer != null)
 			{
-				EffectService.RequestCancelEffect(m_timer);
+				m_timer.End();
 				m_timer = null;
 			}
 		}

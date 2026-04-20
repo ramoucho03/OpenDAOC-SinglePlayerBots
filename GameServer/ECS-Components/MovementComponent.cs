@@ -1,24 +1,25 @@
-﻿using System.Reflection;
+﻿using System.Numerics;
 using System.Threading;
-using ECS.Debug;
 
 namespace DOL.GS
 {
-    public class MovementComponent
+    public class MovementComponent : IServiceObject
     {
-        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
-        private const int SUBZONE_RELOCATION_CHECK_INTERVAL = 500;
+        private const int SUBZONE_RELOCATION_CHECK_INTERVAL = 2000; // Subzone update is forced by OnPositionUpdate, so this doesn't need to be very frequent.
 
-        private long _nextSubZoneRelocationCheckTick;
-        private Point2D _positionDuringLastSubZoneRelocationCheck = new();
+        protected Vector3 _ownerPosition;
+        private bool _relocationCheckPending;
+        private long _nextRelocationCheckTick;
         private int _turningDisabledCount;
 
         public GameLiving Owner { get; }
         public short CurrentSpeed { get; set; }
         public short MaxSpeedBase { get; set; } // Currently unused for players.
+        public long LastMovementTick { get; private set; }
         public virtual short MaxSpeed => (short) Owner.GetModified(eProperty.MaxSpeed);
         public bool IsMoving => CurrentSpeed != 0;
         public bool IsTurningDisabled => Interlocked.CompareExchange(ref _turningDisabledCount, 0, 0) > 0 && !Owner.effectListComponent.ContainsEffectForEffectType(eEffect.SpeedOfSound);
+        public ServiceObjectId ServiceObjectId { get; } = new(ServiceObjectType.MovementComponent);
 
         protected MovementComponent(GameLiving owner)
         {
@@ -35,25 +36,31 @@ namespace DOL.GS
                 return new MovementComponent(living);
         }
 
-        public void Tick()
+        public virtual void Tick()
         {
-            long startTick = GameLoop.GetCurrentTime();
-            TickInternal();
-            long stopTick = GameLoop.GetCurrentTime();
+            if (Owner.ObjectState is not GameObject.eObjectState.Active)
+            {
+                RemoveFromServiceObjectStore();
+                return;
+            }
 
-            if (stopTick - startTick > Diagnostics.LongTickThreshold)
-                log.Warn($"Long {nameof(MovementComponent)}.{nameof(TickInternal)} for {Owner.Name}({Owner.ObjectID}) Time: {stopTick - startTick}ms");
+            TickInternal();
         }
 
         protected virtual void TickInternal()
         {
-            // Only check for subzone relocation if we moved.
-            if (!Owner.IsSamePosition(_positionDuringLastSubZoneRelocationCheck) && ServiceUtils.ShouldTickAdjust(ref _nextSubZoneRelocationCheckTick))
-            {
-                _nextSubZoneRelocationCheckTick += SUBZONE_RELOCATION_CHECK_INTERVAL;
-                _positionDuringLastSubZoneRelocationCheck = new Point2D(Owner.X, Owner.Y);
-                Owner.SubZoneObject.CheckForRelocation();
-            }
+            if (!_relocationCheckPending && !GameServiceUtils.ShouldTick(_nextRelocationCheckTick))
+                return;
+
+            Owner.SubZoneObject.CheckForRelocation();
+            _nextRelocationCheckTick = GameLoop.GameLoopTime + SUBZONE_RELOCATION_CHECK_INTERVAL;
+            _relocationCheckPending = false;
+        }
+
+        public virtual void OnPositionUpdate()
+        {
+            _relocationCheckPending = true;
+            LastMovementTick = GameLoop.GameLoopTime;
         }
 
         public virtual void DisableTurning(bool add)
@@ -62,6 +69,18 @@ namespace DOL.GS
                 Interlocked.Increment(ref _turningDisabledCount);
             else
                 Interlocked.Decrement(ref _turningDisabledCount);
+        }
+
+        protected virtual void UpdatePosition() { }
+
+        protected void AddToServiceObjectStore()
+        {
+            ServiceObjectStore.Add(this);
+        }
+
+        protected void RemoveFromServiceObjectStore()
+        {
+            ServiceObjectStore.Remove(this);
         }
     }
 }

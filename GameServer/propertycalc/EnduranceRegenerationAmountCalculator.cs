@@ -30,20 +30,16 @@ namespace DOL.GS.PropertyCalc
                 - Fatigue now regenerates at the standing rate while moving.
             */
 
-            int debuff = living.SpecBuffBonusCategory[(int) property];
+            int debuff = living.SpecBuffBonusCategory[property];
 
             if (debuff < 0)
                 debuff = -debuff;
 
             // Buffs allow to regenerate endurance even in combat and while moving.
-            double regen = living.BaseBuffBonusCategory[(int) property] + living.AbilityBonus[(int) property] + living.ItemBonus[(int) property] - debuff;
+            double regen = living.BaseBuffBonusCategory[property] + living.AbilityBonus[property] + living.ItemBonus[property] - debuff;
 
-            if (!living.InCombat)
-            {
-
-                if (living is not IGamePlayer player || !player.IsSprinting)
-                    regen += 5;
-            }
+            if (!living.InCombat && living is IGamePlayer player && !player.IsMoving)
+                regen += player.IsSitting ? 4 : 1;
 
             regen *= ServerProperties.Properties.ENDURANCE_REGEN_AMOUNT_MODIFIER;
             return Math.Max(0, (int) regen);

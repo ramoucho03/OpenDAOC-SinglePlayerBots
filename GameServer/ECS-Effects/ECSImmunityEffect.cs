@@ -1,67 +1,74 @@
-﻿using DOL.GS.Spells;
+﻿using System.Reflection;
+using DOL.Logging;
 
 namespace DOL.GS
 {
     public class ECSImmunityEffect : ECSGameSpellEffect
     {
-        public ECSImmunityEffect(GameLiving owner, ISpellHandler handler, int duration, int pulseFreq, double effectiveness, ushort icon, bool cancelEffect = false)
-            : base(new ECSGameEffectInitParams(owner, duration, effectiveness, handler))
+        private static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
+
+        public ECSImmunityEffect(in ECSGameEffectInitParams initParams, int pulseFreq) : base(initParams)
         {
-            // Some of this is already done in the base constructor and should be cleaned up
-            Owner = owner;
-            SpellHandler = handler;
-            Duration = duration;
             PulseFreq = pulseFreq;
-            Effectiveness = effectiveness;
-            CancelEffect = cancelEffect;
-            EffectType = EffectService.GetImmunityEffectFromSpell(handler.Spell);
-            ExpireTick = duration + GameLoop.GameLoopTime;
+            EffectType = EffectHelper.GetImmunityEffectFromSpell(SpellHandler.Spell);
+
+            if (EffectType is eEffect.Unknown)
+            {
+                if (log.IsWarnEnabled)
+                    log.Warn($"Tried to create an immunity effect for spell '{SpellHandler.Spell.Name}' ({SpellHandler.Spell.SpellType}), but no corresponding immunity effect was found.");
+            }
+
             StartTick = GameLoop.GameLoopTime;
             TriggersImmunity = false;
-
-            EffectService.RequestStartEffect(this);
         }
 
-        protected ECSImmunityEffect(ECSGameEffectInitParams initParams) : base(initParams) { }
+        protected ECSImmunityEffect(in ECSGameEffectInitParams initParams) : base(initParams) { }
     }
 
-    public class NPCECSStunImmunityEffect : ECSImmunityEffect
+    public abstract class NpcImmunityEffect : ECSImmunityEffect
     {
-        private int _timesStunned = 1;
+        private int _count = 1;
 
-        public NPCECSStunImmunityEffect(ECSGameEffectInitParams initParams) : base(initParams)
+        protected NpcImmunityEffect(in ECSGameEffectInitParams initParams) : base(initParams)
         {
             Owner = initParams.Target;
             Duration = 60000;
+        }
+
+        public bool CanApplyNewEffect(long duration)
+        {
+            // Whether a new effect can be applied depends on its duration.
+            // This is equivalent to `_count < duration / 2000 + 1`.
+            // This seems to be correct for stuns. Mez are untested and may have a different threshold.
+            return CalculateNewEffectDuration(duration) >= 1000;
+        }
+
+        public long CalculateNewEffectDuration(long duration)
+        {
+            // Duration is reduced for every new application.
+            duration /= 2 * _count;
+            return duration;
+        }
+
+        public void OnApplyNewEffect()
+        {
+            _count++;
+        }
+    }
+
+    public class NpcStunImmunityEffect : NpcImmunityEffect
+    {
+        public NpcStunImmunityEffect(in ECSGameEffectInitParams initParams) : base(initParams)
+        {
             EffectType = eEffect.NPCStunImmunity;
-            EffectService.RequestStartEffect(this);
-        }
-
-        public long CalculateStunDuration(long duration)
-        {
-            var retVal = duration / (2 * _timesStunned);
-            _timesStunned++;
-            return retVal;
         }
     }
 
-    public class NPCECSMezImmunityEffect : ECSImmunityEffect
+    public class NpcMezImmunityEffect : NpcImmunityEffect
     {
-        private int _timesMezzed = 1;
-
-        public NPCECSMezImmunityEffect(ECSGameEffectInitParams initParams) : base(initParams)
+        public NpcMezImmunityEffect(in ECSGameEffectInitParams initParams) : base(initParams)
         {
-            Owner = initParams.Target;
-            Duration = 60000;
             EffectType = eEffect.NPCMezImmunity;
-            EffectService.RequestStartEffect(this);
-        }
-
-        public long CalculateMezDuration(long duration)
-        {
-            var retVal = duration / (2 * _timesMezzed);
-            _timesMezzed++;
-            return retVal;
         }
     }
 }

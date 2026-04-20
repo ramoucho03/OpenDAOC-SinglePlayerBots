@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Specialized;
@@ -91,7 +92,7 @@ namespace DOL.GS
 		/// <param name="player">GamePlayer to be added to the group</param>
 		/// <param name="leader"></param>
 		/// <returns>true if added successfully</returns>
-		public virtual bool AddBattlePlayer(GamePlayer player,bool leader) 
+		public virtual bool AddBattlePlayer(IGamePlayer player,bool leader) 
 		{
 			if (player == null) return false;
 			lock (_battlegroupMembersLock)
@@ -111,7 +112,7 @@ namespace DOL.GS
 			return true;
 		}
 
-        public virtual bool IsInTheBattleGroup(GamePlayer player)
+        public virtual bool IsInTheBattleGroup(IGamePlayer player)
         {
             lock (_battlegroupMembersLock)
             {
@@ -291,43 +292,48 @@ namespace DOL.GS
 
 		public object GameStaticItemOwnerComparand => null;
 
-		public bool TryAutoPickUpMoney(GameMoney money)
+		public TryPickUpResult TryAutoPickUpMoney(GameMoney money)
 		{
-			return TryPickUpMoney(Leader as GamePlayer, money) is not TryPickUpResult.DOES_NOT_HANDLE;
+			return TryPickUpMoney(Leader as GamePlayer, money);
 		}
 
-		public bool TryAutoPickUpItem(WorldInventoryItem worldItem)
+		public TryPickUpResult TryAutoPickUpItem(WorldInventoryItem worldItem)
 		{
 			// We don't care if players have auto loot enabled, or if they can see the item (the item isn't added to the world yet anyway), or who attacked last, etc.
-			// This is especially important for battlegroups since can have an illimited amount of players.
-			return TryPickUpItem(battlegroupTreasurer, worldItem) is not TryPickUpResult.DOES_NOT_HANDLE;
+			// This is especially important for battlegroups since they can have an illimited amount of players.
+			return TryPickUpItem(battlegroupTreasurer, worldItem);
 		}
 
 		public TryPickUpResult TryPickUpMoney(IGamePlayer source, GameMoney money)
 		{
+			money.AssertLockAcquisition();
+
 			// Splitting money in a battlegroup could cause performance issues. Let it fallback to group then solo logic.
-			return TryPickUpResult.DOES_NOT_HANDLE;
+			return TryPickUpResult.DoesNotWant;
 		}
 
 		public TryPickUpResult TryPickUpItem(IGamePlayer source, WorldInventoryItem item)
 		{
+			item.AssertLockAcquisition();
+
 			// A battlegroup is only able to pick up items if it has a treasurer, otherwise it's supposed to fallback to group then solo logic.
 			// There is no range check. If you're in a BG, every item goes to the treasurer or stay on the ground.
 			// If his inventory is full, the item should simply stay on the ground until he makes some room, or another treasurer is appointed.
-			if (!GetBGLootType() || battlegroupTreasurer == null)
-				return TryPickUpResult.DOES_NOT_HANDLE;
+			// Items discarded by players can only be picked up by those same players.
+			if (!GetBGLootType() || battlegroupTreasurer == null || item.IsPlayerDiscarded)
+				return TryPickUpResult.DoesNotWant;
 
 			if (!GiveItem(battlegroupTreasurer, item.Item))
 			{
 				battlegroupTreasurer.Out.SendMessage(LanguageMgr.GetTranslation(battlegroupTreasurer.Client.Account.Language, "GamePlayer.PickupObject.BackpackFull"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
-				return TryPickUpResult.FAILED;
+				return TryPickUpResult.Blocked;
 			}
 
 			battlegroupTreasurer.Out.SendMessage(LanguageMgr.GetTranslation(battlegroupTreasurer.Client.Account.Language, "GamePlayer.PickupObject.YouGet", item.Item.GetName(1, false)), eChatType.CT_System, eChatLoc.CL_SystemWindow);
 			Message.SystemToOthers((GameObject)source, LanguageMgr.GetTranslation(battlegroupTreasurer.Client.Account.Language, "GamePlayer.PickupObject.GroupMemberPicksUp", Name, item.Item.GetName(1, false)), eChatType.CT_System);
 			InventoryLogging.LogInventoryAction("(ground)", battlegroupTreasurer, eInventoryActionType.Loot, item.Item.Template, item.Item.IsStackable ? item.Item.Count : 1);
 			item.RemoveFromWorld();
-			return TryPickUpResult.SUCCESS;
+			return TryPickUpResult.Success;
 
 			static bool GiveItem(GamePlayer player, DbInventoryItem item)
 			{

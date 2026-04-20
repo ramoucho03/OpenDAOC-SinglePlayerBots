@@ -1,24 +1,19 @@
 ﻿using DOL.GS.PacketHandler;
+using DOL.GS.Scripts;
 using DOL.Language;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace DOL.GS
 {
     public class CamouflageECSGameEffect : ECSGameAbilityEffect
     {
-        public CamouflageECSGameEffect(ECSGameEffectInitParams initParams)
+        public CamouflageECSGameEffect(in ECSGameEffectInitParams initParams)
             : base(initParams)
         {
             EffectType = eEffect.Camouflage;
-            EffectService.RequestStartEffect(this);
         }
 
         public override ushort Icon { get { return 476; } }
-        public override string Name { get { return LanguageMgr.GetTranslation(((GamePlayer)Owner).Client, "Effects.CamouflageEffect.Name"); } }
+        public override string Name { get { return LanguageMgr.GetTranslation(((IGamePlayer)Owner).Client, "Effects.CamouflageEffect.Name"); } }
         public override bool HasPositiveEffect { get { return true; } }
 
         public override void OnStartEffect()

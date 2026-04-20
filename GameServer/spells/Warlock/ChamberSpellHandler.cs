@@ -124,7 +124,7 @@ namespace DOL.GS.Spells
 					MessageToCaster("You cannot cast this on the dead!", eChatType.CT_SpellResisted);
 					return false;
 				}
-				if (caster.IsMezzed || caster.IsStunned || caster.IsSilenced)
+				if (caster.IsCrowdControlled || caster.IsSilenced)
 				{
 					MessageToCaster("You can't use that in your state.", eChatType.CT_System);
 					return false;
@@ -152,7 +152,7 @@ namespace DOL.GS.Spells
 						return false;
 					}
 				}
-				if (!caster.IsWithinRadius(Target, ((SpellHandler)spellhandler).CalculateSpellRange()))
+				if (!caster.IsWithinRadius(Target, Spell.CalculateEffectiveRange(caster)))
 				{
 					MessageToCaster("That target is too far away!", eChatType.CT_SpellResisted);
 					return false;
@@ -167,14 +167,14 @@ namespace DOL.GS.Spells
 					if (EffectOwner == Target)
 					{
 						if (m_caster is GamePlayer)
-							((GamePlayer)m_caster).Out.SendMessage(string.Format("{0} is invisible to you!", Target.GetName(0, true)), eChatType.CT_Missed, eChatLoc.CL_SystemWindow);
+							((GamePlayer)m_caster).Out.SendMessage(string.Format("{0} is invisible to you!", Target.GetName(0, true)), eChatType.CT_Action, eChatLoc.CL_SystemWindow);
 
 						return false;
 					}
 				}
 				if (Target.HasAbility(Abilities.DamageImmunity))
 				{
-					MessageToCaster(Target.Name + " is immune to this effect!", eChatType.CT_SpellResisted);
+					MessageToCaster("Your target is immune to this effect!", eChatType.CT_SpellResisted);
 					return false;
 				}
 				if (GameServer.ServerRules.IsAllowedToAttack(Caster, Target, true) && chamber.PrimarySpell.Target == eSpellTarget.REALM)
@@ -310,7 +310,7 @@ namespace DOL.GS.Spells
 				list.Add("");
 
 				//Description
-				list.Add("Description: " + Spell.Description);
+				list.Add("Description: " + ShortDescription);
 				list.Add("");
 
 				//SpellType

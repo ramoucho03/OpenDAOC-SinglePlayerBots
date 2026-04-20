@@ -382,14 +382,14 @@ namespace DOL.GS
 			if (effect != null)
 				return false;
 
-			effect = new ShadeECSGameEffect(new ECSGameEffectInitParams((GamePlayer)Player, 0, 1));
-			return effect.IsBuffActive;
+			effect = ECSGameEffectFactory.Create(new((GameLiving)Player, 0, 1), static (in i) => new ShadeECSGameEffect(i));
+			return effect.IsActive;
 		}
 
 		public virtual bool CancelShadeEffect(out ECSGameAbilityEffect effect)
 		{
-			effect = EffectListService.GetAbilityEffectOnTarget((GamePlayer)Player, eEffect.Shade);
-			return effect != null && EffectService.RequestCancelEffect(effect);
+			effect = EffectListService.GetAbilityEffectOnTarget((GameLiving)Player, eEffect.Shade);
+			return effect != null && effect.End();
 		}
 
 		public virtual bool Shade(bool makeShade, out ECSGameAbilityEffect effect)

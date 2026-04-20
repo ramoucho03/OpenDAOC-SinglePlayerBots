@@ -49,10 +49,7 @@ namespace DOL.GS.Scripts
             return true;
         }
 
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * Strength / 100 * ServerProperties.Properties.EPICS_DMG_MULTIPLIER;
-        }
+
 
         public override int MaxHealth
         {
@@ -94,21 +91,6 @@ namespace DOL.GS.Scripts
                 new TakeDamageEventArgs(source, damageType, damageAmount, criticalAmount));
         }
 
-        /// <summary>
-        /// Take action upon someone healing the enemy.
-        /// </summary>
-        /// <param name="enemy">The living that was healed.</param>
-        /// <param name="healSource">The source of the heal.</param>
-        /// <param name="changeType">The way the living was healed.</param>
-        /// <param name="healAmount">The amount that was healed.</param>
-        public override void EnemyHealed(GameLiving enemy, GameObject healSource, eHealthChangeType changeType,
-            int healAmount)
-        {
-            base.EnemyHealed(enemy, healSource, changeType, healAmount);
-            Brain.Notify(GameLivingEvent.EnemyHealed, this,
-                new EnemyHealedEventArgs(enemy, healSource, changeType, healAmount));
-        }
-
         #region Tether
 
         /// <summary>
@@ -136,7 +118,7 @@ namespace DOL.GS.Scripts
         /// <param name="message">The message to be broadcast.</param>
         public void BroadcastMessage(String message)
         {
-            foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.OBJ_UPDATE_DISTANCE))
+            foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
             {
                 player.Out.SendMessage(message, eChatType.CT_Broadcast, eChatLoc.CL_SystemWindow);
             }
@@ -232,7 +214,7 @@ namespace DOL.GS.Scripts
             /// <param name="message">The message to be broadcast.</param>
             public void BroadcastMessage(String message)
             {
-                foreach (GamePlayer player in Body.GetPlayersInRadius(WorldMgr.OBJ_UPDATE_DISTANCE))
+                foreach (GamePlayer player in Body.GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
                 {
                     player.Out.SendMessage(message, eChatType.CT_Broadcast, eChatLoc.CL_SystemWindow);
                 }

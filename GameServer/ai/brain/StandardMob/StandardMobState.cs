@@ -68,7 +68,7 @@ namespace DOL.AI.Brain
             if (_brain.CheckSpells(StandardMobBrain.eCheckSpellType.Defensive))
                 return;
 
-            if (_brain.HasPatrolPath())
+            if (_brain.Body.CanMoveOnPath)
                 _brain.FSM.SetCurrentState(eFSMStateType.PATROLLING);
             else if (!_brain.Body.IsNearSpawn)
                 _brain.FSM.SetCurrentState(eFSMStateType.RETURN_TO_SPAWN);
@@ -116,9 +116,9 @@ namespace DOL.AI.Brain
 
         public override void Think()
         {
-            if (_brain.Body.IsCrowdControlled || EffectListService.GetSpellEffectOnTarget(_brain.Body, eEffect.MovementSpeedDebuff)?.SpellHandler.Spell.Value == 99)
+            if (_brain.Body.IsCrowdControlled || EffectListService.GetEffectOnTarget(_brain.Body, eEffect.MovementSpeedDebuff)?.SpellHandler.Spell.Value == 99)
                 _aggroEndTime = GameLoop.GameLoopTime + LEAVE_WHEN_OUT_OF_COMBAT_FOR;
-            else if (!_brain.Body.InCombatInLast(LEAVE_WHEN_OUT_OF_COMBAT_FOR) && ServiceUtils.ShouldTick(_aggroEndTime))
+            else if (!_brain.Body.InCombatInLast(LEAVE_WHEN_OUT_OF_COMBAT_FOR) && GameServiceUtils.ShouldTick(_aggroEndTime))
             {
                 _brain.FSM.SetCurrentState(eFSMStateType.IDLE);
                 return;
@@ -149,6 +149,12 @@ namespace DOL.AI.Brain
             StateType = eFSMStateType.ROAMING;
         }
 
+        public override void Enter()
+        {
+            // Ensure NPCs don't start roaming immediately.
+            _nextRoamingTickSet = false;
+        }
+
         public override void Think()
         {
             if (_brain.CheckProximityAggro())
@@ -162,10 +168,10 @@ namespace DOL.AI.Brain
                 if (!_nextRoamingTickSet)
                 {
                     _nextRoamingTickSet = true;
-                    _nextRoamingTick += Util.Random(MinCooldown, MaxCooldown) * 1000;
+                    _nextRoamingTick = GameLoop.GameLoopTime + Util.Random(MinCooldown, MaxCooldown) * 1000;
                 }
 
-                if (ServiceUtils.ShouldTickAdjust(ref _nextRoamingTick))
+                if (GameServiceUtils.ShouldTick(_nextRoamingTick))
                 {
                     // We're not updating `_nextRoamingTick` here because we want it to be set after the NPC stopped moving.
                     _nextRoamingTickSet = false;
@@ -224,15 +230,32 @@ namespace DOL.AI.Brain
             base.Enter();
         }
 
+        public override void Exit()
+        {
+            _brain.Body.StopMovingOnPath();
+            base.Exit();
+        }
+
         public override void Think()
         {
+            // While NPCs will resume their path after casting a spell or losing aggro, they will do it by moving to the previous node.
+            // Need to find a better way to do this, for example by saving the current position and resuming from there.
+
+            if (_brain.CheckSpells(StandardMobBrain.eCheckSpellType.Defensive))
+                return;
+
             if (_brain.CheckProximityAggro())
             {
                 _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
                 return;
             }
 
-            // TODO: NPCs can get stuck here. Find a way to resume patrols.
+            if (!_brain.Body.IsMovingOnPath)
+            {
+                _brain.FSM.SetCurrentState(eFSMStateType.IDLE);
+                return;
+            }
+
             base.Think();
         }
     }

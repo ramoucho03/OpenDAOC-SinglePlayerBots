@@ -23,13 +23,13 @@ namespace DOL.GS.spells
 
 			SendEffectAnimation(target, m_spell.ClientEffect, boltDuration: 0, noSound: false, success: 1);
 						
-			var mesmerizeEffect = target.FindEffectOnTarget("Mesmerize");
+			/*var mesmerizeEffect = target.FindEffectOnTarget("Mesmerize");
 			if (mesmerizeEffect != null)
 				mesmerizeEffect.Cancel(false);
 
 			var speedDecreaseEffect = target.FindEffectOnTarget("SpeedDecrease");
 			if (speedDecreaseEffect != null)
-				speedDecreaseEffect.Cancel(false);
+				speedDecreaseEffect.Cancel(false);*/
 
 						
 			bool targetIsGameplayer = target is GamePlayer;
@@ -65,27 +65,9 @@ namespace DOL.GS.spells
 			if (target == null || target.CurrentRegion == null)
 				return;
 
-			if (target.Realm == 0 || Caster.Realm == 0)
-			{
-				target.LastAttackedByEnemyTickPvE = target.CurrentRegion.Time;
-				Caster.LastAttackTickPvE = Caster.CurrentRegion.Time;
-			}
-			else
-			{
-				target.LastAttackedByEnemyTickPvP = target.CurrentRegion.Time;
-				Caster.LastAttackTickPvP = Caster.CurrentRegion.Time;
-			}
-
 			base.ApplyEffectOnTarget(target);
 
 			target.StartInterruptTimer(target.SpellInterruptDuration, AttackData.eAttackType.Spell, Caster);
-
-			if (target is GameNPC)
-			{
-				IOldAggressiveBrain aggroBrain = ((GameNPC)target).Brain as IOldAggressiveBrain;
-				if (aggroBrain != null)
-					aggroBrain.AddToAggroList(Caster, 1);
-			}
 		}
 
 		public override double CalculateSpellResistChance(GameLiving target) => 100 - CalculateToHitChance(target);

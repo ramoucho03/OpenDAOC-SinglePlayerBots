@@ -26,10 +26,7 @@ namespace DOL.GS
 				default: return 70;// dmg reduction for rest resists
 			}
 		}
-		public override double AttackDamage(DbInventoryItem weapon)
-		{
-			return base.AttackDamage(weapon) * Strength / 100;
-		}
+
 		public override int MeleeAttackRange => 350;
 		public override bool HasAbility(string keyName)
 		{
@@ -109,7 +106,6 @@ namespace DOL.GS
 					spell.DamageType = (int)eDamageType.Body;
 					spell.Uninterruptible = true;
 					m_GoretoothPoison = new Spell(spell, 70);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_GoretoothPoison);
 				}
 				return m_GoretoothPoison;
 			}
@@ -133,10 +129,9 @@ namespace DOL.GS
 					spell.Name = "Stun";
 					spell.Range = 400;
 					spell.SpellID = 11880;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Type = eSpellType.Stun.ToString();
 					m_Goretooth_stun = new Spell(spell, 60);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_Goretooth_stun);
 				}
 				return m_Goretooth_stun;
 			}

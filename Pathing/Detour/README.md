@@ -8,7 +8,7 @@ Detour offers a simple static navmesh data representation which is suitable for 
 This project is based on [recastnavigation](https://github.com/recastnavigation/recastnavigation).
 
 ## How to use with OpenDAoC
-We recommend generating navmeshes (navigation meshes) either with [Uthgard open source tools](https://github.com/thekroko/uthgard-opensource/tree/master/pathing) or with [our own fork of it](https://github.com/OpenDAoC/OpenDAoC-BuildNav). You can also download them from [our old repository](https://gitlab.com/atlas-freeshard/misc/navmeshes) (classic) or from [Amtenael](https://amtenael.fr/pathing.7z) (some zones are missing).
+We recommend generating navmeshes (navigation meshes) with [our own fork of it](https://github.com/OpenDAoC/OpenDAoC-BuildNav). Navmeshes are expected to be generated with DT_POLYREF64 enabled.
 
 Create a "pathing" folder in your server's folder (where you have CoreServer.exe) and copy the navmeshes (*.nav) in it.
 
@@ -41,4 +41,4 @@ About Linux, you can use your package manager to install theses tools: cmake, g+
 1. Open a terminal in this path
 2. `mkdir build && cd build`
 3. `cmake -DCMAKE_BUILD_TYPE=Release .. && make`
-4. Copy `libDetour.so` to your server's `/lib` folder
+4. Copy `Detour.so` to your server's `/lib` folder

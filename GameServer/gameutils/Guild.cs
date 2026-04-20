@@ -106,6 +106,8 @@ namespace DOL.GS
 		/// </summary>
 		protected int m_id;
 
+		private GuildBuffTimer _guidBuffTimer;
+
 		/// <summary>
 		/// Stores claimed keeps (unique)
 		/// </summary>
@@ -324,9 +326,6 @@ namespace DOL.GS
 		{
 			// `newBank` should have been validated by `ValidateChangeBankAmount`.
 			m_DBguild.Bank = newBank;
-
-			if (save)
-				SaveIntoDatabase();
 		}
 
 		// Used by the hack to make pets untargetable with tab on a PvP server. Effectively creates a dummy guild to get a unique ID.
@@ -334,7 +333,7 @@ namespace DOL.GS
 
 		static Guild()
 		{
-			if (GameServer.Instance.Configuration.ServerType == EGameServerType.GST_PvP)
+			if (GameServer.Instance.Configuration.ServerType is EGameServerType.GST_PvP)
 				DummyGuild = GuildMgr.CreateGuild(0, "DummyGuildToMakePetsUntargetable") ?? GuildMgr.GetGuildByName("DummyGuildToMakePetsUntargetable");
 		}
 
@@ -344,8 +343,9 @@ namespace DOL.GS
 		/// </summary>
 		public Guild(DbGuild dbGuild)
 		{
-			this.m_DBguild = dbGuild;
+			m_DBguild = dbGuild;
 			bannerStatus = "None";
+			TryStartGuildBuffTimer();
 		}
 
 		public int Emblem
@@ -357,7 +357,6 @@ namespace DOL.GS
 			set
 			{
 				this.m_DBguild.Emblem = value;
-				this.SaveIntoDatabase();
 			}
 		}
 
@@ -370,7 +369,6 @@ namespace DOL.GS
 			set
 			{
 				this.m_DBguild.GuildBanner = value;
-				this.SaveIntoDatabase();
 			}
 		}
 
@@ -378,17 +376,11 @@ namespace DOL.GS
 		{
 			get
 			{
-				if (m_DBguild.GuildBannerLostTime == null)
-				{
-					return new DateTime(2010, 1, 1);
-				}
-
 				return m_DBguild.GuildBannerLostTime;
 			}
 			set
 			{
 				this.m_DBguild.GuildBannerLostTime = value;
-				this.SaveIntoDatabase();
 			}
 		}
 
@@ -401,7 +393,6 @@ namespace DOL.GS
 			set
 			{
 				this.m_DBguild.oMotd = value;
-				this.SaveIntoDatabase();
 			}
 		}
 
@@ -414,7 +405,6 @@ namespace DOL.GS
 			set
 			{
 				this.m_DBguild.Motd = value;
-				this.SaveIntoDatabase();
 			}
 		}
 
@@ -427,7 +417,6 @@ namespace DOL.GS
 			set
 			{
 				this.m_DBguild.AllianceID = value;
-				this.SaveIntoDatabase();
 			}
 		}
 
@@ -458,7 +447,6 @@ namespace DOL.GS
 			set 
 			{
 				m_DBguild.GuildID = value;
-				this.SaveIntoDatabase();
 			}
 		}
 
@@ -489,7 +477,6 @@ namespace DOL.GS
 			set 
 			{
 				m_DBguild.GuildName = value;
-				this.SaveIntoDatabase();
 			}
 		}
 
@@ -502,7 +489,6 @@ namespace DOL.GS
 			set
 			{
 				this.m_DBguild.RealmPoints = value;
-				this.SaveIntoDatabase();
 			}
 		}
 
@@ -515,7 +501,6 @@ namespace DOL.GS
 			set
 			{
 				this.m_DBguild.BountyPoints = value;
-				this.SaveIntoDatabase();
 			}
 		}
 
@@ -528,7 +513,6 @@ namespace DOL.GS
 			set
 			{
 				m_DBguild.IsStartingGuild = value;
-				SaveIntoDatabase();
 			}
 		}
 
@@ -642,7 +626,7 @@ namespace DOL.GS
 		/// <returns></returns>
 		public bool AddPlayer(GamePlayer addPlayer)
 		{
-			return AddPlayer(addPlayer, GetRankByID(9));
+			return AddPlayer(addPlayer, GetRankByID(IsStartingGuild ? 8 : 9));
 		}
 
 		/// <summary>
@@ -877,9 +861,11 @@ namespace DOL.GS
 		/// Returns a list of all online members.
 		/// </summary>
 		/// <returns>ArrayList of members</returns>
-		public IList<GamePlayer> GetListOfOnlineMembers()
+		public List<GamePlayer> GetListOfOnlineMembers()
 		{
-			return new List<GamePlayer>(m_onlineGuildPlayers.Values);
+			var list = GameLoop.GetListForTick<GamePlayer>();
+			list.AddRange(m_onlineGuildPlayers.Values);
+			return list;
 		}
 
 		/// <summary>
@@ -888,23 +874,22 @@ namespace DOL.GS
 		/// <param name="msg">message string</param>
 		/// <param name="type">message type</param>
 		/// <param name="loc">message location</param>
-		public void SendMessageToGuildMembers(string msg, PacketHandler.eChatType type, PacketHandler.eChatLoc loc)
+		public void SendMessageToGuildMembers(string msg, eChatType type, eChatLoc loc)
 		{
-			List<GamePlayer> guildPlayers = new List<GamePlayer>();
+			var guildPlayers = GameLoop.GetListForTick<GamePlayer>();
 			lock (m_memberListLock)
 			{
-				guildPlayers = m_onlineGuildPlayers.Values.ToList();
+				guildPlayers.AddRange(m_onlineGuildPlayers.Values);
 			}
 			
 			foreach (GamePlayer pl in guildPlayers)
 			{
-				if (!HasRank(pl, Guild.eRank.GcHear))
+				if (!HasRank(pl, eRank.GcHear))
 				{
 					continue;
 				}
 				pl.Out.SendMessage(msg, type, loc);
 			}
-			
 		}
 
 		/// <summary>
@@ -919,7 +904,6 @@ namespace DOL.GS
 				return false;
 			}
 			this.m_DBguild.BountyPoints -= amount;
-			this.SaveIntoDatabase();
 			return true;
 		}
 
@@ -935,7 +919,6 @@ namespace DOL.GS
 			set 
 			{
 				this.m_DBguild.MeritPoints = value;
-				this.SaveIntoDatabase();
 			}
 		}
 
@@ -962,7 +945,6 @@ namespace DOL.GS
 			set 
 			{
 				this.m_DBguild.BonusType = (byte)value;
-				this.SaveIntoDatabase();
 			}
 		}
 
@@ -971,19 +953,10 @@ namespace DOL.GS
 		/// </summary>
 		public DateTime BonusStartTime
 		{
-			get 
+			get => m_DBguild.BonusStartTime;
+			set
 			{
-				if (m_DBguild.BonusStartTime == null)
-				{
-					return new DateTime(2010, 1, 1);
-				}
-
-				return this.m_DBguild.BonusStartTime; 
-			}
-			set 
-			{
-				this.m_DBguild.BonusStartTime = value;
-				this.SaveIntoDatabase();
+				m_DBguild.BonusStartTime = value;
 			}
 		}
 
@@ -996,7 +969,6 @@ namespace DOL.GS
 			set
 			{
 				this.m_DBguild.Email = value;
-				this.SaveIntoDatabase();
 			}
 		}
 
@@ -1065,11 +1037,54 @@ namespace DOL.GS
 			return bannerStatus;
 		}
 
+		public void TryStartGuildBuffTimer()
+		{
+			if (IsStartingGuild || ShouldGuildBuffExpire())
+				return;
+
+			_guidBuffTimer ??= new(this);
+
+			if (!_guidBuffTimer.IsAlive)
+				_guidBuffTimer.Start(60000);
+		}
+
+		public bool ShouldGuildBuffExpire()
+		{
+			return DateTime.Now.Subtract(BonusStartTime).Days > 0;
+		}
+
 		public enum ChangeBankResult
 		{
 			INVALID,
 			FULL,
 			SUCCESS
+		}
+
+		public class GuildBuffTimer : ECSGameTimerWrapperBase
+		{
+			private const string MESSAGE = "[Guild Buff] Your guild buff has now worn off!";
+			private Guild _guild;
+
+			public GuildBuffTimer(Guild guild) : base(null)
+			{
+				_guild = guild;
+			}
+
+			protected override int OnTick(ECSGameTimer timer)
+			{
+				if (_guild.BonusType is eBonusType.None)
+					return 0;
+
+				if (!_guild.ShouldGuildBuffExpire())
+					return Interval;
+
+				_guild.BonusType = eBonusType.None;
+
+				foreach (GamePlayer player in _guild.GetListOfOnlineMembers())
+					player.Out.SendMessage(MESSAGE, eChatType.CT_Guild, eChatLoc.CL_ChatWindow);
+
+				return 0;
+			}
 		}
 	}
 }

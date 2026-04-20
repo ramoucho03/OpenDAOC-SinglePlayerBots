@@ -1,16 +1,16 @@
 ﻿using DOL.AI.Brain;
 using DOL.GS.PacketHandler;
+using DOL.GS.Scripts;
 using DOL.Language;
 
 namespace DOL.GS
 {
     public class ChargeECSGameEffect : ECSGameAbilityEffect
     {
-        public ChargeECSGameEffect(ECSGameEffectInitParams initParams)
+        public ChargeECSGameEffect(in ECSGameEffectInitParams initParams)
             : base(initParams)
         {
             EffectType = eEffect.Charge;
-            EffectService.RequestStartEffect(this);
         }
 
         protected ushort m_startModel = 0;
@@ -28,12 +28,12 @@ namespace DOL.GS
         public override void OnStartEffect()
         {
             //Send messages
-            if (OwnerPlayer != null)
+            if (Owner is IGamePlayer iPlayer)
             {
                 // "You begin to charge wildly!"
-                OwnerPlayer.Out.SendMessage($"You are now charging {OwnerPlayer.TargetObject?.Name}!", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                iPlayer.Out.SendMessage($"You are now charging {iPlayer.TargetObject?.Name}!", eChatType.CT_System, eChatLoc.CL_SystemWindow);
                 // "{0} begins charging wildly!"
-                Message.SystemToArea(OwnerPlayer, LanguageMgr.GetTranslation(OwnerPlayer.Client, "Effects.ChargeEffect.AreaStartCharge",OwnerPlayer.GetName(0, true)), eChatType.CT_System, OwnerPlayer);
+                Message.SystemToArea(Owner, LanguageMgr.GetTranslation(iPlayer.Client, "Effects.ChargeEffect.AreaStartCharge", iPlayer.GetName(0, true)), eChatType.CT_System, Owner);
             }
             else if (Owner is GameNPC)
             {
@@ -89,15 +89,16 @@ namespace DOL.GS
             //m_living.EffectList.Remove(this);
             //m_living.BuffBonusMultCategory1.Remove((int)eProperty.MaxSpeed, this);
             //Send messages
-            if (OwnerPlayer != null)
+
+            if (Owner is IGamePlayer iPlayer)
             {
                 //GamePlayer player = m_living as GamePlayer;
                 //player.Out.SendUpdateMaxSpeed();
                 
                 // "You no longer seem so crazy!"
-                OwnerPlayer.Out.SendMessage(LanguageMgr.GetTranslation(OwnerPlayer.Client, "Effects.ChargeEffect.EndCharge"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                iPlayer.Out.SendMessage(LanguageMgr.GetTranslation(iPlayer.Client, "Effects.ChargeEffect.EndCharge"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
                 // "{0} ceases their charge!"
-                Message.SystemToArea(OwnerPlayer, LanguageMgr.GetTranslation(OwnerPlayer.Client, "Effects.ChargeEffect.AreaEndCharge", OwnerPlayer.GetName(0, true)), eChatType.CT_System, OwnerPlayer);
+                Message.SystemToArea(Owner, LanguageMgr.GetTranslation(iPlayer.Client, "Effects.ChargeEffect.AreaEndCharge", iPlayer.GetName(0, true)), eChatType.CT_System, Owner);
             }
             else if (Owner is GameNPC)
             {

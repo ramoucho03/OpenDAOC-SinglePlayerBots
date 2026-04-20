@@ -1,14 +1,4 @@
-﻿using DOL.Database;
-using DOL.GS;
-using DOL.GS.API;
-using DOL.GS.PacketHandler;
-using DOL.GS.Scripts;
-using log4net;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using DOL.GS.PacketHandler;
 
 namespace DOL.GS.Scripts
 {

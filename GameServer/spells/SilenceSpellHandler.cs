@@ -1,4 +1,5 @@
 using DOL.GS.Effects;
+using DOL.GS.Scripts;
 
 namespace DOL.GS.Spells
 {
@@ -11,7 +12,7 @@ namespace DOL.GS.Spells
 		public override void OnEffectStart(GameSpellEffect effect)
 		{
 			base.OnEffectStart(effect);
-			if(effect.Owner is GamePlayer)
+			if (effect.Owner is IGamePlayer)
 			{
 				effect.Owner.SilencedTime = effect.Owner.CurrentRegion.Time + CalculateEffectDuration(effect.Owner);
 				effect.Owner.StopCurrentSpellcast();

@@ -3,13 +3,14 @@ using DOL.GS.PacketHandler;
 
 namespace DOL.GS.Spells
 {
-	/// <summary>
-	///
-	/// </summary>
 	[SpellHandler(eSpellType.EnduranceHeal)]
 	public class EnduranceHealSpellHandler : SpellHandler
 	{
-		// constructor
+		public override string ShortDescription =>
+			Spell.Value > 0 ?
+			$"Replenishes {Spell.Value} endurance." :
+			$"Replenishes {Math.Abs(Spell.Value)}% endurance.";
+
 		public EnduranceHealSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
 
         /// <summary>
@@ -101,31 +102,20 @@ namespace DOL.GS.Spells
                 return false;
             }
 
-            if (m_caster == target)
-            {
-                MessageToCaster("You restore " + heal + " endurance points.", eChatType.CT_Spell);
-                if (heal < amount)
-                    MessageToCaster("Your endurance is full.", eChatType.CT_Spell);
-            }
-            else
-            {
-                MessageToCaster("You restore " + target.GetName(0, false) + " for " + heal + " ednurance points!", eChatType.CT_Spell);
-                MessageToLiving(target, "Your endurance was restored by " + m_caster.GetName(0, false) + " for " + heal + " points.", eChatType.CT_Spell);
-                if (heal < amount)
-                    MessageToCaster(target.GetName(0, true) + " endurance is full.", eChatType.CT_Spell);
-            }
-
-            return true;
-        }
-
-        public override bool CheckBeginCast(GameLiving selectedTarget)
-        {
-            if (selectedTarget != null && selectedTarget.EndurancePercent >= 90)
-            {
-                MessageToCaster("You cannot cast an endurance heal the target has above 90% endurance!", eChatType.CT_SpellResisted);
-                return false;
-            }
-            return base.CheckBeginCast(selectedTarget);
-        }
-    }
+			if (m_caster == target)
+			{
+				MessageToCaster("You restore " + heal + " endurance points.", eChatType.CT_Spell);
+				if (heal < amount)
+					MessageToCaster("Your endurance is full.", eChatType.CT_Spell);
+			}
+			else
+			{
+				MessageToCaster("You restore " + target.GetName(0, false) + " for " + heal + " ednurance points!", eChatType.CT_Spell);
+				MessageToLiving(target, "Your endurance was restored by " + m_caster.GetName(0, false) + " for " + heal + " points.", eChatType.CT_Spell);
+				if (heal < amount)
+					MessageToCaster(target.GetName(0, true) + " endurance is full.", eChatType.CT_Spell);
+			}
+			return true;
+		}
+	}
 }

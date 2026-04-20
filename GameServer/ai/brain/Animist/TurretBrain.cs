@@ -6,6 +6,7 @@ namespace DOL.AI.Brain
     public class TurretBrain : ControlledMobBrain
     {
         protected readonly List<GameLiving> _defensiveSpellTargets;
+
         protected virtual bool CheckLosBeforeCastingDefensiveSpells => false;
         protected virtual bool CheckLosBeforeCastingOffensiveSpells => true;
 
@@ -14,7 +15,14 @@ namespace DOL.AI.Brain
             _defensiveSpellTargets = new();
         }
 
-        public override int AggroRange => (Body as TurretPet).TurretSpell.Range;
+        public override int AggroRange
+        {
+            get
+            {
+                TurretPet body = Body as TurretPet;
+                return body.TurretSpell.CalculateEffectiveRange(body);
+            }
+        }
 
         public override bool CheckSpells(eCheckSpellType type)
         {
@@ -30,52 +38,37 @@ namespace DOL.AI.Brain
             {
                 case eCheckSpellType.Defensive:
                 {
-                    switch (spell.SpellType)
-                    {
-                        case eSpellType.HeatColdMatterBuff:
-                        case eSpellType.BodySpiritEnergyBuff:
-                        case eSpellType.ArmorAbsorptionBuff:
-                        case eSpellType.AblativeArmor:
-                        {
-                            GameLiving target = FindTargetForDefensiveSpell(spell);
+                    if (spell.IsHarmful)
+                        return false;
 
-                            if (target != null)
-                                return TrustCast(spell, eCheckSpellType.Defensive, FindTargetForDefensiveSpell(spell), CheckLosBeforeCastingDefensiveSpells);
+                    GameLiving target = FindTargetForDefensiveSpell(spell);
 
-                            break;
-                        }
-                    }
+                    if (target != null)
+                        return TrustCast(spell, eCheckSpellType.Defensive, target, CheckLosBeforeCastingDefensiveSpells);
 
-                    return false;
+                    break;
                 }
                 case eCheckSpellType.Offensive:
                 {
-                    switch (spell.SpellType)
-                    {
-                        case eSpellType.DirectDamage:
-                        case eSpellType.DamageSpeedDecrease:
-                        case eSpellType.SpeedDecrease:
-                        case eSpellType.Taunt:
-                        case eSpellType.MeleeDamageDebuff:
-                        {
-                            GameLiving target = CalculateNextAttackTarget();
+                    if (!spell.IsHarmful)
+                        return false;
 
-                            if (target != null)
-                                return TrustCast(spell, eCheckSpellType.Offensive, target, CheckLosBeforeCastingOffensiveSpells);
+                    GameLiving target = CalculateNextAttackTarget();
 
-                            break;
-                        }
-                    }
+                    if (target != null)
+                        return TrustCast(spell, eCheckSpellType.Offensive, target, CheckLosBeforeCastingOffensiveSpells);
 
-                    return false;
+                    break;
                 }
-                default:
-                    return false;
             }
+
+            return false;
         }
 
         protected override GameLiving FindTargetForDefensiveSpell(Spell spell)
         {
+            int spellRange = spell.CalculateEffectiveRange(Body);
+
             // Clear the current list of invalid or already buffed targets before checking nearby players and NPCs.
             for (int i = _defensiveSpellTargets.Count - 1; i >= 0; i--)
             {
@@ -84,13 +77,13 @@ namespace DOL.AI.Brain
                 if (GameServer.ServerRules.IsAllowedToAttack(Body, living, true) ||
                     !living.IsAlive ||
                     LivingHasEffect(living, spell) ||
-                    !Body.IsWithinRadius(living, (ushort) spell.Range))
+                    !Body.IsWithinRadius(living, (ushort) spellRange))
                 {
                     _defensiveSpellTargets.SwapRemoveAt(i);
                 }
             }
 
-            foreach (GamePlayer player in Body.GetPlayersInRadius((ushort) spell.Range))
+            foreach (GamePlayer player in Body.GetPlayersInRadius((ushort) spellRange))
             {
                 if (GameServer.ServerRules.IsAllowedToAttack(Body, player, true) || !player.IsAlive || LivingHasEffect(player, spell))
                     continue;
@@ -102,7 +95,7 @@ namespace DOL.AI.Brain
                     _defensiveSpellTargets.Add(player);
             }
 
-            foreach (GameNPC npc in Body.GetNPCsInRadius((ushort) spell.Range))
+            foreach (GameNPC npc in Body.GetNPCsInRadius((ushort) spellRange))
             {
                 if (GameServer.ServerRules.IsAllowedToAttack(Body, npc, true) || !npc.IsAlive || LivingHasEffect(npc, spell))
                     continue;

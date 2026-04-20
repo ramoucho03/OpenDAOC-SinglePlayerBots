@@ -1,42 +1,57 @@
-﻿using System.Reflection;
+﻿using System.Numerics;
+using System.Reflection;
 using DOL.GS.PacketHandler;
 using DOL.GS.PacketHandler.Client.v168;
 using DOL.Language;
+using DOL.Logging;
 
 namespace DOL.GS
 {
     public class PlayerMovementComponent : MovementComponent
     {
-        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
         private const int BROADCAST_MINIMUM_INTERVAL = 200; // Clients send a position or heading update packet every 200ms at most (when moving or rotating).
         private const int SOFT_LINK_DEATH_THRESHOLD = 5000; // How long does it take without receiving a packet for a client to enter the soft link death state.
 
-        private long _lastPositionUpdatePacketReceivedTime;
         private long _nextPositionBroadcast;
         private bool _needBroadcastPosition;
 
-        private long _lastHeadingUpdatePacketReceivedTime;
         private long _nextHeadingBroadcast;
         private bool _needBroadcastHeading;
+
+        private PlayerMovementMonitor _playerMovementMonitor;
+        private bool _validateMovementOnNextTick;
 
         private bool _isEncumberedMessageSent;
 
         public new GamePlayer Owner { get; }
         public int MaxSpeedPercent => MaxSpeed * 100 / GamePlayer.PLAYER_BASE_SPEED;
-        public ref long LastPositionUpdatePacketReceivedTime => ref _lastPositionUpdatePacketReceivedTime;
-        public ref long LastHeadingUpdatePacketReceivedTime => ref _lastHeadingUpdatePacketReceivedTime;
+        public long LastPositionUpdatePacketReceivedTime { get; set; }
+        public bool UseSafePosition { get; set; }
 
         public PlayerMovementComponent(GameLiving owner) : base(owner)
         {
             Owner = owner as GamePlayer;
+            _playerMovementMonitor = new(Owner);
+        }
+
+        public override void Tick()
+        {
+            if (Owner.Client.ClientState is not GameClient.eClientState.Playing)
+            {
+                RemoveFromServiceObjectStore();
+                return;
+            }
+
+            base.Tick();
         }
 
         protected override void TickInternal()
         {
             if (!Owner.IsLinkDeathTimerRunning)
             {
-                if (ServiceUtils.ShouldTickNoEarly(_lastPositionUpdatePacketReceivedTime + SOFT_LINK_DEATH_THRESHOLD))
+                if (GameServiceUtils.ShouldTick(LastPositionUpdatePacketReceivedTime + SOFT_LINK_DEATH_THRESHOLD))
                 {
                     if (log.IsInfoEnabled)
                         log.Info($"Position update timeout on client. Calling link death. ({Owner.Client})");
@@ -46,17 +61,24 @@ namespace DOL.GS
                     return;
                 }
 
+                // Always validate movement, even if the next position broadcast is not due yet.
+                if (_validateMovementOnNextTick)
+                {
+                    _playerMovementMonitor.ValidateMovement();
+                    _validateMovementOnNextTick = false;
+                }
+
                 // Position and heading broadcasts are mutually exclusive.
-                if (_needBroadcastPosition && ServiceUtils.ShouldTickAdjust(ref _nextPositionBroadcast))
+                if (_needBroadcastPosition && GameServiceUtils.ShouldTick(_nextPositionBroadcast))
                 {
                     BroadcastPosition();
-                    _nextPositionBroadcast += BROADCAST_MINIMUM_INTERVAL;
+                    _nextPositionBroadcast = GameLoop.GameLoopTime + BROADCAST_MINIMUM_INTERVAL;
                     _needBroadcastPosition = false;
                 }
-                else if (_needBroadcastHeading && ServiceUtils.ShouldTickAdjust(ref _nextHeadingBroadcast))
+                else if (_needBroadcastHeading && GameServiceUtils.ShouldTick(_nextHeadingBroadcast))
                 {
                     BroadcastHeading();
-                    _nextHeadingBroadcast += BROADCAST_MINIMUM_INTERVAL;
+                    _nextHeadingBroadcast = GameLoop.GameLoopTime + BROADCAST_MINIMUM_INTERVAL;
                     _needBroadcastHeading = false;
                 }
             }
@@ -74,10 +96,25 @@ namespace DOL.GS
             PlayerHeadingUpdateHandler.BroadcastHeading(Owner.Client);
         }
 
-        public void OnPositionPacketReceivedEnd()
+        public override void OnPositionUpdate()
         {
+            base.OnPositionUpdate();
+
+            Vector3 oldPosition = _ownerPosition;
+            UpdatePosition();
+
+            if (!oldPosition.EqualsXY(_ownerPosition))
+            {
+                Owner.OnPlayerMove();
+                _playerMovementMonitor.RecordPosition();
+                _validateMovementOnNextTick = true;
+                Owner.LastPlayerActivityTime = GameLoop.GameLoopTime;
+            }
+
             _needBroadcastPosition = true;
-            _lastPositionUpdatePacketReceivedTime = GameLoop.GameLoopTime;
+
+            if (IsMoving)
+                Owner.LastPlayerActivityTime = GameLoop.GameLoopTime;
 
             if (Owner.IsEncumbered)
             {
@@ -85,7 +122,7 @@ namespace DOL.GS
                 {
                     if (!_isEncumberedMessageSent)
                     {
-                        SendEncumberedMessage();
+                        SendEncumberedMessage(Owner);
                         _isEncumberedMessageSent = true;
                     }
                 }
@@ -94,20 +131,36 @@ namespace DOL.GS
                     _isEncumberedMessageSent = false;
 
                     if (MaxSpeedPercent <= 0)
-                        SendEncumberedMessage(); // Allow it to be spammed.
+                        SendEncumberedMessage(Owner); // Allow it to be spammed.
                 }
             }
 
-            void SendEncumberedMessage()
+            AddToServiceObjectStore();
+
+            static void SendEncumberedMessage(GamePlayer player)
             {
-                Owner.Out.SendMessage(LanguageMgr.GetTranslation(Owner.Client.Account.Language, "PlayerMovementComponent.Encumbered"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "PlayerMovementComponent.Encumbered"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
             }
         }
 
-        public void OnHeadingPacketReceived()
+        public void OnHeadingUpdate()
         {
             _needBroadcastHeading = true;
-            _lastHeadingUpdatePacketReceivedTime = GameLoop.GameLoopTime;
+        }
+
+        public void OnTeleportOrRegionChange()
+        {
+            _playerMovementMonitor.OnTeleportOrRegionChange();
+        }
+
+        public bool TryGetSafePosition(out Vector3 safePosition)
+        {
+            return _playerMovementMonitor.TryGetSafePosition(out safePosition) && !safePosition.Equals(_ownerPosition);
+        }
+
+        protected override void UpdatePosition()
+        {
+            _ownerPosition = new(Owner.X, Owner.Y, Owner.Z);
         }
     }
 }

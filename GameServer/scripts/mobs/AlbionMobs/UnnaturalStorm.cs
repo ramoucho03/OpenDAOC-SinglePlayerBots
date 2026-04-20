@@ -55,7 +55,7 @@ namespace DOL.GS
 
 		public void BroadcastMessage(String message)
 		{
-			foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.OBJ_UPDATE_DISTANCE))
+			foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
 			{
 				player.Out.SendMessage(message, eChatType.CT_Broadcast, eChatLoc.CL_SystemWindow);
 			}
@@ -65,7 +65,7 @@ namespace DOL.GS
         }
 		private void SpawnAdditionalStorms()
         {
-			foreach (GamePlayer player in ClientService.GetPlayersOfZone(CurrentZone))
+			foreach (GamePlayer player in ClientService.Instance.GetPlayersOfZone(CurrentZone))
 				player.Out.SendMessage("An intense supernatural storm explodes in the sky over the northeastern expanse of Lyonesse!", eChatType.CT_Broadcast, eChatLoc.CL_ChatWindow);
 
 			for (int i = 0; i < Util.Random(4, 5); i++)
@@ -121,12 +121,11 @@ namespace DOL.AI.Brain
 					spell.Name = "Storm Lightning";
 					spell.Range = 2500;
 					spell.SpellID = 11947;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Type = eSpellType.DirectDamageNoVariance.ToString();
 					spell.Uninterruptible = true;
 					spell.MoveCast = true;
 					m_StormDD = new Spell(spell, 50);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_StormDD);
 				}
 				return m_StormDD;
 			}
@@ -182,7 +181,7 @@ namespace DOL.GS
 
 		public void BroadcastMessage(String message)
 		{
-			foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.OBJ_UPDATE_DISTANCE))
+			foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
 			{
 				player.Out.SendMessage(message, eChatType.CT_Broadcast, eChatLoc.CL_SystemWindow);
 			}

@@ -7,6 +7,7 @@ namespace DOL.GS.Spells
     /// </summary>	
     public abstract class DualStatBuff : SingleStatBuff
     {
+        public override string ShortDescription => $"Increases {TargetPronoun} {PropertyToString(Property1)} and {PropertyToString(Property2)} by {Spell.Value}.";
         public override eBuffBonusCategory BonusCategory1 => eBuffBonusCategory.SpecBuff;
         public override eBuffBonusCategory BonusCategory2 => eBuffBonusCategory.SpecBuff;
 
@@ -16,6 +17,7 @@ namespace DOL.GS.Spells
     [SpellHandler(eSpellType.StrengthConstitutionBuff)]
     public class StrengthConBuff : DualStatBuff
     {
+        public override bool BuffReceivesSpecBonus => true;
         public override eBuffBonusCategory BonusCategory1 => eBuffBonusCategory.SpecBuff;
 
         public override void ApplyEffectOnTarget(GameLiving target)
@@ -38,6 +40,7 @@ namespace DOL.GS.Spells
     [SpellHandler(eSpellType.DexterityQuicknessBuff)]
     public class DexterityQuiBuff : DualStatBuff
     {
+        public override bool BuffReceivesSpecBonus => true;
         public override eBuffBonusCategory BonusCategory1 => eBuffBonusCategory.SpecBuff;
 
         public override void ApplyEffectOnTarget(GameLiving target)

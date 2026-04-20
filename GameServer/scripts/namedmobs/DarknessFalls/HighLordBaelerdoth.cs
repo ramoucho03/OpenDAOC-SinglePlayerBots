@@ -59,10 +59,7 @@ namespace DOL.GS
             base.AddToWorld();
             return true;
         }
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * Strength / 100  * ServerProperties.Properties.EPICS_DMG_MULTIPLIER;
-        }
+
         public override int MeleeAttackRange => 450;
         public override bool HasAbility(string keyName)
         {
@@ -114,13 +111,12 @@ namespace DOL.GS
                     spell.Range = 1500;
                     spell.Radius = 350;
                     spell.SpellID = 99998;
-                    spell.Target = "Enemy";
+                    spell.Target = eSpellTarget.ENEMY.ToString();
                     spell.Type = "ArmorAbsorptionDebuff";
                     spell.Uninterruptible = true;
                     spell.MoveCast = true;
                     spell.DamageType = (int) eDamageType.Spirit;
                     m_absDebuffSpell = new Spell(spell, 50);
-                    SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_absDebuffSpell);
                 }
 
                 return m_absDebuffSpell;

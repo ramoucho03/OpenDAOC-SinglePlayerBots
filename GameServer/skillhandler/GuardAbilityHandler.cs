@@ -1,4 +1,3 @@
-using System.Linq;
 using System.Reflection;
 using DOL.GS.PacketHandler;
 using DOL.Language;
@@ -24,10 +23,10 @@ namespace DOL.GS.SkillHandler
 
             if (player.TargetObject is not GameLiving target)
             {
-                foreach (GuardECSGameEffect guard in player.effectListComponent.GetAllEffects().Where(e => e.EffectType == eEffect.Guard))
+                foreach (GuardECSGameEffect guard in player.effectListComponent.GetAbilityEffects(eEffect.Guard))
                 {
                     if (guard.Source == player)
-                        EffectService.RequestCancelEffect(guard);
+                        guard.End();
                 }
 
                 player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "Skill.Ability.Guard.CancelTargetNull"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
@@ -67,14 +66,14 @@ namespace DOL.GS.SkillHandler
             foundOurEffect = false;
             effectFromAnotherSource = null;
 
-            foreach (GuardECSGameEffect guard in target.effectListComponent.GetAbilityEffects().Where(e => e.EffectType is eEffect.Guard))
+            foreach (GuardECSGameEffect guard in target.effectListComponent.GetAbilityEffects(eEffect.Guard))
             {
                 if (guard.Source == source)
                 {
                     foundOurEffect = true;
 
                     if (cancelOurs)
-                        EffectService.RequestCancelEffect(guard);
+                        guard.End();
                 }
 
                 if (guard.Target == target)
@@ -84,13 +83,13 @@ namespace DOL.GS.SkillHandler
 
         public static void CancelOurEffectThenAddOnTarget(GameLiving source, GameLiving target)
         {
-            foreach (GuardECSGameEffect guard in source.effectListComponent.GetAbilityEffects().Where(e => e.EffectType is eEffect.Guard))
+            foreach (GuardECSGameEffect guard in source.effectListComponent.GetAbilityEffects(eEffect.Guard))
             {
                 if (guard.Source == source)
-                    EffectService.RequestCancelEffect(guard);
+                    guard.End();
             }
 
-            new GuardECSGameEffect(new ECSGameEffectInitParams(source, 0, 1, null), source, target);
+            ECSGameEffectFactory.Create(new(source, 0, 1), source, target, static (in i, source, target) => new GuardECSGameEffect(i, source, target));
         }
     }
 }

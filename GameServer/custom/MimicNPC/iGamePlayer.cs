@@ -4,7 +4,6 @@ using DOL.Events;
 using DOL.GS.Effects;
 using DOL.GS.PacketHandler;
 using DOL.GS.PropertyCalc;
-using DOL.GS.Utils;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -28,29 +27,30 @@ namespace DOL.GS.Scripts
         public int CalculateMaxHealth(int level, int constitution);
         public int CalculateMaxMana(int level, int manaStat);
 
-        public List<Tuple<Skill, Skill>> GetAllUsableSkills(bool update = false);
-        public List<Tuple<SpellLine, List<Skill>>> GetAllUsableListSpells(bool update = false);
+        public List<(Skill, Skill)> GetAllUsableSkills(bool update = false);
+        public List<(SpellLine, List<Skill>)> GetAllUsableListSpells(bool update = false);
         public SpellLine GetSpellLine(string keyname);
         public bool HasAbility(string keyName);
+        public Ability GetAbility(string abilityKey);
         public T GetAbility<T>() where T : Ability;
         public int GetAbilityLevel(string keyName);
         public bool HasSpecialization(string keyName);
         public int GetBaseSpecLevel(string keyName);
+        public IList<Specialization> GetSpecList();
         public int GetWeaponStat(DbInventoryItem weapon);
         public double GetWeaponSkill(DbInventoryItem weapon);
         public int GetModifiedSpecLevel(string keyName);
         public void DisableSkill(Skill skill, int duration);
+        public int GetBaseStat(eStat stat);
+        public int GetModifiedFromBuffs(eProperty property);
+        public int GetModifiedFromItems(eProperty property);
 
         public PropertyIndexer AbilityBonus { get; }
 
         public eArmorSlot CalculateArmorHitLocation(AttackData ad);
         public double WeaponDamageWithoutQualityAndCondition(DbInventoryItem weapon);
 
-        public static double ApplyWeaponQualityAndConditionToDamage(DbInventoryItem weapon, double damage)
-        {
-            return damage * weapon.Quality * 0.01 * weapon.Condition / weapon.MaxCondition;
-        }
-
+        public bool Sit(bool sit);
         public void Stealth(bool goStealth);
         public void StartStealthUncoverAction();
         public void StopStealthUncoverAction();
@@ -59,6 +59,7 @@ namespace DOL.GS.Scripts
         public void UpdateWaterBreathState(eWaterBreath state);
         public void StopCurrentSpellcast();
         public void StartInterruptTimer(int duration, AttackData.eAttackType attackType, GameLiving attacker);
+        public void EnemyKilled(GameLiving enemy);
 
         public void OnDuelStart(GameDuel duel);
         public void OnDuelStop();
@@ -101,6 +102,7 @@ namespace DOL.GS.Scripts
         public PropertyIndexer BaseBuffBonusCategory { get; }
         public PropertyIndexer SpecBuffBonusCategory { get; }
         public PropertyIndexer DebuffCategory { get; }
+        public PropertyIndexer OtherBonus { get; }
 
         public GameObject TargetObject { get; set; }
 
@@ -117,8 +119,7 @@ namespace DOL.GS.Scripts
 
         public IControlledBrain ControlledBrain { get; set; }
 
-        public PlayerDeck RandomNumberDeck { get; set; }
-        public List<int> SelfBuffChargeIDs { get; }
+        public static List<int> SelfBuffChargeIDs { get; }
         public int TotalConstitutionLostAtDeath { get; set; }
 
         public int SpellInterruptDuration { get; }
@@ -129,7 +130,6 @@ namespace DOL.GS.Scripts
         public short Race { get; set; }
         public string Name { get; set; }
         public byte Level { get; set; }
-        public byte MaxLevel { get; }
         public int RealmLevel { get; set; }
         public long RealmPoints { get; set; }
         public long BountyPoints { get; set; }
@@ -150,7 +150,9 @@ namespace DOL.GS.Scripts
         public bool UseDetailedCombatLog { get; set; }
         public Dictionary<GameLiving, double> XPGainers { get; }
         public Lock XpGainersLock { get; }
+        public Lock AwardLock { get; }
         public long DeathTime { get; set; }
+        public long DeathTick { get; set; }
         public long PlayedTime { get; }
 
         public double Effectiveness { get; set; }
@@ -166,10 +168,13 @@ namespace DOL.GS.Scripts
         public bool IsIncapacitated { get; }
         public bool IsStunned { get; set; }
         public bool IsMezzed { get; set; }
+        public bool IsDiseased { get; }
+        public bool IsRiding { get; }
         public bool IsMoving { get; }
         public bool IsSprinting { get; }
         public bool IsSitting { get; set; }
         public bool IsStrafing { get; set; }
+        public bool isInBG {  get; set; }
         public bool IsUnderwater { get; }
         public bool CanBreathUnderWater { get; set; }
 
@@ -191,7 +196,6 @@ namespace DOL.GS.Scripts
         public byte ManaPercent { get; }
 
         public int Endurance { get; set; }
-        public int MaxEndurance { get; set; }
         public short MaxSpeedBase { get; set; }
 
         public int Strength { get; }
@@ -202,7 +206,10 @@ namespace DOL.GS.Scripts
         public Zone CurrentZone { get; }
         public Region CurrentRegion { get; set; }
         public ushort CurrentRegionID { get; set; }
+        public int X { get; }
+        public int Y { get; }
         public int Z { get; }
+        public ushort Heading { get; set; }
 
         public PlayerStatistics Statistics { get; }
         public long LastDeathRealmPoints { get; set; }

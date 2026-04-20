@@ -6,6 +6,7 @@ using DOL.Events;
 using DOL.GS.Effects;
 using DOL.GS.PacketHandler;
 using DOL.GS.RealmAbilities;
+using DOL.GS.Scripts;
 
 namespace DOL.GS.Spells
 {
@@ -16,8 +17,9 @@ namespace DOL.GS.Spells
 		protected readonly ListDictionary m_resTimersByLiving = new ListDictionary();
 		private readonly Lock _lock = new();
 
-		// constructor
-		public ResurrectSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) {}
+		public override string ShortDescription => $"Brings the target back to life, restores {Spell.ResurrectHealth}% health and {Spell.ResurrectMana}% power and endurance and suffers no experience or constitution loss.";
+
+		public ResurrectSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
 
 		public override void FinishSpellCast(GameLiving target)
 		{
@@ -31,7 +33,7 @@ namespace DOL.GS.Spells
 			if(target == null || target.IsAlive) return;
 
 			SendEffectAnimation(target, 0, false, 1);
-			GamePlayer targetPlayer = target as GamePlayer;
+			IGamePlayer targetPlayer = target as IGamePlayer;
 			if (targetPlayer == null)
 			{
 				//not a player
@@ -40,7 +42,7 @@ namespace DOL.GS.Spells
 			else
 			{
 				targetPlayer.TempProperties.SetProperty(RESURRECT_CASTER_PROPERTY, m_caster);
-				ECSGameTimer resurrectExpiredTimer = new ECSGameTimer(targetPlayer);
+				ECSGameTimer resurrectExpiredTimer = new ECSGameTimer((GameObject)targetPlayer);
 				resurrectExpiredTimer.Callback = new ECSGameTimer.ECSTimerCallback(ResurrectExpiredCallback);
 				resurrectExpiredTimer.Properties.SetProperty("targetPlayer", targetPlayer);
 				resurrectExpiredTimer.Start(15000);
@@ -50,7 +52,7 @@ namespace DOL.GS.Spells
 				}
 
 				//send resurrect dialog
-				targetPlayer.Out.SendCustomDialog("Do you allow " + m_caster.GetName(0, true) + " to resurrected you\n with " + m_spell.ResurrectHealth + " percent hits/power?", new CustomDialogResponse(ResurrectResponceHandler));
+				targetPlayer.Out.SendCustomDialog("Do you allow " + m_caster.GetName(0, true) + " to resurrected you\n with " + m_spell.ResurrectHealth + " percent hits/power?", new CustomDialogResponse(ResurrectResponseHandler));
 			}
 		}
 
@@ -73,7 +75,7 @@ namespace DOL.GS.Spells
 		/// </summary>
 		/// <param name="player"></param>
 		/// <param name="response"></param>
-		protected virtual void ResurrectResponceHandler(GamePlayer player, byte response)
+		protected virtual void ResurrectResponseHandler(GamePlayer player, byte response)
 		{
 			ECSGameTimer resurrectExpiredTimer = null;
 			lock (_lock)
@@ -184,7 +186,7 @@ namespace DOL.GS.Spells
 				RezDmgImmunityEffect rezImmune = new RezDmgImmunityEffect();
 				rezImmune.Start(player);
 
-				foreach (GameObject attacker in player.attackComponent.Attackers.Keys)
+				foreach (GameObject attacker in player.attackComponent.AttackerTracker.Attackers)
 				{
 					if (attacker is GameLiving && attacker != living.TargetObject)
 						attacker.Notify(GameLivingEvent.EnemyHealed, attacker, new EnemyHealedEventArgs(living, m_caster, eHealthChangeType.Spell, living.Health));
@@ -233,13 +235,13 @@ namespace DOL.GS.Spells
 
             //Lifeflight, the base call to Checkbegincast uses its own power check, which is bad for rez spells
             //so I added another check here.
-            if (m_caster.Mana < PowerCost(target))
+            if (m_caster.Mana < PowerCost(Target))
             {
                 MessageToCaster("You don't have enough power to cast that!", eChatType.CT_SpellResisted);
 				return false;
             }
 
-			GameLiving resurrectionCaster = target.TempProperties.GetProperty<GameLiving>(RESURRECT_CASTER_PROPERTY);
+			GameLiving resurrectionCaster = Target.TempProperties.GetProperty<GameLiving>(RESURRECT_CASTER_PROPERTY);
 			if (resurrectionCaster != null)
 			{
 				//already considering resurrection - do nothing
@@ -294,7 +296,7 @@ namespace DOL.GS.Spells
 
 				list.Add("Function: " + (Spell.SpellType.ToString() == string.Empty ? "(not implemented)" : Spell.SpellType.ToString()));
 				list.Add(" "); //empty line
-				list.Add(Spell.Description);
+				list.Add(ShortDescription);
 				list.Add(" "); //empty line
 				list.Add("Health restored: " + Spell.ResurrectHealth);
 				if(Spell.ResurrectMana != 0) list.Add("Power restored: " + Spell.ResurrectMana);

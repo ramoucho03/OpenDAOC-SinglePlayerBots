@@ -1,7 +1,9 @@
 using System;
 using System.Linq;
+using DOL.AI;
 using DOL.GS.Effects;
 using DOL.GS.PacketHandler;
+using DOL.GS.Scripts;
 using DOL.GS.ServerProperties;
 using DOL.GS.Spells;
 
@@ -9,7 +11,7 @@ namespace DOL.GS
 {
     public abstract class AbstractCrowdControlECSEffect : ECSGameSpellEffect
     {
-        public AbstractCrowdControlECSEffect(ECSGameEffectInitParams initParams)
+        public AbstractCrowdControlECSEffect(in ECSGameEffectInitParams initParams)
             : base(initParams)
         {
             if (Properties.IMMUNITY_TIMER_USE_ADAPTIVE)
@@ -24,12 +26,13 @@ namespace DOL.GS
 
         protected void OnHardCCStart()
         {
-            Owner.attackComponent.StopAttack();
             Owner.StopCurrentSpellcast();
             Owner.DisableTurning(true);
+
             if (Owner is GameNPC npc)
                 npc.StopMoving();
-            if (Owner.effectListComponent.GetAllEffects().FirstOrDefault(x => x.GetType() == typeof(SpeedOfSoundECSEffect)) == null)
+
+            if (Owner.effectListComponent.GetEffects().FirstOrDefault(x => x.GetType() == typeof(SpeedOfSoundECSEffect)) == null)
                 UpdatePlayerStatus();
         }
 
@@ -37,6 +40,10 @@ namespace DOL.GS
         {
             Owner.DisableTurning(false);
             UpdatePlayerStatus();
+
+            // Re-schedule the next think so that the NPC can resume its attack immediately for example.
+            if (Owner is GameNPC npc && npc.Brain is ABrain brain)
+                brain.NextThinkTick = GameLoop.GameLoopTime;
 
             if (SpellHandler.Caster.Realm == 0 || Owner.Realm == 0)
                 Owner.LastAttackedByEnemyTickPvE = GameLoop.GameLoopTime;
@@ -46,11 +53,13 @@ namespace DOL.GS
 
         protected void UpdatePlayerStatus()
         {
-            if (OwnerPlayer != null)
+            if (Owner is IGamePlayer)
             {
-                OwnerPlayer.Client.Out.SendUpdateMaxSpeed();
-                if (OwnerPlayer.Group != null)
-                    OwnerPlayer.Group.UpdateMember(OwnerPlayer, false, false);
+                if (Owner is GamePlayer gPlayer)
+                    gPlayer.Client.Out.SendUpdateMaxSpeed();
+
+                if (Owner.Group != null)
+                    Owner.Group.UpdateMember(Owner, false, false);
             }
         }
 
@@ -67,13 +76,7 @@ namespace DOL.GS
     /// </summary>
     public class StunECSGameEffect : AbstractCrowdControlECSEffect
     {
-        public StunECSGameEffect(ECSGameEffectInitParams initParams, int immunityTime)
-           : this(initParams)
-        {
-            ImmunityDuration = immunityTime;
-        }
-
-        public StunECSGameEffect(ECSGameEffectInitParams initParams)
+        public StunECSGameEffect(in ECSGameEffectInitParams initParams)
             : base(initParams)
         {
             if (initParams.SpellHandler.Caster is GameSummonedPet)
@@ -88,20 +91,24 @@ namespace DOL.GS
             OnHardCCStart();
             UpdatePlayerStatus();
 
+            // Immediately start the immunity effect for NPCs. This is used for diminishing returns.
+            if (AppliedImmunityType is ImmunityType.Npc && !Owner.effectListComponent.ContainsEffectForEffectType(eEffect.NPCStunImmunity))
+                ECSGameEffectFactory.Create(new(Owner, ImmunityDuration, Effectiveness, SpellHandler), static (in i) => new NpcStunImmunityEffect(i));
+
             // "You are stunned!"
             // "{0} is stunned!"
-            OnEffectStartsMsg(Owner, true, true, true);
+            OnEffectStartsMsg(true, true, true);
         }
 
         public override void OnStopEffect()
         {
-            Owner.IsStunned = false;
+            Owner.IsStunned = Owner.effectListComponent.ContainsEffectForEffectType(eEffect.Stun);
             OnHardCCStop();
             UpdatePlayerStatus();
 
             // "You recover from the stun.."
             // "{0} recovers from the stun."
-            OnEffectExpiresMsg(Owner, true, false, true);
+            OnEffectExpiresMsg(true, false, true);
         }
     }
 
@@ -110,7 +117,7 @@ namespace DOL.GS
     /// </summary>
     public class MezECSGameEffect : AbstractCrowdControlECSEffect
     {
-        public MezECSGameEffect(ECSGameEffectInitParams initParams)
+        public MezECSGameEffect(in ECSGameEffectInitParams initParams)
             : base(initParams)
         {
             TriggersImmunity = true;
@@ -122,20 +129,24 @@ namespace DOL.GS
             OnHardCCStart();
             UpdatePlayerStatus();
 
+            // Immediately start the immunity effect for NPCs. This is used for diminishing returns.
+            if (AppliedImmunityType is ImmunityType.Npc && !Owner.effectListComponent.ContainsEffectForEffectType(eEffect.NPCMezImmunity))
+                ECSGameEffectFactory.Create(new(Owner, ImmunityDuration, Effectiveness, SpellHandler), static (in i) => new NpcMezImmunityEffect(i));
+
             // "You are entranced!"
             // "You are mesmerized!"
-            OnEffectStartsMsg(Owner, true, true, true);
+            OnEffectStartsMsg(true, true, true);
         }
 
         public override void OnStopEffect()
         {
-            Owner.IsMezzed = false;
+            Owner.IsMezzed = Owner.effectListComponent.ContainsEffectForEffectType(eEffect.Mez);
             OnHardCCStop();
             UpdatePlayerStatus();
 
             // "You are no longer entranced."
             // "You recover from the mesmerize."
-            OnEffectExpiresMsg(Owner, true, false, true);
+            OnEffectExpiresMsg(true, false, true);
         }
     }
 }

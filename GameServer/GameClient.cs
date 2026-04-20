@@ -1,114 +1,87 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using DOL.Database;
 using DOL.Events;
 using DOL.GS.PacketHandler;
 using DOL.GS.ServerProperties;
+using DOL.Logging;
 using DOL.Network;
 
 namespace DOL.GS
 {
-    public class GameClient : BaseClient, ICustomParamsValuable, IManagedEntity
+    public class GameClient : BaseClient, ICustomParamsValuable, IServiceObject, IPooledList<GameClient>
     {
-        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
-
-        private DbAccount _account;
-        private eClientState _clientState = eClientState.NotConnected;
-        private GamePlayer _player;
-        private IPEndPoint _udpEndpoint;
-        private Dictionary<string, List<string>> _customParams = [];
+        private static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
         private ConcurrentDictionary<int, ConcurrentDictionary<int, long>> _tooltipRequestTimes = new();
         private readonly Lock _disconnectLock = new();
 
         public DbAccount Account
         {
-            get => _account;
+            get;
             set
             {
-                _account = value;
-                this.InitFromCollection(value.CustomParams, param => param.KeyName, param => param.Value);
+                field = value;
+                this.Init(value.CustomParams, param => param.KeyName, param => param.Value);
                 GameEventMgr.Notify(GameClientEvent.AccountLoaded, this);
             }
         }
 
         public eClientState ClientState
         {
-            get => _clientState;
+            get;
             set
             {
-                eClientState oldState = _clientState;
+                eClientState oldState = field;
 
                 // Refresh ping timeouts immediately when we change into playing state or char screen.
-                if ((oldState != eClientState.Playing && value == eClientState.Playing) ||
-                    (oldState != eClientState.CharScreen && value == eClientState.CharScreen))
+                if ((oldState != eClientState.Playing && value is eClientState.Playing) ||
+                    (oldState != eClientState.CharScreen && value is eClientState.CharScreen))
                 {
                     PingTime = GameLoop.GameLoopTime;
-
-                    if (_player != null)
-                        _player.LastPositionUpdatePacketReceivedTime = GameLoop.GameLoopTime;
+                    Player?.LastPositionUpdatePacketReceivedTime = GameLoop.GameLoopTime;
                 }
 
-                _clientState = value;
+                field = value;
                 GameEventMgr.Notify(GameClientEvent.StateChanged, this);
             }
-        }
+        } = eClientState.NotConnected;
 
         public GamePlayer Player
         {
-            get => _player;
+            get;
             set
             {
-                if (_player != null && _player.ObjectState is not GameObject.eObjectState.Deleted)
+                if (field != null && field.ObjectState is not GameObject.eObjectState.Deleted)
                 {
                     if (log.IsErrorEnabled)
                     {
-                        string message = $"GameClient.Player is being replaced but hasn't been deleted yet (current: {_player}) (new: {_player}){Environment.NewLine}{Environment.StackTrace}";
+                        string message = $"GameClient.Player is being replaced but hasn't been deleted yet (current: {field}) (new: {field}){Environment.NewLine}{Environment.StackTrace}";
                         log.Error(message);
                     }
 
-                    _player.Delete();
+                    field.Delete();
                 }
 
-                _player = value;
+                field = value;
                 GameEventMgr.Notify(GameClientEvent.PlayerLoaded, this); // Seems not right.
             }
         }
 
-        public IPEndPoint UdpEndPoint
-        {
-            get => _udpEndpoint;
-            set
-            {
-                _udpEndpoint = value;
-                PacketProcessor.OnUdpEndpointSet(value);
-            }
-        }
-
-        public Dictionary<string, List<string>> CustomParamsDictionary
-        {
-            get => _customParams;
-            set
-            {
-                Account.CustomParams = value.SelectMany(kv => kv.Value.Select(val => new DbAccountXCustomParam(Account.Name, kv.Key, val))).ToArray();
-                _customParams = value;
-            }
-        }
-
-        public bool IsPlaying => _clientState is eClientState.Playing or eClientState.Linkdead;
-        public int SessionID => EntityManagerId.Value + 1;
-        public EntityManagerId EntityManagerId { get; set; } = new(EntityManager.EntityType.Client);
+        public IPEndPoint UdpEndPoint { get; set; }
+        public Dictionary<string, object> CustomParamsDictionary { get; set; }
+        public bool IsPlaying => ClientState is eClientState.Playing or eClientState.Linkdead;
+        public ushort SessionID => SessionId.Value;
+        public ServiceObjectId ServiceObjectId { get; } = new(ServiceObjectType.Client);
         public bool HasSeenPatchNotes { get; set; }
         public List<Tuple<Specialization, List<Tuple<int, int, Skill>>>> TrainerSkillCache { get; set; }
         public long LinkDeathTime { get; set; }
-        public GSPacketIn LastPositionUpdatePacketReceived { get; set; }
-        public bool IsConnected { get; set; } = true;
         public int ActiveCharIndex { get; set; } = -1;
         public long PingTime { get; set; } = GameLoop.GameLoopTime;
         public string LocalIP { get; set; } = string.Empty;
@@ -122,43 +95,27 @@ namespace DOL.GS
         public string MinorRev { get; set; } = string.Empty;
         public byte MajorBuild { get; set; } = 0;
         public byte MinorBuild { get; set; } = 0;
+        public HashSet<eChatType> DisabledChatTypes { get; } = new();
+        public eEffectFilter EffectFilter { get; set; }
 
         public GameClient(Socket socket) : base(socket) { }
 
         public bool CanSendTooltip(int type, int id)
         {
-            _tooltipRequestTimes.TryAdd(type, new());
+            ConcurrentDictionary<int, long> innerDict = _tooltipRequestTimes.GetOrAdd(type, static _ => new());
 
-            foreach (Tuple<int, int> keys in _tooltipRequestTimes.SelectMany(e => e.Value.Where(it => it.Value < GameLoop.GameLoopTime).Select(el => new Tuple<int, int>(e.Key, el.Key))))
-                _tooltipRequestTimes[keys.Item1].TryRemove(keys.Item2, out _);
-
-            if (_tooltipRequestTimes[type].ContainsKey(id))
+            if (innerDict.TryGetValue(id, out long expiryTime) && expiryTime > GameLoop.GameLoopTime)
                 return false;
 
-            _tooltipRequestTimes[type].TryAdd(id, GameLoop.GameLoopTime + 3600000);
+            innerDict[id] = GameLoop.GameLoopTime + 3600000;
             return true;
         }
 
-        public void LoadPlayer(int accountIndex)
+        public async Task LoadPlayer(int accountIndex)
         {
-            LoadPlayer(accountIndex, Properties.PLAYER_CLASS);
-        }
-
-        public void LoadPlayer(DbCoreCharacter dolChar)
-        {
-            LoadPlayer(dolChar, Properties.PLAYER_CLASS);
-        }
-
-        public void LoadPlayer(int accountIndex, string playerClass)
-        {
-            GameServer.Database.FillObjectRelations(_account);
-            DbCoreCharacter dolChar = _account.Characters[accountIndex];
-            LoadPlayer(dolChar, playerClass);
-        }
-
-        public void LoadPlayer(DbCoreCharacter dolChar, string playerClass)
-        {
+            DbCoreCharacter dolChar = Account.Characters[accountIndex];
             ActiveCharIndex = 0;
+
             foreach (var ch in Account.Characters)
             {
                 if (ch.ObjectId == dolChar.ObjectId)
@@ -166,12 +123,13 @@ namespace DOL.GS
                 ActiveCharIndex++;
             }
 
-            Assembly gasm = Assembly.GetAssembly(typeof(GameServer));
+            await DOLDB<DbCoreCharacter>.FillObjectRelationsAsync(dolChar);
+            Assembly gameServerAssembly = Assembly.GetAssembly(typeof(GameServer));
+            object playerObject = null;
 
-            GamePlayer player = null;
             try
             {
-                player = (GamePlayer)gasm.CreateInstance(playerClass, false, BindingFlags.CreateInstance, null, new object[] { this, dolChar }, null, null);
+                playerObject = gameServerAssembly.CreateInstance(Properties.PLAYER_CLASS, false, BindingFlags.CreateInstance, null, [this, dolChar], null, null);
             }
             catch (Exception e)
             {
@@ -179,34 +137,36 @@ namespace DOL.GS
                     log.Error(e);
             }
 
-            if (player == null)
+            if (playerObject == null)
             {
-                foreach (Assembly asm in ScriptMgr.Scripts)
+                foreach (Assembly assembly in ScriptMgr.Scripts)
                 {
                     try
                     {
-                        player = (GamePlayer)asm.CreateInstance(playerClass, false, BindingFlags.CreateInstance, null, new object[] { this, dolChar }, null, null);
+                        playerObject = assembly.CreateInstance(Properties.PLAYER_CLASS, false, BindingFlags.CreateInstance, null, [this, dolChar], null, null);
                     }
                     catch (Exception e)
                     {
                         if (log.IsErrorEnabled)
                             log.Error( e);
                     }
-                    if (player != null)
+
+                    if (playerObject != null)
                         break;
                 }
             }
 
-            if (player == null)
+            GamePlayer player = playerObject as GamePlayer;
+
+            if (playerObject is null)
             {
                 if (log.IsErrorEnabled)
-                    log.Error($"Could not instantiate player class '{playerClass}', using GamePlayer instead!");
+                    log.Error($"Could not instantiate player class '{Properties.PLAYER_CLASS}', using '{nameof(GamePlayer)}' instead!");
 
-                player = new GamePlayer(this, dolChar);
+                player = new(this, dolChar);
             }
 
-            Thread.MemoryBarrier();
-
+            await player.LoadFromDatabaseAsync(dolChar);
             Player = player;
         }
 
@@ -214,8 +174,8 @@ namespace DOL.GS
         {
             try
             {
-                if (_player?.ObjectState is GameObject.eObjectState.Active)
-                    _player.SaveIntoDatabase();
+                if (Player?.ObjectState is GameObject.eObjectState.Active)
+                    Player.SaveIntoDatabase();
             }
             catch (Exception e)
             {
@@ -286,15 +246,17 @@ namespace DOL.GS
                 }
 
                 ClientState = eClientState.Disconnected;
-                ClientService.OnClientDisconnect(this);
+                PacketProcessor?.Dispose();
+                ClientService.Instance.OnClientDisconnect(this);
+                base.OnDisconnect(); // Frees session ID. Must be done after calling `ClientService.OnClientDisconnect`.
                 GameEventMgr.Notify(GameClientEvent.Disconnected, this);
 
                 if (Account != null)
                 {
                     if (log.IsInfoEnabled)
                     {
-                        if (_udpEndpoint != null)
-                            log.Info($"({_udpEndpoint.Address}) {Account.Name} just disconnected.");
+                        if (UdpEndPoint != null)
+                            log.Info($"({UdpEndPoint.Address}) {Account.Name} just disconnected.");
                         else
                             log.Info($"({TcpEndpointAddress}) {Account.Name} just disconnected.");
                     }
@@ -313,174 +275,123 @@ namespace DOL.GS
 
         protected override void OnReceive(int size)
         {
-            if (Version is eClientVersion.VersionNotChecked && !CheckVersion())
+            if (Version is eClientVersion.VersionNotChecked && !CheckVersion(size))
                 return;
 
             if (Version is not eClientVersion.VersionUnknown)
-                ProcessInboundTcpBytes();
-
-            bool CheckVersion()
-            {
-                // This currently assumes the first packet is received in full, which may not be the case.
-                // This should eventually be fixed since the connection may fail because of that.
-
-                if (size < 17) // 17 is correct bytes count for 0xF4 packet.
-                {
-                    if (log.IsWarnEnabled)
-                    {
-                        log.Warn($"Disconnected {TcpEndpointAddress} in login phase because wrong packet size {size}");
-                        log.Warn(Marshal.ToHexDump("packet buffer:", ReceiveBuffer, 0, size));
-                    }
-
-                    Disconnect();
-                    return false;
-                }
-
-                int version;
-
-                // The first packet format changes after 1.115c. If bytes count is below 19, we have a pre-1.115c packet.
-                if (size < 19)
-                {
-                    // Currently, the version is sent with the first packet, no matter what packet code it is.
-                    version = ReceiveBuffer[12] * 100 + ReceiveBuffer[13] * 10 + ReceiveBuffer[14];
-
-                    // We force the versioning: 200 corresponds to 1.100.
-                    // Thus we could handle logically packets with version number based on the client version.
-                    if (version >= 200)
-                        version += 900;
-                }
-                else
-                {
-                    // Post 1.115c.
-                    // First byte is major (1), second byte is minor (1), third byte is version (15).
-                    // Revision (c) is also coded in ASCII after that, then a build number appears using two bytes (0x$$$$).
-                    version = ReceiveBuffer[11] * 1000 + ReceiveBuffer[12] * 100 + ReceiveBuffer[13];
-                }
-
-                IPacketLib packetLib = AbstractPacketLib.CreatePacketLibForVersion(version, this, out eClientVersion ver);
-
-                if (packetLib == null)
-                {
-                    Version = eClientVersion.VersionUnknown;
-
-                    if (log.IsWarnEnabled)
-                        log.Warn($"{TcpEndpointAddress} client Version {version} not handled on this server.");
-
-                    Disconnect();
-                }
-                else
-                {
-                    log.Info($"Incoming connection from {TcpEndpointAddress} using client version {version}");
-                    Version = ver;
-                    Out = packetLib;
-                    PacketProcessor = new PacketProcessor(this);
-                }
-
-                return true;
-            }
-
-            void ProcessInboundTcpBytes()
-            {
-                byte[] buffer = ReceiveBuffer;
-                int endPosition = ReceiveBufferOffset + size;
-
-                if (endPosition < GSPacketIn.HDR_SIZE)
-                {
-                    ReceiveBufferOffset = endPosition;
-                    return;
-                }
-
-                ReceiveBufferOffset = 0;
-                int currentOffset = 0;
-
-                do
-                {
-                    int packetLength = (buffer[currentOffset] << 8) + buffer[currentOffset + 1] + GSPacketIn.HDR_SIZE;
-                    int dataLeft = endPosition - currentOffset;
-
-                    if (dataLeft < packetLength)
-                    {
-                        Buffer.BlockCopy(buffer, currentOffset, buffer, 0, dataLeft);
-                        ReceiveBufferOffset = dataLeft;
-                        break;
-                    }
-
-                    int packetEnd = currentOffset + packetLength;
-                    int calcCheck = PacketProcessor.CalculateChecksum(buffer, currentOffset, packetLength - 2);
-                    int pakCheck = (buffer[packetEnd - 2] << 8) | (buffer[packetEnd - 1]);
-
-                    if (pakCheck != calcCheck)
-                    {
-                        if (log.IsWarnEnabled)
-                            log.Warn($"Bad TCP packet checksum (packet:0x{pakCheck:X4} calculated:0x{calcCheck:X4}) -> disconnecting\nclient: {this}\ncurOffset={currentOffset}; packetLength={packetLength}");
-
-                        if (log.IsInfoEnabled)
-                        {
-                            if (Properties.SAVE_PACKETS)
-                            {
-                                log.Info("Last client sent/received packets (from older to newer):");
-
-                                foreach (IPacket prevPak in PacketProcessor.GetLastPackets())
-                                    log.Info(prevPak.ToHumanReadable());
-                            }
-                            else
-                                log.Info($"Enable the server property {nameof(Properties.SAVE_PACKETS)} to see the last few sent/received packets.");
-
-                            log.Info(Marshal.ToHexDump("Last received bytes: ", buffer));
-                        }
-
-                        Disconnect();
-                        return;
-                    }
-
-                    GSPacketIn packet = new(packetLength - GSPacketIn.HDR_SIZE);
-                    packet.Load(buffer, currentOffset, packetLength);
-
-                    try
-                    {
-                        PacketProcessor.ProcessInboundPacket(packet);
-                    }
-                    catch (Exception e)
-                    {
-                        if (log.IsErrorEnabled)
-                            log.Error(e);
-                    }
-
-                    currentOffset += packetLength;
-                } while (endPosition - 1 > currentOffset);
-
-                if (endPosition - 1 == currentOffset)
-                {
-                    buffer[0] = buffer[currentOffset];
-                    ReceiveBufferOffset = 1;
-                }
-            }
+                ProcessInboundTcpBytes(size);
         }
 
-        protected override void OnDisconnect()
+        private bool CheckVersion(int size)
         {
-            lock (_disconnectLock)
-            {
-                if (ClientState == eClientState.Disconnected)
-                    return;
+            // This currently assumes the first packet is received in full, which may not be the case.
+            // This should eventually be fixed since the connection may fail because of that.
 
-                if (SessionID == 0 || Player == null)
+            if (size < 17) // 17 is correct bytes count for 0xF4 packet.
+            {
+                if (log.IsWarnEnabled)
                 {
-                    Quit();
+                    log.Warn($"Disconnected {TcpEndpointAddress} in login phase because wrong packet size {size}");
+                    log.Warn(Marshal.ToHexDump("packet buffer:", ReceiveBuffer, 0, size));
+                }
+
+                Disconnect();
+                return false;
+            }
+
+            int version;
+
+            // The first packet format changes after 1.115c. If bytes count is below 19, we have a pre-1.115c packet.
+            if (size < 19)
+            {
+                // Currently, the version is sent with the first packet, no matter what packet code it is.
+                version = ReceiveBuffer[12] * 100 + ReceiveBuffer[13] * 10 + ReceiveBuffer[14];
+
+                // We force the versioning: 200 corresponds to 1.100.
+                // Thus we could handle logically packets with version number based on the client version.
+                if (version >= 200)
+                    version += 900;
+            }
+            else
+            {
+                // Post 1.115c.
+                // First byte is major (1), second byte is minor (1), third byte is version (15).
+                // Revision (c) is also coded in ASCII after that, then a build number appears using two bytes (0x$$$$).
+                version = ReceiveBuffer[11] * 1000 + ReceiveBuffer[12] * 100 + ReceiveBuffer[13];
+            }
+
+            IPacketLib packetLib = AbstractPacketLib.CreatePacketLibForVersion(version, this, out eClientVersion ver);
+
+            if (packetLib == null)
+            {
+                Version = eClientVersion.VersionUnknown;
+
+                if (log.IsWarnEnabled)
+                    log.Warn($"{TcpEndpointAddress} client Version {version} not handled on this server.");
+
+                Disconnect();
+            }
+            else
+            {
+                if (log.IsInfoEnabled)
+                    log.Info($"Incoming connection from {TcpEndpointAddress} using client version {version}");
+
+                Version = ver;
+                Out = packetLib;
+                PacketProcessor = new PacketProcessor(this);
+            }
+
+            return true;
+        }
+
+        private void ProcessInboundTcpBytes(int size)
+        {
+            byte[] buffer = ReceiveBuffer;
+            int endPosition = ReceiveBufferOffset + size;
+
+            if (endPosition < GSPacketIn.HDR_SIZE)
+            {
+                ReceiveBufferOffset = endPosition;
+                return;
+            }
+
+            ReceiveBufferOffset = 0;
+            int currentOffset = 0;
+
+            do
+            {
+                int packetLength = (buffer[currentOffset] << 8) + buffer[currentOffset + 1] + GSPacketIn.HDR_SIZE;
+                int dataLeft = endPosition - currentOffset;
+
+                if (dataLeft < packetLength)
+                {
+                    Buffer.BlockCopy(buffer, currentOffset, buffer, 0, dataLeft);
+                    ReceiveBufferOffset = dataLeft;
+                    break;
+                }
+
+                int packetEnd = currentOffset + packetLength;
+                int calcCheck = PacketProcessor.CalculateChecksum(buffer, currentOffset, packetLength - 2);
+                int pakCheck = (buffer[packetEnd - 2] << 8) | (buffer[packetEnd - 1]);
+
+                if (pakCheck != calcCheck)
+                {
+                    if (log.IsWarnEnabled)
+                        log.Warn($"Bad TCP packet checksum (packet:0x{pakCheck:X4} calculated:0x{calcCheck:X4}) -> disconnecting\nclient: {this}\ncurOffset={currentOffset}; packetLength={packetLength}");
+
+                    if (log.IsDebugEnabled)
+                        log.Debug(Marshal.ToHexDump("Last received bytes: ", buffer));
+
+                    Disconnect();
                     return;
                 }
+
+                var packet = PooledObjectFactory.GetForTick<GSPacketIn>().Init();
+                packet.Load(buffer, currentOffset, packetLength);
 
                 try
                 {
-                    if (ClientState == eClientState.Playing)
-                    {
-                        if (!Player.IsLinkDeathTimerRunning)
-                            OnLinkDeath(false);
-
-                        return;
-                    }
-                    else if (ClientState == eClientState.WorldEnter)
-                        Player.SaveIntoDatabase();
+                    PacketProcessor.ProcessInboundPacket(packet);
                 }
                 catch (Exception e)
                 {
@@ -489,17 +400,76 @@ namespace DOL.GS
                 }
                 finally
                 {
-                    // Make sure the client is disconnected even on errors, but only if there is no link death timer running.
-                    if (!Player.IsLinkDeathTimerRunning)
-                        Quit();
+                    packet.ReleasePooledObject();
                 }
+
+                currentOffset += packetLength;
+            } while (endPosition - 1 > currentOffset);
+
+            if (endPosition - 1 == currentOffset)
+            {
+                buffer[0] = buffer[currentOffset];
+                ReceiveBufferOffset = 1;
             }
         }
 
-        public override void OnConnect()
+        protected override void OnDisconnect()
         {
-            ClientService.OnClientConnect(this);
-            GameEventMgr.Notify(GameClientEvent.Connected, this);
+            if (ClientState is eClientState.Disconnected)
+                return;
+
+            // Posting the disconnect logic to the game loop isn't necessary in most cases.
+            // However, this can sometimes be called outside the game loop, for example if a client fails to connect properly.
+            ClientService.Instance.Post(static state =>
+            {
+                lock (state._disconnectLock)
+                {
+                    if (state.ClientState is eClientState.Disconnected)
+                       return;
+
+                    if (state.SessionID == 0 || state.Player == null)
+                    {
+                        state.Quit();
+                        return;
+                    }
+
+                    try
+                    {
+                        if (state.ClientState is eClientState.Playing)
+                        {
+                            if (!state.Player.IsLinkDeathTimerRunning)
+                                state.OnLinkDeath(false);
+
+                            return;
+                        }
+                        else if (state.ClientState is eClientState.WorldEnter)
+                            state.Player.SaveIntoDatabase();
+                    }
+                    catch (Exception e)
+                    {
+                        if (log.IsErrorEnabled)
+                            log.Error(e);
+                    }
+                    finally
+                    {
+                        // Make sure the client is disconnected even on errors, but only if there is no link death timer running.
+                        if (!state.Player.IsLinkDeathTimerRunning)
+                            state.Quit();
+                    }
+                }
+            }, this);
+        }
+
+        public override void OnConnect(SessionId sessionId)
+        {
+            base.OnConnect(sessionId);
+
+            // `OnConnect` is exclusively called from outside the game loop.
+            ClientService.Instance.Post(static state =>
+            {
+                ClientService.Instance.OnClientConnect(state);
+                GameEventMgr.Notify(GameClientEvent.Connected, state);
+            }, this);
         }
 
         public override string ToString()
@@ -616,7 +586,8 @@ namespace DOL.GS
             Version1126 = 1126,
             Version1127 = 1127,
             Version1128 = 1128,
-            _LastVersion = 1128
+            Version1129 = 1129,
+            _LastVersion = 1129
         }
     }
 }

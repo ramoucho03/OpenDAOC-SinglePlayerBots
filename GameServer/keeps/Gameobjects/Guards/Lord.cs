@@ -139,59 +139,55 @@ namespace DOL.GS.Keeps
         /// <param name="killer">The killer object</param>
         public override void Die(GameObject killer)
         {
-            if (!IsBeingHandledByReaperService)
+            m_lastRealm = eRealm.None;
+
+            if (Properties.LOG_KEEP_CAPTURES)
             {
-                this.IsBeingHandledByReaperService = true;
-                m_lastRealm = eRealm.None;
-
-                if (Properties.LOG_KEEP_CAPTURES)
+                try
                 {
-                    try
+                    if (this.Component != null)
                     {
-                        if (this.Component != null)
-                        {
-                            Database.DbKeepCaptureLog keeplog = new Database.DbKeepCaptureLog();
-                            keeplog.KeepName = Component.Keep.Name;
+                        Database.DbKeepCaptureLog keeplog = new Database.DbKeepCaptureLog();
+                        keeplog.KeepName = Component.Keep.Name;
 
-                            if (Component.Keep is GameKeep)
-                                keeplog.KeepType = "Keep";
-                            else
-                                keeplog.KeepType = "Tower";
-
-                            keeplog.NumEnemies = GetEnemyCountInArea();
-                            keeplog.RPReward = RealmPointsValue;
-                            keeplog.BPReward = BountyPointsValue;
-                            keeplog.XPReward = ExperienceValue;
-                            keeplog.MoneyReward = MoneyValue;
-
-                            if (Component.Keep.StartCombatTick > 0)
-                            {
-                                keeplog.CombatTime = (int)((Component.Keep.CurrentRegion.Time - Component.Keep.StartCombatTick) / 1000 / 60);
-                            }
-
-                            keeplog.CapturedBy = GlobalConstants.RealmToName(killer.Realm);
-
-                            string listRPGainers = string.Empty;
-
-                            lock (XpGainersLock)
-                            {
-                                foreach (var pair in XPGainers)
-                                    listRPGainers += pair.Key.Name + ";";
-                            }
-
-                            keeplog.RPGainerList = listRPGainers.TrimEnd(';');
-
-                            GameServer.Database.AddObject(keeplog);
-                        }
+                        if (Component.Keep is GameKeep)
+                            keeplog.KeepType = "Keep";
                         else
+                            keeplog.KeepType = "Tower";
+
+                        keeplog.NumEnemies = GetEnemyCountInArea();
+                        keeplog.RPReward = RealmPointsValue;
+                        keeplog.BPReward = BountyPointsValue;
+                        keeplog.XPReward = ExperienceValue;
+                        keeplog.MoneyReward = MoneyValue;
+
+                        if (Component.Keep.StartCombatTick > 0)
                         {
-                            log.Error("Component null for Guard Lord " + Name);
+                            keeplog.CombatTime = (int)((Component.Keep.CurrentRegion.Time - Component.Keep.StartCombatTick) / 1000 / 60);
                         }
+
+                        keeplog.CapturedBy = GlobalConstants.RealmToName(killer.Realm);
+
+                        string listRPGainers = string.Empty;
+
+                        lock (XpGainersLock)
+                        {
+                            foreach (var pair in XPGainers)
+                                listRPGainers += pair.Key.Name + ";";
+                        }
+
+                        keeplog.RPGainerList = listRPGainers.TrimEnd(';');
+
+                        GameServer.Database.AddObject(keeplog);
                     }
-                    catch (System.Exception ex)
+                    else
                     {
-                        log.Error("KeepCaptureLog Exception", ex);
+                        log.Error("Component null for Guard Lord " + Name);
                     }
+                }
+                catch (System.Exception ex)
+                {
+                    log.Error("KeepCaptureLog Exception", ex);
                 }
             }
 
@@ -347,13 +343,13 @@ namespace DOL.GS.Keeps
 
         protected override KeepGuardBrain GetBrain() => new LordBrain();
 
-        public override void AutoSetStats(DbMob dbMob = null)
+        public override void SetStats(DbMob dbMob = null)
         {
-            Strength = (short) (Properties.LORD_AUTOSET_STR_BASE + Level * Properties.LORD_AUTOSET_STR_MULTIPLIER);
-            Constitution = (short) (Properties.LORD_AUTOSET_CON_BASE + Level * Properties.LORD_AUTOSET_CON_MULTIPLIER);
-            Dexterity = (short) (Properties.LORD_AUTOSET_DEX_BASE + Level * Properties.LORD_AUTOSET_DEX_MULTIPLIER);
-            Quickness = (short) (Properties.LORD_AUTOSET_QUI_BASE + Level * Properties.LORD_AUTOSET_QUI_MULTIPLIER);
-            Intelligence = (short) (Properties.LORD_AUTOSET_INT_BASE + Level * Properties.LORD_AUTOSET_INT_MULTIPLIER);
+            Strength = (short) Math.Max(1, Properties.LORD_AUTOSET_STR_BASE + Level * Properties.LORD_AUTOSET_STR_MULTIPLIER);
+            Constitution = (short) Math.Max(1, Properties.LORD_AUTOSET_CON_BASE + Level * Properties.LORD_AUTOSET_CON_MULTIPLIER);
+            Dexterity = (short) Math.Max(1, Properties.LORD_AUTOSET_DEX_BASE + Level * Properties.LORD_AUTOSET_DEX_MULTIPLIER);
+            Quickness = (short) Math.Max(1, Properties.LORD_AUTOSET_QUI_BASE + Level * Properties.LORD_AUTOSET_QUI_MULTIPLIER);
+            Intelligence = (short) Math.Max(1, Properties.LORD_AUTOSET_INT_BASE + Level * Properties.LORD_AUTOSET_INT_MULTIPLIER);
         }
 
         protected override void SetRespawnTime()

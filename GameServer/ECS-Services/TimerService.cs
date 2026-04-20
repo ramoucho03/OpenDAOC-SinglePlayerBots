@@ -1,75 +1,83 @@
 using System;
-using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
-using System.Threading.Tasks;
+using DOL.Logging;
+using DOL.Timing;
 using ECS.Debug;
 
 namespace DOL.GS
 {
-    public class TimerService
+    public sealed class TimerService : GameServiceBase
     {
-        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
-        private const string SERVICE_NAME = nameof(TimerService);
-        private static List<ECSGameTimer> _list;
-        private static int _entityCount;
+        private static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
-        public static void Tick()
+        private ServiceObjectView<ECSGameTimer> _view;
+
+        public static TimerService Instance { get; }
+
+        static TimerService()
         {
-            GameLoop.CurrentServiceTick = SERVICE_NAME;
-            Diagnostics.StartPerfCounter(SERVICE_NAME);
-            _list = EntityManager.UpdateAndGetAll<ECSGameTimer>(EntityManager.EntityType.Timer, out int lastValidIndex);
-            Parallel.For(0, lastValidIndex + 1, TickInternal);
-
-            if (Diagnostics.CheckEntityCounts)
-                Diagnostics.PrintEntityCount(SERVICE_NAME, ref _entityCount, _list.Count);
-
-            Diagnostics.StopPerfCounter(SERVICE_NAME);
+            Instance = new();
         }
 
-        private static void TickInternal(int index)
+        public override void Tick()
         {
-            ECSGameTimer timer = _list[index];
-
-            if (timer?.EntityManagerId.IsSet != true)
-                return;
-
-            if (Diagnostics.CheckEntityCounts)
-                Interlocked.Increment(ref _entityCount);
+            ProcessPostedActionsParallel();
 
             try
             {
-                if (ServiceUtils.ShouldTickAdjust(ref timer.NextTick))
-                {
-                    long startTick = GameLoop.GetCurrentTime();
-                    timer.Tick();
-                    long stopTick = GameLoop.GetCurrentTime();
-
-                    if (stopTick - startTick > Diagnostics.LongTickThreshold)
-                        log.Warn($"Long {SERVICE_NAME}.{nameof(Tick)} for Timer Callback: {timer.CallbackInfo?.DeclaringType}:{timer.CallbackInfo?.Name}  Owner: {timer.Owner?.Name} Time: {stopTick - startTick}ms");
-                }
+                _view = ServiceObjectStore.UpdateAndGetView<ECSGameTimer>(ServiceObjectType.Timer);
             }
             catch (Exception e)
             {
-                ServiceUtils.HandleServiceException(e, SERVICE_NAME, timer, timer.Owner);
+                if (log.IsErrorEnabled)
+                    log.Error($"{nameof(ServiceObjectStore.UpdateAndGetView)} failed. Skipping this tick.", e);
+
+                return;
+            }
+
+            _view.ExecuteForEach(TickInternal);
+
+            if (Diagnostics.CheckServiceObjectCount)
+                Diagnostics.PrintServiceObjectCount(ServiceName, ref EntityCount, _view.TotalValidCount);
+        }
+
+        private static void TickInternal(ECSGameTimer timer)
+        {
+            try
+            {
+                if (Diagnostics.CheckServiceObjectCount)
+                    Interlocked.Increment(ref Instance.EntityCount);
+
+                if (!GameServiceUtils.ShouldTick(timer.NextTick))
+                    return;
+
+                long startTick = MonotonicTime.NowMs;
+                timer.Tick();
+                long stopTick = MonotonicTime.NowMs;
+
+                if (stopTick - startTick > Diagnostics.LongTickThreshold)
+                    log.Warn($"Long {Instance.ServiceName}.{nameof(Tick)} for Timer Callback: {timer.CallbackInfo?.DeclaringType}:{timer.CallbackInfo?.Name}  Owner: {timer.Owner?.Name} Time: {stopTick - startTick}ms");
+            }
+            catch (Exception e)
+            {
+                GameServiceUtils.HandleServiceException(e, Instance.ServiceName, timer, timer.Owner);
             }
         }
     }
 
-    public class ECSGameTimer : IManagedEntity
+    public class ECSGameTimer : IServiceObject
     {
         public delegate int ECSTimerCallback(ECSGameTimer timer);
-
-        private long _nextTick;
 
         public GameObject Owner { get; }
         public ECSTimerCallback Callback { private get; set; }
         public MethodInfo CallbackInfo => Callback?.GetMethodInfo();
         public int Interval { get; set; }
-        public ref long NextTick => ref _nextTick;
+        public long NextTick { get; protected set; }
         public bool IsAlive { get; private set; }
-        public int TimeUntilElapsed => (int) (_nextTick - GameLoop.GameLoopTime);
-        public EntityManagerId EntityManagerId { get; set; } = new(EntityManager.EntityType.Timer);
+        public int TimeUntilElapsed => (int) (NextTick - GameLoop.GameLoopTime);
+        public ServiceObjectId ServiceObjectId { get; } = new(ServiceObjectType.Timer);
         private PropertyCollection _properties;
 
         public ECSGameTimer(GameObject timerOwner)
@@ -88,7 +96,7 @@ namespace DOL.GS
             Owner = timerOwner;
             Callback = callback;
             Interval = interval;
-            Start();
+            Start(interval);
         }
 
         public void Start()
@@ -100,15 +108,15 @@ namespace DOL.GS
         public void Start(int interval)
         {
             Interval = interval;
-            _nextTick = GameLoop.GameLoopTime + interval;
+            NextTick = GameLoop.GameLoopTime + interval;
 
-            if (EntityManager.Add(this))
+            if (ServiceObjectStore.Add(this))
                 IsAlive = true;
         }
 
         public void Stop()
         {
-            if (EntityManager.Remove(this))
+            if (ServiceObjectStore.Remove(this))
                 IsAlive = false;
         }
 
@@ -117,13 +125,13 @@ namespace DOL.GS
             if (Callback != null)
                 Interval = Callback.Invoke(this);
 
-            if (Interval == 0)
+            if (Interval <= 0)
             {
                 Stop();
                 return;
             }
 
-            _nextTick += Interval;
+            NextTick += Interval;
         }
 
         public PropertyCollection Properties
@@ -132,7 +140,7 @@ namespace DOL.GS
             {
                 if (_properties == null)
                 {
-                    lock(this)
+                    lock (this)
                     {
                         _properties ??= new();
                     }

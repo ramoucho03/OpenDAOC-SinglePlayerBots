@@ -44,7 +44,7 @@ namespace DOL.GS
         #region Message Timers and Broadcast
         public void BroadcastMessage(String message)
         {
-            foreach (GamePlayer player in this.GetPlayersInRadius(WorldMgr.OBJ_UPDATE_DISTANCE))
+            foreach (GamePlayer player in this.GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
             {
                 player.Out.SendMessage(message, eChatType.CT_Broadcast, eChatLoc.CL_SystemWindow);
             }
@@ -376,10 +376,7 @@ namespace DOL.GS
                 return false;
             return true;
         }
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * Strength / 100 * ServerProperties.Properties.EPICS_DMG_MULTIPLIER;
-        }
+
         public override int MeleeAttackRange => 350;
         public override bool HasAbility(string keyName)
         {
@@ -403,7 +400,7 @@ namespace DOL.GS
         }
         public void BroadcastMessage(String message)
         {
-            foreach (GamePlayer player in this.GetPlayersInRadius(WorldMgr.OBJ_UPDATE_DISTANCE))
+            foreach (GamePlayer player in this.GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
             {
                 player.Out.SendMessage(message, eChatType.CT_Broadcast, eChatLoc.CL_SystemWindow);
             }
@@ -556,10 +553,7 @@ namespace DOL.GS
 
             return base.HasAbility(keyName);
         }
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * Strength / 100;
-        }
+
         public override int MeleeAttackRange => 350;
         public override double GetArmorAF(eArmorSlot slot)
         {
@@ -577,7 +571,7 @@ namespace DOL.GS
         public static bool BellumUP = true;
         public void BroadcastMessage(String message)
         {
-            foreach (GamePlayer player in this.GetPlayersInRadius(WorldMgr.OBJ_UPDATE_DISTANCE))
+            foreach (GamePlayer player in this.GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
             {
                 player.Out.SendMessage(message, eChatType.CT_Broadcast, eChatLoc.CL_SystemWindow);
             }
@@ -661,15 +655,15 @@ namespace DOL.GS
             BellumUP = true;
             prepareMorbus = false;
 
-            AbilityBonus[(int)eProperty.Resist_Body] = -10;
-            AbilityBonus[(int)eProperty.Resist_Heat] = -10;
-            AbilityBonus[(int)eProperty.Resist_Cold] = -10;
-            AbilityBonus[(int)eProperty.Resist_Matter] = -10;
-            AbilityBonus[(int)eProperty.Resist_Energy] = -10;
-            AbilityBonus[(int)eProperty.Resist_Spirit] = -10;
-            AbilityBonus[(int)eProperty.Resist_Slash] = 99;
-            AbilityBonus[(int)eProperty.Resist_Crush] = 99;
-            AbilityBonus[(int)eProperty.Resist_Thrust] = 99;
+            AbilityBonus[eProperty.Resist_Body] = -10;
+            AbilityBonus[eProperty.Resist_Heat] = -10;
+            AbilityBonus[eProperty.Resist_Cold] = -10;
+            AbilityBonus[eProperty.Resist_Matter] = -10;
+            AbilityBonus[eProperty.Resist_Energy] = -10;
+            AbilityBonus[eProperty.Resist_Spirit] = -10;
+            AbilityBonus[eProperty.Resist_Slash] = 99;
+            AbilityBonus[eProperty.Resist_Crush] = 99;
+            AbilityBonus[eProperty.Resist_Thrust] = 99;
 
             if (spawn_fate2 == false)
             {
@@ -1334,10 +1328,7 @@ namespace DOL.GS
                 }
             }
         }
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * Strength / 100;
-        }
+
         public override int MeleeAttackRange => 350;
         public override double GetArmorAF(eArmorSlot slot)
         {
@@ -1356,7 +1347,7 @@ namespace DOL.GS
         private bool prepareFunus = false;
         public void BroadcastMessage(String message)
         {
-            foreach (GamePlayer player in this.GetPlayersInRadius(WorldMgr.OBJ_UPDATE_DISTANCE))
+            foreach (GamePlayer player in this.GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
             {
                 player.Out.SendMessage(message, eChatType.CT_Broadcast, eChatLoc.CL_SystemWindow);
             }
@@ -1431,15 +1422,15 @@ namespace DOL.GS
             MorbusUP = true;
             prepareFunus = false;
 
-            AbilityBonus[(int)eProperty.Resist_Body] = 26;
-            AbilityBonus[(int)eProperty.Resist_Heat] = 26;
-            AbilityBonus[(int)eProperty.Resist_Cold] = -15;//weak to cold
-            AbilityBonus[(int)eProperty.Resist_Matter] = 26;
-            AbilityBonus[(int)eProperty.Resist_Energy] = 26;
-            AbilityBonus[(int)eProperty.Resist_Spirit] = 26;
-            AbilityBonus[(int)eProperty.Resist_Slash] = 60;
-            AbilityBonus[(int)eProperty.Resist_Crush] = 60;
-            AbilityBonus[(int)eProperty.Resist_Thrust] = 60;
+            AbilityBonus[eProperty.Resist_Body] = 26;
+            AbilityBonus[eProperty.Resist_Heat] = 26;
+            AbilityBonus[eProperty.Resist_Cold] = -15;//weak to cold
+            AbilityBonus[eProperty.Resist_Matter] = 26;
+            AbilityBonus[eProperty.Resist_Energy] = 26;
+            AbilityBonus[eProperty.Resist_Spirit] = 26;
+            AbilityBonus[eProperty.Resist_Slash] = 60;
+            AbilityBonus[eProperty.Resist_Crush] = 60;
+            AbilityBonus[eProperty.Resist_Thrust] = 60;
 
             if (spawn_fate3 == false)
             {
@@ -1492,7 +1483,7 @@ namespace DOL.AI.Brain
         }
         public void BroadcastMessage(String message)
         {
-            foreach (GamePlayer player in Body.GetPlayersInRadius(WorldMgr.OBJ_UPDATE_DISTANCE))
+            foreach (GamePlayer player in Body.GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
             {
                 player.Out.SendMessage(message, eChatType.CT_Broadcast, eChatLoc.CL_SystemWindow);
             }
@@ -1631,10 +1622,7 @@ namespace DOL.GS
     public class MorbusSwarm : GameNPC
     {
         public MorbusSwarm() : base() { }
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * Strength / 100;
-        }
+
         public override int MeleeAttackRange => 350;
         public override double GetArmorAF(eArmorSlot slot)
         {
@@ -1655,11 +1643,11 @@ namespace DOL.GS
             base.Die(killer);
         }
 
-        public override void AutoSetStats(DbMob dbMob = null)
+        public override void SetStats(DbMob dbMob = null)
         {
             if (PackageID == "MorbusBaf")
                 return;
-            base.AutoSetStats(dbMob);
+            base.SetStats(dbMob);
         }
         public override bool AddToWorld()
         {         
@@ -1732,15 +1720,15 @@ namespace DOL.GS
             TetherRange = 3000;
             Level = 75;
 
-            AbilityBonus[(int)eProperty.Resist_Body] = 15;
-            AbilityBonus[(int)eProperty.Resist_Heat] = 15;
-            AbilityBonus[(int)eProperty.Resist_Cold] = -15;//weak to cold
-            AbilityBonus[(int)eProperty.Resist_Matter] = 15;
-            AbilityBonus[(int)eProperty.Resist_Energy] = 15;
-            AbilityBonus[(int)eProperty.Resist_Spirit] = 15;
-            AbilityBonus[(int)eProperty.Resist_Slash] = 25;
-            AbilityBonus[(int)eProperty.Resist_Crush] = 25;
-            AbilityBonus[(int)eProperty.Resist_Thrust] = 25;
+            AbilityBonus[eProperty.Resist_Body] = 15;
+            AbilityBonus[eProperty.Resist_Heat] = 15;
+            AbilityBonus[eProperty.Resist_Cold] = -15;//weak to cold
+            AbilityBonus[eProperty.Resist_Matter] = 15;
+            AbilityBonus[eProperty.Resist_Energy] = 15;
+            AbilityBonus[eProperty.Resist_Spirit] = 15;
+            AbilityBonus[eProperty.Resist_Slash] = 25;
+            AbilityBonus[eProperty.Resist_Crush] = 25;
+            AbilityBonus[eProperty.Resist_Thrust] = 25;
 
             Faction = FactionMgr.GetFactionByID(64);
             BodyType = 7;
@@ -1802,12 +1790,11 @@ namespace DOL.AI.Brain
                     spell.Radius = 350;
                     spell.Duration = 120;
                     spell.SpellID = 11737;
-                    spell.Target = "Enemy";
+                    spell.Target = eSpellTarget.ENEMY.ToString();
                     spell.Type = "Disease";
                     spell.Uninterruptible = true;
                     spell.DamageType = (int)eDamageType.Body; //Energy DMG Type
                     m_black_plague = new Spell(spell, 70);
-                    SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_black_plague);
                 }
                 return m_black_plague;
             }
@@ -1868,10 +1855,7 @@ namespace DOL.GS
                 return;
             }
         }
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * Strength / 100;
-        }
+
         public override int MeleeAttackRange => 350;
         public override bool HasAbility(string keyName)
         {
@@ -1958,15 +1942,15 @@ namespace DOL.GS
             FunusUp = true;
             prepareApoc = false;
 
-            AbilityBonus[(int)eProperty.Resist_Body] = -25;
-            AbilityBonus[(int)eProperty.Resist_Heat] = -25;
-            AbilityBonus[(int)eProperty.Resist_Cold] = -25;
-            AbilityBonus[(int)eProperty.Resist_Matter] = -25;
-            AbilityBonus[(int)eProperty.Resist_Energy] = -25;
-            AbilityBonus[(int)eProperty.Resist_Spirit] = -25;
-            AbilityBonus[(int)eProperty.Resist_Slash] = -25;
-            AbilityBonus[(int)eProperty.Resist_Crush] = -25;
-            AbilityBonus[(int)eProperty.Resist_Thrust] = -25;
+            AbilityBonus[eProperty.Resist_Body] = -25;
+            AbilityBonus[eProperty.Resist_Heat] = -25;
+            AbilityBonus[eProperty.Resist_Cold] = -25;
+            AbilityBonus[eProperty.Resist_Matter] = -25;
+            AbilityBonus[eProperty.Resist_Energy] = -25;
+            AbilityBonus[eProperty.Resist_Spirit] = -25;
+            AbilityBonus[eProperty.Resist_Slash] = -25;
+            AbilityBonus[eProperty.Resist_Crush] = -25;
+            AbilityBonus[eProperty.Resist_Thrust] = -25;
 
             if (spawn_fate4 == false)
             {
@@ -2046,7 +2030,7 @@ namespace DOL.GS
         public Apocalypse() : base() { }
         public void BroadcastMessage(String message)
         {
-            foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.OBJ_UPDATE_DISTANCE))
+            foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
             {
                 player.Out.SendMessage(message, eChatType.CT_Broadcast, eChatLoc.CL_SystemWindow);
             }
@@ -2061,10 +2045,7 @@ namespace DOL.GS
                 default: return 70; // dmg reduction for rest resists
             }
         }
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * Strength / 100; 
-        }
+
         public override int MeleeAttackRange => 450;
         public override bool HasAbility(string keyName)
         {
@@ -2116,7 +2097,6 @@ namespace DOL.GS
             foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
             {
                 player.KillsEpicBoss++;
-                player.Achieve(AchievementUtils.AchievementNames.Epic_Boss_Kills);
                 count++;
             }
             return count;
@@ -2156,7 +2136,7 @@ namespace DOL.GS
             ApocUP = true;
 
 
-            foreach (GamePlayer player in ClientService.GetPlayersOfRegion(CurrentRegion))
+            foreach (GamePlayer player in ClientService.Instance.GetPlayersOfRegion(CurrentRegion))
                 player.Out.SendSoundEffect(2452, 0, 0, 0, 0, 0);//play sound effect for every player in boss currentregion
 
             KilledEnemys = 0;
@@ -2453,13 +2433,12 @@ namespace DOL.AI.Brain
                     spell.Radius = 800;
                     spell.Range = 2800;
                     spell.SpellID = 11740;
-                    spell.Target = "Area";
+                    spell.Target = eSpellTarget.AREA.ToString();
                     spell.Type = "DirectDamageNoVariance";
                     spell.Uninterruptible = true;
                     spell.MoveCast = true;
                     spell.DamageType = (int)eDamageType.Heat;
                     m_Apoc_Gtaoe = new Spell(spell, 70);
-                    SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_Apoc_Gtaoe);
                 }
                 return m_Apoc_Gtaoe;
             }
@@ -2474,10 +2453,7 @@ namespace DOL.GS
     public class HarbringerOfFate : GameEpicNPC
     {
         public HarbringerOfFate() : base() { }
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * Strength / 90;
-        }
+
         public override int MeleeAttackRange => 350;
         public override double GetArmorAF(eArmorSlot slot)
         {
@@ -2497,11 +2473,11 @@ namespace DOL.GS
             base.Die(killer);
         }
 
-        public override void AutoSetStats(DbMob dbMob = null)
+        public override void SetStats(DbMob dbMob = null)
         {
             if (this.PackageID == "ApocBaf")
                 return;
-            base.AutoSetStats(dbMob);
+            base.SetStats(dbMob);
         }
         public static int HarbringersCount = 0;
         public override short Quickness { get => base.Quickness; set => base.Quickness = 50; }
@@ -2521,15 +2497,15 @@ namespace DOL.GS
             Size = 90;
             ParryChance = 25;
 
-            this.AbilityBonus[(int)eProperty.Resist_Body] = 25;
-            this.AbilityBonus[(int)eProperty.Resist_Heat] = 25;
-            this.AbilityBonus[(int)eProperty.Resist_Cold] = 25;
-            this.AbilityBonus[(int)eProperty.Resist_Matter] = 25;
-            this.AbilityBonus[(int)eProperty.Resist_Energy] = 26;
-            this.AbilityBonus[(int)eProperty.Resist_Spirit] = 25;
-            this.AbilityBonus[(int)eProperty.Resist_Slash] = 30;
-            this.AbilityBonus[(int)eProperty.Resist_Crush] = 30;
-            this.AbilityBonus[(int)eProperty.Resist_Thrust] = 30;
+            this.AbilityBonus[eProperty.Resist_Body] = 25;
+            this.AbilityBonus[eProperty.Resist_Heat] = 25;
+            this.AbilityBonus[eProperty.Resist_Cold] = 25;
+            this.AbilityBonus[eProperty.Resist_Matter] = 25;
+            this.AbilityBonus[eProperty.Resist_Energy] = 26;
+            this.AbilityBonus[eProperty.Resist_Spirit] = 25;
+            this.AbilityBonus[eProperty.Resist_Slash] = 30;
+            this.AbilityBonus[eProperty.Resist_Crush] = 30;
+            this.AbilityBonus[eProperty.Resist_Thrust] = 30;
 
             TetherRange = 3000;
             MaxSpeedBase = 220;
@@ -2578,10 +2554,7 @@ namespace DOL.GS
     public class RainOfFire : GameEpicNPC
     {
         public RainOfFire() : base() { }
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * Strength / 100;
-        }
+
         public override int GetResist(eDamageType damageType)
         {
             switch (damageType)
@@ -2608,11 +2581,11 @@ namespace DOL.GS
         {
             base.Die(killer);
         }
-        public override void AutoSetStats(DbMob dbMob = null)
+        public override void SetStats(DbMob dbMob = null)
         {
             if (this.PackageID == "RainOfFire")
                 return;
-            base.AutoSetStats(dbMob);
+            base.SetStats(dbMob);
         }
         public override short Dexterity { get => base.Dexterity; set => base.Dexterity = 200; }
         public override short Intelligence { get => base.Intelligence; set => base.Intelligence = 300; }
@@ -2746,13 +2719,12 @@ namespace DOL.AI.Brain
                     spell.Radius = 600;
                     spell.Range = 2800;
                     spell.SpellID = 11738;
-                    spell.Target = "Enemy";
+                    spell.Target = eSpellTarget.ENEMY.ToString();
                     spell.Type = eSpellType.DirectDamageNoVariance.ToString();
                     spell.Uninterruptible = true;
                     spell.MoveCast = true;
                     spell.DamageType = (int)eDamageType.Heat;
                     m_Apoc_Rain_of_Fire = new Spell(spell, 70);
-                    SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_Apoc_Rain_of_Fire);
                 }
                 return m_Apoc_Rain_of_Fire;
             }

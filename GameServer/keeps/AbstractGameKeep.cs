@@ -425,12 +425,6 @@ namespace DOL.GS.Keeps
 
 		#endregion
 
-		~AbstractGameKeep()
-		{
-			log.Debug("AbstractGameKeep destructor called for " + Name);
-		}
-
-
 		#region LOAD/UNLOAD
 
 		/// <summary>
@@ -514,7 +508,7 @@ namespace DOL.GS.Keeps
 			}
 
 			RemoveFromDatabase();
-			GameServer.KeepManager.Keeps[KeepID] = null;
+			GameServer.KeepManager.UnregisterKeep(KeepID);
 		}
 
 		/// <summary>
@@ -812,7 +806,7 @@ namespace DOL.GS.Keeps
 			{
 				comp.UpdateLevel();
 
-				foreach (GamePlayer player in ClientService.GetPlayersOfRegion(CurrentRegion))
+				foreach (GamePlayer player in ClientService.Instance.GetPlayersOfRegion(CurrentRegion))
 					player.Out.SendKeepComponentDetailUpdate(comp);
 
 				comp.FillPositions();
@@ -1079,7 +1073,7 @@ namespace DOL.GS.Keeps
 			}
 
 			//change realm
-			foreach (GamePlayer player in ClientService.GetPlayersOfRegion(CurrentRegion))
+			foreach (GamePlayer player in ClientService.Instance.GetPlayersOfRegion(CurrentRegion))
 				player.Out.SendKeepComponentUpdate(this, false);
 
 			//we reset all doors
@@ -1202,7 +1196,7 @@ namespace DOL.GS.Keeps
 		/// </summary>
 		protected void SendRemoveKeep()
 		{
-			foreach (GamePlayer player in ClientService.GetPlayersOfRegion(CurrentRegion))
+			foreach (GamePlayer player in ClientService.Instance.GetPlayersOfRegion(CurrentRegion))
 			{
 				foreach(GameKeepComponent keepComponent in KeepComponents)
 					player.Out.SendKeepComponentRemove(keepComponent);
@@ -1216,7 +1210,7 @@ namespace DOL.GS.Keeps
 		/// </summary>
 		protected void SendKeepInfo()
 		{
-			foreach (GamePlayer player in ClientService.GetPlayersOfRegion(CurrentRegion))
+			foreach (GamePlayer player in ClientService.Instance.GetPlayersOfRegion(CurrentRegion))
 			{
 				player.Out.SendKeepInfo(this);
 

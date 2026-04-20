@@ -248,36 +248,6 @@ namespace DOL.GS.ServerProperties
 		public static int MAX_ITEMS_PER_PACKET;
 
 		/// <summary>
-		/// Number of times speed hack detected before banning.  Must be multiples of 5 (20, 25, 30, etc)
-		/// </summary>
-		[ServerProperty("system", "speedhack_tolerance", "Number of times speed hack detected before banning.  Multiples of 5 (20, 25, 30, etc)", 20)]
-		public static int SPEEDHACK_TOLERANCE;
-
-		/// <summary>
-		/// Turn on move detect
-		/// </summary>
-		[ServerProperty("system", "enable_movedetect", "Should the move detect code be enabled to kick possible movement hackers?", false)]
-		public static bool ENABLE_MOVEDETECT;
-
-		/// <summary>
-		/// Coords per second tolerance before player is identified as a hacker?
-		/// </summary>
-		[ServerProperty("system", "cps_tolerance", "Coords per second tolerance before player is identified as a hacker?", 1000)]
-		public static int CPS_TOLERANCE;
-
-		/// <summary>
-		/// Time tolerance before player is identified as move hacker
-		/// </summary>
-		[ServerProperty("system", "cps_time_tolerance", "Time tolerance for CPS before player is identified as a move hacker?", 200)]
-		public static int CPS_TIME_TOLERANCE;
-
-		/// <summary>
-		/// Z distance tolerance before player is identified as a jump hacker
-		/// </summary>
-		[ServerProperty("system", "jump_tolerance", "Z distance tolerance before player is identified as a jump hacker?", 200)]
-		public static int JUMP_TOLERANCE;
-
-		/// <summary>
 		/// Display centered screen messages if a player enters an area.
 		/// </summary>
 		[ServerProperty("system", "display_area_enter_screen_desc", "Display centered screen messages if a player enters an area.", false)]
@@ -301,13 +271,7 @@ namespace DOL.GS.ServerProperties
 		[ServerProperty("system", "use_npcguildscripts", "Use the NPC Guild Scripts", true)]
 		public static bool USE_NPCGUILDSCRIPTS;
 
-		/// <summary>
-		/// Save packets for debugging purpose.
-		/// </summary>
-		[ServerProperty("system", "save_packets", "Save packets and print the last sent/received ones when a client crashes. For debugging purpose.", false)]
-		public static bool SAVE_PACKETS;
-
-		[ServerProperty("system", "game_loop_tick_rate", "Minimum amount of milliseconds that must pass since the current tick started before starting the next onek. Higher values reduce CPU usage but make the game less responsive.", 30)]
+		[ServerProperty("system", "game_loop_tick_rate", "How many ticks per second the game loop tries to run at. If it can't keep up, the logic will effectively run slower than intended.", 30)]
 		public static int GAME_LOOP_TICK_RATE;
 
 		#endregion
@@ -614,7 +578,7 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// Enable PvE Speed
 		/// </summary>
-		[ServerProperty("server", "enable_pve_speed", "Set to true if you wish to enable the extra 25% increase to speed when not in combat or an RvR zone", true)]
+		[ServerProperty("server", "enable_pve_speed", "Set to true if you wish to enable the extra 25% increase to speed when not in combat or an RvR zone", false)]
 		public static bool ENABLE_PVE_SPEED;
 
 		/// <summary>
@@ -661,7 +625,7 @@ namespace DOL.GS.ServerProperties
 		[ServerProperty("world", "disable_tutorial", "should the server disable the tutorial zone", false)]
 		public static bool DISABLE_TUTORIAL;
 
-		[ServerProperty("world", "world_item_decay_time", "How long (milliseconds) will an item dropped on the ground stay in the world.", (uint)180000)]
+		[ServerProperty("world", "world_item_decay_time", "How long (milliseconds) will an item dropped on the ground stay in the world.", (uint) 180000)]
 		public static uint WORLD_ITEM_DECAY_TIME;
 
 		[ServerProperty("world", "world_pickup_distance", "How far before you can no longer pick up an object (loot for example).", 256)]
@@ -670,13 +634,13 @@ namespace DOL.GS.ServerProperties
 		[ServerProperty("world", "world_day_increment", "Larger increments make shorter days. Because night time is 25% faster, it should ideally be a multiple of 4.", (uint) 24)]
 		public static uint WORLD_DAY_INCREMENT;
 
-		[ServerProperty("world", "world_npc_update_interval", "How often (milliseconds) will npc's broadcast updates to the clients.", (uint)5000)]
+		[ServerProperty("world", "world_npc_update_interval", "How often (milliseconds) will npc's broadcast updates to the clients.", (uint) 5000)]
 		public static uint WORLD_NPC_UPDATE_INTERVAL;
 
-		[ServerProperty("world", "world_object_update_interval", "How often (milliseconds) will objects (static, housing, doors) broadcast updates to the clients.", (uint)30000)]
+		[ServerProperty("world", "world_object_update_interval", "How often (milliseconds) will objects (static, housing, doors) broadcast updates to the clients.", (uint) 30000)]
 		public static uint WORLD_OBJECT_UPDATE_INTERVAL;
 
-		[ServerProperty("world", "world_player_update_interval", "How often (milliseconds) will players be checked for updates.", (uint)300)]
+		[ServerProperty("world", "world_player_update_interval", "How often (milliseconds) will players be checked for updates.", (uint) 1000)]
 		public static uint WORLD_PLAYER_UPDATE_INTERVAL;
 
 		[ServerProperty("world", "weather_check_interval", "How often (milliseconds) will weather be checked for a chance to start a storm.", 5 * 60 * 1000)]
@@ -702,9 +666,6 @@ namespace DOL.GS.ServerProperties
 
 		[ServerProperty("world", "check_los_during_cast", "Should we perform LoS checks during spell casts.", true)]
 		public static bool CHECK_LOS_DURING_CAST;
-
-		[ServerProperty("world", "check_los_during_cast_interrupt", "Should the casting animation be interrupted if a during cast LoS check fails.", false)]
-		public static bool CHECK_LOS_DURING_CAST_INTERRUPT;
 
 		[ServerProperty("world", "check_los_during_cast_minimum_interval", "The minimum interval (milliseconds) between two LoS checks performed during a spell cast.", 200)]
 		public static int CHECK_LOS_DURING_CAST_MINIMUM_INTERVAL;
@@ -747,12 +708,6 @@ namespace DOL.GS.ServerProperties
 		/// </summary>
 		[ServerProperty("world", "zonepoint_npctemplate", "Display the zonepoint with the following npctemplate. 0 for no display", 0)]
 		public static int ZONEPOINT_NPCTEMPLATE;
-
-		/// <summary>
-		/// Property to cause beneficial spells to target the caster if current target isn't valid
-		/// </summary>
-		[ServerProperty("server", "autoselect_caster", "Set to True if you wish beneficial spells to target the caster if the current target isn't valid.  Allows self-healing without changing targets.", false)]
-		public static bool AUTOSELECT_CASTER;
 		#endregion
 
 		#region RATES
@@ -900,7 +855,7 @@ namespace DOL.GS.ServerProperties
 		[ServerProperty("rates", "mana_regen_amount_modifier", "Mana regen amount modifier", 1.0)]
 		public static double MANA_REGEN_AMOUNT_MODIFIER;
 
-		[ServerProperty("rates", "mana_regen_amount_halved_below_50_percent", "Should the mana regen amount be halved below 50%? Affects list casters only.", false)]
+		[ServerProperty("rates", "mana_regen_amount_halved_below_50_percent", "Should the mana regen amount be halved below 50%? Affects list casters only.", true)]
 		public static bool MANA_REGEN_AMOUNT_HALVED_BELOW_50_PERCENT;
 
 		/// <summary>
@@ -939,112 +894,115 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// Doppelganger realm point value
 		/// </summary>
-		[ServerProperty("npc", "doppelganger_realm_points", "Realm point value of doppelgangers. ", 400)]
+		[ServerProperty("npc", "doppelganger_realm_points", "Realm point value of doppelgangers.", 400)]
 		public static int DOPPELGANGER_REALM_POINTS;
 
 		/// <summary>
 		/// Doppelganger bounty point value
 		/// </summary>
-		[ServerProperty("npc", "doppelganger_bounty_points", "Bounty point value of doppelgangers. ", 250)]
+		[ServerProperty("npc", "doppelganger_bounty_points", "Bounty point value of doppelgangers.", 250)]
 		public static int DOPPELGANGER_BOUNTY_POINTS;
+
+		[ServerProperty("npc", "force_mob_autoset_stats", "Should standard NPCs have their stat automatically set using server properties (discarding database values).", true)]
+		public static bool FORCE_MOB_AUTOSET_STATS;
 
 		/// <summary>
 		/// Base Value to use when auto-setting STR stat.
 		/// </summary>
-		[ServerProperty("npc", "mob_autoset_str_base", "Base Value to use when auto-setting STR stat. ", (short)30)]
+		[ServerProperty("npc", "mob_autoset_str_base", "Base Value to use when auto-setting STR stat.", (short)30)]
 		public static short MOB_AUTOSET_STR_BASE;
 
 		/// <summary>
 		/// Multiplier to use when auto-setting STR stat.
 		/// </summary>
-		[ServerProperty("npc", "mob_autoset_str_multiplier", "Multiplier to use when auto-setting STR stat. Multiplied by 10 when applied. ", 1.0)]
+		[ServerProperty("npc", "mob_autoset_str_multiplier", "Multiplier to use when auto-setting STR stat. Multiplied by 10 when applied.", 1.0)]
 		public static double MOB_AUTOSET_STR_MULTIPLIER;
 
 		/// <summary>
 		/// Base Value to use when auto-setting CON stat.
 		/// </summary>
-		[ServerProperty("npc", "mob_autoset_con_base", "Base Value to use when auto-setting CON stat. ", (short)30)]
+		[ServerProperty("npc", "mob_autoset_con_base", "Base Value to use when auto-setting CON stat.", (short)30)]
 		public static short MOB_AUTOSET_CON_BASE;
 
 		/// <summary>
 		/// Multiplier to use when auto-setting CON stat.
 		/// </summary>
-		[ServerProperty("npc", "mob_autoset_con_multiplier", "Multiplier to use when auto-setting CON stat. ", 1.0)]
+		[ServerProperty("npc", "mob_autoset_con_multiplier", "Multiplier to use when auto-setting CON stat.", 1.0)]
 		public static double MOB_AUTOSET_CON_MULTIPLIER;
-
-		/// <summary>
-		/// Base Value to use when auto-setting QUI stat.
-		/// </summary>
-		[ServerProperty("npc", "mob_autoset_qui_base", "Base Value to use when auto-setting qui stat. ", (short)30)]
-		public static short MOB_AUTOSET_QUI_BASE;
-
-		/// <summary>
-		/// Multiplier to use when auto-setting QUI stat.
-		/// </summary>
-		[ServerProperty("npc", "mob_autoset_qui_multiplier", "Multiplier to use when auto-setting QUI stat. ", 1.0)]
-		public static double MOB_AUTOSET_QUI_MULTIPLIER;
 
 		/// <summary>
 		/// Base Value to use when auto-setting DEX stat.
 		/// </summary>
-		[ServerProperty("npc", "mob_autoset_dex_base", "Base Value to use when auto-setting DEX stat. ", (short)30)]
+		[ServerProperty("npc", "mob_autoset_dex_base", "Base Value to use when auto-setting DEX stat.", (short)30)]
 		public static short MOB_AUTOSET_DEX_BASE;
 
 		/// <summary>
 		/// Multiplier to use when auto-setting DEX stat.
 		/// </summary>
-		[ServerProperty("npc", "mob_autoset_dex_multiplier", "Multiplier to use when auto-setting DEX stat. ", 1.0)]
+		[ServerProperty("npc", "mob_autoset_dex_multiplier", "Multiplier to use when auto-setting DEX stat.", 1.0)]
 		public static double MOB_AUTOSET_DEX_MULTIPLIER;
+
+		/// <summary>
+		/// Base Value to use when auto-setting QUI stat.
+		/// </summary>
+		[ServerProperty("npc", "mob_autoset_qui_base", "Base Value to use when auto-setting qui stat.", (short)30)]
+		public static short MOB_AUTOSET_QUI_BASE;
+
+		/// <summary>
+		/// Multiplier to use when auto-setting QUI stat.
+		/// </summary>
+		[ServerProperty("npc", "mob_autoset_qui_multiplier", "Multiplier to use when auto-setting QUI stat.", 1.0)]
+		public static double MOB_AUTOSET_QUI_MULTIPLIER;
 
 		/// <summary>
 		/// Base Value to use when auto-setting INT stat.
 		/// </summary>
-		[ServerProperty("npc", "mob_autoset_int_base", "Base Value to use when auto-setting INT stat. ", (short)30)]
+		[ServerProperty("npc", "mob_autoset_int_base", "Base Value to use when auto-setting INT stat.", (short)30)]
 		public static short MOB_AUTOSET_INT_BASE;
 
 		/// <summary>
 		/// Multiplier to use when auto-setting INT stat.
 		/// </summary>
-		[ServerProperty("npc", "mob_autoset_int_multiplier", "Multiplier to use when auto-setting INT stat. ", 1.0)]
+		[ServerProperty("npc", "mob_autoset_int_multiplier", "Multiplier to use when auto-setting INT stat.", 1.0)]
 		public static double MOB_AUTOSET_INT_MULTIPLIER;
 
 		/// <summary>
 		/// Base Value to use when auto-setting pet STR stat.
 		/// </summary>
-		[ServerProperty("npc", "pet_autoset_str_base", "Base Value to use when auto-setting Pet STR stat. ", (short)30)]
+		[ServerProperty("npc", "pet_autoset_str_base", "Base Value to use when auto-setting Pet STR stat.", (short)30)]
 		public static short PET_AUTOSET_STR_BASE;
 
 		/// <summary>
 		/// Multiplier to use when auto-setting pet STR stat.
 		/// </summary> 
-		[ServerProperty("npc", "pet_autoset_str_multiplier", "Multiplier to use when auto-setting Pet STR stat. Multiplied by 10 when applied. ", 1.0)]
+		[ServerProperty("npc", "pet_autoset_str_multiplier", "Multiplier to use when auto-setting Pet STR stat. Multiplied by 10 when applied.", 1.0)]
 		public static double PET_AUTOSET_STR_MULTIPLIER;
 		
 		/// Base Value to use when auto-setting pet CON stat.
 		/// </summary>
-		[ServerProperty("npc", "pet_autoset_con_base", "Base Value to use when auto-setting Pet CON stat. ", (short)30)]
+		[ServerProperty("npc", "pet_autoset_con_base", "Base Value to use when auto-setting Pet CON stat.", (short)30)]
 		public static short PET_AUTOSET_CON_BASE;
 
 		/// <summary>
 		/// Multiplier to use when auto-setting pet CON stat.
 		/// </summary>
-		[ServerProperty("npc", "pet_autoset_con_multiplier", "Multiplier to use when auto-setting Pet CON stat. ", 1.0)]
+		[ServerProperty("npc", "pet_autoset_con_multiplier", "Multiplier to use when auto-setting Pet CON stat.", 1.0)]
 		public static double PET_AUTOSET_CON_MULTIPLIER;
 
 		/// Base Value to use when auto-setting Pet DEX stat.
 		/// </summary>
-		[ServerProperty("npc", "pet_autoset_dex_base", "Base Value to use when auto-setting Pet DEX stat. ", (short)30)]
+		[ServerProperty("npc", "pet_autoset_dex_base", "Base Value to use when auto-setting Pet DEX stat.", (short)30)]
 		public static short PET_AUTOSET_DEX_BASE;
 
 		/// <summary>
 		/// Multiplier to use when auto-setting pet DEX stat.
 		/// </summary>
-		[ServerProperty("npc", "pet_autoset_dex_multiplier", "Multiplier to use when auto-setting Pet DEX stat. ", 1.0)]
+		[ServerProperty("npc", "pet_autoset_dex_multiplier", "Multiplier to use when auto-setting Pet DEX stat.", 1.0)]
 		public static double PET_AUTOSET_DEX_MULTIPLIER;
 
 		/// Base Value to use when auto-setting Pet QUI stat.
 		/// </summary>
-		[ServerProperty("npc", "pet_autoset_qui_base", "Base Value to use when auto-setting Pet QUI stat. ", (short)30)]
+		[ServerProperty("npc", "pet_autoset_qui_base", "Base Value to use when auto-setting Pet QUI stat.", (short)30)]
 		public static short PET_AUTOSET_QUI_BASE;
 
 		/// <summary>
@@ -1057,14 +1015,14 @@ namespace DOL.GS.ServerProperties
 		/// Multiplier to use when auto-setting pet INT stat.
 		/// INT is the stat used for spell damage for mobs/pets
 		/// </summary>
-		[ServerProperty("npc", "pet_autoset_int_base", "Multiplier to use when auto-setting Pet INT stat. ", (short)30)]
+		[ServerProperty("npc", "pet_autoset_int_base", "Multiplier to use when auto-setting Pet INT stat.", (short)30)]
 		public static short PET_AUTOSET_INT_BASE;
 
 		/// <summary>
 		/// Multiplier to use when auto-setting pet INT stat.
 		/// INT is the stat used for spell damage for mobs/pets
 		/// </summary>
-		[ServerProperty("npc", "pet_autoset_int_multiplier", "Multiplier to use when auto-setting Pet INT stat. ", 1.0)]
+		[ServerProperty("npc", "pet_autoset_int_multiplier", "Multiplier to use when auto-setting Pet INT stat.", 1.0)]
 		public static double PET_AUTOSET_INT_MULTIPLIER;
 
 		// Necro pet stat properties
@@ -1190,28 +1148,16 @@ namespace DOL.GS.ServerProperties
 		public static double NECRO_GREATER_PET_INT_MULTIPLIER;
 
 		/// <summary>
-		/// How often should pets think?  Default 1500 or 1.5 seconds
+		/// How often should pets think?
 		/// </summary>
-		[ServerProperty("npc", "pet_think_interval", "How often should pets think?  Default 1500 (1.5 seconds)", 1500)]
+		[ServerProperty("npc", "pet_think_interval", "How often should pets think?", 600)]
 		public static int PET_THINK_INTERVAL;
-
-		/// <summary>
-		/// Scale pet spell values according to their level?
-		/// </summary>
-		[ServerProperty("npc", "pet_scale_spell_max_level", "Disabled if 0 or less. If greater than 0, this value is the level at which pets cast their spells at 100% effectiveness, so choose spells for pets assuming they're at the level set here. Live is max pet level, 44 or 50 depending on patch.", 44)]
-		public static int PET_SCALE_SPELL_MAX_LEVEL;
 
 		/// <summary>
 		/// Scale pet spell values according to their level?
 		/// </summary>
 		[ServerProperty("npc", "pet_bd_commander_taunt_multiplier", "Percentage of damage that BD commanders get as extra aggro when taunting, e.g. a taunting BD commander gets 150% normal aggro at 50, 200% at 100, 250% at 150 etc. ", 150)]
 		public static int PET_BD_COMMANDER_TAUNT_VALUE;
-
-		/// <summary>
-		/// Scale pet spell values according to their level?
-		/// </summary>
-		[ServerProperty("npc", "pet_cap_bd_minion_spell_scaling_by_spec", "When scaling BD minion spells, do we cap the level they scale do by the BD's spec level?  This provides an incentive to spec darkness and suppression and use items that boost them.", false)]
-		public static bool PET_CAP_BD_MINION_SPELL_SCALING_BY_SPEC;
 
 		/// <summary>
 		/// Minimum respawn time for npc's without a set respawninterval
@@ -1264,7 +1210,7 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// How often, in milliseconds, to check follow distance.  Lower numbers make NPC follow closer but increase load on server.
 		/// </summary>
-		[ServerProperty("npc", "gamenpc_followcheck_time", "How often, in milliseconds, to check follow distance. Lower numbers make NPC follow closer but increase load on server.", 500)]
+		[ServerProperty("npc", "gamenpc_followcheck_time", "How often, in milliseconds, to check follow distance. Lower numbers make NPC follow closer but increase load on server.", 100)]
 		public static int GAMENPC_FOLLOWCHECK_TIME;
 
 		/// <summary>
@@ -1278,12 +1224,6 @@ namespace DOL.GS.ServerProperties
 		/// </summary>
 		[ServerProperty("npc", "gamenpc_chances_to_style", "Change the chance to fire a style for a mob or a pet", 20)]
 		public static int GAMENPC_CHANCES_TO_STYLE;
-
-		/// <summary>
-		/// Chances for npc (including pet) to cast (chance is calculated randomly according to this value + the number of spells the NPC own)
-		/// </summary>
-		[ServerProperty("npc", "gamenpc_chances_to_cast", "Change the chance to cast a spell for a mob or a pet", 25)]
-		public static int GAMENPC_CHANCES_TO_CAST;
 
 		/// <summary>
 		/// NPCs heal when a target is below what percentage of their health?
@@ -1312,22 +1252,17 @@ namespace DOL.GS.ServerProperties
 		#endregion
 
 		#region PVP / RVR
-		/// <summary>
-		/// Grace period in minutes to allow relog near enemy structure after link death
-		/// </summary>
-		[ServerProperty("pvp", "RvRLinkDeathRelogGracePeriod", "The Grace Period in minutes, to allow to relog near enemy structure after a link death.", "20")]
-		public static string RVR_LINK_DEATH_RELOG_GRACE_PERIOD;
 
 		/// <summary>
 		/// PvP Immunity Timer - Killed by Mobs
 		/// </summary>
-		[ServerProperty("pvp", "Timer_Killed_By_Mob", "Immunity Timer When player killed in PvP, in seconds", 30)]
+		[ServerProperty("pvp", "Timer_Killed_By_Mob", "Immunity Timer When player killed in PvP, in seconds", 10)]
 		public static int TIMER_KILLED_BY_MOB;
 
 		/// <summary>
 		/// PvP Immunity Timer - Killed by Player
 		/// </summary>
-		[ServerProperty("pvp", "Timer_Killed_By_Player", "Immunity Timer When player killed in PvP, in seconds", 120)]
+		[ServerProperty("pvp", "Timer_Killed_By_Player", "Immunity Timer When player killed in PvP, in seconds", 10)]
 		public static int TIMER_KILLED_BY_PLAYER;
 
 		/// <summary>
@@ -1345,7 +1280,7 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// PvP Immunity Timer - Teleport
 		/// </summary>
-		[ServerProperty("pvp", "Timer_PvP_Teleport", "Immunity Timer when player teleports within the same region, in seconds", 30)]
+		[ServerProperty("pvp", "Timer_PvP_Teleport", "Immunity Timer when player teleports within the same region, in seconds", 10)]
 		public static int TIMER_PVP_TELEPORT;
 
 		/// <summary>
@@ -1403,10 +1338,10 @@ namespace DOL.GS.ServerProperties
 		public static bool PVP_DEATH_CON_LOSS;
 
 		/// <summary>
-		/// PvP Realm Timer. # of minutes an account must wait to change realms after pvp combat. 0 disables the timer
+		/// Whether releasing in a battleground should teleport the player to the portal keep
 		/// </summary>
-		[ServerProperty("pvp", "pvp_realm_timer_minutes", "# of minutes an account must wait to change realms after PvP combat. 0 disables the timer", 0)]
-		public static int PVP_REALM_TIMER_MINUTES; 
+		[ServerProperty("pvp", "bg_release_to_portal_keep", "Whether releasing in a battleground should teleport the player to the portal keep", false)]
+		public static bool BG_RELEASE_TO_PORTAL_KEEP;
 
 		#endregion
 
@@ -1554,13 +1489,13 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// Base RP value of a keep
 		/// </summary>
-		[ServerProperty("keeps", "keep_rp_base", "Base RP value of a keep", 4500)]
+		[ServerProperty("keeps", "keep_rp_base", "Base RP value of a keep", 0)] // Previously 4500.
 		public static int KEEP_RP_BASE;
 
 		/// <summary>
 		/// Base RP value of a tower
 		/// </summary>
-		[ServerProperty("keeps", "tower_rp_base", "Base RP value of a tower", 500)]
+		[ServerProperty("keeps", "tower_rp_base", "Base RP value of a tower", 0)] // Previously 500.
 		public static int TOWER_RP_BASE;
 
 		/// <summary>
@@ -1572,13 +1507,13 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// Multiplier used to add or subtract RP worth based on keep level difference from 50.
 		/// </summary>
-		[ServerProperty("keeps", "keep_rp_multiplier", "Integer multiplier used to increase/decrease RP worth based on keep level difference from 50.", 50)]
+		[ServerProperty("keeps", "keep_rp_multiplier", "Integer multiplier used to increase/decrease RP worth based on keep level difference from 50.", 0)] // Previously 50.
 		public static int KEEP_RP_MULTIPLIER;
 
 		/// <summary>
 		/// Multiplier used to add or subtract RP worth based on tower level difference from 50.
 		/// </summary>
-		[ServerProperty("keeps", "tower_rp_multiplier", "Integer multiplier used to increase/decrease RP worth based on tower level difference from 50.", 50)]
+		[ServerProperty("keeps", "tower_rp_multiplier", "Integer multiplier used to increase/decrease RP worth based on tower level difference from 50.", 0)] // Previously 50.
 		public static int TOWER_RP_MULTIPLIER;
 
 		/// <summary>
@@ -1654,10 +1589,10 @@ namespace DOL.GS.ServerProperties
 		public static bool PVP_UNCLAIMED_KEEPS_ENEMY;
 
 		/// <summary>
-		/// Should players that log near enemy keeps be teleported to a safe area when logging in?
+		/// Grace period in minutes to allow relog near enemy structure after link death
 		/// </summary>
-		[ServerProperty("keeps", "teleport_login_near_enemy_keep", "Should players that log near enemy keeps be teleported to a safe area?", true)]
-		public static bool TELEPORT_LOGIN_NEAR_ENEMY_KEEP;
+		[ServerProperty("keeps", "NearKeepRelogGracePeriod", "The grace period in minutes, to allow to relog near an enemy structure.", 3)]
+		public static int NEAR_KEEP_RELOG_GRACE_PERIOD;
 
 		/// <summary>
 		/// Should players that exceed BG level cap be moved out of BG when logging in?
@@ -2138,7 +2073,7 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// Enable logging of all market activity
 		/// </summary>
-		[ServerProperty("housing", "market_enable_log", "Enable debug logging of all market activity", true)]
+		[ServerProperty("housing", "market_enable_log", "Enable debug logging of all market activity", false)]
 		public static bool MARKET_ENABLE_LOG;
 
 		/// <summary>
@@ -2213,7 +2148,7 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// Sets the Cap for Player Turrets
 		/// </summary>
-		[ServerProperty("classes", "turret_player_cap_count", "Sets the cap of turrets for a Player", 5)]
+		[ServerProperty("classes", "turret_player_cap_count", "Sets the cap of turrets for a Player", 12)]
 		public static int TURRET_PLAYER_CAP_COUNT;
 
 		/// <summary>
@@ -2261,6 +2196,12 @@ namespace DOL.GS.ServerProperties
 		[ServerProperty("classes", "ress_sickness_level", "What level should ress sickness start to apply?", (byte)6)]
 		public static byte RESS_SICKNESS_LEVEL;
 
+		[ServerProperty("classes", "volley_roof_check", "Enables roof obstruction checks for Volley", false)]
+		public static bool VOLLEY_ROOF_CHECK;
+
+		[ServerProperty("classes", "ground_target_snap_max_distance", "Max snap distance for ground-targets onto a walkable surface. Failed checks invalidate the ground target. (0 = disabled)", 32f)]
+		public static float GROUND_TARGET_SNAP_MAX_DISTANCE;
+
 		#endregion
 
 		#region SPELLS
@@ -2271,12 +2212,6 @@ namespace DOL.GS.ServerProperties
 		[ServerProperty("spells", "spell_interrupt_duration", "", 3000)]
 		public static int SPELL_INTERRUPT_DURATION;
 
-		[ServerProperty("spells", "spell_interrupt_again", "", 100)]
-		public static int SPELL_INTERRUPT_AGAIN;
-
-		[ServerProperty("spells", "spell_interrupt_maxstagelength", "Max length of stage 1 and 3, 1000 = 1 second", 1500)]
-		public static int SPELL_INTERRUPT_MAXSTAGELENGTH;
-		
 		[ServerProperty("spells", "spell_charm_named_check", "Prevents charm spell to work on Named Mobs, 0 = disable, 1 = enable", 1)]
 		public static int SPELL_CHARM_NAMED_CHECK;
 
@@ -2466,7 +2401,7 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// Account IP bombing prevention
 		/// </summary>
-		[ServerProperty("account", "time_between_account_creation_sameip", "The time in minutes between accounts creation from the same ip after 2 creations.", 15)]
+		[ServerProperty("account", "time_between_account_creation_sameip", "The time in minutes between accounts creation from the same ip.", 15)]
 		public static int TIME_BETWEEN_ACCOUNT_CREATION_SAMEIP;
 
 		/// <summary>
@@ -2483,18 +2418,6 @@ namespace DOL.GS.ServerProperties
 		/// </summary>
 		[ServerProperty("atlas", "allow_bg_claim", "Allow claiming of BG keeps", false)]
 		public static bool ALLOW_BG_CLAIM;
-		
-		/// <summary>
-		/// Text breadcrumbs for players
-		/// </summary>
-		[ServerProperty("atlas", "atlas_bread", "Text breadcrumbs for players", "")]
-		public static string BREAD;
-		
-		/// <summary>
-		/// Atlas Orbs reward for epic boss kills
-		/// </summary>
-		[ServerProperty("atlas", "epicboss_orbs", "Atlas Orbs reward for epic boss kills", 3000)]
-		public static int EPICBOSS_ORBS;
 
 		/// <summary>
 		/// Enables the API endpoints on the port :5000
@@ -2526,41 +2449,29 @@ namespace DOL.GS.ServerProperties
 		[ServerProperty("atlas", "api_password", "Set the password to access certain API commands as shutdown", "")]
 		public static string API_PASSWORD;
 
-		[ServerProperty("beta", "orbs_fire_sale", "All items at the orbs merchant will be free if set to true", false)]
-		public static bool ORBS_FIRE_SALE;
-		
 		[ServerProperty("atlas", "enable_corpsesummoner", "Whether or not to enable the corpse summoner command", true)]
 		public static bool ENABLE_CORPSESUMONNER;
-		
-		[ServerProperty("atlas", "carapace_dropchance", "The base Beetle Carapace drop chance in %", 0.01)]
-		public static double CARAPACE_DROPCHANCE;
-		
+
 		[ServerProperty("atlas", "salvage_yield_multiplier", "The salvage yield multiplier", 0.5)]
 		public static double SALVAGE_YIELD_MULTIPLIER;
-		
+
 		[ServerProperty("atlas", "max_craft_time", "The maximum craft time allowed in seconds. All timers above this value will be normalised to the input value", 0)]
 		public static int MAX_CRAFT_TIME;
 		
 		[ServerProperty("atlas", "of_teleport_interval", "The seconds between OF porting ceremonies", 120)]
 		public static int OF_REPORT_INTERVAL;
-		
-		[ServerProperty("atlas", "epics_dmg_multiplier", "Use this to scale up/down the damage of epic mobs", 1)]
-        public static int EPICS_DMG_MULTIPLIER;
-        
-        [ServerProperty("atlas", "patch_notes_url", "The URL of the remote patch notes .txt to display with /sn", "")]
-        public static string PATCH_NOTES_URL;
-        
-        [ServerProperty("atlas", "alt_currency_id", "The id_nb of the item to use as alternative currency (i.e. Orbs)", "")]
-        public static string ALT_CURRENCY_ID;
-        
-        [ServerProperty("atlas", "immunity_timer_use_adaptive", "toggle adaptive vs. flat immunity timers", false)]
-        public static bool IMMUNITY_TIMER_USE_ADAPTIVE;
-        
-        [ServerProperty("atlas", "immunity_timer_flat_length", "if non-adapative timers, the duration (in seconds) for immunity", 60)]
-        public static int IMMUNITY_TIMER_FLAT_LENGTH;
-        
-        [ServerProperty("atlas", "immunity_timer_adaptive_length", "if adapative timers, the modifer to apply to length (i.e. stun length * 6)", 6)]
-        public static int IMMUNITY_TIMER_ADAPTIVE_LENGTH;
+
+		[ServerProperty("atlas", "patch_notes_url", "The URL of the remote patch notes .txt to display with /sn", "")]
+		public static string PATCH_NOTES_URL;
+
+		[ServerProperty("atlas", "immunity_timer_use_adaptive", "toggle adaptive vs. flat immunity timers", false)]
+		public static bool IMMUNITY_TIMER_USE_ADAPTIVE;
+
+		[ServerProperty("atlas", "immunity_timer_flat_length", "if non-adapative timers, the duration (in seconds) for immunity", 60)]
+		public static int IMMUNITY_TIMER_FLAT_LENGTH;
+
+		[ServerProperty("atlas", "immunity_timer_adaptive_length", "if adapative timers, the modifer to apply to length (i.e. stun length * 6)", 6)]
+		public static int IMMUNITY_TIMER_ADAPTIVE_LENGTH;
 
 		#endregion
 
@@ -2619,9 +2530,6 @@ namespace DOL.GS.ServerProperties
 		[ServerProperty("controls_automation", "allow_non_anytime_backup_styles", "If /backupstyle is enabled, can players set a non-anytime style as their backup?", false)] 
 		public static bool ALLOW_NON_ANYTIME_BACKUP_STYLES;
 
-		[ServerProperty("controls_automation", "allow_chained_actions", "Allow players to chain actions with /chainactions. They will be executed consecutively.", false)] 
-		public static bool ALLOW_CHAINED_ACTIONS;
-
 		#endregion
 
 		public static IDictionary<string, object> AllCurrentProperties { get; private set; }
@@ -2642,14 +2550,14 @@ namespace DOL.GS.ServerProperties
 				{
 					foreach (Type type in asm.GetTypes())
 					{
-						foreach (FieldInfo field in type.GetFields())
+						foreach (FieldInfo fld in type.GetFields())
 						{
 							// Properties are Static
-							if (!field.IsStatic)
+							if (!fld.IsStatic)
 								continue;
 							
 							// Properties shoud contain a property attribute
-							object[] attribs = field.GetCustomAttributes(typeof(ServerPropertyAttribute), false);
+							object[] attribs = fld.GetCustomAttributes(typeof(ServerPropertyAttribute), false);
 							if (attribs.Length == 0)
 								continue;
 							
@@ -2677,7 +2585,7 @@ namespace DOL.GS.ServerProperties
 								serverProp.Value = serverProp.DefaultValue;
 							}
 							
-							result[att.Key] = new Tuple<ServerPropertyAttribute, FieldInfo, DbServerProperty>(att, field, serverProp);
+							result[att.Key] = new Tuple<ServerPropertyAttribute, FieldInfo, DbServerProperty>(att, fld, serverProp);
 						}
 					}
 				}
@@ -2701,14 +2609,17 @@ namespace DOL.GS.ServerProperties
 			if (!prop.IsPersisted)
 			{
 				GameServer.Database.AddObject(prop);
-				log.DebugFormat("Cannot find server property {0} creating it", key);
+
+				if (log.IsDebugEnabled)
+					log.DebugFormat("Cannot find server property {0} creating it", key);
 			}
 			
-			log.DebugFormat("Loading {0} Value is {1}", key, prop.Value);
+			if (log.IsDebugEnabled)
+				log.DebugFormat("Loading {0} Value is {1}", key, prop.Value);
 			
 			try
 			{
-				if (field.IsInitOnly)
+				if (field.IsInitOnly && log.IsWarnEnabled)
 					log.WarnFormat("Property {0} is ReadOnly, Value won't be changed - {1} !", key, field.GetValue(null));
 				
 				//we do this because we need "1.0" to be considered double sometimes its "1,0" in other countries
@@ -2718,8 +2629,11 @@ namespace DOL.GS.ServerProperties
 			}
 			catch (Exception e)
 			{
-				log.ErrorFormat("Exception in ServerProperties Load: {0}", e);
-				log.ErrorFormat("Trying to load {0} value is {1}", key, prop.Value);
+				if (log.IsErrorEnabled)
+				{
+					log.ErrorFormat("Exception in ServerProperties Load: {0}", e);
+					log.ErrorFormat("Trying to load {0} value is {1}", key, prop.Value);
+				}
 			}
 		}
 
@@ -2728,7 +2642,9 @@ namespace DOL.GS.ServerProperties
 		/// </summary>
 		public static void Refresh()
 		{
-			log.Info("Refreshing server properties...");
+			if (log.IsInfoEnabled)
+				log.Info("Refreshing server properties...");
+
 			InitProperties();
 		}
 
@@ -2769,11 +2685,14 @@ namespace DOL.GS.ServerProperties
 				try
 				{
 					GameServer.Database.DeleteObject(dbProperty);
-					log.Info($"Removed rogue property: {dbProperty.Key} ({dbProperty.Value}).");
+
+					if (log.IsInfoEnabled)
+						log.Info($"Removed rogue property: {dbProperty.Key} ({dbProperty.Value}).");
 				}
 				catch
 				{
-					log.Error($"Couldn't remove rogue property: {dbProperty.Key} ({dbProperty.Value}).");
+					if (log.IsErrorEnabled)
+						log.Error($"Couldn't remove rogue property: {dbProperty.Key} ({dbProperty.Value}).");
 				}
 			}
 		}

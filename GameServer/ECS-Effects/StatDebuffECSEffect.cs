@@ -1,6 +1,3 @@
-using System.Collections.Generic;
-using System.Linq;
-using DOL.GS.API;
 using DOL.GS.PlayerClass;
 using DOL.GS.Spells;
 using DOL.GS.Scripts;
@@ -11,7 +8,7 @@ namespace DOL.GS
     {
         private bool _isForcedToSpecDebuff;
 
-        public StatDebuffECSEffect(ECSGameEffectInitParams initParams) : base(initParams) { }
+        public StatDebuffECSEffect(in ECSGameEffectInitParams initParams) : base(initParams) { }
 
         public override void OnStartEffect()
         {
@@ -20,38 +17,19 @@ namespace DOL.GS
             if (Owner is IGamePlayer player)
                 TryDebuffInterrupt(SpellHandler.Spell, player, SpellHandler.Caster);
 
-            if (Owner.effectListComponent.Effects.ContainsKey(EffectType))
-            {
-                List<ECSGameSpellEffect> effects = Owner.effectListComponent.GetSpellEffects(EffectType);
-
-                foreach (ECSGameSpellEffect e in effects)
-                {
-                    if (e.SpellHandler.Spell.ID == SpellHandler.Spell.ID && IsBuffActive)
-                        return;
-                }
-            }
-
             // Force Champion's stat debuffs to be applied as spec debuffs (see `StatCalculator`).
             if (SpellHandler.Caster is IGamePlayer playerCaster &&
                 playerCaster.CharacterClass is ClassChampion &&
                 SpellHandler.SpellLine.KeyName is GlobalSpellsLines.Valor &&
-                (EffectService.GetPlayerUpdateFromEffect(EffectType) & EffectService.PlayerUpdate.STATS) != 0)
+                (EffectHelper.GetPlayerUpdateFromEffect(EffectType) & EffectHelper.PlayerUpdate.Stats) != 0)
             {
                 _isForcedToSpecDebuff = true;
             }
 
             if (EffectType is eEffect.MovementSpeedDebuff)
             {
-                IEnumerable<ECSGameSpellEffect> speedDebuffs = Owner.effectListComponent.GetSpellEffects(eEffect.MovementSpeedDebuff).Where(x => x.SpellHandler.Spell.ID != SpellHandler.Spell.ID);
-
-                if (speedDebuffs.Any(x => x.SpellHandler.Spell.Value > SpellHandler.Spell.Value))
-                    return;
-
-                foreach (ECSGameSpellEffect effect in speedDebuffs)
-                    EffectService.RequestDisableEffect(effect);
-
                 double effectiveValue = SpellHandler.Spell.Value * Effectiveness;
-                Owner.BuffBonusMultCategory1.Set((int) eProperty.MaxSpeed, EffectType, 1.0 - effectiveValue * 0.01);
+                Owner.BuffBonusMultCategory1.Set((int) eProperty.MaxSpeed, this, 1.0 - effectiveValue * 0.01);
                 Owner.OnMaxSpeedChange();
             }
             else
@@ -59,13 +37,13 @@ namespace DOL.GS
                 if (SpellHandler is not PropertyChangingSpell propertyChangingSpell)
                     return;
 
-                foreach (eProperty property in EffectService.GetPropertiesFromEffect(EffectType))
+                foreach (eProperty property in EffectHelper.GetPropertiesFromEffect(EffectType))
                     ApplyBonus(Owner, _isForcedToSpecDebuff ? eBuffBonusCategory.SpecDebuff : propertyChangingSpell.BonusCategory1, property, SpellHandler.Spell.Value, Effectiveness, true);
             }
 
             // "Your agility is suppressed!"
             // "{0} seems uncoordinated!"
-            OnEffectStartsMsg(Owner, true, true, true);
+            OnEffectStartsMsg(true, true, true);
         }
 
         public override void OnStopEffect()
@@ -74,12 +52,7 @@ namespace DOL.GS
 
             if (EffectType is eEffect.MovementSpeedDebuff)
             {
-                ECSGameSpellEffect speedDebuff = Owner.effectListComponent.GetBestDisabledSpellEffect(eEffect.MovementSpeedDebuff);
-
-                if (speedDebuff != null)
-                    EffectService.RequestEnableEffect(speedDebuff);
-
-                Owner.BuffBonusMultCategory1.Remove((int) eProperty.MaxSpeed, EffectType);
+                Owner.BuffBonusMultCategory1.Remove((int) eProperty.MaxSpeed, this);
                 Owner.OnMaxSpeedChange();
             }
             else
@@ -87,7 +60,7 @@ namespace DOL.GS
                 if (SpellHandler is not PropertyChangingSpell propertyChangingSpell)
                     return;
 
-                foreach (eProperty property in EffectService.GetPropertiesFromEffect(EffectType))
+                foreach (eProperty property in EffectHelper.GetPropertiesFromEffect(EffectType))
                     ApplyBonus(Owner, _isForcedToSpecDebuff ? eBuffBonusCategory.SpecDebuff : propertyChangingSpell.BonusCategory1, property, SpellHandler.Spell.Value, Effectiveness, false);
             }
 
@@ -98,8 +71,7 @@ namespace DOL.GS
 
             // "Your coordination returns."
             // "{0}'s coordination returns."
-            OnEffectExpiresMsg(Owner, true, false, true);
-            IsBuffActive = false;
+            OnEffectExpiresMsg(true, false, true);
         }
 
         public static void TryDebuffInterrupt(Spell spell, IGamePlayer player, GameLiving caster)
@@ -122,11 +94,7 @@ namespace DOL.GS
                 not 9606)
                 return;
 
-            if (player != null)
-            {
-                player.StopCurrentSpellcast();
-                player.StartInterruptTimer(player.SpellInterruptDuration, AttackData.eAttackType.Spell, caster);
-            }
+            player?.StartInterruptTimer(player.SpellInterruptDuration, AttackData.eAttackType.Spell, caster);
         }
     }
 }

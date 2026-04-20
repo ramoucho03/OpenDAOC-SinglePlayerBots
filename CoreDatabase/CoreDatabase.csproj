@@ -6,7 +6,7 @@
     </PropertyGroup>
     <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
     <PropertyGroup>
-        <TargetFramework>net9.0</TargetFramework>
+        <TargetFramework>net10.0</TargetFramework>
         <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
         <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
         <OutputType>Library</OutputType>
@@ -27,22 +27,19 @@
     </PropertyGroup>
     <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
         <DefineConstants>DEBUG;TRACE</DefineConstants>
-        <Optimize>False</Optimize>
-        <DebugType>Full</DebugType>
+        <Optimize>false</Optimize>
+        <DebugType>full</DebugType>
         <DebugSymbols>true</DebugSymbols>
     </PropertyGroup>
     <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
         <DefineConstants>TRACE</DefineConstants>
         <Optimize>true</Optimize>
-        <DebugType>None</DebugType>
-        <DebugSymbols>false</DebugSymbols>
+        <DebugType>full</DebugType>
+        <DebugSymbols>true</DebugSymbols>
     </PropertyGroup>
     <ItemGroup>
-        <PackageReference Include="log4net" Version="3.3.0" />
-        <PackageReference Include="Microsoft.Extensions.ObjectPool" Version="9.0.1" />
-        <PackageReference Include="OpenTelemetry.Api" Version="1.15.2" />
         <ProjectReference Include="..\CoreBase\CoreBase.csproj" />
-        <PackageReference Include="MySqlConnector" Version="2.4.0" />
+        <PackageReference Include="MySqlConnector" Version="2.5.0" />
         <PackageReference Include="System.Data.SQLite.Core" Version="1.0.119" />
     </ItemGroup>
     <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />

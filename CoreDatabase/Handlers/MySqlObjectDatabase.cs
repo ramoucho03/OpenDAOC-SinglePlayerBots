@@ -4,15 +4,13 @@ using System.Data;
 using System.Data.Common;
 using System.Linq;
 using DOL.Database.Connection;
-using Microsoft.Extensions.ObjectPool;
+using DOL.Timing;
 using MySqlConnector;
 
 namespace DOL.Database.Handlers
 {
     public class MySqlObjectDatabase : SqlObjectDatabase
     {
-        private ObjectPool<DbConnection> _pool;
-
         /// <summary>
         /// Create a new instance of <see cref="MySqlObjectDatabase"/>
         /// </summary>
@@ -35,14 +33,6 @@ namespace DOL.Database.Handlers
             {
                 this.ConnectionString += ";Convert Zero Datetime=True";
             }
-
-            DefaultObjectPoolProvider defaultObjectPoolProvider = new()
-            {
-                MaximumRetained = Environment.ProcessorCount // There aren't many reasons to keep more.
-            };
-
-            // Assumes `DefaultObjectPoolProvider.Create` will correctly return a `DisposableObjectPool`.
-            _pool = defaultObjectPoolProvider.Create(new MySqlConnectionPooledObjectPolicy(ConnectionString));
         }
 
         #region MySQL Implementation
@@ -497,16 +487,15 @@ namespace DOL.Database.Handlers
                         {
                             cmd.CommandText = SQLCommand;
                             OpenConnection(conn);
-                            long start = (DateTime.UtcNow.Ticks / 10000);
+                            long start = MonotonicTime.NowMs;
 
                             foreach (var parameter in parameters.Skip(current))
                             {
                                 FillSQLParameter(parameter, cmd.Parameters);
-                                cmd.Prepare();
 
                                 if (retrieveLastInsertID)
                                 {
-                                    using (var tran = conn.BeginTransaction(System.Data.IsolationLevel.ReadUncommitted))
+                                    using (var tran = conn.BeginTransaction(IsolationLevel.ReadUncommitted))
                                     {
                                         try
                                         {
@@ -548,9 +537,14 @@ namespace DOL.Database.Handlers
                             }
 
                             if (log.IsDebugEnabled)
-                                log.DebugFormat("ExecuteScalarImpl: SQL ScalarQuery exec time {0}ms", ((DateTime.UtcNow.Ticks / 10000) - start));
-                            else if (log.IsWarnEnabled && (DateTime.UtcNow.Ticks / 10000) - start > 500)
-                                log.WarnFormat("ExecuteScalarImpl: SQL ScalarQuery took {0}ms!\n{1}", ((DateTime.UtcNow.Ticks / 10000) - start), SQLCommand);
+                                log.DebugFormat("ExecuteScalarImpl: SQL ScalarQuery exec time {0}ms", MonotonicTime.NowMs - start);
+                            else if (log.IsWarnEnabled)
+                            {
+                                long diff = MonotonicTime.NowMs - start;
+
+                                if (diff > LONG_EXEC_THRESHOLD)
+                                    log.WarnFormat("ExecuteScalarImpl: SQL ScalarQuery took {0}ms!\n{1}", diff, SQLCommand);
+                            }
                         }
                         catch (Exception e)
                         {
@@ -620,23 +614,17 @@ namespace DOL.Database.Handlers
 
         protected override DbConnection CreateConnection(string connectionsString)
         {
-            return _pool.Get();
+            return new MySqlConnection(connectionsString);
         }
 
         protected override void OpenConnection(DbConnection connection)
         {
-            if (connection.State is ConnectionState.Closed)
-                connection.Open();
-            else if (connection.State is not ConnectionState.Open)
-            {
-                connection.Close();
-                connection.Open();
-            }
+            connection.Open();
         }
 
         protected override void CloseConnection(DbConnection connection)
         {
-            _pool.Return(connection);
+            connection.Close();
         }
 
         protected override DbParameter ConvertToDBParameter(QueryParameter queryParameter)
@@ -672,26 +660,6 @@ namespace DOL.Database.Handlers
                 }
             }
             return false;
-        }
-
-        private class MySqlConnectionPooledObjectPolicy : IPooledObjectPolicy<DbConnection>
-        {
-            private string _connectionString;
-
-            public MySqlConnectionPooledObjectPolicy(string connectionString)
-            {
-                _connectionString = connectionString;
-            }
-
-            public DbConnection Create()
-            {
-                return new MySqlConnection(_connectionString);
-            }
-
-            public bool Return(DbConnection obj)
-            {
-                return true;
-            }
         }
     }
 }

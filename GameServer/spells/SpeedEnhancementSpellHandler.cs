@@ -1,10 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using DOL.Database;
-using DOL.Events;
 using DOL.GS.Effects;
 using DOL.GS.PacketHandler;
+using DOL.GS.Scripts;
 
 namespace DOL.GS.Spells
 {
@@ -14,19 +13,20 @@ namespace DOL.GS.Spells
 	[SpellHandler(eSpellType.SpeedEnhancement)]
 	public class SpeedEnhancementSpellHandler : SpellHandler
 	{
-		/// <summary>
-		/// called after normal spell cast is completed and effect has to be started
-		/// </summary>
+		public override string ShortDescription => $"The target's speed is increased to {Spell.Value}% of normal.";
+
+		public SpeedEnhancementSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
+
 		public override void FinishSpellCast(GameLiving target)
 		{
 			Caster.Mana -= PowerCost(target);
 			base.FinishSpellCast(target);
 		}
 
-        public override ECSGameSpellEffect CreateECSEffect(ECSGameEffectInitParams initParams)
-        {
-            return new StatBuffECSEffect(initParams);
-        }
+		public override ECSGameSpellEffect CreateECSEffect(in ECSGameEffectInitParams initParams)
+		{
+			return ECSGameEffectFactory.Create(initParams, static (in i) => new SpeedEnhancementECSEffect(i));
+		}
 
 		protected override int CalculateEffectDuration(GameLiving target)
 		{
@@ -38,7 +38,7 @@ namespace DOL.GS.Spells
 				if (instrument != null)
 				{
 					duration *= 1.0 + Math.Min(1.0, instrument.Level / (double)Caster.Level); // up to 200% duration for songs
-					duration *= instrument.Condition / (double)instrument.MaxCondition * instrument.Quality / 100;
+					duration *= instrument.Quality * 0.01 * instrument.ConditionPercent * 0.01;
 				}
 			}
 			
@@ -60,10 +60,10 @@ namespace DOL.GS.Spells
             if (target.EffectList.GetOfType<ArmsLengthEffect>() != null)
                 return;
 
-            if (target.effectListComponent.GetAllEffects().FirstOrDefault(x => x.GetType() == typeof(SpeedOfSoundECSEffect)) != null)
-                return;
+			if (target.effectListComponent.ContainsEffectForEffectType(eEffect.SpeedOfSound))
+				return;
 
-            if (target is GamePlayer && (target as GamePlayer).IsRiding)
+            if (target is IGamePlayer && (target as IGamePlayer).IsRiding)
                 return;
 
             if (target is Keeps.GameKeepGuard)
@@ -78,60 +78,6 @@ namespace DOL.GS.Spells
 
             base.ApplyEffectOnTarget(target);
         }
-
-		/// <summary>
-		/// Handles attacks on player/by player
-		/// </summary>
-		/// <param name="e"></param>
-		/// <param name="sender"></param>
-		/// <param name="arguments"></param>
-		private void OnAttack(DOLEvent e, object sender, EventArgs arguments)
-		{
-			GameLiving living = sender as GameLiving;
-			if (living == null) return;
-			AttackedByEnemyEventArgs attackedByEnemy = arguments as AttackedByEnemyEventArgs;
-			AttackFinishedEventArgs attackFinished = arguments as AttackFinishedEventArgs;
-			CastingEventArgs castFinished = arguments as CastingEventArgs;
-			AttackData ad = null;
-			ISpellHandler sp = null;
-
-            if (attackedByEnemy != null)
-            {
-                ad = attackedByEnemy.AttackData;
-            }
-            else if (attackFinished != null)
-            {
-                ad = attackFinished.AttackData;
-            }
-            else if (castFinished != null)
-            {
-                sp = castFinished.SpellHandler;
-                ad = castFinished.LastAttackData;
-            }
-
-            // Speed should drop if the player casts an offensive spell
-            if (sp == null && ad == null)
-            {
-                return;
-            }
-            else if (sp == null && (ad.AttackResult != eAttackResult.HitStyle && ad.AttackResult != eAttackResult.HitUnstyled))
-            {
-                return;
-            }
-            else if (sp != null && (sp.HasPositiveEffect || ad == null))
-            {
-                return;
-            }
-
-			if (living.effectListComponent.GetAllEffects().FirstOrDefault(x => x.GetType() == typeof(SpeedOfSoundECSEffect)) != null)
-				return;
-			
-			//GameSpellEffect speed = SpellHandler.FindEffectOnTarget(living, this);
-			ECSGameEffect speed = EffectListService.GetEffectOnTarget(living, eEffect.MovementSpeedBuff);
-			if (speed != null)
-				EffectService.RequestCancelEffect(speed);
-				//speed.Cancel(false);
-		}
 
 		/// <summary>
 		/// Delve Info
@@ -159,16 +105,8 @@ namespace DOL.GS.Spells
                 list.Add(" "); //empty line
                 list.Add("This spell's effect will not take hold while the target is in combat.");
 
-                return list;
-            }
-        }
-
-        /// <summary>
-        /// The spell handler constructor
-        /// </summary>
-        /// <param name="caster"></param>
-        /// <param name="spell"></param>
-        /// <param name="line"></param>
-        public SpeedEnhancementSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
-    }
+				return list;
+			}
+		}
+	}
 }

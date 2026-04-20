@@ -10,18 +10,21 @@ namespace DOL.GS
     {
         public GameLiving Attacker { get; set; }
         public GameLiving Target { get; set; }
+        public GameLiving OriginalTarget { get; set; } // Non-null if the attack was redirected to a different target.
         public eDamageType DamageType { get; set; }
         public eAttackType AttackType { get; set; } = eAttackType.Unknown;
         public eAttackResult AttackResult { get; set; } = eAttackResult.Any;
-        public int Damage { get; set; }
-        public int StyleDamage { get; set; }
+        public int Damage { get; set; } // Final damage, already modified by resists and style damage.
+        public double BaseDamage { get; set; } // For percent-based damage adds and shields, modified by resists.
+        public int StyleDamage { get; set; } // This is for display purpose, it's already added to Damage.
+        public double BaseDamageCap { get; set; } // For damage adds and shields.
         public int CriticalDamage { get; set; }
         public int CriticalChance { get; set; }
         public DbInventoryItem Weapon { get; set; }
         public int Interval { get; set; }
         public bool IsOffHand { get; set; }
         public Style Style { get; set; }
-        public List<ISpellHandler> StyleEffects { get; set; } = [];
+        public List<ISpellHandler> StyleEffects { get; set; }
         public bool CausesCombat { get; set; } = true;
         public double ParryChance { get; set; }
         public double EvadeChance { get; set; }
@@ -33,6 +36,10 @@ namespace DOL.GS
         public bool IsSpellResisted { get; set; }
         public int Modifier { get; set; } // Resisted damage.
         public int AnimationId { get; set; }
+
+        // Temporary property set by `AttackComponent.BroadcastAttackMessageToOtherPlayers`.
+        // Used by pets in `GameNPC.OnAttackedByEnemy` for convenience.
+        public string BroadcastMessage { get; set; }
 
         public bool IsMeleeAttack => AttackType is eAttackType.MeleeOneHand or eAttackType.MeleeTwoHand or eAttackType.MeleeDualWield;
 

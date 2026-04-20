@@ -1,7 +1,6 @@
-using System;
 using System.Collections.Generic;
 using System.Reflection;
-using DOL.GS.Commands;
+using DOL.Logging;
 
 namespace DOL.GS.PacketHandler.Client.v168
 {
@@ -9,26 +8,31 @@ namespace DOL.GS.PacketHandler.Client.v168
     /// Handles spell cast requests from client
     /// </summary>
     [PacketHandlerAttribute(PacketHandlerType.TCP, eClientPackets.UseSpell, "Handles Player Use Spell Request.", eClientStatus.PlayerInGame)]
-    public class UseSpellHandler : AbstractCommandHandler, IPacketHandler
+    public class UseSpellHandler : PacketHandler
     {
-        /// <summary>
-        /// Defines a logger for this class.
-        /// </summary>
-        private static readonly Logging.Logger Log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logger Log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
-        public void HandlePacket(GameClient client, GSPacketIn packet)
+        protected override void HandlePacketInternal(GameClient client, GSPacketIn packet)
         {
+            if (client.Player.ObjectState is not GameObject.eObjectState.Active || client.ClientState is not GameClient.eClientState.Playing)
+                return;
+
             int flagSpeedData;
             int spellLevel;
             int spellLineIndex;
 
             if (client.Version >= GameClient.eClientVersion.Version1124)
             {
-                client.Player.X = (int) packet.ReadFloatLowEndian();
-                client.Player.Y = (int) packet.ReadFloatLowEndian();
-                client.Player.Z = (int) packet.ReadFloatLowEndian();
-                client.Player.CurrentSpeed = (short) packet.ReadFloatLowEndian();
-                client.Player.Heading = packet.ReadShort();
+                if (client.Player.IsPositionUpdateFromPacketAllowed())
+                {
+                    client.Player.X = (int) packet.ReadFloatLowEndian();
+                    client.Player.Y = (int) packet.ReadFloatLowEndian();
+                    client.Player.Z = (int) packet.ReadFloatLowEndian();
+                    client.Player.CurrentSpeed = (short) packet.ReadFloatLowEndian();
+                    client.Player.Heading = packet.ReadShort();
+                    client.Player.OnPositionUpdateFromPacket();
+                }
+
                 flagSpeedData = packet.ReadShort();
                 spellLevel = packet.ReadByte();
                 spellLineIndex = packet.ReadByte();
@@ -41,20 +45,25 @@ namespace DOL.GS.PacketHandler.Client.v168
 
                 if (client.Version > GameClient.eClientVersion.Version171)
                 {
-                    int xOffsetInZone = packet.ReadShort();
-                    int yOffsetInZone = packet.ReadShort();
-                    int currentZoneID = packet.ReadShort();
-                    int realZ = packet.ReadShort();
-
-                    Zone newZone = WorldMgr.GetZone((ushort) currentZoneID);
-
-                    if (newZone == null)
-                        Log.Warn($"Unknown zone in UseSpellHandler: {currentZoneID} player: {client.Player.Name}");
-                    else
+                    if (client.Player.IsPositionUpdateFromPacketAllowed())
                     {
-                        client.Player.X = newZone.XOffset + xOffsetInZone;
-                        client.Player.Y = newZone.YOffset + yOffsetInZone;
-                        client.Player.Z = realZ;
+                        int xOffsetInZone = packet.ReadShort();
+                        int yOffsetInZone = packet.ReadShort();
+                        int currentZoneID = packet.ReadShort();
+                        int realZ = packet.ReadShort();
+
+                        Zone newZone = WorldMgr.GetZone((ushort) currentZoneID);
+
+                        if (newZone == null)
+                            Log.Warn($"Unknown zone in UseSpellHandler: {currentZoneID} player: {client.Player.Name}");
+                        else
+                        {
+                            client.Player.X = newZone.XOffset + xOffsetInZone;
+                            client.Player.Y = newZone.YOffset + yOffsetInZone;
+                            client.Player.Z = realZ;
+                        }
+
+                        client.Player.OnPositionUpdateFromPacket();
                     }
                 }
 
@@ -75,30 +84,14 @@ namespace DOL.GS.PacketHandler.Client.v168
             player.TargetInView = (flagSpeedData & 0xa000) != 0; // why 2 bits? that has to be figured out
             player.GroundTargetInView = (flagSpeedData & 0x1000) != 0;
 
-            List<Tuple<SpellLine, List<Skill>>> snap = player.GetAllUsableListSpells();
-            Skill sk = null;
-            SpellLine sl = null;
-
-            // is spelline in index ?
-            if (spellLineIndex < snap.Count)
-            {
-                int index = snap[spellLineIndex].Item2.FindIndex(s => s is Spell ? s.Level == spellLevel :
-                                                                (s is Styles.Style style ? style.SpecLevelRequirement == spellLevel :
-                                                                (s is Ability ability ? ability.SpecLevelRequirement == spellLevel :
-                                                                false)));
-
-                if (index > -1)
-                    sk = snap[spellLineIndex].Item2[index];
-
-                sl = snap[spellLineIndex].Item1;
-            }
+            GetSkill(player, spellLineIndex, spellLevel, out Skill sk, out SpellLine sl);
 
             if (sk is Spell spell && sl != null)
                 player.CastSpell(spell, sl);
             else if (sk is Styles.Style style)
                 player.styleComponent.ExecuteWeaponStyle(style);
             else if (sk is Ability ability)
-                player.castingComponent.RequestStartUseAbility(ability);
+                player.castingComponent.RequestUseAbility(ability);
             else
             {
                 if (Log.IsWarnEnabled)
@@ -106,6 +99,48 @@ namespace DOL.GS.PacketHandler.Client.v168
 
                 player.Out.SendMessage($"Error : Spell (Line {spellLineIndex}, Level {spellLevel}) can't be resolved...", eChatType.CT_SpellResisted, eChatLoc.CL_SystemWindow);
             }
+        }
+
+        private static void GetSkill(GamePlayer player, int spellLineIndex, int spellLevel, out Skill sk, out SpellLine sl)
+        {
+            sk = null;
+            sl = null;
+
+            var snap = player.GetAllUsableListSpells();
+
+            if (spellLineIndex >= snap.Count)
+                return;
+
+            int index = -1;
+            List<Skill> skills = snap[spellLineIndex].Item2;
+
+            for (int i = 0; i < skills.Count; i++)
+            {
+                Skill skill = skills[i];
+
+                if (skill is Spell spell && spell.Level == spellLevel)
+                {
+                    index = i;
+                    break;
+                }
+
+                if (skill is Styles.Style style && style.SpecLevelRequirement == spellLevel)
+                {
+                    index = i;
+                    break;
+                }
+
+                if (skill is Ability ability && ability.SpecLevelRequirement == spellLevel)
+                {
+                    index = i;
+                    break;
+                }
+            }
+
+            if (index > -1)
+                sk = snap[spellLineIndex].Item2[index];
+
+            sl = snap[spellLineIndex].Item1;
         }
     }
 }

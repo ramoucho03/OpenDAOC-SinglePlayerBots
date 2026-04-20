@@ -606,7 +606,6 @@ PlayerInitRequestHandler.FreeLevel:				Sei idoneo per un livello gratuito! Clicc
 PlayerInitRequestHandler.GuildMessage:			Messaggio di Gilda: 
 PlayerInitRequestHandler.LevelCap:				Hai superato il limite massimo del livello di questo battleground!
 PlayerInitRequestHandler.OfficerMessage:		Messaggio degli Ufficiali: {0}
-PlayerInitRequestHandler.SaferLocation:			Quest'area non e' attualmente sicura e stai per essere trasportato in un luogo piu' sicuro.
 
 # /PlayerMoveItemRequestHandler
 PlayerMoveItemRequestHandler.TooFarAway:		Sei troppo lontano per dare qualcosa a {0}.
@@ -762,7 +761,7 @@ Scripts.Players.Cmdhelp.PlvlCommands:		Comandi disponibili per plvl {0}
 Scripts.Players.Cmdhelp.Usage:				Utilizzo di {0}
 
 # /Disband
-Scripts.Players.Disband.Disbanded:			{o} e' stato espulso dal gruppo.
+Scripts.Players.Disband.Disbanded:			{0} e' stato espulso dal gruppo.
 Scripts.Players.Disband.NoPlayer:			Non ci sono giocatori nel gruppo con quel nome.
 Scripts.Players.Disband.NotInGroup:			Non sei in un gruppo.
 Scripts.Players.Disband.NotLeader:			Non sei leader del tuo gruppo.

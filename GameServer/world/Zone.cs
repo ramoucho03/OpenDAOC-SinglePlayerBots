@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Threading;
 using DOL.Database;
 using DOL.Language;
+using DOL.Logging;
 
 namespace DOL.GS
 {
@@ -14,7 +15,8 @@ namespace DOL.GS
     {
         #region Fields and Properties
 
-        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
+
         private const ushort SUBZONE_NBR_ON_ZONE_SIDE = 32; // MUST BE A POWER OF 2 (current implementation limit is 128 inclusive).
         private const ushort SUBZONE_NBR = SUBZONE_NBR_ON_ZONE_SIDE * SUBZONE_NBR_ON_ZONE_SIDE;
         private const ushort SUBZONE_SIZE = 65536 / SUBZONE_NBR_ON_ZONE_SIDE;
@@ -35,7 +37,7 @@ namespace DOL.GS
         public int Waterlevel { get; set; }
         public bool IsDivingEnabled { get; set; }
         public virtual bool IsLava { get; set; }
-        public bool IsPathingEnabled { get; set; }
+        public bool IsPathfindingEnabled { get; set; }
         public int ObjectCount => _objectCount;
 
         public bool IsDungeon
@@ -304,51 +306,33 @@ namespace DOL.GS
             if (subZone == null)
             {
                 if (log.IsErrorEnabled)
-                    log.Error($"Couldn't find a valid subzone for an object (Object: {gameObject})");
+                    log.Error($"Couldn't find a valid subzone (Object: {gameObject})");
 
                 return false;
             }
 
-            SubZoneObject subZoneObject = gameObject.SubZoneObject;
-
-            // It's possible for the object to already have a `subZoneObject` at this point (a NPC respawning for example).
-            if (subZoneObject != null)
-            {
-                if (subZoneObject.CurrentSubZone != subZone && subZoneObject.StartSubZoneChange)
-                    ObjectChangingSubZone.Create(subZoneObject, this, subZone);
-            }
-            else
-            {
-                LinkedListNode<GameObject> node = new(gameObject);
-                subZoneObject = new(node, null);
-                gameObject.SubZoneObject = subZoneObject;
-
-                if (subZoneObject.StartSubZoneChange)
-                    ObjectChangingSubZone.Create(subZoneObject, this, subZone);
-            }
-
+            gameObject.SubZoneObject?.InitiateSubZoneTransition(this, subZone);
             return true;
         }
 
         /// <summary>
         /// Gets the lists of objects, located in the current Zone and of the given type, that are at most at a 'radius' distance from an observer.
-        /// The found objects are appended to the given 'partialList'.
+        /// The found objects are appended to the given list.
         /// </summary>
-        /// <param name="partialList">a non-null list</param>
-        public void GetObjectsInRadius<T>(Point3D point, eGameObjectType objectType, ushort radius, List<T> partialList) where T : GameObject
+        /// <param name="listToAppendTo">a non-null list</param>
+        public void GetObjectsInRadius<T>(Point3D point, eGameObjectType objectType, ushort radius, List<T> listToAppendTo) where T : GameObject
         {
-            GetObjectsInRadius(point.X, point.Y, point.Z, objectType, radius, partialList);
+            GetObjectsInRadius(point.X, point.Y, point.Z, objectType, radius, listToAppendTo);
         }
 
         /// <summary>
         /// Gets the lists of objects, located in the current Zone and of the given type, that are at most at a 'radius' distance from an observer.
-        /// The found objects are appended to the given 'partialList'.
+        /// The found objects are appended to the given list.
         /// </summary>
-        /// <param name="partialList">a non-null list</param>
-        public void GetObjectsInRadius<T>(int x, int y, int z, eGameObjectType objectType, ushort radius, List<T> partialList) where T : GameObject
+        /// <param name="listToAppendTo">a non-null list</param>
+        public void GetObjectsInRadius<T>(int x, int y, int z, eGameObjectType objectType, ushort radius, List<T> listToAppendTo) where T : GameObject
         {
             uint sqRadius = (uint) radius * radius;
-            int referenceSubZoneIndex = GetSubZoneIndex(x, y);
 
             int xInZone = x - XOffset; // x in zone coordinates.
             int yInZone = y - YOffset; // y in zone coordinates.
@@ -373,6 +357,8 @@ namespace DOL.GS
             if (maxLine > (SUBZONE_NBR_ON_ZONE_SIDE - 1))
                 maxLine = SUBZONE_NBR_ON_ZONE_SIDE - 1;
 
+            int referenceSubZoneIndex = GetSubZoneIndex(x, y);
+
             int subZoneIndex;
             SubZone subZone;
             bool ignoreDistance;
@@ -384,43 +370,27 @@ namespace DOL.GS
                     subZoneIndex = GetSubZoneOffset(line, column);
                     subZone = _subZones[subZoneIndex];
 
-                    if (!subZone[objectType].Any)
+                    if (subZone[objectType].Count == 0)
                         continue;
 
-                    if (subZoneIndex != referenceSubZoneIndex)
-                    {
-                        int xLeft = column << SUBZONE_SHIFT;
-                        int xRight = xLeft + SUBZONE_SIZE;
-                        int yTop = line << SUBZONE_SHIFT;
-                        int yBottom = yTop + SUBZONE_SIZE;
+                    int xLeft = column << SUBZONE_SHIFT;
+                    int xRight = xLeft + SUBZONE_SIZE;
+                    int yTop = line << SUBZONE_SHIFT;
+                    int yBottom = yTop + SUBZONE_SIZE;
 
-                        // Filter out subzones that are too far away.
-                        if (!CheckSubZoneMinDistance(xInZone, yInZone, xLeft, xRight, yTop, yBottom, sqRadius))
-                            continue;
+                    // Filter out subzones that are too far away.
+                    if (referenceSubZoneIndex != subZoneIndex && !CheckSubZoneMinDistance(xInZone, yInZone, xLeft, xRight, yTop, yBottom, sqRadius))
+                        continue;
 
-                        // If the subzone being checked is fully enclosed within the radius and we don't care about Z, add all objects without checking the distance.
-                        ignoreDistance = CheckSubZoneMaxDistance(xInZone, yInZone, xLeft, xRight, yTop, yBottom, sqRadius);
-                    }
-                    else
-                        ignoreDistance = false;
+                    // If the subzone being checked is fully enclosed within the radius and we don't care about Z, add all objects without checking the distance.
+                    ignoreDistance = CheckSubZoneMaxDistance(xInZone, yInZone, xLeft, xRight, yTop, yBottom, sqRadius);
 
                     foreach (LinkedListNode<GameObject> node in subZone[objectType])
                     {
                         GameObject gameObject = node.Value;
 
-                        // Inactive or deleted objects can't remove themselves.
-                        if (gameObject.ObjectState != GameObject.eObjectState.Active || gameObject.CurrentRegion != ZoneRegion)
-                        {
-                            SubZoneObject subZoneObject = gameObject.SubZoneObject;
-
-                            if (subZoneObject.StartSubZoneChange)
-                                ObjectChangingSubZone.Create(subZoneObject, null, null);
-
-                            continue;
-                        }
-
-                        if (ignoreDistance || IsWithinSquaredRadius(x, y, z, gameObject.X, gameObject.Y, gameObject.Z, sqRadius))
-                            partialList.Add(gameObject as T);
+                        if (ignoreDistance || IsWithinSquaredRadius(x, y, z, gameObject, sqRadius))
+                            listToAppendTo.Add(gameObject as T);
                     }
                 }
             }
@@ -452,8 +422,8 @@ namespace DOL.GS
             GameObject gameObject = node.Value;
             SubZoneObject subZoneObject = gameObject.SubZoneObject;
 
-            // Does the current object exists, is active and still in the region where this zone is located?
-            if (gameObject.ObjectState == GameObject.eObjectState.Active && gameObject.CurrentRegion == ZoneRegion)
+            // Does the current object exist, is active and still in the region where this zone is located?
+            if (gameObject.ObjectState is GameObject.eObjectState.Active && gameObject.CurrentRegion == ZoneRegion)
             {
                 // Has the object moved to another zone in the same region, or to another subzone in the same zone?
                 if (newSubZoneIndex == -1)
@@ -481,15 +451,13 @@ namespace DOL.GS
                     }
 
                     SubZone newSubZone = newZone.GetSubZone(newSubZoneIndex);
-
-                    if (subZoneObject.StartSubZoneChange)
-                        ObjectChangingSubZone.Create(subZoneObject, newZone, newSubZone);
+                    subZoneObject.InitiateSubZoneTransition(newZone, newSubZone);
                 }
-                else if (subZoneObject.StartSubZoneChange)
-                    ObjectChangingSubZone.Create(subZoneObject, this, _subZones[newSubZoneIndex]);
+                else
+                    subZoneObject.InitiateSubZoneTransition(this, _subZones[newSubZoneIndex]);
             }
-            else if (subZoneObject.StartSubZoneChange)
-                ObjectChangingSubZone.Create(subZoneObject, null, null);
+            else
+                subZoneObject.InitiateSubZoneTransition(null, null);
 
             void AbortRelocation()
             {
@@ -512,22 +480,22 @@ namespace DOL.GS
 
         #endregion Relocation
 
-        public static bool IsWithinSquaredRadius(int x1, int y1, int z1, int x2, int y2, int z2, uint sqDistance)
+        private static bool IsWithinSquaredRadius(int x, int y, int z, GameObject gameObject, uint sqDistance)
         {
-            int xDiff = x1 - x2;
-            long dist = (long)xDiff * xDiff;
+            long xDiff = x - gameObject.X;
+            long dist = xDiff * xDiff;
 
             if (dist > sqDistance)
                 return false;
 
-            int yDiff = y1 - y2;
-            dist += (long)yDiff * yDiff;
+            long yDiff = y - gameObject.Y;
+            dist += yDiff * yDiff;
 
             if (dist > sqDistance)
                 return false;
 
-            int zDiff = z1 - z2;
-            dist += (long)zDiff * zDiff;
+            long zDiff = z - gameObject.Z;
+            dist += zDiff * zDiff;
 
             return dist <= sqDistance;
         }
@@ -597,17 +565,17 @@ namespace DOL.GS
         /// <summary>
         /// Convenient method for Region.GetAreasOfZone(), since zone.Region.getAreasOfZone(zone,x,y,z) is a bit confusing.
         /// </summary>
-        public IList<IArea> GetAreasOfSpot(IPoint3D spot)
+        public List<IArea> GetAreasOfSpot(IPoint3D spot)
         {
             return GetAreasOfSpot(spot, true);
         }
 
-        public IList<IArea> GetAreasOfSpot(int x, int y, int z)
+        public List<IArea> GetAreasOfSpot(int x, int y, int z)
         {
             return ZoneRegion.GetAreasOfZone(this, x, y, z);
         }
 
-        public IList<IArea> GetAreasOfSpot(IPoint3D spot, bool checkZ)
+        public List<IArea> GetAreasOfSpot(IPoint3D spot, bool checkZ)
         {
             return ZoneRegion.GetAreasOfZone(this, spot, checkZ);
         }
@@ -621,7 +589,7 @@ namespace DOL.GS
         /// </summary>
         public GameNPC GetRandomNPC(eRealm realm)
         {
-            return GetRandomNPC(new eRealm[] { realm }, 0, 0);
+            return GetRandomNPC([realm], 0, 0);
         }
 
         /// <summary>
@@ -629,7 +597,7 @@ namespace DOL.GS
         /// </summary>
         public GameNPC GetRandomNPC(eRealm realm, int minLevel, int maxLevel)
         {
-            return GetRandomNPC(new eRealm[] { realm }, minLevel, maxLevel);
+            return GetRandomNPC([realm], minLevel, maxLevel);
         }
 
         /// <summary>
@@ -655,7 +623,7 @@ namespace DOL.GS
         /// </summary>
         public List<GameNPC> GetNPCsOfZone(eRealm realm)
         {
-            return GetNPCsOfZone(new eRealm[] { realm }, 0, 0, 0, 0, false);
+            return GetNPCsOfZone([realm], 0, 0, 0, 0, false);
         }
 
         /// <summary>
@@ -711,6 +679,43 @@ namespace DOL.GS
             return list;
         }
 
-        #endregion Get random NPC
+        #endregion
+
+        public bool IsUnderwater(int x, int y, int z)
+        {
+            // Special land areas below the waterlevel in NF
+            if (ZoneRegion.ID == 163)
+            {
+                // Mount Collory
+                if ((y > 664000) && (y < 670000) && (x > 479000) && (x < 488000)) return false;
+                if ((y > 656000) && (y < 664000) && (x > 472000) && (x < 488000)) return false;
+                if ((y > 624000) && (y < 654000) && (x > 468500) && (x < 488000)) return false;
+                if ((y > 659000) && (y < 683000) && (x > 431000) && (x < 466000)) return false;
+                if ((y > 646000) && (y < 659001) && (x > 431000) && (x < 460000)) return false;
+                if ((y > 624000) && (y < 646001) && (x > 431000) && (x < 455000)) return false;
+                if ((y > 671000) && (y < 683000) && (x > 431000) && (x < 471000)) return false;
+                // Breifine
+                if ((y > 558000) && (y < 618000) && (x > 456000) && (x < 479000)) return false;
+                // Cruachan Gorge
+                if ((y > 586000) && (y < 618000) && (x > 360000) && (x < 424000)) return false;
+                if ((y > 563000) && (y < 578000) && (x > 360000) && (x < 424000)) return false;
+                // Emain Macha
+                if ((y > 505000) && (y < 555000) && (x > 428000) && (x < 444000)) return false;
+                // Hadrian's Wall
+                if ((y > 500000) && (y < 553000) && (x > 603000) && (x < 620000)) return false;
+                // Snowdonia
+                if ((y > 633000) && (y < 678000) && (x > 592000) && (x < 617000)) return false;
+                if ((y > 662000) && (y < 678000) && (x > 581000) && (x < 617000)) return false;
+                // Sauvage Forrest
+                if ((y > 584000) && (y < 615000) && (x > 626000) && (x < 681000)) return false;
+                // Uppland
+                if ((y > 297000) && (y < 353000) && (x > 610000) && (x < 652000)) return false;
+                // Yggdra
+                if ((y > 408000) && (y < 421000) && (x > 671000) && (x < 693000)) return false;
+                if ((y > 364000) && (y < 394000) && (x > 674000) && (x < 716000)) return false;
+            }
+
+            return z < Waterlevel;
+        }
     }
 }

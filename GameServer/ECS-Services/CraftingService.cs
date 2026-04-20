@@ -1,49 +1,58 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
-using System.Threading.Tasks;
+using DOL.Logging;
 using ECS.Debug;
 
 namespace DOL.GS
 {
-    public static class CraftingService
+    public sealed class CraftingService : GameServiceBase
     {
-        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
-        private const string SERVICE_NAME = nameof(CraftingService);
-        private static List<CraftComponent> _list;
-        private static int _entityCount;
+        private static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
-        public static void Tick()
+        private ServiceObjectView<CraftComponent> _view;
+
+        public static CraftingService Instance { get; }
+
+        static CraftingService()
         {
-            GameLoop.CurrentServiceTick = SERVICE_NAME;
-            Diagnostics.StartPerfCounter(SERVICE_NAME);
-            _list = EntityManager.UpdateAndGetAll<CraftComponent>(EntityManager.EntityType.CraftComponent, out int lastValidIndex);
-            Parallel.For(0, lastValidIndex + 1, TickInternal);
-
-            if (Diagnostics.CheckEntityCounts)
-                Diagnostics.PrintEntityCount(SERVICE_NAME, ref _entityCount, _list.Count);
-
-            Diagnostics.StopPerfCounter(SERVICE_NAME);
+            Instance = new();
         }
 
-        private static void TickInternal(int index)
+        public override void Tick()
         {
-            CraftComponent craftComponent = _list[index];
+            ProcessPostedActionsParallel();
 
             try
             {
-                if (craftComponent?.EntityManagerId.IsSet != true)
-                    return;
+                _view = ServiceObjectStore.UpdateAndGetView<CraftComponent>(ServiceObjectType.CraftComponent);
+            }
+            catch (Exception e)
+            {
+                if (log.IsErrorEnabled)
+                    log.Error($"{nameof(ServiceObjectStore.UpdateAndGetView)} failed. Skipping this tick.", e);
 
-                if (Diagnostics.CheckEntityCounts)
-                    Interlocked.Increment(ref _entityCount);
+                return;
+            }
+
+            _view.ExecuteForEach(TickInternal);
+
+            if (Diagnostics.CheckServiceObjectCount)
+                Diagnostics.PrintServiceObjectCount(ServiceName, ref EntityCount, _view.TotalValidCount);
+        }
+
+        private static void TickInternal(CraftComponent craftComponent)
+        {
+            try
+            {
+                if (Diagnostics.CheckServiceObjectCount)
+                    Interlocked.Increment(ref Instance.EntityCount);
 
                 craftComponent.Tick();
             }
             catch (Exception e)
             {
-                ServiceUtils.HandleServiceException(e, SERVICE_NAME, craftComponent, craftComponent.Owner);
+                GameServiceUtils.HandleServiceException(e, Instance.ServiceName, craftComponent, craftComponent.Owner);
             }
         }
     }

@@ -50,10 +50,7 @@ namespace DOL.GS
 			}
 			base.OnAttackEnemy(ad);
 		}
-		public override double AttackDamage(DbInventoryItem weapon)
-		{
-			return base.AttackDamage(weapon) * Strength / 100;
-		}
+
 		public override int MeleeAttackRange => 350;
 		public override bool HasAbility(string keyName)
 		{
@@ -95,13 +92,12 @@ namespace DOL.GS
 					spell.Damage = 260;
 					spell.Range = 350;
 					spell.SpellID = 11815;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Type = eSpellType.DirectDamageNoVariance.ToString();
 					spell.Uninterruptible = true;
 					spell.MoveCast = true;
 					spell.DamageType = (int)eDamageType.Cold;
 					m_HatiDD = new Spell(spell, 70);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_HatiDD);
 				}
 				return m_HatiDD;
 			}
@@ -171,13 +167,12 @@ namespace DOL.AI.Brain
 					spell.Radius = 450;
 					spell.Range = 0;
 					spell.SpellID = 11813;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Type = "Mesmerize";
 					spell.Uninterruptible = true;
 					spell.MoveCast = true;
 					spell.DamageType = (int)eDamageType.Spirit;
 					m_Hati_Mezz = new Spell(spell, 70);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_Hati_Mezz);
 				}
 				return m_Hati_Mezz;
 			}

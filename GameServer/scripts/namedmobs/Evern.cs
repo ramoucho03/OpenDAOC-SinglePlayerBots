@@ -35,10 +35,7 @@ namespace DOL.GS
         {
             get { return 100000; }
         }
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * Strength / 100;
-        }
+
         public override int MeleeAttackRange => 350;
         public override bool HasAbility(string keyName)
         {
@@ -253,10 +250,7 @@ namespace DOL.GS
         {
         }
         public override long ExperienceValue => 0;
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * Strength / 100;
-        }
+
         public override double GetArmorAF(eArmorSlot slot)
         {
             return 400;
@@ -396,11 +390,10 @@ namespace DOL.AI.Brain
                     spell.Name = "Heal";
                     spell.Range = 2500;
                     spell.SpellID = 11891;
-                    spell.Target = "Realm";
+                    spell.Target = eSpellTarget.REALM.ToString();
                     spell.Type = "Heal";
                     m_Fairy_Heal = new Spell(spell, 70);
                     spell.Uninterruptible = true;
-                    SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_Fairy_Heal);
                 }
                 return m_Fairy_Heal;
             }

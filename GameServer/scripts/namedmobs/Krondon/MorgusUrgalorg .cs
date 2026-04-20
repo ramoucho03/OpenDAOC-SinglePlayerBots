@@ -27,10 +27,7 @@ namespace DOL.GS
 				default: return 30;// dmg reduction for rest resists
 			}
 		}
-		public override double AttackDamage(DbInventoryItem weapon)
-		{
-			return base.AttackDamage(weapon) * Strength / 100;
-		}
+
 		public override int MeleeAttackRange => 350;
 		public override bool HasAbility(string keyName)
 		{
@@ -242,11 +239,10 @@ namespace DOL.AI.Brain
 					spell.Range = 1500;
 					spell.Radius = 250;
 					spell.SpellID = 11892;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Type = eSpellType.DirectDamageNoVariance.ToString();
 					spell.Uninterruptible = true;
 					m_Morgus_DD = new Spell(spell, 70);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_Morgus_DD);
 				}
 				return m_Morgus_DD;
 			}
@@ -270,11 +266,10 @@ namespace DOL.AI.Brain
 					spell.Name = "Lava's Fury";
 					spell.Range = 1800;
 					spell.SpellID = 11893;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Type = eSpellType.Bolt.ToString();
 					spell.Uninterruptible = true;
 					m_Morgus_Bolt = new Spell(spell, 70);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_Morgus_Bolt);
 				}
 				return m_Morgus_Bolt;
 			}
@@ -298,11 +293,10 @@ namespace DOL.AI.Brain
 					spell.Name = "Lava's Fury";
 					spell.Range = 1800;
 					spell.SpellID = 11894;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Type = eSpellType.Bolt.ToString();
 					spell.Uninterruptible = true;
 					m_Morgus_Bolt2 = new Spell(spell, 70);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_Morgus_Bolt2);
 				}
 				return m_Morgus_Bolt2;
 			}

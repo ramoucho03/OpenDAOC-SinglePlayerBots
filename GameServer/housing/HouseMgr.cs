@@ -7,12 +7,13 @@ using DOL.Database;
 using DOL.GS.PacketHandler;
 using DOL.GS.ServerProperties;
 using DOL.Language;
+using DOL.Logging;
 
 namespace DOL.GS.Housing
 {
 	public class HouseMgr
 	{
-		public static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
+		public static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
 		private static ECSGameTimer CheckRentTimer = null;
 		private static Dictionary<ushort, Dictionary<int, House>> _houseList;
@@ -28,7 +29,7 @@ namespace DOL.GS.Housing
 		public static bool Start(GameClient client = null)
 		{
 			// load hookpoint offsets
-			House.LoadHookpointOffsets();
+			House.LoadHookPointOffsets();
 
 			// initialize the house template manager
 			HouseTemplateMgr.Initialize();
@@ -85,12 +86,7 @@ namespace DOL.GS.Housing
 			if (client != null)
 				client.Out.SendMessage("Loaded " + houses + " houses and " + lotmarkers + " lotmarkers in " + regions + " regions!", eChatType.CT_System, eChatLoc.CL_SystemWindow);
 
-			if (CheckRentTimer == null)
-			{
-                CheckRentTimer =
-					new ECSGameTimer(null, (ECSGameTimer.ECSTimerCallback) CheckRents, TimerInterval);
-			}
-
+			CheckRentTimer ??= new(null, CheckRents, TimerInterval);
 			return true;
 		}
 
@@ -174,7 +170,7 @@ namespace DOL.GS.Housing
 
 			if (string.IsNullOrEmpty(house.OwnerID) == false)
 			{
-				var newHouse = new House(house) { UniqueID = house.HouseNumber };
+				GameHouse newHouse = new(house) { UniqueID = house.HouseNumber };
 
 				newHouse.LoadFromDatabase();
 
@@ -293,22 +289,9 @@ namespace DOL.GS.Housing
 			}
 			else
 			{
+
 				// create a new set of permissions
-				for (int i = HousingConstants.MinPermissionLevel; i < HousingConstants.MaxPermissionLevel + 1; i++)
-				{
-					if (house.PermissionLevels.TryGetValue(i, out DbHousePermissions housePermissions))
-					{
-						if (housePermissions != null)
-							GameServer.Database.DeleteObject(housePermissions);
-					}
-
-					// create a new, blank permission
-					var permission = new DbHousePermissions(house.HouseNumber, i);
-					house.PermissionLevels.Add(i, permission);
-
-					// add the permission to the database
-					GameServer.Database.AddObject(permission);
-				}
+				house.InitializePermissionLevels();
 			}
 
 			// save the house, broadcast an update
@@ -410,7 +393,7 @@ namespace DOL.GS.Housing
 			}
 
 			// remove the house for all nearby players
-			foreach (GamePlayer player in WorldMgr.GetPlayersCloseToSpot(house, WorldMgr.OBJ_UPDATE_DISTANCE))
+			foreach (GamePlayer player in WorldMgr.GetPlayersCloseToSpot(house.RegionID, house, WorldMgr.VISIBILITY_DISTANCE))
 			{
 				player.Out.SendRemoveHouse(house);
 				player.Out.SendGarden(house);
@@ -444,50 +427,28 @@ namespace DOL.GS.Housing
 		public static void RemoveHouseItems(House house)
 		{
 			house.RemoveConsignmentMerchant();
-
-			IList<DbHouseIndoorItem> iobjs = DOLDB<DbHouseIndoorItem>.SelectObjects(DB.Column("HouseNumber").IsEqualTo(house.HouseNumber));
-			GameServer.Database.DeleteObject(iobjs);
-			house.IndoorItems.Clear();
-
-			IList<DbHouseOutdoorItem> oobjs = DOLDB<DbHouseOutdoorItem>.SelectObjects(DB.Column("HouseNumber").IsEqualTo(house.HouseNumber));
-			GameServer.Database.DeleteObject(oobjs);
-			house.OutdoorItems.Clear();
-
-			IList<DbHouseHookPointItem> hpobjs = DOLDB<DbHouseHookPointItem>.SelectObjects(DB.Column("HouseNumber").IsEqualTo(house.HouseNumber));
-			GameServer.Database.DeleteObject(hpobjs);
-
-			foreach (DbHouseHookPointItem item in house.HousepointItems.Values)
-			{
-				if (item.GameObject is GameObject)
-				{
-					(item.GameObject as GameObject).Delete();
-				}
-			}
-			house.HousepointItems.Clear();
+			house.ClearAndDeleteIndoorItems();
+			house.ClearAndDeleteOutdoorItems();
+			house.ClearAndDeleteHousePointItems();
 		}
 
 		public static void RemoveHousePermissions(House house)
 		{
-			// clear the house number for the guild if this is a guild house
+			// Clear the house number for the guild if this is a guild house.
 			if (house.DatabaseItem.GuildHouse)
 			{
 				Guild guild = GuildMgr.GetGuildByName(house.DatabaseItem.GuildName);
+
 				if (guild != null)
 				{
 					guild.GuildHouseNumber = 0;
+					guild.SaveIntoDatabase();
 				}
 			}
 
 			house.DatabaseItem.GuildHouse = false;
 			house.DatabaseItem.GuildName = null;
-
-			IList<DbHousePermissions> pobjs = DOLDB<DbHousePermissions>.SelectObjects(DB.Column("HouseNumber").IsEqualTo(house.HouseNumber));
-			GameServer.Database.DeleteObject(pobjs);
-			house.PermissionLevels.Clear();
-
-			IList<DbHouseCharsXPerms> cpobjs = DOLDB<DbHouseCharsXPerms>.SelectObjects(DB.Column("HouseNumber").IsEqualTo(house.HouseNumber));
-			GameServer.Database.DeleteObject(cpobjs);
-			house.CharXPermissions.Clear();
+			house.ClearAndDeletePermissions();
 		}
 
 		public static void ResetHouseData(House house)
@@ -599,11 +560,13 @@ namespace DOL.GS.Housing
 
 			var house = GetHouse(p.Guild.GuildHouseNumber);
 
-			if (p.Realm != house?.Realm)
-				return null;
-
 			if (house != null)
+			{
+				if (p.Realm != house.Realm)
+					return null;
+
 				return house;
+			}
 
 			// check every house in every region until we find
 			// a house that belongs to the same guild as the player
@@ -655,9 +618,9 @@ namespace DOL.GS.Housing
 
 			// Demand any consignment merchant inventory is removed before allowing a transfer
 			var consignmentMerchant = house.ConsignmentMerchant;
-			if (consignmentMerchant != null && (consignmentMerchant.DBItems().Count > 0 || consignmentMerchant.TotalMoney > 0))
+			if (consignmentMerchant != null && (consignmentMerchant.GetDbItems().Any() || consignmentMerchant.TotalMoney > 0))
 			{
-				ChatUtil.SendSystemMessage(player, "All items and money must be removed from your consigmment merchant in order to transfer this house!");
+				ChatUtil.SendSystemMessage(player, "All items and money must be removed from your consignment merchant in order to transfer this house!");
 				return false;
 			}
 
@@ -724,6 +687,8 @@ namespace DOL.GS.Housing
 
 		public static int CheckRents(ECSGameTimer timer)
 		{
+			// Not thread safe, but should be fine as long as there's no other timer modifying money on consignment merchants or houses
+
 			if (Properties.RENT_DUE_DAYS == 0)
 				return 0;
 
@@ -749,7 +714,7 @@ namespace DOL.GS.Housing
 
 					// Does this house need to pay rent?
 					if (rent > 0L && diff.Days >= Properties.RENT_DUE_DAYS)
-					{					
+					{
 						long lockboxAmount = house.KeptMoney;
 						long consignmentAmount = 0;
 
@@ -783,7 +748,7 @@ namespace DOL.GS.Housing
 							else
 							{
 								// house can't afford rent, so we schedule house to be repossessed.
-								log.Warn($"[HOUSING] House {house.HouseNumber} owned by {house.Name} can't afford rent and is being repossesed! rentamount: {rent} lockboxAmount: {lockboxAmount} consignmentAmount: {consignmentAmount}");
+								log.Warn($"[HOUSING] House {house.HouseNumber} owned by {house.Name} can't afford rent and is being repossessed! rentAmount: {rent} lockboxAmount: {lockboxAmount} consignmentAmount: {consignmentAmount}");
 								houseRemovalList.Add(house);
 							}
 						}

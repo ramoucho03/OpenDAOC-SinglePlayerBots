@@ -27,126 +27,104 @@ namespace DOL.GS.Styles
 		/// <returns>true if the player can execute the style right now, false if not</returns>
 		public static bool CanUseStyle(AttackData lastAttackData, GameLiving living, Style style, DbInventoryItem weapon)
 		{
-			// First thing in processors, lock the objects you modify.
-			// This way it makes sure the objects are not modified by several different threads at the same time!
-			lock (living)
+			if (living.TargetObject is not GameLiving target)
+				return false;
+
+			// Required attack result.
+			eAttackResult requiredAttackResult = eAttackResult.Any;
+
+			switch (style.AttackResultRequirement)
 			{
-				if (living.TargetObject is not GameLiving target)
-					return false;
+				case Style.eAttackResultRequirement.Any: requiredAttackResult = eAttackResult.Any; break;
+				case Style.eAttackResultRequirement.Block: requiredAttackResult = eAttackResult.Blocked; break;
+				case Style.eAttackResultRequirement.Evade: requiredAttackResult = eAttackResult.Evaded; break;
+				case Style.eAttackResultRequirement.Fumble: requiredAttackResult = eAttackResult.Fumbled; break;
+				case Style.eAttackResultRequirement.Hit: requiredAttackResult = eAttackResult.HitUnstyled; break;
+				case Style.eAttackResultRequirement.Style: requiredAttackResult = eAttackResult.HitStyle; break;
+				case Style.eAttackResultRequirement.Miss: requiredAttackResult = eAttackResult.Missed; break;
+				case Style.eAttackResultRequirement.Parry: requiredAttackResult = eAttackResult.Parried; break;
+			}
 
-                // Required attack result.
-                eAttackResult requiredAttackResult = eAttackResult.Any;
+			switch (style.OpeningRequirementType)
+			{
+				case Style.eOpening.Offensive:
+					// Style required before this one?
+					if (style.OpeningRequirementValue != 0
+						&& (lastAttackData == null
+						|| lastAttackData.AttackResult != eAttackResult.HitStyle
+						|| lastAttackData.Style == null
+						|| lastAttackData.Style.ID != style.OpeningRequirementValue
+						/*|| lastAD.Target != target*/)) // style chains are *NOT* possible only on the same target
+						return false;
 
-                MimicNPC mimic = living as MimicNPC;
+					// Last attack result.
+					eAttackResult lastRes = (lastAttackData != null) ? lastAttackData.AttackResult : eAttackResult.Any;
 
-                if (mimic != null && style != null)
-                {
-                    if (style.WeaponTypeRequirement == (int)eObjectType.Shield)
-                        weapon = living.Inventory.GetItem(eInventorySlot.LeftHandWeapon);
+					if (requiredAttackResult != eAttackResult.Any && lastRes != requiredAttackResult)
+						return false;
 
-                    if (weapon != null)
-                    {
-                        int fatigue = CalculateEnduranceCost(living, style, weapon.SPD_ABS);
+					break;
+				case Style.eOpening.Defensive:
+					AttackData targetsLastAD = target.attackComponent.attackAction.LastAttackData;
 
-                        if (living.Endurance < fatigue)
-                            return false;
-                    }
-                }
+					// Last attack result.
+					if (requiredAttackResult != eAttackResult.Any)
+					{
+						if (targetsLastAD == null || targetsLastAD.Target != living)
+							return false;
 
-                switch (style.AttackResultRequirement)
-				{
-					case Style.eAttackResultRequirement.Any: requiredAttackResult = eAttackResult.Any; break;
-					case Style.eAttackResultRequirement.Block: requiredAttackResult = eAttackResult.Blocked; break;
-					case Style.eAttackResultRequirement.Evade: requiredAttackResult = eAttackResult.Evaded; break;
-					case Style.eAttackResultRequirement.Fumble: requiredAttackResult = eAttackResult.Fumbled; break;
-					case Style.eAttackResultRequirement.Hit: requiredAttackResult = eAttackResult.HitUnstyled; break;
-					case Style.eAttackResultRequirement.Style: requiredAttackResult = eAttackResult.HitStyle; break;
-					case Style.eAttackResultRequirement.Miss: requiredAttackResult = eAttackResult.Missed; break;
-					case Style.eAttackResultRequirement.Parry: requiredAttackResult = eAttackResult.Parried; break;
-				}
+						if (requiredAttackResult != eAttackResult.HitStyle && targetsLastAD.AttackResult != requiredAttackResult)
+							return false;
+						else if (requiredAttackResult == eAttackResult.HitStyle && targetsLastAD.Style == null)
+							return false;
+					}
 
-                switch (style.OpeningRequirementType)
-                {
-                    case Style.eOpening.Offensive:
-                    // Style required before this one?
-                    if (style.OpeningRequirementValue != 0
-                        && (lastAttackData == null
-                        || lastAttackData.AttackResult != eAttackResult.HitStyle
-                        || lastAttackData.Style == null
-                        || lastAttackData.Style.ID != style.OpeningRequirementValue
-                        /*|| lastAD.Target != target*/)) // style chains are *NOT* possible only on the same target
-                        return false;
+					break;
+				case Style.eOpening.Positional:
+					if (!living.IsObjectInFront(target, 120))
+						return false;
 
-                    // Last attack result.
-                    eAttackResult lastRes = (lastAttackData != null) ? lastAttackData.AttackResult : eAttackResult.Any;
+					float angle = target.GetAngle(living);
 
-                    if (requiredAttackResult != eAttackResult.Any && lastRes != requiredAttackResult)
-                        return false;
-
-						break;
-					case Style.eOpening.Defensive:
-						AttackData targetsLastAD = target.attackComponent.attackAction.LastAttackData;
-
-                    // Last attack result.
-                    if (requiredAttackResult != eAttackResult.Any)
-                    {
-                        if (targetsLastAD == null || targetsLastAD.Target != living)
-                            return false;
-
-                        if (requiredAttackResult != eAttackResult.HitStyle && targetsLastAD.AttackResult != requiredAttackResult)
-                            return false;
-                        else if (requiredAttackResult == eAttackResult.HitStyle && targetsLastAD.Style == null)
-                            return false;
-                    }
-
-                    break;
-
-                    case Style.eOpening.Positional:
-                    if (!living.IsObjectInFront(target, 120))
-                        return false;
-
-						float angle = target.GetAngle(living);
-
-						switch ((Style.eOpeningPosition) style.OpeningRequirementValue)
+					switch ((Style.eOpeningPosition) style.OpeningRequirementValue)
+					{
+						case Style.eOpeningPosition.Back:
 						{
-							case Style.eOpeningPosition.Back:
-							{
-								// Back Styles. 60 degree since 1.62.
-								if (angle is not (> 150 and < 210))
-									return false;
+							// Back Styles. 60 degree since 1.62.
+							if (angle is not (> 150 and < 210))
+								return false;
 
-								break;
-							}
-							case Style.eOpeningPosition.Side:
-							{
-								// Side Styles. 105 degree since 1.62.
-								if (angle is not (>= 45 and <= 150) and not (>= 210 and <= 315))
-									return false;
-
-								break;
-							}
-							case Style.eOpeningPosition.Front:
-							{
-								// Front Styles. 90 degrees.
-								if (angle is not (> 315 or < 45))
-									return false;
-
-								break;
-							}
+							break;
 						}
+						case Style.eOpeningPosition.Side:
+						{
+							// Side Styles. 105 degree since 1.62.
+							if (angle is not (>= 45 and <= 150) and not (>= 210 and <= 315))
+								return false;
 
-                    break;
-                }
+							break;
+						}
+						case Style.eOpeningPosition.Front:
+						{
+							// Front Styles. 90 degrees.
+							if (angle is not (> 315 or < 45))
+								return false;
 
-                if (style.StealthRequirement && !living.IsStealthed)
-                    return false;
+							break;
+						}
+					}
 
-                if (!CheckWeaponType(style, living, weapon))
-                    return false;
+					break;
+			}
 
-                return true;
-            }
-        }
+			if (style.StealthRequirement && !living.IsStealthed)
+				return false;
+
+			if (!CheckWeaponType(style, living, weapon))
+				return false;
+
+			return true;
+		}
 
         /// <summary>
         /// Tries to queue a new style in the player's style queue.
@@ -160,389 +138,369 @@ namespace DOL.GS.Styles
             if (living is not GamePlayer player)
                 return;
 
-            // First thing in processors, lock the objects you modify.
-            // This way it makes sure the objects are not modified by several different threads at the same time!
-            lock (player)
-            {
-                if (!player.IsAlive)
-                {
-                    player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.CantCombatMode"), eChatType.CT_YouHit, eChatLoc.CL_SystemWindow);
-                    return;
-                }
+			if (!player.IsAlive)
+			{
+				player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.CantCombatMode"), eChatType.CT_YouHit, eChatLoc.CL_SystemWindow);
+				return;
+			}
 
-                if (player.IsDisarmed)
-                {
-                    player.Out.SendMessage("You are disarmed and cannot attack!", eChatType.CT_YouHit, eChatLoc.CL_SystemWindow);
-                    return;
-                }
+			if (player.IsDisarmed)
+			{
+				player.Out.SendMessage("You are disarmed and cannot attack!", eChatType.CT_YouHit, eChatLoc.CL_SystemWindow);
+				return;
+			}
 
-                if (player.ActiveWeaponSlot == eActiveWeaponSlot.Distance)
-                {
-                    player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.CantMeleeCombat"), eChatType.CT_YouHit, eChatLoc.CL_SystemWindow);
-                    return;
-                }
+			if (player.ActiveWeaponSlot == eActiveWeaponSlot.Distance)
+			{
+				player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.CantMeleeCombat"), eChatType.CT_YouHit, eChatLoc.CL_SystemWindow);
+				return;
+			}
 
-				// Put player into attack state before setting the styles.
-				// Changing the attack state clears out the styles.
-				if (player.attackComponent.AttackState == false || EffectListService.GetEffectOnTarget(player, eEffect.Engage) != null)
-					player.attackComponent.RequestStartAttack();
+			// Put player into attack state before setting the styles.
+			// Changing the attack state clears out the styles.
+			if (player.attackComponent.AttackState == false || EffectListService.GetEffectOnTarget(player, eEffect.Engage) != null)
+				player.attackComponent.RequestStartAttack();
 
-                if (player.TargetObject == null)
-                {
-                    player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.MustHaveTarget"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
-                    return;
-                }
+			if (player.TargetObject == null)
+			{
+				player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.MustHaveTarget"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+				return;
+			}
 
-				DbInventoryItem weapon = (eObjectType) style.WeaponTypeRequirement is eObjectType.Shield ? player.ActiveLeftWeapon : player.ActiveWeapon;
+			DbInventoryItem weapon = (eObjectType) style.WeaponTypeRequirement is eObjectType.Shield ? player.ActiveLeftWeapon : player.ActiveWeapon;
 
-                if (!CheckWeaponType(style, player, weapon))
-                {
-                    if (style.WeaponTypeRequirement == Style.SpecialWeaponType.DualWield)
-                        player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.DualWielding"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
-                    else
-                        player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.StyleRequires", style.GetRequiredWeaponName()), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+			if (!CheckWeaponType(style, player, weapon))
+			{
+				if (style.WeaponTypeRequirement == Style.SpecialWeaponType.DualWield)
+					player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.DualWielding"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+				else
+					player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.StyleRequires", style.GetRequiredWeaponName()), eChatType.CT_System, eChatLoc.CL_SystemWindow);
 
-                    return;
-                }
+				return;
+			}
 
-				bool automaticStyleUsed = false;
-				if (Properties.AUTO_SELECT_OPENING_STYLE && style.OpeningRequirementType != Style.eOpening.Positional)
+			bool automaticStyleUsed = false;
+			if (Properties.AUTO_SELECT_OPENING_STYLE && style.OpeningRequirementType != Style.eOpening.Positional)
+			{
+				AttackData lastAttackData = player.attackComponent.attackAction.LastAttackData;
+				Style styleToUse = style;
+
+				while (!CanUseStyle(lastAttackData, player, styleToUse, weapon))
 				{
-					AttackData lastAttackData = player.attackComponent.attackAction.LastAttackData;
-					Style styleToUse = style;
+					styleToUse = SkillBase.GetStyleByID(style.OpeningRequirementValue, player.CharacterClass.ID);
 
-                    while (!CanUseStyle(lastAttackData, player, styleToUse, weapon))
-                    {
-                        styleToUse = SkillBase.GetStyleByID(style.OpeningRequirementValue, player.CharacterClass.ID);
+					if (styleToUse == null)
+						break;
 
-                        if (styleToUse == null)
-                            break;
-
-                        style = styleToUse;
-                        automaticStyleUsed = true;
-                    }
-                }
-
-                int fatCost = CalculateEnduranceCost(player, style, weapon.SPD_ABS);
-
-                if (player.Endurance < fatCost)
-                {
-                    player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.Fatigued"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
-                    return;
-                }
-
-                Style preRequireStyle = null;
-
-                if (!Properties.AUTO_SELECT_OPENING_STYLE && style.OpeningRequirementType == Style.eOpening.Offensive && style.AttackResultRequirement == Style.eAttackResultRequirement.Style)
-                    preRequireStyle = SkillBase.GetStyleByID(style.OpeningRequirementValue, player.CharacterClass.ID);
-
-				// We have not set any primary style yet?
-				if (player.styleComponent.NextCombatStyle == null)
-				{
-					if (preRequireStyle != null)
-					{
-						AttackData lastAD = player.attackComponent.attackAction.LastAttackData;
-						if (lastAD == null
-							|| lastAD.AttackResult != eAttackResult.HitStyle
-							|| lastAD.Style == null
-							|| lastAD.Style.ID != style.OpeningRequirementValue)
-						{
-							player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.PerformStyleBefore", preRequireStyle.Name), eChatType.CT_System, eChatLoc.CL_SystemWindow);
-							return;
-						}
-					}
-
-                    player.styleComponent.NextCombatStyle = style;
-                    player.styleComponent.NextCombatBackupStyle = null;
-                    player.styleComponent.NextCombatStyleTime = GameLoop.GameLoopTime;
-                    player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.PreparePerform", style.Name), eChatType.CT_System, eChatLoc.CL_SystemWindow);
-
-                    if (player.IsEngaging)
-                    {
-                        // Cancel engage effect if exist.
-                        EngageECSGameEffect effect = (EngageECSGameEffect)EffectListService.GetEffectOnTarget(player, eEffect.Engage);
-
-                        if (effect != null)
-                            effect.Cancel(false, true);
-                    }
-
-					// Unstealth only on primary style to not break stealth with non-stealth backup styles.
-					if (!style.StealthRequirement)
-						player.Stealth(false);
+					style = styleToUse;
+					automaticStyleUsed = true;
 				}
+			}
+
+			if (!CheckEnduranceCost(player, weapon, style))
+				return;
+
+			Style preRequireStyle = null;
+
+			if (!Properties.AUTO_SELECT_OPENING_STYLE && style.OpeningRequirementType == Style.eOpening.Offensive && style.AttackResultRequirement == Style.eAttackResultRequirement.Style)
+				preRequireStyle = SkillBase.GetStyleByID(style.OpeningRequirementValue, player.CharacterClass.ID);
+
+			// We have not set any primary style yet?
+			if (player.styleComponent.NextCombatStyle == null)
+			{
+				if (preRequireStyle != null)
+				{
+					AttackData lastAD = player.attackComponent.attackAction.LastAttackData;
+					if (lastAD == null
+						|| lastAD.AttackResult != eAttackResult.HitStyle
+						|| lastAD.Style == null
+						|| lastAD.Style.ID != style.OpeningRequirementValue)
+					{
+						player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.PerformStyleBefore", preRequireStyle.Name), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+						return;
+					}
+				}
+
+				player.styleComponent.NextCombatStyle = style;
+				player.styleComponent.NextCombatBackupStyle = null;
+				player.styleComponent.NextCombatStyleTime = GameLoop.GameLoopTime;
+				player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.PreparePerform", style.Name), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+
+				if (player.IsEngaging)
+				{
+					// Cancel engage effect if exist.
+					EngageECSGameEffect effect = (EngageECSGameEffect) EffectListService.GetEffectOnTarget(player, eEffect.Engage);
+
+					if (effect != null)
+						effect.Cancel(false, true);
+				}
+
+				// Unstealth only on primary style to not break stealth with non-stealth backup styles.
+				if (!style.StealthRequirement)
+					player.Stealth(false);
+			}
+			else
+			{
+				// Have we also set the backupstyle already?
+				if (player.styleComponent.NextCombatBackupStyle != null)
+					// All styles set, can't change anything now.
+					player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.AlreadySelectedStyles"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
 				else
 				{
-					// Have we also set the backupstyle already?
-					if (player.styleComponent.NextCombatBackupStyle != null)
-						// All styles set, can't change anything now.
-						player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.AlreadySelectedStyles"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
-					else
+					// Have we pressed the same style button used for the primary style again?
+					if (player.styleComponent.NextCombatStyle.ID == style.ID)
 					{
-						// Have we pressed the same style button used for the primary style again?
-						if (player.styleComponent.NextCombatStyle.ID == style.ID)
+						if (player.styleComponent.CancelStyle)
 						{
-							if (player.styleComponent.CancelStyle)
-							{
-								// If yes, we cancel the style.
-								player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.NoLongerPreparing", player.styleComponent.NextCombatStyle.Name), eChatType.CT_System, eChatLoc.CL_SystemWindow);
-								player.styleComponent.NextCombatStyle = null;
-								player.styleComponent.NextCombatBackupStyle = null;
-							}
-							else
-								player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.AlreadyPreparing"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+							// If yes, we cancel the style.
+							player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.NoLongerPreparing", player.styleComponent.NextCombatStyle.Name), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+							player.styleComponent.NextCombatStyle = null;
+							player.styleComponent.NextCombatBackupStyle = null;
 						}
 						else
+							player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.AlreadyPreparing"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+					}
+					else
+					{
+						if (preRequireStyle != null)
 						{
-							if (preRequireStyle != null)
+							AttackData lastAD = player.attackComponent.attackAction.LastAttackData;
+
+							if (lastAD == null
+								|| lastAD.AttackResult != eAttackResult.HitStyle
+								|| lastAD.Style == null
+								|| lastAD.Style.ID != style.OpeningRequirementValue)
 							{
-								AttackData lastAD = player.attackComponent.attackAction.LastAttackData;
+								player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.PerformStyleBefore", preRequireStyle.Name), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+								return;
+							}
+						}
 
-                                if (lastAD == null
-                                    || lastAD.AttackResult != eAttackResult.HitStyle
-                                    || lastAD.Style == null
-                                    || lastAD.Style.ID != style.OpeningRequirementValue)
-                                {
-                                    player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.PerformStyleBefore", preRequireStyle.Name), eChatType.CT_System, eChatLoc.CL_SystemWindow);
-                                    return;
-                                }
-                            }
+						// If no, set the secondary backup style.
+						player.styleComponent.NextCombatBackupStyle = style;
+						if(automaticStyleUsed || style == player.styleComponent.AutomaticBackupStyle)
+							player.Out.SendMessage($"You automatically attempt {style.Name} style as a backup for {player.styleComponent.NextCombatStyle.Name}!", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+						else
+							player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.BackupStyle", style.Name, player.styleComponent.NextCombatStyle.Name), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+					}
+				}
+			}
+		}
 
-                            // If no, set the secondary backup style.
-                            player.styleComponent.NextCombatBackupStyle = style;
-                            if (automaticStyleUsed || style == player.styleComponent.AutomaticBackupStyle)
-                                player.Out.SendMessage($"You automatically attempt {style.Name} style as a backup for {player.styleComponent.NextCombatStyle.Name}!", eChatType.CT_System, eChatLoc.CL_SystemWindow);
-                            else
-                                player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.BackupStyle", style.Name, player.styleComponent.NextCombatStyle.Name), eChatType.CT_System, eChatLoc.CL_SystemWindow);
-                        }
-                    }
-                }
-            }
-        }
-
-		public static bool ExecuteStyle(GameLiving living, GameLiving target, Style style, DbInventoryItem weapon, double unstyledDamage, double unstyledDamageCap, eArmorSlot armorHitLocation, List<ISpellHandler> styleEffects, out double styleDamage, out double styleDamageCap, out int animationId)
+		public static bool ExecuteStyle(AttackData attackData, double unstyledDamage, double unstyledDamageCap, out double styleDamage, out double styleDamageCap, out int animationId)
 		{
 			styleDamage = 0;
 			styleDamageCap = 0;
 			animationId = 0;
 
-            // First thing in processors, lock the objects you modify.
-            // This way it makes sure the objects are not modified by several different threads at the same time.
-            IGamePlayer player = living as IGamePlayer;
+			// We can't get the base damage from the attack data. It hasn't been set yet.
+			GameLiving living = attackData.Attacker;
+			IGamePlayer player = living as IGamePlayer;
+			GameLiving target = attackData.Target;
+			Style style = attackData.Style;
+			DbInventoryItem weapon = attackData.Weapon;
 
-            lock (living)
-            {
-                // Does the player want to execute a style at all?
-                if (style == null)
-                    return false;
+			// Used to disable RA styles when they're actually firing.
+			style.OnStyleExecuted?.Invoke(living);
 
-                // Used to disable RA styles when they're actually firing.
-                style.OnStyleExecuted?.Invoke(living);
+			if (weapon != null && player != null)
+				ApplyEnduranceCost(player, weapon, style, false);
 
-                if (weapon != null)
-                {
-                    if (weapon.Object_Type == (int)eObjectType.Shield)
-                        animationId = (weapon.Hand != 1) ? style.Icon : style.TwoHandAnimation; // 2h shield?
+			AttackData lastAttackData = living.attackComponent.attackAction.LastAttackData;
+			bool perfect; // Whether this is a perfectly executed style or not.
 
-                    // Reduce players endurance. Full endurance cost if conditions aren't met too.
-                    if (player != null)
-                        player.Endurance -= CalculateEnduranceCost(living, style, weapon.SPD_ABS);
-                }
+			if (!CanUseStyle(lastAttackData, living, style, weapon))
+			{
+				perfect = false;
+				player?.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.ExecuteStyle.ExecuteFail", style.Name), eChatType.CT_YouHit, eChatLoc.CL_SystemWindow);
+			}
+			else
+			{
+				perfect = true;
+				double spec = living.GetModifiedSpecLevel(style.Spec);
 
-				AttackData lastAttackData = living.attackComponent.attackAction.LastAttackData;
-
-				// Did primary and backup style fail?
-				if (!CanUseStyle(lastAttackData, living, style, weapon))
+				// Two-handed weapons received a damage bonus in 1.82.
+				// For Perforate Artery, the multiplier was 12 instead of 9. The multipliers for Backstab I and II are unknown.
+				// This apparently also worked on staves and benefited Nightshade and Infiltrator too.
+				if (style.StealthRequirement)
 				{
-					player?.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.ExecuteStyle.ExecuteFail", style.Name), eChatType.CT_YouHit, eChatLoc.CL_SystemWindow);
-					return false;
+					switch (style.ID)
+					{
+						case 335: // Backstab I.
+						{
+							styleDamage = Math.Min(5, spec / 10.0) + spec * 14 / 3.0;
+							break;
+						}
+						case 339: // Backstab II.
+						{
+							styleDamage = Math.Min(45, spec) + spec * 6;
+							break;
+						}
+						case 343: // Perforate Artery.
+						{
+							styleDamage = Math.Min(75, spec * 1.5) + spec * 9;
+							break;
+						}
+					}
+
+					// Stealth openers are unaffected by weapon speed.
+					// Styles with a static growth don't use unstyled damage, so armor has to be taken into account here.
+					// AF isn't taken into account because we don't have a weaponskill to compare it to. This may be a problem.
+					styleDamage *= AttackComponent.CalculateTargetAbsorbFactor(target, attackData.ArmorHitLocation);
+					styleDamageCap = -1; // Uncapped. Is there supposed to be one?
 				}
 				else
 				{
-					double spec = living.GetModifiedSpecLevel(style.Spec);
+					double growthRate = style.GrowthRate;
+					double attackSpeed = living.attackComponent.AttackSpeed(weapon) * 0.001;
+					double modifiedGrowthRate = growthRate * spec * attackSpeed / unstyledDamageCap;
+					styleDamage = modifiedGrowthRate * unstyledDamage;
+					styleDamageCap = modifiedGrowthRate * unstyledDamageCap;
 
-					// Stealth openers are unaffected by weapon speed.
-					if (style.StealthRequirement)
+					// Force styles do at least 1 damage to make level 2 styles actually do something.
+					// Don't forget to ignore the cap. Do it only if the style has a GR.
+					if (styleDamage < 1 && growthRate > 0)
 					{
-						switch (style.ID)
-						{
-							case 335: //Backstab I
-							{
-								//Backstab I Cap = ~5 + Critical Strike Spec *14 / 3 + Nonstyle Cap
-								styleDamage = Math.Min(5, spec / 10.0) + spec * 14 / 3.0;
-								break;
-							}
-							case 339: //Backstab II
-							{
-								//Backstab II Cap = 45 + Critical Strike Spec *6 + Nonstyle Cap
-								styleDamage = Math.Min(45, spec) + spec * 6;
-								break;
-							}
-							case 343: //Perforate Artery
-							{
-								if (living.ActiveWeapon.Item_Type == Slot.TWOHAND)
-								{
-									//Perforate Artery 2h Cap = 75 + Critical Strike Spec * 12 + Nonstyle Cap
-									styleDamage = Math.Min(75, spec * 1.5) + spec * 12;
-								}
-								else
-								{
-									//Perforate Artery Cap = 75 + Critical Strike Spec *9 + Nonstyle Cap
-									styleDamage = Math.Min(75, spec * 1.5) + spec * 9;
-								}
+						styleDamage = 1;
+						styleDamageCap = 0;
+					}
+				}
 
-								break;
+				// Style absorb bonus.
+				if (target is IGamePlayer)
+				{
+					int absorb = target.GetModified(eProperty.StyleAbsorb);
+
+					if (absorb > 0)
+					{
+						absorb = (int) Math.Floor(styleDamage * absorb / 100.0);
+						styleDamage -= absorb;
+
+						if (player != null)
+							player.Out.SendMessage($"A barrier absorbs {absorb} damage!", eChatType.CT_YouHit, eChatLoc.CL_SystemWindow);
+					}
+				}
+
+				// Handle style procs.
+				if (style.Procs.Count > 0)
+				{
+					ISpellHandler effect;
+
+					// If ClassID = 0, use the proc for any class, unless there is also a proc with a ClassID
+					// that matches the player's CharacterClass.ID, or for mobs, the style's ClassID - then use
+					// the class-specific proc instead of the ClassID=0 proc
+					if (!style.RandomProc)
+					{
+						List<StyleProcInfo> procsToExecute = new();
+						bool onlyExecuteClassSpecific = false;
+
+						foreach (StyleProcInfo proc in style.Procs)
+						{
+							if (player != null && proc.ClassId == player.CharacterClass.ID)
+							{
+								procsToExecute.Add(proc);
+								onlyExecuteClassSpecific = true;
 							}
+							else if (proc.ClassId == style.ClassID || proc.ClassId == 0)
+								procsToExecute.Add(proc);
 						}
 
-						// Styles with a static growth don't use unstyled damage, so armor has to be taken into account here.
-						DbInventoryItem armor = target.Inventory?.GetItem((eInventorySlot) armorHitLocation);
-						styleDamage = styleDamage * (1.0 - target.GetArmorAbsorb(armorHitLocation));
-						styleDamageCap = -1; // Uncapped. Is there supposed to be one?
+						foreach (StyleProcInfo procToExecute in procsToExecute)
+						{
+							if (onlyExecuteClassSpecific && procToExecute.ClassId == 0)
+								continue;
+
+							if (Util.Chance(procToExecute.Chance))
+							{
+								effect = CreateMagicEffect(living, target, procToExecute.Spell.ID);
+
+								// Effect could be null if the SpellID is bigger than ushort.
+								if (effect != null)
+								{
+									attackData.StyleEffects ??= new();
+									attackData.StyleEffects.Add(effect);
+								}
+							}
+						}
 					}
 					else
 					{
-						double growthRate = style.GrowthRate;
-						double attackSpeed = living.attackComponent.AttackSpeed(weapon) * 0.001;
-						double modifiedGrowthRate = growthRate * spec * attackSpeed / unstyledDamageCap;
-						styleDamage = modifiedGrowthRate * unstyledDamage;
-						styleDamageCap = modifiedGrowthRate * unstyledDamageCap;
+						// Add one proc randomly.
+						int random = Util.Random(style.Procs.Count - 1);
+						effect = CreateMagicEffect(living, target, style.Procs[random].Spell.ID);
 
-						// Force styles do at least 1 damage to make level 2 styles actually do something.
-						// Don't forget to ignore the cap. Do it only if the style has a GR.
-						if (styleDamage < 1 && growthRate > 0)
+						// Effect could be null if the SpellID is bigger than ushort.
+						if (effect != null)
 						{
-							styleDamage = 1;
-							styleDamageCap = 0;
+							attackData.StyleEffects ??= new();
+							attackData.StyleEffects.Add(effect);
 						}
 					}
+				}
+			}
 
-					if (player != null)
-						styleDamage = styleDamage * player.GetModified(eProperty.StyleDamage) * 0.01;
+			// Set animation ID.
+			if (weapon != null)
+				animationId = (weapon.Hand != 1) ? style.Icon : style.TwoHandAnimation; // Special animation for two-hand.
+			else if (living.Inventory != null)
+				animationId = (living.Inventory.GetItem(eInventorySlot.RightHandWeapon) != null) ? style.Icon : style.TwoHandAnimation; // Special animation for two-hand.
+			else
+				animationId = style.Icon;
 
-					// Style absorb bonus.
-					if (target is IGamePlayer)
-					{
-						int absorb = target.GetModified(eProperty.StyleAbsorb);
+			return perfect;
+		}
 
-                        if (absorb > 0)
-                        {
-                            absorb = (int)Math.Floor(styleDamage * absorb / 100.0);
-                            styleDamage -= absorb;
-
-                            if (player != null)
-                                player.Out.SendMessage($"A barrier absorbs {absorb} damage!", eChatType.CT_YouHit, eChatLoc.CL_SystemWindow);
-                        }
-                    }
-
-                    #region StyleProcs
-
-                    if (style.Procs.Count > 0)
-                    {
-                        ISpellHandler effect;
-
-                        // If ClassID = 0, use the proc for any class, unless there is also a proc with a ClassID
-                        // that matches the player's CharacterClass.ID, or for mobs, the style's ClassID - then use
-                        // the class-specific proc instead of the ClassID=0 proc
-                        if (!style.RandomProc)
-                        {
-                            List<(Spell, int, int)> procsToExecute = new();
-                            bool onlyExecuteClassSpecific = false;
-
-                            foreach ((Spell, int, int) proc in style.Procs)
-                            {
-                                if (player != null && proc.Item2 == player.CharacterClass.ID)
-                                {
-                                    procsToExecute.Add(proc);
-                                    onlyExecuteClassSpecific = true;
-                                }
-                                else if (proc.Item2 == style.ClassID || proc.Item2 == 0)
-                                    procsToExecute.Add(proc);
-                            }
-
-                            foreach ((Spell, int, int) procToExecute in procsToExecute)
-                            {
-                                if (onlyExecuteClassSpecific && procToExecute.Item2 == 0)
-                                    continue;
-
-                                if (Util.Chance(procToExecute.Item3))
-                                {
-                                    effect = CreateMagicEffect(living, target, procToExecute.Item1.ID);
-
-                                    // Effect could be null if the SpellID is bigger than ushort.
-                                    if (effect != null)
-                                    {
-                                        styleEffects.Add(effect);
-                                        if ((style.OpeningRequirementType == Style.eOpening.Offensive && style.OpeningRequirementValue > 0)
-                                            || style.OpeningRequirementType == Style.eOpening.Defensive
-                                            || style.ClassID == 19) // Reaver styles have no variance.
-                                            effect.UseMinVariance = true;
-                                    }
-                                }
-                            }
-                        }
-                        else
-                        {
-                            // Add one proc randomly.
-                            int random = Util.Random(style.Procs.Count - 1);
-                            effect = CreateMagicEffect(living, target, style.Procs[random].Item1.ID);
-
-                            // Effect could be null if the SpellID is bigger than ushort.
-                            if (effect != null)
-                            {
-                                styleEffects.Add(effect);
-                                if ((style.OpeningRequirementType == Style.eOpening.Offensive && style.OpeningRequirementValue > 0)
-                                    || style.OpeningRequirementType == Style.eOpening.Defensive)
-                                    effect.UseMinVariance = true;
-                            }
-                        }
-                    }
-
-                    #endregion StyleProcs
-
-                    #region Animation
-
-                    if (weapon != null)
-                        animationId = (weapon.Hand != 1) ? style.Icon : style.TwoHandAnimation; // special animation for two-hand
-                    else if (living.Inventory != null)
-                        animationId = (living.Inventory.GetItem(eInventorySlot.RightHandWeapon) != null) ? style.Icon : style.TwoHandAnimation; // special animation for two-hand
-                    else
-                        animationId = style.Icon;
-
-                    #endregion Animation
-
-                    return true;
-                }
-            }
-        }
-
-        /// <summary>
-        /// Calculates endurance needed to use style
-        /// </summary>
-        /// <param name="living">The living doing the style</param>
-        /// <param name="style">The style to be used</param>
-        /// <param name="weaponSpd">The weapon speed</param>
-        /// <returns>Endurance needed to use style</returns>
-        public static int CalculateEnduranceCost(GameLiving living, Style style, int weaponSpd)
-        {
-            //[StephenxPimentel]
-            //1.108 - Valhallas Blessing now has a 75% chance to not use endurance.
-
+		/// <summary>
+		/// Calculates endurance needed to use style
+		/// </summary>
+		/// <param name="living">The living doing the style</param>
+		/// <param name="style">The style to be used</param>
+		/// <param name="weaponSpd">The weapon speed</param>
+		/// <returns>Endurance needed to use style</returns>
+		private static int CalculateEnduranceCost(GameLiving living, Style style, int weaponSpd)
+		{
+			// 1.108 - Valhallas Blessing now has a 75% chance to not use endurance.
 			// Apply Valkyrie RA5L effect
 			ValhallasBlessingEffect ValhallasBlessing = living.EffectList.GetOfType<ValhallasBlessingEffect>();
-			if (ValhallasBlessing != null && Util.Chance(75)) 
+
+			if (ValhallasBlessing != null && Util.Chance(75))
 				return 0;
 
-            //Camelot Herald 1.90 : Battlemaster styles will now cost a flat amount of Endurance, regardless of weapon speed
-            if (style.Spec == Specs.Battlemaster)
-                return Math.Max(1, (int)Math.Ceiling((30 * style.EnduranceCost / 40) * living.GetModified(eProperty.FatigueConsumption) * 0.01));
+			// Camelot Herald 1.90 : Battlemaster styles will now cost a flat amount of Endurance, regardless of weapon speed
+			if (style.Spec is Specs.Battlemaster)
+				return Math.Max(1, (int) Math.Ceiling((30 * style.EnduranceCost / 40) * living.GetModified(eProperty.FatigueConsumption) * 0.01));
 
-            int fatCost = weaponSpd * style.EnduranceCost / 40;
-            if (weaponSpd < 40)
-                fatCost++;
+			int fatCost = weaponSpd * style.EnduranceCost / 40;
 
-            fatCost = (int)Math.Ceiling(fatCost * living.GetModified(eProperty.FatigueConsumption) * 0.01);
-            return Math.Max(1, fatCost);
-        }
+			if (weaponSpd < 40)
+				fatCost++;
+
+			return Math.Max(1, (int) Math.Ceiling(fatCost * living.GetModified(eProperty.FatigueConsumption) * 0.01));
+		}
+
+		public static bool CheckEnduranceCost(IGamePlayer player, DbInventoryItem weapon, Style style)
+		{
+			int enduranceCost = CalculateEnduranceCost((GameLiving)player, style, weapon.SPD_ABS);
+
+			if (player.Endurance < enduranceCost)
+			{
+				player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "StyleProcessor.TryToUseStyle.Fatigued"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+				return false;
+			}
+
+			return true;
+		}
+
+		public static bool ApplyEnduranceCost(IGamePlayer player, DbInventoryItem weapon, Style style, bool missed)
+		{
+			int enduranceCost = CalculateEnduranceCost((GameLiving)player, style, weapon.SPD_ABS);
+
+			if (missed)
+				enduranceCost /= 2;
+
+			player.Endurance -= enduranceCost;
+			return true;
+		}
 
 		/// <summary>
 		/// Returns whether player has correct weapon
@@ -622,9 +580,9 @@ namespace DOL.GS.Styles
 			if (spell == null)
 				return null;
 
-			// We have to scale style procs when cast.
-			if (caster is GameSummonedPet pet)
-				pet.ScaleSpell(spell, pet.Level, Properties.PET_SCALE_SPELL_MAX_LEVEL);
+			// Scale the proc here, since it cannot be scaled on initialization.
+			if (caster is GameNPC npc && caster is not MimicNPC)
+				npc.GetScaledSpell(spell);
 
 			return ScriptMgr.CreateSpellHandler(caster, spell, SkillBase.GetSpellLine(GlobalSpellsLines.Combat_Styles_Effect));
 		}
@@ -849,42 +807,40 @@ namespace DOL.GS.Styles
             {
                 temp = LanguageMgr.GetTranslation(player.Client.Account.Language, "DetailDisplayHandler.HandlePacket.TargetEffect") + " ";
 
-                SpellLine styleLine = SkillBase.GetSpellLine(GlobalSpellsLines.Combat_Styles_Effect);
-                if (styleLine != null)
-                {
-                    /*check if there is a class specific style proc*/
-                    bool hasClassSpecificProc = false;
-                    foreach ((Spell, int, int) proc in style.Procs)
-                    {
-                        if (proc.Item2 == player.CharacterClass.ID)
-                        {
-                            hasClassSpecificProc = true;
-                            break;
-                        }
-                    }
-
-                    foreach ((Spell, int, int) proc in style.Procs)
-                    {
-                        // RR4: we added all the procs to the style, now it's time to check for class ID
-                        if (hasClassSpecificProc && proc.Item2 != player.CharacterClass.ID) continue;
-                        else if (!hasClassSpecificProc && proc.Item2 != 0) continue;
-
-						Spell spell = proc.Item1;
-						if (spell != null)
+				SpellLine styleLine = SkillBase.GetSpellLine(GlobalSpellsLines.Combat_Styles_Effect);
+				if (styleLine != null)
+				{
+					/*check if there is a class specific style proc*/
+					bool hasClassSpecificProc = false;
+					foreach (StyleProcInfo proc in style.Procs)
+					{
+						if (proc.ClassId == player.CharacterClass.ID)
 						{
-							ISpellHandler spellHandler = ScriptMgr.CreateSpellHandler(player.Client.Player, spell, styleLine);
-							if (spellHandler == null)
-							{
-								temp += spell.Name + " (Not implemented yet)";
-								delveInfo.Add(temp);
-							}
-							else
-							{
-								temp += spell.Name;
-								delveInfo.Add(temp);
-								delveInfo.Add(" ");//empty line
-								delveInfo.AddRange(spellHandler.DelveInfo);
-							}
+							hasClassSpecificProc = true;
+							break;
+						}
+					}
+
+					foreach (StyleProcInfo proc in style.Procs)
+					{
+						// RR4: we added all the procs to the style, now it's time to check for class ID
+						if (hasClassSpecificProc && proc.ClassId != player.CharacterClass.ID)
+							continue;
+						else if (!hasClassSpecificProc && proc.ClassId != 0)
+							continue;
+
+						ISpellHandler spellHandler = ScriptMgr.CreateSpellHandler(player.Client.Player, proc.Spell, styleLine);
+						if (spellHandler == null)
+						{
+							temp += proc.Spell.Name + " (Not implemented yet)";
+							delveInfo.Add(temp);
+						}
+						else
+						{
+							temp += proc.Spell.Name;
+							delveInfo.Add(temp);
+							delveInfo.Add(" ");//empty line
+							delveInfo.AddRange(spellHandler.DelveInfo);
 						}
 					}
 				}
@@ -924,13 +880,13 @@ namespace DOL.GS.Styles
                     delveInfo.Add(" ");
 
 					string procs = string.Empty;
-					foreach ((Spell, int, int) spell in style.Procs)
+					foreach (StyleProcInfo spell in style.Procs)
 					{
 						if (procs != string.Empty)
 							procs += ", ";
 
-                        procs += spell.Item1.ID;
-                    }
+						procs += spell.Spell.ID;
+					}
 
                     delveInfo.Add(string.Format("Procs: {0}", procs));
                     delveInfo.Add(string.Format("RandomProc: {0}", style.RandomProc));

@@ -26,10 +26,7 @@ namespace DOL.GS
 				default: return 30;// dmg reduction for rest resists
 			}
 		}
-		public override double AttackDamage(DbInventoryItem weapon)
-		{
-			return base.AttackDamage(weapon) * Strength / 100;
-		}
+
 		public override void OnAttackEnemy(AttackData ad) //on enemy actions
 		{
 			if (Util.Chance(45))
@@ -100,13 +97,12 @@ namespace DOL.GS
 					spell.Range = 450;
 					spell.Duration = 3000;//50min
 					spell.SpellID = 11820;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Type = "Disease";
 					spell.Uninterruptible = true;
 					spell.MoveCast = true;
 					spell.DamageType = (int)eDamageType.Energy; //Energy DMG Type
 					m_DyranapurDisease = new Spell(spell, 70);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_DyranapurDisease);
 				}
 				return m_DyranapurDisease;
 			}
@@ -179,12 +175,11 @@ namespace DOL.AI.Brain
 					spell.Value = -30;
 					spell.LifeDrainReturn = 30;
 					spell.SpellID = 11819;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Type = eSpellType.Lifedrain.ToString();
 					spell.DamageType = (int)eDamageType.Body;
 					spell.Uninterruptible = true;
 					m_Boss_Lifedrain = new Spell(spell, 70);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_Boss_Lifedrain);
 				}
 				return m_Boss_Lifedrain;
 			}

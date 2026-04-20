@@ -3,7 +3,7 @@ using DOL.GS.Spells;
 
 namespace DOL.GS.RealmAbilities.Statics
 {
-	public class WallOfFlameBase : GenericBase
+	public class WallOfFlameBase : RealmAbilityStaticItemBase
 	{
 		protected override string GetStaticName() { return "Wall Of Flame"; }
 		protected override ushort GetStaticModel() { return 2651; }
@@ -19,7 +19,7 @@ namespace DOL.GS.RealmAbilities.Statics
 			dbs.ClientEffect = GetStaticEffect();
 			dbs.Damage = damage;
 			dbs.DamageType = (int)eDamageType.Heat;
-			dbs.Target = "Enemy";
+			dbs.Target = eSpellTarget.ENEMY.ToString();
 			dbs.Radius = 0;
 			dbs.Type = eSpellType.DirectDamage.ToString();
 			dbs.Value = 0;
@@ -35,9 +35,9 @@ namespace DOL.GS.RealmAbilities.Statics
 		protected override void CastSpell(GameLiving target)
 		{
 			if (!target.IsAlive) return;
-			if (GameServer.ServerRules.IsAllowedToAttack(m_caster, target, true))
+			if (GameServer.ServerRules.IsAllowedToAttack(_caster, target, true))
 			{
-				ISpellHandler damage = ScriptMgr.CreateSpellHandler(m_caster, s, sl);
+				ISpellHandler damage = ScriptMgr.CreateSpellHandler(_caster, s, sl);
 				damage.StartSpell(target);
 			}
 		}

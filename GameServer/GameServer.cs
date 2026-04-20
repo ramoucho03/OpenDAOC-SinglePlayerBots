@@ -13,10 +13,12 @@ using DOL.Config;
 using DOL.Database;
 using DOL.Database.Attributes;
 using DOL.Events;
+using DOL.GS.Appeal;
 using DOL.GS.Behaviour;
 using DOL.GS.DatabaseUpdate;
 using DOL.GS.Housing;
 using DOL.GS.Keeps;
+using DOL.GS.Metrics;
 using DOL.GS.PacketHandler;
 using DOL.GS.PlayerTitles;
 using DOL.GS.Quests;
@@ -26,10 +28,8 @@ using DOL.Language;
 using DOL.Logging;
 using DOL.Mail;
 using DOL.Network;
-using JNogueira.Discord.Webhook.Client;
-using OpenTelemetry;
-using OpenTelemetry.Metrics;
-using OpenTelemetry.Resources;
+using DOL.Timing;
+using JNogueira.Discord.WebhookClient;
 
 namespace DOL.GS
 {
@@ -270,8 +270,6 @@ namespace DOL.GS
 			if (!LoggerManager.Initialize(logConfig.FullName))
 				return;
 
-			log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
-
 			//Create the instance
 			m_instance = new GameServer(config);
 		}
@@ -292,20 +290,27 @@ namespace DOL.GS
 				//Manually set ThreadPool min thread count.
 				ThreadPool.GetMinThreads(out int minWorkerThreads, out int minIOCThreads);
 				ThreadPool.GetMaxThreads(out int maxWorkerThreads, out int maxIOCThreads);
-				log.Info($"Default ThreadPool minworkthreads {minWorkerThreads} minIOCThreads {minIOCThreads} maxworkthreads {maxWorkerThreads} maxIOCThreads {maxIOCThreads}");
 
 				if (log.IsDebugEnabled)
+				{
+					log.Debug($"Default ThreadPool minworkthreads {minWorkerThreads} minIOCThreads {minIOCThreads} maxworkthreads {maxWorkerThreads} maxIOCThreads {maxIOCThreads}");
 					log.DebugFormat("Starting Server, Memory is {0}MB", GC.GetTotalMemory(false) / 1024 / 1024);
+				}
 
 				m_status = EGameServerStatus.GSS_Closed;
 				Thread.CurrentThread.Priority = ThreadPriority.Normal;
 
 				AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
 
-                // -----------------------------------------------------------
-                // Init Metrics
-                if (!InitComponent(InitMetrics(), "Setup Metric Server"))
-                    log.Error("Can't setup Metric Server");
+				// -----------------------------------------------------------
+				// Init Metrics
+				if (!InitComponent(InitMetrics(), "Setup Metric Server"))
+					return false;
+
+				// -----------------------------------------------------------
+				// Init Discord Client Manager
+				if (!InitComponent(InitDiscordClientManager(), "Setup Discord Client Manager"))
+					return false;
 
 				//---------------------------------------------------------------
 				//Try to compile the Scripts
@@ -371,8 +376,8 @@ namespace DOL.GS
 					return false;
 
 				//---------------------------------------------------------------
-				//Try to initialize the Pathing Manager
-				if (!InitComponent(PathingMgr.Init(), "Pathing Manager Initialization"))
+				//Try to initialize the Pathfinding Manager
+				if (!InitComponent(PathfindingProvider.Init(), "Pathfinding Manager Initialization"))
 					return false;
 
 				//---------------------------------------------------------------
@@ -473,6 +478,11 @@ namespace DOL.GS
 					return false;
 
 				//---------------------------------------------------------------
+				//Load player titles manager
+				if (!InitComponent(AppealMgr.Init(), "Appeal Manager"))
+					return false;
+
+				//---------------------------------------------------------------
 				//Load behaviour manager
 				if (!InitComponent(BehaviourMgr.Init(), "Behaviour Manager"))
 					return false;
@@ -483,10 +493,8 @@ namespace DOL.GS
 					if (!InitComponent(QuestMgr.Init(), "Quest Manager"))
 						return false;
 				}
-				else
-				{
+				else if (log.IsInfoEnabled)
 					log.InfoFormat("Not Loading Quest Manager : Obeying Server Property <load_quests> - {0}", Properties.LOAD_QUESTS);
-				}
 
 				//---------------------------------------------------------------
 				//Notify our scripts that everything went fine!
@@ -513,18 +521,16 @@ namespace DOL.GS
 
 				GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
 
-				log.Info($"GarbageCollection IsServerGC: {System.Runtime.GCSettings.IsServerGC}" );
+				if (log.IsInfoEnabled)
+					log.Info($"GarbageCollection IsServerGC: {System.Runtime.GCSettings.IsServerGC}" );
 
 				//---------------------------------------------------------------
 				//Open the server, players can now connect if webhook, inform Discord!
 				m_status = EGameServerStatus.GSS_Open;
 				StartupTime = DateTime.Now;
 
-				if (Properties.DISCORD_ACTIVE && (!string.IsNullOrEmpty(Properties.DISCORD_WEBHOOK_ID)))
+				if (DiscordClientManager.TryGetClient(WebhookType.Default, out var discordClient))
 				{
-
-					var client = new DiscordWebhookClient(Properties.DISCORD_WEBHOOK_ID);
-
  					var message = new DiscordMessage(
  						"",
  						username: "Game Server",
@@ -533,14 +539,14 @@ namespace DOL.GS
  						embeds: new[]
  						{
  							new DiscordMessageEmbed(
-	                            color: 3066993,
-	                            description: "Server open for connections!",
-                                thumbnail: new DiscordMessageEmbedThumbnail("")
-                            )
+								color: 3066993,
+								description: "Server open for connections!",
+								thumbnail: new DiscordMessageEmbedThumbnail("")
+							)
  						}
  					);
 
-					client.SendToDiscord(message);
+					discordClient.SendToDiscordAsync(message);
 				}
 
 				if (Properties.ATLAS_API)
@@ -567,42 +573,44 @@ namespace DOL.GS
 			}
 		}
 
-        /// <summary>
-        /// Setup Metrics, this includes running a dedicated Kestrel Server for prometheus endpoints
-        /// and also starting the MetricsCollector
-        /// </summary>
-        /// <returns></returns>
-        private bool InitMetrics()
-        {
-            try
-            {
-                if (!Instance.Configuration.MetricsEnabled)
-                {
-                    return true;
-                }
+		/// <summary>
+		/// Setup Metrics, this includes running a dedicated Kestrel Server for prometheus endpoints
+		/// and also starting the MetricsCollector
+		/// </summary>
+		private static bool InitMetrics()
+		{
+			try
+			{
+				if (!Instance.Configuration.MetricsEnabled)
+					return true;
 
-                var meterProivder = Sdk.CreateMeterProviderBuilder()
-                    .ConfigureResource(resource => resource.AddService("GameServer"))
-                    .AddMeter(MetricsCollector.METER_NAME)
-                    .AddRuntimeInstrumentation()
-                    .AddOtlpExporter((options, readerOptions) =>
-                    {
-                        options.Endpoint = Instance.Configuration.OtlpEndpoint;
-                        readerOptions.PeriodicExportingMetricReaderOptions.ExportIntervalMilliseconds = Instance.Configuration.MetricsExportInterval;
-                    })
-                    .Build();
+				MeterRegistry.RegisterMeterProviders();
+				return true;
+			}
+			catch (Exception e)
+			{
+				if (log.IsErrorEnabled)
+					log.Error(e);
 
-                MetricsCollector.StartCollecting();
-                meterProivder.ForceFlush();
+				return false;
+			}
+		}
 
-                return true;
-            }
-            catch (Exception e)
-            {
-                log.Error(e);
-                return false;
-            }
-        }
+		private static bool InitDiscordClientManager()
+		{
+			try
+			{
+				DiscordClientManager.Initialize();
+				return true;
+			}
+			catch (Exception e)
+			{
+				if (log.IsErrorEnabled)
+					log.Error(e);
+
+				return false;
+			}
+		}
 
 		public async void GetPatchNotes()
 		{
@@ -652,7 +660,8 @@ namespace DOL.GS
 			// Check if Configuration Forces to use Pre-Compiled Game Server Scripts Assembly
 			if (!Configuration.EnableCompilation)
 			{
-				log.Info("Script Compilation Disabled in Server Configuration, Loading pre-compiled Assembly...");
+				if (log.IsInfoEnabled)
+					log.Info("Script Compilation Disabled in Server Configuration, Loading pre-compiled Assembly...");
 
 				if (File.Exists(Configuration.ScriptCompilationTarget))
 				{
@@ -660,7 +669,8 @@ namespace DOL.GS
 				}
 				else
 				{
-					log.WarnFormat("Compilation Disabled - Could not find pre-compiled Assembly : {0} - Server starting without Scripts Assembly!", Configuration.ScriptCompilationTarget);
+					if (log.IsWarnEnabled)
+						log.WarnFormat("Compilation Disabled - Could not find pre-compiled Assembly : {0} - Server starting without Scripts Assembly!", Configuration.ScriptCompilationTarget);
 				}
 
 				compiled = true;
@@ -848,11 +858,14 @@ namespace DOL.GS
 
 				if (m_keepManager != null)
 				{
-					log.Warn("No Keep manager found, using " + m_keepManager.GetType().FullName);
+					if (log.IsWarnEnabled)
+						log.Warn("No Keep manager found, using " + m_keepManager.GetType().FullName);
 				}
 				else
 				{
-					log.Error("Cannot create Keep manager!");
+					if (log.IsErrorEnabled)
+						log.Error("Cannot create Keep manager!");
+
 					return false;
 				}
 			}
@@ -869,7 +882,8 @@ namespace DOL.GS
 			bool result = true;
 			try
 			{
-				log.Info("Checking database for updates ...");
+				if (log.IsInfoEnabled)
+					log.Info("Checking database for updates ...");
 
 				foreach (Assembly asm in ScriptMgr.GameServerScripts)
 				{
@@ -902,11 +916,15 @@ namespace DOL.GS
 			}
 			catch (Exception e)
 			{
-				log.Error("Error checking/updating database: ", e);
+				if (log.IsErrorEnabled)
+					log.Error("Error checking/updating database: ", e);
+
 				return false;
 			}
 
-			log.Info("Database update complete.");
+			if (log.IsInfoEnabled)
+				log.Info("Database update complete.");
+
 			return result;
 		}
 
@@ -981,61 +999,41 @@ namespace DOL.GS
 		/// </summary>
 		public override void Stop()
 		{
-			//Stop new clients from logging in
+			if (log.IsInfoEnabled)
+				log.Info("Stopping server...");
+
+			// Stop new clients from logging in.
 			m_status = EGameServerStatus.GSS_Closed;
 
-			log.Info("GameServer.Stop() - enter method");
+			if (log.IsInfoEnabled)
+				log.Info("No longer accepting incoming connections");
 
-			//Notify our scripthandlers
+			GameLoop.Exit();
 			GameEventMgr.Notify(ScriptEvent.Unloaded);
-
-			//Notify of the global server stop event
-			//We notify before we shutdown the database
-			//so that event handlers can use the datbase too
 			GameEventMgr.Notify(GameServerEvent.Stopped, this);
-			GameEventMgr.RemoveAllHandlers(true);
+			GameEventMgr.RemoveAllHandlers();
+			WorldMgr.Exit();
+			Scheduler?.Shutdown();
+			Scheduler = null;
+			m_serverRules = null;
 
-			//Stop the World Save timer
+			// Stop the save timer and save manually.
 			if (m_timer != null)
 			{
 				m_timer.Change(Timeout.Infinite, Timeout.Infinite);
 				m_timer.Dispose();
 				m_timer = null;
+				SaveTimerProc(null);
 			}
 
-			//Stop the base server
 			base.Stop();
 
-			//Stop all mobMgrs
-			WorldMgr.StopRegionMgrs();
-
-			//Stop the WorldMgr, save all players
-			//WorldMgr.SaveToDatabase();
-			SaveTimerProc(null);
-
-			WorldMgr.Exit();
-			GameLoop.Exit();
-
-			//Save the database
-			// 2008-01-29 Kakuri - Obsolete
-			/*if ( m_database != null )
-				{
-					m_database.WriteDatabaseTables();
-				}*/
-
-			m_serverRules = null;
-
-			// Stop Server Scheduler
-			if (Scheduler != null)
-				Scheduler.Shutdown();
-			Scheduler = null;
-
-			Thread.CurrentThread.Priority = ThreadPriority.BelowNormal;
-
 			if (log.IsInfoEnabled)
-				log.Info("Server Stopped");
+				log.Info("Stopped");
 
+			// Stop the logger manager last, so that all logs are flushed.
 			LoggerManager.Stop();
+			Environment.Exit(0);
 		}
 
 		#endregion
@@ -1081,28 +1079,58 @@ namespace DOL.GS
 				return;
 			}
 
-			GSPacketIn packet = new(endPosition - GSPacketIn.HDR_SIZE);
-			packet.Load(buffer, offset, size);
-			GameClient client = ClientService.GetClientFromId(packet.SessionID);
-
-			if (client == null)
+			// Post the packet to the game loop for processing.
+			ClientService.Instance.Post(static state =>
 			{
-				if (log.IsWarnEnabled)
-					log.Warn($"Got an UDP packet from invalid client ID or IP (id: {packet.SessionID}) (ip: {endPoint}) (code: {packet.ID:x2})");
+				var packet = PooledObjectFactory.GetForTick<GSPacketIn>().Init();
+				packet.Load(state.Buffer, state.Offset, state.Size);
+				GameClient client = ClientService.Instance.GetClientBySessionId(packet.SessionID);
 
-				return;
-			}
+				if (client == null)
+				{
+					if (log.IsWarnEnabled)
+						log.Warn($"Got an UDP packet from invalid client ID or IP (id: {packet.SessionID}) (ip: {state.EndPoint}) (code: {packet.Code:x2})");
 
-			// If this is the first message from this client, we save the endpoint.
-			if (client.UdpEndPoint == null)
+					return;
+				}
+
+				if (client.UdpEndPoint == null)
+				{
+					client.UdpEndPoint = state.EndPoint as IPEndPoint;
+					client.UdpConfirm = false;
+				}
+
+				if (!client.UdpEndPoint.Equals(state.EndPoint))
+					return;
+
+				try
+				{
+					client.PacketProcessor.ProcessInboundPacket(packet);
+				}
+				catch (Exception e)
+				{
+					if (log.IsErrorEnabled)
+						log.Error(e);
+				}
+				finally
+				{
+					packet.ReleasePooledObject();
+				}
+			}, new
 			{
-				client.UdpEndPoint = endPoint as IPEndPoint;
-				client.UdpConfirm = false;
-			}
+				Buffer = buffer,
+				Offset = offset,
+				Size = size,
+				EndPoint = endPoint
+			});
+		}
 
-			// Only handle the packet if it comes from a valid client.
-			if (client.UdpEndPoint.Equals(endPoint))
-				client.PacketProcessor.ProcessInboundPacket(packet);
+		private class UdpPacketState
+		{
+			public byte[] Buffer { get; init; }
+			public int Offset { get; init; }
+			public int Size { get; init; }
+			public EndPoint EndPoint { get; init; }
 		}
 
 		#endregion
@@ -1178,9 +1206,7 @@ namespace DOL.GS
 							if (attrib.Any())
 							{
 								if (log.IsInfoEnabled)
-								{
 									log.InfoFormat("Registering table: {0}", type.FullName);
-								}
 
 								m_database.RegisterDataObject(type);
 							}
@@ -1191,11 +1217,14 @@ namespace DOL.GS
 				{
 					if (log.IsErrorEnabled)
 						log.Error("Error registering Tables", e);
+
 					return false;
 				}
 			}
+
 			if (log.IsInfoEnabled)
 				log.Info("Database Initialization: true");
+
 			return true;
 		}
 
@@ -1209,8 +1238,7 @@ namespace DOL.GS
 
 			try
 			{
-				long startTick = GameLoop.GetCurrentTime();
-				long startTick2 = GameLoop.GetCurrentTime();
+				long startTick = MonotonicTime.NowMs;
 
 				if (log.IsInfoEnabled)
 					log.Info("Saving database...");
@@ -1221,23 +1249,21 @@ namespace DOL.GS
 				(int count, long elapsed) boats = (0, 0);
 				(int count, long elapsed) factions = (0, 0);
 				(int count, long elapsed) crafting = (0, 0);
+				(int count, long elapsed) appeals = (0, 0);
 
 				if (m_database != null)
 				{
 					Thread.CurrentThread.Priority = ThreadPriority.Lowest;
-
-					// The following line goes through EACH region and EACH object is tested for savability. A real waste of time, so it is commented out.
-					// Only save players instead.
-					//WorldMgr.SaveToDatabase();
-					Save(ClientService.SavePlayers, ref players);
+					Save(ClientService.Instance.SavePlayers, ref players);
 					Save(DoorMgr.SaveKeepDoors, ref keepDoors);
 					Save(GuildMgr.SaveAllGuilds, ref guilds);
 					Save(BoatMgr.SaveAllBoats, ref boats);
 					Save(FactionMgr.SaveAllAggroToFaction, ref factions);
 					Save(CraftingProgressMgr.Save, ref crafting);
+					Save(AppealMgr.Save, ref appeals);
 				}
 
-				startTick = GameLoop.GetCurrentTime() - startTick;
+				startTick = MonotonicTime.NowMs - startTick;
 
 				if (log.IsInfoEnabled)
 				{
@@ -1248,9 +1274,11 @@ namespace DOL.GS
 					stringBuilder.Append($"    {nameof(guilds)}: {guilds.count} in {guilds.elapsed}ms\n");
 					stringBuilder.Append($"     {nameof(boats)}: {boats.count} in {boats.elapsed}ms\n");
 					stringBuilder.Append($"  {nameof(factions)}: {factions.count} in {factions.elapsed}ms\n");
-					stringBuilder.Append($"  {nameof(crafting)}: {crafting.count} in {crafting.elapsed}ms");
+					stringBuilder.Append($"  {nameof(crafting)}: {crafting.count} in {crafting.elapsed}ms\n");
+					stringBuilder.Append($"   {nameof(appeals)}: {appeals.count} in {appeals.elapsed}ms");
 
-					log.Info(stringBuilder.ToString());
+					if (log.IsInfoEnabled)
+						log.Info(stringBuilder.ToString());
 				}
 			}
 			catch (Exception e)
@@ -1266,9 +1294,9 @@ namespace DOL.GS
 
 			static void Save(Func<int> save, ref (int count, long elapsed) result)
 			{
-				result.elapsed = GameLoop.GetCurrentTime();
+				result.elapsed = MonotonicTime.NowMs;
 				result.count = save();
-				result.elapsed = GameLoop.GetCurrentTime() - result.elapsed;
+				result.elapsed = MonotonicTime.NowMs - result.elapsed;
 			}
 		}
 
@@ -1287,6 +1315,8 @@ namespace DOL.GS
 		/// <param name="config">A valid game server configuration</param>
 		protected GameServer(GameServerConfiguration config) : base(config)
 		{
+			log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
+
 			m_gmLog = LoggerManager.Create(Configuration.GMActionsLoggerName);
 			m_cheatLog = LoggerManager.Create(Configuration.CheatLoggerName);
 			m_dualIPLog = LoggerManager.Create(Configuration.DualIPLoggerName);

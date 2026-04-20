@@ -106,13 +106,12 @@ namespace DOL.AI.Brain
                     playerOwner.CommandNpcRelease();
             }
 
-            if (brain.AggressionState is eAggressionState.Passive)
+            // Return to passive if requested, unless confused.
+            if (brain.AggressionState is eAggressionState.Passive && !brain.Body.IsConfused)
             {
                 brain.FSM.SetCurrentState(eFSMStateType.PASSIVE);
                 return;
             }
-
-            //brain.CheckSpells(eCheckSpellType.Offensive);
 
             if (brain.AggressionState is eAggressionState.Aggressive)
                 brain.CheckProximityAggro();
@@ -138,8 +137,8 @@ namespace DOL.AI.Brain
                 if (brain.CheckSpells(StandardMobBrain.eCheckSpellType.Defensive))
                     return;
 
-                // Return to defensive if there's no valid target.
-                if (brain.AggressionState is not eAggressionState.Aggressive)
+                // Return to defensive if there's no valid target, unless confused.
+                if (brain.AggressionState is not eAggressionState.Aggressive && !brain.Body.IsConfused)
                 {
                     brain.FSM.SetCurrentState(eFSMStateType.IDLE);
                     return;

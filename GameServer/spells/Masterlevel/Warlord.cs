@@ -80,7 +80,7 @@ namespace DOL.GS.Spells
                                 if (target.IsAlive && !GameServer.ServerRules.IsAllowedToAttack(Caster, player, true))
                                 {
                                     heal = target.ChangeHealth(target, eHealthChangeType.Spell, healvalue);
-                                    if (heal != 0) player.Out.SendMessage(m_caster.Name + " heal you for " + heal + " hit point!", eChatType.CT_YouWereHit, eChatLoc.CL_SystemWindow);
+                                    if (heal != 0) player.Out.SendMessage(m_caster.Name + " heal you for " + heal + " hit point!", eChatType.CT_System, eChatLoc.CL_SystemWindow);
                                 }
                             heal = m_caster.ChangeHealth(Caster, eHealthChangeType.Spell, (int)(-m_caster.Health * 90 / 100));
                             if (heal != 0) MessageToCaster("You lose " + heal + " hit point" + (heal == 1 ? "." : "s."), eChatType.CT_Spell);
@@ -106,9 +106,9 @@ namespace DOL.GS.Spells
         {
             return 0;
         }
-        public override IList<GameLiving> SelectTargets(GameObject castTarget)
+        public override List<GameLiving> SelectTargets(GameObject castTarget)
         {
-            var list = new List<GameLiving>();
+            var list = GameLoop.GetListForTick<GameLiving>();
             GameLiving target = Caster;
             foreach (GameNPC npc in target.GetNPCsInRadius((ushort)Spell.Radius))
             {
@@ -143,7 +143,7 @@ namespace DOL.GS.Spells
     [SpellHandler(eSpellType.CleansingAura)]
     public class CleansingAurauraSpellHandler : SpellHandler
     {
-        public override bool IsOverwritable(ECSGameSpellEffect compare)
+        public override bool HasConflictingEffectWith(ISpellHandler compare)
         {
             return true;
         }
@@ -215,7 +215,7 @@ namespace DOL.GS.Spells
     [SpellHandler(eSpellType.MLABSBuff)]
     public class MLABSBuff : MasterlevelBuffHandling
     {
-        public override eProperty Property1 { get { return eProperty.ArmorAbsorption; } }
+        public override eProperty Property1 { get { return eProperty.PhysicalAbsorption; } }
 
         public MLABSBuff(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
     }

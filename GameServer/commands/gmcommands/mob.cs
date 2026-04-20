@@ -10,6 +10,7 @@ using DOL.GS.Housing;
 using DOL.GS.Movement;
 using DOL.GS.PacketHandler;
 using DOL.GS.Quests;
+using static DOL.AI.Brain.StandardMobBrain;
 
 namespace DOL.GS.Commands
 {
@@ -1378,7 +1379,7 @@ namespace DOL.GS.Commands
 			{
 				level = Convert.ToByte(args[2]);
 				targetMob.Level = level;
-				targetMob.AutoSetStats();
+				targetMob.SetStats();
 				targetMob.SaveIntoDatabase();
 				client.Out.SendMessage("Mob level changed to: " + targetMob.Level + " and stats adjusted", eChatType.CT_System, eChatLoc.CL_SystemWindow);
 			}
@@ -1393,7 +1394,7 @@ namespace DOL.GS.Commands
 
 			try
 			{
-				targetMob.AutoSetStats();
+				targetMob.SetStats();
 				targetMob.SaveIntoDatabase();
 				client.Out.SendMessage("Mob stats adjusted to level " + targetMob.Level, eChatType.CT_System, eChatLoc.CL_SystemWindow);
 			}
@@ -2982,44 +2983,30 @@ namespace DOL.GS.Commands
 
 			if (targetMob.Brain is StandardMobBrain standardBrain)
 			{
-				int pendingLosCheckCount = standardBrain.PendingLosCheckCount;
-				
-				if (pendingLosCheckCount != 0)
-					text.Add($"PendingLosCheckCount: {pendingLosCheckCount}");
+				int pendingAggroLosCheckCount = standardBrain.PendingAggroLosCheckCount;
 
-				List<(GameLiving, long)> aggroList = standardBrain.GetOrderedAggroList();
+				if (pendingAggroLosCheckCount != 0)
+					text.Add($"PendingAggroLosCheckCount: {pendingAggroLosCheckCount}");
+
+				List<OrderedAggroListElement> aggroList = standardBrain.GetOrderedAggroList();
 
 				if (aggroList.Count > 0)
 				{
 					text.Add("");
 					text.Add("Aggro List:");
 
-					foreach ((GameLiving, long) pair in aggroList)
-						text.Add($"{pair.Item1.Name}: {pair.Item2}");
+					foreach (OrderedAggroListElement orderedAggroListElement in aggroList)
+						text.Add($"{orderedAggroListElement.Living.Name}: {orderedAggroListElement.AggroAmount}");
 				}
 			}
 
-			if (targetMob.attackComponent.Attackers != null && !targetMob.attackComponent.Attackers.IsEmpty)
+			if (targetMob.attackComponent.AttackerTracker.Count > 0)
 			{
 				text.Add("");
 				text.Add("Attacker List:");
 
-				foreach (GameLiving attacker in targetMob.attackComponent.Attackers.Keys)
+				foreach (GameLiving attacker in targetMob.attackComponent.AttackerTracker.Attackers)
 					text.Add(attacker.Name);
-			}
-
-			List<ECSGameEffect> allEffects = targetMob.effectListComponent.GetAllEffects();
-
-			if (allEffects.Count > 0)
-			{
-				text.Add("");
-				text.Add("Effect List:");
-
-				foreach (ECSGameEffect effect in allEffects)
-				{
-					long remaining = effect.IsConcentrationEffect() ? -1 : effect.GetRemainingTimeForClient();
-					text.Add($"{effect.Name} (type: {effect.GetType()}) (remaining: {remaining}) (source: {(effect.SpellHandler == null ? targetMob.Name : effect.SpellHandler.Caster.Name)})");
-				}
 			}
 
 			client.Out.SendCustomTextWindow("Mob State", text);

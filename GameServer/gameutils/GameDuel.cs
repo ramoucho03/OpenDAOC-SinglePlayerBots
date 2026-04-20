@@ -68,12 +68,12 @@ namespace DOL.GS
 
             static void StopEffects(GameLiving living, GameLiving caster)
             {
-                Loop(living.effectListComponent.GetAllEffects(), caster);
+                Loop(living.effectListComponent.GetEffects(), caster);
 
                 IControlledBrain controlledBrain = living.ControlledBrain;
 
                 if (controlledBrain != null)
-                    Loop(controlledBrain.Body.effectListComponent.GetAllEffects(), caster);
+                    Loop(controlledBrain.Body.effectListComponent.GetEffects(), caster);
 
                 static void Loop(List<ECSGameEffect> effects, GameLiving caster)
                 {
@@ -89,7 +89,7 @@ namespace DOL.GS
                         if (spellHandler.Caster == caster || (spellHandler.Caster != null && spellHandler.Caster == petCaster))
                         {
                             effect.TriggersImmunity = false;
-                            EffectService.RequestCancelEffect(effect);
+                            effect.End();
                         }
                     }
                 }

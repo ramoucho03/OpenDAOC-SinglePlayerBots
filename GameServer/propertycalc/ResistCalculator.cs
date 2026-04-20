@@ -21,8 +21,6 @@ namespace DOL.GS.PropertyCalc
 
         private int CalcValueInternal(GameLiving living, eProperty property, bool forCrowdControlDuration)
         {
-            int propertyIndex = (int) property;
-
             // Necromancer pets receive resistances from Avoidance of Magic and other active RAs.
             GameLiving livingToCheck;
 
@@ -32,33 +30,14 @@ namespace DOL.GS.PropertyCalc
                 livingToCheck = living;
 
             int itemBonus = CalcValueFromItems(living, property);
-            int abilityBonus = livingToCheck.AbilityBonus[propertyIndex]; // Applied as secondary resists.
+            int abilityBonus = livingToCheck.AbilityBonus[property]; // Applied as secondary resists.
 
             // Ability bonuses are taken into account for crowd control duration unless they're put in `OtherBonus`.
             if (!forCrowdControlDuration)
-                abilityBonus += livingToCheck.OtherBonus[propertyIndex];
+                abilityBonus += livingToCheck.OtherBonus[property];
 
             int racialBonus = SkillBase.GetRaceResist(living.Race, (eResist) property);
             int buffBonus = CalcValueFromBuffs(living, property);
-
-            switch (property)
-            {
-                case eProperty.Resist_Body:
-                case eProperty.Resist_Cold:
-                case eProperty.Resist_Energy:
-                case eProperty.Resist_Heat:
-                case eProperty.Resist_Matter:
-                case eProperty.Resist_Spirit:
-                case eProperty.Resist_Natural:
-                {
-                    abilityBonus += livingToCheck.AbilityBonus[eProperty.MagicAbsorption];
-
-                    if (!forCrowdControlDuration)
-                        abilityBonus += livingToCheck.OtherBonus[eProperty.MagicAbsorption];
-
-                    break;
-                }
-            }
 
             int result = itemBonus + buffBonus; // Primary resists.
             result += (int) ((1 - result * 0.01) * abilityBonus); // Secondary resists.
@@ -80,8 +59,6 @@ namespace DOL.GS.PropertyCalc
         /// </summary>
         public override int CalcValueFromBuffs(GameLiving living, eProperty property)
         {
-            int propertyIndex = (int) property;
-
             GameLiving livingToCheck;
 
             if (living is NecromancerPet necroPet && necroPet.Owner is IGamePlayer playerOwner)
@@ -89,27 +66,10 @@ namespace DOL.GS.PropertyCalc
             else
                 livingToCheck = living;
 
-            int buff = living.BaseBuffBonusCategory[propertyIndex] + living.SpecBuffBonusCategory[propertyIndex];
+            int buff = living.BaseBuffBonusCategory[property] + living.SpecBuffBonusCategory[property];
             buff = livingToCheck is GameNPC && livingToCheck is not MimicNPC ? buff : Math.Min(buff, BuffBonusCap);
             int debuff = Math.Abs(living.DebuffCategory[property]) + Math.Abs(living.SpecDebuffCategory[property]);
-
-            switch (property)
-            {
-                case eProperty.Resist_Body:
-                case eProperty.Resist_Cold:
-                case eProperty.Resist_Energy:
-                case eProperty.Resist_Heat:
-                case eProperty.Resist_Matter:
-                case eProperty.Resist_Spirit:
-                case eProperty.Resist_Natural:
-                {
-                    buff += living.BaseBuffBonusCategory[eProperty.MagicAbsorption] + living.SpecBuffBonusCategory[eProperty.MagicAbsorption];
-                    debuff += Math.Abs(living.DebuffCategory[eProperty.MagicAbsorption]);
-                    break;
-                }
-            }
-
-            buff -= Math.Abs(debuff);
+            buff -= debuff;
 
             if (buff < 0 && living is IGamePlayer)
                 buff /= 2;
@@ -133,7 +93,7 @@ namespace DOL.GS.PropertyCalc
             if (livingToCheck is GameNPC && livingToCheck is not MimicNPC)
                 return 0;
 
-            int itemBonus = livingToCheck.ItemBonus[(int)property];
+            int itemBonus = livingToCheck.ItemBonus[property];
 
             // Item bonus cap and cap increase from Mythirians.
             int itemBonusCap = livingToCheck.Level / 2 + 1;
@@ -151,7 +111,7 @@ namespace DOL.GS.PropertyCalc
             if (living == null)
                 return 0;
 
-            return Math.Min(living.ItemBonus[(int) (eProperty.ResCapBonus_First - eProperty.Resist_First + property)], 5);
+            return Math.Min(living.ItemBonus[eProperty.ResCapBonus_First - eProperty.Resist_First + property], 5);
         }
 
         /// <summary>

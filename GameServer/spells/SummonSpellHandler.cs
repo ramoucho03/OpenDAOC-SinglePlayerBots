@@ -1,9 +1,12 @@
+using System;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Reflection;
 using DOL.AI.Brain;
 using DOL.Events;
 using DOL.GS.Effects;
 using DOL.GS.PacketHandler;
+using DOL.Logging;
 
 namespace DOL.GS.Spells
 {
@@ -20,7 +23,9 @@ namespace DOL.GS.Spells
 	/// </summary>
 	public abstract class SummonSpellHandler : SpellHandler
 	{
-		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
+
+		public override string ShortDescription => $"Summon a pet to serve the caster, with a maximum level of {Math.Abs(Spell.Damage)}% of the caster's level (up to {Math.Min((int) (GamePlayer.MAX_LEVEL * Math.Abs(Spell.Damage) / 100.0), Spell.Value)}).";
 
 		protected GameSummonedPet m_pet = null;
 
@@ -37,9 +42,9 @@ namespace DOL.GS.Spells
 
 		public SummonSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
 
-		public override ECSGameSpellEffect CreateECSEffect(ECSGameEffectInitParams initParams)
+		public override ECSGameSpellEffect CreateECSEffect(in ECSGameEffectInitParams initParams)
 		{
-			return new PetECSGameEffect(initParams);
+			return ECSGameEffectFactory.Create(initParams, static (in i) => new PetECSGameEffect(i));
 		}
 
 		/// <summary>
@@ -67,11 +72,35 @@ namespace DOL.GS.Spells
 
 		protected virtual void GetPetLocation(out int x, out int y, out int z, out ushort heading, out Region region)
 		{
-			Point2D point = Caster.GetPointFromHeading( Caster.Heading, 64 );
-			x = point.X;
-			y = point.Y;
-			z = Caster.Z;
-			heading = (ushort)((Caster.Heading + 2048) % 4096);
+			Point2D point = Caster.GetPointFromHeading(Caster.Heading, 64);
+			Zone zone = Caster.CurrentRegion.GetZone(point.X, point.Y);
+
+			if (zone.IsPathfindingEnabled)
+			{
+				EDtPolyFlags[] filters = PathfindingProvider.Instance.DefaultFilters;
+				Vector3? closestPoint = PathfindingProvider.Instance.GetClosestPoint(zone, new(point.X, point.Y, Caster.Z), 32f, 32f, 64f, filters);
+
+				if (closestPoint.HasValue && PathfindingProvider.Instance.HasLineOfSight(zone, closestPoint.Value, new(Caster.X, Caster.Y, Caster.Z), filters))
+				{
+					x = (int) Math.Round(closestPoint.Value.X);
+					y = (int) Math.Round(closestPoint.Value.Y);
+					z = (int) Math.Round(closestPoint.Value.Z);
+				}
+				else
+				{
+					x = Caster.X;
+					y = Caster.Y;
+					z = Caster.Z;
+				}
+			}
+			else
+			{
+				x = point.X;
+				y = point.Y;
+				z = Caster.Z;
+			}
+
+			heading = (ushort) ((Caster.Heading + 2048) % 4096);
 			region = Caster.CurrentRegion;
 		}
 
@@ -150,13 +179,12 @@ namespace DOL.GS.Spells
 			m_pet.Spells = template.Spells; // Have to sort spells again now that the pet level has been assigned.
 
 			SetBrainToOwner(brain);
-			CreateECSEffect(new ECSGameEffectInitParams(m_pet, CalculateEffectDuration(target), CasterEffectiveness, this));
-			Caster.OnPetSummoned(m_pet);
+			CreateECSEffect(new(m_pet, CalculateEffectDuration(target), CasterEffectiveness, this));
 		}
 
-		public virtual void OnPetReleased(GameSummonedPet pet)
+		public virtual void OnPetReleased()
 		{
-			if (pet.Brain is not IControlledBrain petBrain)
+			if (Pet.Brain is not IControlledBrain petBrain)
 				return;
 
 			GameLiving petOwner = petBrain.Owner;
@@ -203,7 +231,7 @@ namespace DOL.GS.Spells
 				// TODO: Fix no spellType
 				//list.Add("Function: " + (Spell.SpellType == string.Empty ? "(not implemented)" : Spell.SpellType));
 				list.Add(" "); //empty line
-				list.Add(Spell.Description);
+				list.Add(ShortDescription);
 				list.Add(" "); //empty line
 				if (Spell.InstrumentRequirement != 0)
 					list.Add("Instrument require: " + GlobalConstants.InstrumentTypeToName(Spell.InstrumentRequirement));

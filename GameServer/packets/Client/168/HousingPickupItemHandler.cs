@@ -1,21 +1,3 @@
-/*
- * DAWN OF LIGHT - The first free open source DAoC server emulator
- * 
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- * 
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
- *
- */
 using DOL.Database;
 using DOL.GS.Housing;
 
@@ -25,17 +7,15 @@ namespace DOL.GS.PacketHandler.Client.v168
 	/// Handle housing pickup item requests from the client.
 	/// </summary>
 	[PacketHandlerAttribute(PacketHandlerType.TCP, eClientPackets.PlayerPickupHouseItem, "Handle Housing Pick Up Request.", eClientStatus.PlayerInGame)]
-	public class HousingPickupItemHandler : IPacketHandler
+	public class HousingPickupItemHandler : PacketHandler
 	{
-		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
-
 		/// <summary>
 		/// Handle the packet
 		/// </summary>
 		/// <param name="client"></param>
 		/// <param name="packet"></param>
 		/// <returns></returns>
-		public void HandlePacket(GameClient client, GSPacketIn packet)
+		protected override void HandlePacketInternal(GameClient client, GSPacketIn packet)
 		{
 			int unknown = packet.ReadByte();
 			int position = packet.ReadByte();
@@ -70,7 +50,7 @@ namespace DOL.GS.PacketHandler.Client.v168
 						var invitem = GameInventoryItem.Create((house.OutdoorItems[i]).BaseItem);
 						if (client.Player.Inventory.AddItem(eInventorySlot.FirstEmptyBackpack, invitem))
 							InventoryLogging.LogInventoryAction("(HOUSE;" + house.HouseNumber + ")", client.Player, eInventoryActionType.Other, invitem.Template, invitem.Count);
-						house.OutdoorItems.Remove(i);
+						house.RemoveOutdoorItem(i);
 
 						// update garden
 						client.Out.SendGarden(house);
@@ -173,29 +153,31 @@ namespace DOL.GS.PacketHandler.Client.v168
 					}
 
 					GameServer.Database.DeleteObject((house.IndoorItems[(position)]).DatabaseItem);
-					house.IndoorItems.Remove(position);
+					house.RemoveIndoorItem(position);
 
-					var pak = new GSTCPPacketOut(client.Out.GetPacketCode(eServerPackets.HousingItem));
-					if (client.Version >= GameClient.eClientVersion.Version1125)
-                    {
-                        pak.WriteShortLowEndian((ushort)housenumber);
-                        pak.WriteByte(0x01);
-                        pak.WriteByte(0x00);
-                        pak.WriteByte((byte)position);
-                        pak.Fill(0x00, 11);
-                    }
-                    else
-                    {
-                        pak.WriteShort((ushort)housenumber);
-                        pak.WriteByte(0x01);
-                        pak.WriteByte(0x00);
-                        pak.WriteByte((byte)position);
-                        pak.WriteByte(0x00);
-                    }
-
-					foreach (GamePlayer plr in house.GetAllPlayersInHouse())
+					using (var pak = PooledObjectFactory.GetForTick<GSTCPPacketOut>().Init(AbstractPacketLib.GetPacketCode(eServerPackets.HousingItem)))
 					{
-						plr.Out.SendTCP(pak);
+						if (client.Version >= GameClient.eClientVersion.Version1125)
+						{
+							pak.WriteShortLowEndian((ushort) housenumber);
+							pak.WriteByte(0x01);
+							pak.WriteByte(0x00);
+							pak.WriteByte((byte) position);
+							pak.Fill(0x00, 11);
+						}
+						else
+						{
+							pak.WriteShort((ushort) housenumber);
+							pak.WriteByte(0x01);
+							pak.WriteByte(0x00);
+							pak.WriteByte((byte) position);
+							pak.WriteByte(0x00);
+						}
+
+						foreach (GamePlayer plr in house.GetAllPlayersInHouse())
+						{
+							plr.Out.SendTCP(pak);
+						}
 					}
 
 					break;

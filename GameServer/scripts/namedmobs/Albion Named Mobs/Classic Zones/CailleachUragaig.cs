@@ -56,10 +56,7 @@ namespace DOL.GS
 				default: return 20;// dmg reduction for rest resists
 			}
 		}
-		public override double AttackDamage(DbInventoryItem weapon)
-		{
-			return base.AttackDamage(weapon) * Strength / 100;
-		}
+
 		public override int MeleeAttackRange => 350;
 		public override bool HasAbility(string keyName)
 		{
@@ -217,10 +214,9 @@ namespace DOL.AI.Brain
 					spell.Name = "Flame Spear";
 					spell.Range = 1800;
 					spell.SpellID = 11983;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Type = eSpellType.Bolt.ToString();
 					m_CailleachUragaigDD = new Spell(spell, 60);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_CailleachUragaigDD);
 				}
 				return m_CailleachUragaigDD;
 			}
@@ -243,12 +239,11 @@ namespace DOL.AI.Brain
 					spell.Name = "Flame Spear";
 					spell.Range = 1800;
 					spell.SpellID = 11983;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Uninterruptible = true;
 					spell.MoveCast = true;
 					spell.Type = eSpellType.Bolt.ToString();
 					m_CailleachUragaigDD2 = new Spell(spell, 60);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_CailleachUragaigDD2);
 				}
 				return m_CailleachUragaigDD2;
 			}
@@ -367,12 +362,11 @@ namespace DOL.AI.Brain
 					spell.Name = "Flame Spear";
 					spell.Range = 4000;
 					spell.SpellID = 11895;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Uninterruptible = true;
 					spell.MoveCast = true;
 					spell.Type = eSpellType.Bolt.ToString();
 					m_Torch_Of_Light_Bolt = new Spell(spell, 60);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_Torch_Of_Light_Bolt);
 				}
 				return m_Torch_Of_Light_Bolt;
 			}

@@ -11,40 +11,40 @@ namespace DOL.GS.Spells
 	[SpellHandler(eSpellType.Nearsight)]
 	public class NearsightSpellHandler : ImmunityEffectSpellHandler
 	{
-        public override ECSGameSpellEffect CreateECSEffect(ECSGameEffectInitParams initParams)
+		public override string ShortDescription => $"Reduces the target's attack and spell casting range by {Spell.Value}%.";
+
+		public NearsightSpellHandler(GameLiving caster, Spell spell, SpellLine spellLine) : base(caster, spell, spellLine) { }
+
+        public override ECSGameSpellEffect CreateECSEffect(in ECSGameEffectInitParams initParams)
         {
-            return new NearsightECSGameEffect(initParams);
+            return ECSGameEffectFactory.Create(initParams, static (in i) => new NearsightECSGameEffect(i));
         }
 
         public override void ApplyEffectOnTarget(GameLiving target)
         {
-            target.StartInterruptTimer(target.SpellInterruptDuration, AttackData.eAttackType.Spell, Caster);
-
-            //Nearsight Immunity check
-            if (target.HasAbility(Abilities.NSImmunity))
+			target.StartInterruptTimer(target.SpellInterruptDuration, AttackData.eAttackType.Spell, Caster);
+			//Nearsight Immunity check
+			if (target.HasAbility(Abilities.NSImmunity))
+			{
+				MessageToCaster("Your target can't be nearsighted!", eChatType.CT_SpellResisted);
+				SendEffectAnimation(target, 0, false, 0);
+				return;
+			}
+			if (EffectListService.GetEffectOnTarget(target, eEffect.Nearsight) != null)
             {
-                MessageToCaster(target.Name + " can't be nearsighted!", eChatType.CT_SpellResisted);
-                SendEffectAnimation(target, 0, false, 0);
-                return;
-            }
-
-            if (EffectListService.GetEffectOnTarget(target, eEffect.Nearsight) != null)
-            {
-                MessageToCaster(target.Name + " already has this effect!", eChatType.CT_SpellResisted);
-                SendEffectAnimation(target, 0, false, 0);
-                //target.StartInterruptTimer(target.SpellInterruptDuration, AttackData.eAttackType.Spell, Caster);
-                return;
-            }
-
-            if (EffectListService.GetEffectOnTarget(target, eEffect.NearsightImmunity) != null)
-            {
-                MessageToCaster(target.Name + " is immune to this effect!", eChatType.CT_SpellResisted);
-                SendEffectAnimation(target, 0, false, 0);
-
-                return;
-            }
-
-            base.ApplyEffectOnTarget(target);
+				MessageToCaster("Your target already has this effect!", eChatType.CT_SpellResisted);
+				SendEffectAnimation(target, 0, false, 0);
+				//target.StartInterruptTimer(target.SpellInterruptDuration, AttackData.eAttackType.Spell, Caster);
+				return;
+			}
+			if (EffectListService.GetEffectOnTarget(target, eEffect.NearsightImmunity) != null)
+			{
+				MessageToCaster("Your target is immune to this effect!", eChatType.CT_SpellResisted);
+				SendEffectAnimation(target, 0, false, 0);
+				
+				return;
+			}
+			base.ApplyEffectOnTarget(target);
         }
 
         /// <summary>
@@ -72,31 +72,31 @@ namespace DOL.GS.Spells
 			//GameSpellEffect mezz = SpellHandler.FindEffectOnTarget(effect.Owner, "Mesmerize");
  		//	if(mezz != null) mezz.Cancel(false);
 			//// percent category
-			//effect.Owner.DebuffCategory[(int)eProperty.ArcheryRange] += (int)Spell.Value;
-			//effect.Owner.DebuffCategory[(int)eProperty.SpellRange] += (int)Spell.Value;
+			//effect.Owner.DebuffCategory[eProperty.ArcheryRange] += (int)Spell.Value;
+			//effect.Owner.DebuffCategory[eProperty.SpellRange] += (int)Spell.Value;
 			//SendEffectAnimation(effect.Owner, 0, false, 1);
 			//MessageToLiving(effect.Owner, Spell.Message1, eChatType.CT_Spell);
 			//Message.SystemToArea(effect.Owner, Util.MakeSentence(Spell.Message2, effect.Owner.GetName(0, false)), eChatType.CT_Spell, effect.Owner);
 		}
 
-        /// <summary>
-        /// When an applied effect expires.
-        /// Duration spells only.
-        /// </summary>
-        /// <param name="effect">The expired effect</param>
-        /// <param name="noMessages">true, when no messages should be sent to player and surrounding</param>
-        /// <returns>immunity duration in milliseconds</returns>
-        public override int OnEffectExpires(GameSpellEffect effect, bool noMessages)
-        {
-            //// percent category
-            //effect.Owner.DebuffCategory[(int)eProperty.ArcheryRange] -= (int)Spell.Value;
-            //effect.Owner.DebuffCategory[(int)eProperty.SpellRange] -= (int)Spell.Value;
-            //if (!noMessages) {
-            //	MessageToLiving(effect.Owner, Spell.Message3, eChatType.CT_SpellExpires);
-            //	Message.SystemToArea(effect.Owner, Util.MakeSentence(Spell.Message4, effect.Owner.GetName(0, false)), eChatType.CT_SpellExpires, effect.Owner);
-            //}
-            return 60000;
-        }
+		/// <summary>
+		/// When an applied effect expires.
+		/// Duration spells only.
+		/// </summary>
+		/// <param name="effect">The expired effect</param>
+		/// <param name="noMessages">true, when no messages should be sent to player and surrounding</param>
+		/// <returns>immunity duration in milliseconds</returns>
+		public override int OnEffectExpires(GameSpellEffect effect, bool noMessages)
+		{
+			//// percent category
+			//effect.Owner.DebuffCategory[eProperty.ArcheryRange] -= (int)Spell.Value;
+			//effect.Owner.DebuffCategory[eProperty.SpellRange] -= (int)Spell.Value;
+			//if (!noMessages) {
+			//	MessageToLiving(effect.Owner, Spell.Message3, eChatType.CT_SpellExpires);
+			//	Message.SystemToArea(effect.Owner, Util.MakeSentence(Spell.Message4, effect.Owner.GetName(0, false)), eChatType.CT_SpellExpires, effect.Owner);
+			//}
+			return 60000;
+		}
 
         /// <summary>
         /// Delve Info
@@ -126,7 +126,7 @@ namespace DOL.GS.Spells
 
                 list.Add(LanguageMgr.GetTranslation((Caster as GamePlayer).Client, "NearsightSpellHandler.DelveInfo.Function", (Spell.SpellType.ToString() == string.Empty ? "(not implemented)" : Spell.SpellType.ToString())));
 				list.Add(" "); //empty line
-				list.Add(Spell.Description);
+				list.Add(ShortDescription);
 				list.Add(" "); //empty line
                 if (Spell.Damage != 0)
                     list.Add(LanguageMgr.GetTranslation((Caster as GamePlayer).Client, "DelveInfo.Damage", Spell.Damage.ToString("0.###;0.###'%'")));
@@ -157,19 +157,21 @@ namespace DOL.GS.Spells
                 if (Spell.DamageType != eDamageType.Natural)
                     list.Add(LanguageMgr.GetTranslation((Caster as GamePlayer).Client, "DelveInfo.Damage", GlobalConstants.DamageTypeToName(Spell.DamageType)));
 
-                return list;
-            }
-        }
-
-		// constructor
-		public NearsightSpellHandler(GameLiving caster, Spell spell, SpellLine spellLine) : base(caster, spell, spellLine) {}
+				return list;
+			}
+		}
 	}
+
 	/// <summary>
 	/// Reduce efficacity of nearsight effect
 	/// </summary>
 	[SpellHandler(eSpellType.NearsightReduction)]
 	public class NearsightReductionSpellHandler : SpellHandler
 	{
+		public override string ShortDescription => $"Nearsight spells cast upon the caster's group are reduced in effectiveness by {Spell.Value}%, or outright resisted.";
+
+		public NearsightReductionSpellHandler(GameLiving caster, Spell spell, SpellLine spellLine) : base(caster, spell, spellLine) { }
+
 		/// <summary>
 		/// called after normal spell cast is completed and effect has to be started
 		/// </summary>
@@ -177,8 +179,6 @@ namespace DOL.GS.Spells
 		{
 			m_caster.Mana -= PowerCost(target);
 			base.FinishSpellCast(target);
-		}	
-		// constructor
-		public NearsightReductionSpellHandler(GameLiving caster, Spell spell, SpellLine spellLine) : base(caster, spell, spellLine) {}
+		}
 	}
 }

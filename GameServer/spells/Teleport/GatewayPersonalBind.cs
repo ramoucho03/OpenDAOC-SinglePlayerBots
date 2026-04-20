@@ -93,14 +93,14 @@ namespace DOL.GS.Spells
 
         public override void CasterMoves()
         {
-            InterruptCasting();
+            InterruptCasting(true);
         }
 
         public override IList<string> DelveInfo
         {
             get
             {
-                List<string> list = [$"  {Spell.Description}"];
+                List<string> list = [ShortDescription];
                 return list;
             }
         }

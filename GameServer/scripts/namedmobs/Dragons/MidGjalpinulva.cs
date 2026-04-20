@@ -73,7 +73,7 @@ namespace DOL.GS
 		}
 		public void BroadcastMessage(String message)
 		{
-			foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.OBJ_UPDATE_DISTANCE))
+			foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
 			{
 				player.Out.SendMessage(message, eChatType.CT_Broadcast, eChatLoc.CL_ChatWindow);
 			}
@@ -110,7 +110,6 @@ namespace DOL.GS
 			foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
 			{
 				player.KillsDragon++;
-				player.Achieve(AchievementUtils.AchievementNames.Dragon_Kills);
 				count++;
 			}
 			return count;
@@ -171,10 +170,7 @@ namespace DOL.GS
 
 			return base.HasAbility(keyName);
 		}
-		public override double AttackDamage(DbInventoryItem weapon)
-		{
-			return base.AttackDamage(weapon) * Strength / 100;
-		}
+
 		public override int MeleeAttackRange => 350;
 		public override double GetArmorAF(eArmorSlot slot)
 		{
@@ -249,7 +245,7 @@ namespace DOL.GS
 		{
 			if (enemy is GamePlayer player)
 			{
-				foreach (GamePlayer otherPlayer in ClientService.GetPlayersOfZone(CurrentZone))
+				foreach (GamePlayer otherPlayer in ClientService.Instance.GetPlayersOfZone(CurrentZone))
 					otherPlayer.Out.SendMessage($"{Name} shouts, 'Your soul now belongs to me, {player.CharacterClass.Name}!'", eChatType.CT_Say, eChatLoc.CL_ChatWindow);
 			}
 
@@ -413,7 +409,7 @@ namespace DOL.AI.Brain
 				_lastRoamIndex = 0;
 				LockEndRoute = false;
 
-				foreach (GamePlayer player in ClientService.GetPlayersOfZone(Body.CurrentZone))
+				foreach (GamePlayer player in ClientService.Instance.GetPlayersOfZone(Body.CurrentZone))
 				{
 					player.Out.SendSoundEffect(2467, 0, 0, 0, 0, 0);//play sound effect for every player in boss currentregion
 					player.Out.SendMessage("A booming voice echoes through the canyons, 'I grow restless. Who has dared to enter my domain? I shall freeze their flesh and grind their bones to dust!'", eChatType.CT_Broadcast, eChatLoc.CL_ChatWindow);
@@ -478,7 +474,9 @@ namespace DOL.AI.Brain
 					CanSpawnMessengers = true;
                 }
 			}
-			base.Think();
+
+			if (!IsRestless)
+				base.Think();
 		}
         #region Dragon Roaming Path
         
@@ -506,7 +504,7 @@ namespace DOL.AI.Brain
 		List<GamePlayer> randomlyPickedPlayers = new List<GamePlayer>();
 		public void BroadcastMessage(String message)
 		{
-			foreach (GamePlayer player in Body.GetPlayersInRadius(WorldMgr.OBJ_UPDATE_DISTANCE))
+			foreach (GamePlayer player in Body.GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
 			{
 				player.Out.SendMessage(message, eChatType.CT_Broadcast, eChatLoc.CL_ChatWindow);
 			}
@@ -861,12 +859,11 @@ namespace DOL.AI.Brain
 					spell.Range = 5000;//very long range cause dragon is flying and got big aggro
 					spell.Radius = 1000;
 					spell.SpellID = 11954;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Type = eSpellType.DirectDamageNoVariance.ToString();
 					spell.Uninterruptible = true;
 					spell.DamageType = (int)eDamageType.Cold;
 					m_Dragon_DD2 = new Spell(spell, 70);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_Dragon_DD2);
 				}
 				return m_Dragon_DD2;
 			}
@@ -890,12 +887,11 @@ namespace DOL.AI.Brain
 					spell.Range = 1500;
 					spell.Radius = 1000;
 					spell.SpellID = 11953;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Type = eSpellType.DirectDamageNoVariance.ToString();
 					spell.Uninterruptible = true;
 					spell.DamageType = (int)eDamageType.Cold;
 					m_Dragon_DD = new Spell(spell, 70);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_Dragon_DD);
 				}
 				return m_Dragon_DD;
 			}
@@ -919,12 +915,11 @@ namespace DOL.AI.Brain
 					spell.Range = 0;
 					spell.Radius = 2000;
 					spell.SpellID = 11952;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Type = eSpellType.DirectDamageNoVariance.ToString();
 					spell.Uninterruptible = true;
 					spell.DamageType = (int)eDamageType.Cold;
 					m_Dragon_PBAOE = new Spell(spell, 70);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_Dragon_PBAOE);
 				}
 				return m_Dragon_PBAOE;
 			}
@@ -948,12 +943,11 @@ namespace DOL.AI.Brain
 					spell.Range = 0;
 					spell.Radius = 2000;
 					spell.SpellID = 11951;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Type = eSpellType.Stun.ToString();
 					spell.Uninterruptible = true;
 					spell.DamageType = (int)eDamageType.Body;
 					m_Dragon_Stun = new Spell(spell, 70);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_Dragon_Stun);
 				}
 				return m_Dragon_Stun;
 			}
@@ -979,12 +973,11 @@ namespace DOL.AI.Brain
 					spell.Range = 0;
 					spell.Radius = 2000;
 					spell.SpellID = 11964;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Type = eSpellType.ColdResistDebuff.ToString();
 					spell.Uninterruptible = true;
 					spell.DamageType = (int)eDamageType.Cold;
 					m_Dragon_Debuff = new Spell(spell, 70);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_Dragon_Debuff);
 				}
 				return m_Dragon_Debuff;
 			}
@@ -1326,10 +1319,7 @@ namespace DOL.GS
 				default: return 20;// dmg reduction for rest resists
 			}
 		}
-		public override double AttackDamage(DbInventoryItem weapon)
-		{
-			return base.AttackDamage(weapon) * Strength / 100;
-		}
+
 		public override double GetArmorAF(eArmorSlot slot)
 		{
 			return 200;

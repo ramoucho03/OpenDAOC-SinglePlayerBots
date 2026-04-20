@@ -17,8 +17,6 @@ namespace DOL.GS.Scripts
     "/mcreate class (level) (spec) (inv) - Create a mimic of a certain level, class, and weapon handedness at your position or ground target, and invite them if desired.")]
     public class MimicCreateCommandHandler : AbstractCommandHandler, ICommandHandler
     {
-        public static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
-
         public void OnCommand(GameClient client, string[] args)
         {
             if (args.Length > 0)
@@ -49,9 +47,9 @@ namespace DOL.GS.Scripts
                         invite = true;
                     else if (byte.TryParse(args[i], out byte newLevel))
                     {
-                        if (newLevel < 1 || newLevel > player.MaxLevel)
+                        if (newLevel < 1 || newLevel > GamePlayer.MAX_LEVEL)
                         {
-                            player.Out.SendMessage("Level must be between 1 and " + player.MaxLevel, eChatType.CT_Say, eChatLoc.CL_ChatWindow);
+                            player.Out.SendMessage("Level must be between 1 and " + GamePlayer.MAX_LEVEL, eChatType.CT_Say, eChatLoc.CL_ChatWindow);
                             return;
                         }
                         level = newLevel; // TryParse clobbers it's out value, so we need an intermediate
@@ -80,8 +78,9 @@ namespace DOL.GS.Scripts
                 {
                     if (player.Group == null)
                     {
-                        player.Group = new Group(player);
-                        player.Group.AddMember(player);
+                        Group group = new Group(player);
+                        GroupMgr.AddGroup(group);
+                        group.AddMember(player);
                     }
 
                     if (!player.Group.AddMember(mimic))
@@ -276,17 +275,17 @@ namespace DOL.GS.Scripts
             {
                 case "alb":
                 case "albion":
-                mimicSpawner = new MimicSpawner(eRealm.Albion, levelMin, levelMax, maxAmount, position, client.Player.CurrentRegionID);
+                mimicSpawner = new MimicSpawner(eRealm.Albion, levelMin, levelMax, maxAmount, 50, position, client.Player.CurrentRegionID);
                 break;
 
                 case "mid":
                 case "midgard":
-                mimicSpawner = new MimicSpawner(eRealm.Midgard, levelMin, levelMax, maxAmount, position, client.Player.CurrentRegionID);
+                mimicSpawner = new MimicSpawner(eRealm.Midgard, levelMin, levelMax, maxAmount, 50, position, client.Player.CurrentRegionID);
                 break;
 
                 case "hib":
                 case "hibernia:":
-                mimicSpawner = new MimicSpawner(eRealm.Hibernia, levelMin, levelMax, maxAmount, position, client.Player.CurrentRegionID);
+                mimicSpawner = new MimicSpawner(eRealm.Hibernia, levelMin, levelMax, maxAmount, 50, position, client.Player.CurrentRegionID);
                 break;
             }
 
@@ -586,8 +585,9 @@ namespace DOL.GS.Scripts
                     {
                         if (player.Group == null)
                         {
-                            player.Group = new Group(player);
-                            player.Group.AddMember(player);
+                            Group group = new Group(player);
+                            GroupMgr.AddGroup(group);
+                            group.AddMember(player);
                         }
 
                         if (player.Group.GetMembersInTheGroup().Count < ServerProperties.Properties.GROUP_MAX_MEMBER)
@@ -797,7 +797,6 @@ namespace DOL.GS.Scripts
      "/mpull - Set camp and pull points to your location, and have puller pull your target")]
     public class MimicPullCommandHandler : AbstractCommandHandler, ICommandHandler
     {
-        public static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         public void OnCommand(GameClient client, string[] args)
         {
@@ -899,8 +898,6 @@ namespace DOL.GS.Scripts
     "/mattack - Have all grouped mimics attack your target")]
     public class MimicAttackCommandHandler : AbstractCommandHandler, ICommandHandler
     {
-        public static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
-
         public void OnCommand(GameClient client, string[] args)
         {
             if (client.Player.Group != null && client.Player.TargetObject is GameLiving target)

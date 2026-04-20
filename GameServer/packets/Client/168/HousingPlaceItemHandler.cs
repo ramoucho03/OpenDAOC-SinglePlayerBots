@@ -1,22 +1,24 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using DOL.Database;
 using DOL.GS.Housing;
 using DOL.GS.ServerProperties;
 using DOL.Language;
+using DOL.Logging;
 
 namespace DOL.GS.PacketHandler.Client.v168
 {
 	[PacketHandlerAttribute(PacketHandlerType.TCP, eClientPackets.HousePlaceItem, "Handles things like placing indoor/outdoor items.", eClientStatus.PlayerInGame)]
-	public class HousingPlaceItemHandler : IPacketHandler
+	public class HousingPlaceItemHandler : PacketHandler
 	{
 		private const string DeedWeak = "deedItem";
 		private const string TargetHouse = "targetHouse";
-		private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 		private int _position;
 
-		public void HandlePacket(GameClient client, GSPacketIn packet)
+		protected override void HandlePacketInternal(GameClient client, GSPacketIn packet)
 		{
 			try
 			{
@@ -313,14 +315,14 @@ namespace DOL.GS.PacketHandler.Client.v168
 						InventoryLogging.LogInventoryAction(client.Player, "(HOUSE;" + housenumber + ")", eInventoryActionType.Other, orgitem.Template, orgitem.Count);
 
 						//add item to outdooritems
-						house.OutdoorItems.Add(pos, oitem);
+						house.AddOutdoorItem(pos, oitem);
 
 						ChatUtil.SendSystemMessage(client, "Scripts.Player.Housing.GardenItemPlaced",
 													Properties.MAX_OUTDOOR_HOUSE_ITEMS - house.OutdoorItems.Count);
 						ChatUtil.SendSystemMessage(client, "Scripts.Player.Housing.GardenItemPlacedName", orgitem.Name);
 
 						// update all nearby players
-						foreach (GamePlayer player in WorldMgr.GetPlayersCloseToSpot(house.RegionID, house, WorldMgr.OBJ_UPDATE_DISTANCE))
+						foreach (GamePlayer player in WorldMgr.GetPlayersCloseToSpot(house.RegionID, house, WorldMgr.VISIBILITY_DISTANCE))
 						{
 							player.Out.SendGarden(house);
 						}
@@ -421,7 +423,7 @@ namespace DOL.GS.PacketHandler.Client.v168
 						iitem.DatabaseItem = idbitem;
 						GameServer.Database.AddObject(idbitem);
 
-						house.IndoorItems.Add(pos, iitem);
+						house.AddIndoorItem(pos, iitem);
 
 						// let player know the item has been placed
 						ChatUtil.SendSystemMessage(client, "Scripts.Player.Housing.IndoorItemPlaced", (GetMaxIndoorItemsForHouse(house.Model) - house.IndoorItems.Count));
@@ -555,7 +557,7 @@ namespace DOL.GS.PacketHandler.Client.v168
 						}
 
 						// if the hookpoint doesn't exist, prompt player to Log it in the database for us
-						if (house.GetHookpointLocation((uint)_position) == null)
+						if (house.GetHookPointLocation((uint)_position) == null)
 						{
 							client.Out.SendInventorySlotsUpdate([(eInventorySlot) slot]);
 
@@ -577,7 +579,7 @@ namespace DOL.GS.PacketHandler.Client.v168
 						}
 						else
 						{
-							Point3D hookPointLocation = house.GetHookpointLocation((uint) _position);
+							Point3D hookPointLocation = house.GetHookPointLocation((uint) _position);
 
 							if (hookPointLocation != null)
 							{
@@ -599,10 +601,10 @@ namespace DOL.GS.PacketHandler.Client.v168
 									}
 								}
 
-								if (house.HousepointItems.ContainsKey(point.HookpointID) == false)
+								if (house.HousePointItems.ContainsKey(point.HookpointID) == false)
 								{
-									house.HousepointItems.Add(point.HookpointID, point);
-									house.FillHookpoint((uint)_position, orgitem.Id_nb, (ushort) ((client.Player.GetHeading(hookPointLocation) + 2048) % 4096), 0);
+									house.AddHousePointItem(point.HookpointID, point);
+									house.FillHookPoint((uint)_position, orgitem.Id_nb, (ushort) ((client.Player.GetHeading(hookPointLocation) + 2048) % 4096), 0);
 								}
 								else
 								{
@@ -702,7 +704,7 @@ namespace DOL.GS.PacketHandler.Client.v168
 							return;
 						}
 
-						Point3D hookPointLocation = house.GetHookpointLocation((uint)_position);
+						Point3D hookPointLocation = house.GetHookPointLocation((uint)_position);
 
 						// if hookpoint doesn't exist, prompt player to Log it in the database for us
 						if (hookPointLocation == null)
@@ -750,9 +752,15 @@ namespace DOL.GS.PacketHandler.Client.v168
 							}
 						}
 
-						// create the new vault and attach it to the house
-						var houseVault = new GameHouseVault(orgitem.Template, vaultIndex);
-						houseVault.Attach(house, (uint) _position);
+						var point = new DbHouseHookPointItem
+						{
+							HouseNumber = house.HouseNumber,
+							ItemTemplateID = orgitem.Id_nb,
+							HookpointID = (uint) _position
+						};
+
+						house.AddHousePointItem(point.HookpointID, point);
+						house.FillHookPoint(point.HookpointID, orgitem.Template.Id_nb, 0, vaultIndex);
 
 						// remove the original item from the player's inventory
 						client.Player.Inventory.RemoveItem(orgitem);
@@ -866,14 +874,12 @@ namespace DOL.GS.PacketHandler.Client.v168
 			return maxitems;
 		}
 
-		private static int GetFirstFreeSlot(ICollection<int> tbl)
+		private static int GetFirstFreeSlot(IEnumerable<int> tbl)
 		{
-			int i = 0; //tbl.Count;
+			int i = 0;
 
 			while (tbl.Contains(i))
-			{
 				i++;
-			}
 
 			return i;
 		}
@@ -951,14 +957,14 @@ namespace DOL.GS.PacketHandler.Client.v168
 			// Again, note that sometimes checks are done here, sometimes in housemgr. In this case, at least, 
 			// player will get remove item back if they answer no! - tolakram
 			var consignmentMerchant = house.ConsignmentMerchant;
-			if (consignmentMerchant != null && (consignmentMerchant.DBItems(player).Count > 0 || consignmentMerchant.TotalMoney > 0))
+			if (consignmentMerchant != null && (consignmentMerchant.GetDbItems().Any() || consignmentMerchant.TotalMoney > 0))
 			{
 				ChatUtil.SendSystemMessage(player, "All items and money must be removed from your consignment merchant in order to remove this house!");
 				return;
 			}
 
 			player.Inventory.RemoveItem(item);
-			log.WarnFormat("HOUSING: {0}:{1} is removing house from lot {2} owned by {3}", player.Name, player.Client.Account.Name, house.HouseNumber, house.OwnerID);
+			log.WarnFormat($"HOUSING: {player.Name}:{player.Client.Account.Name} is removing house from lot {house.HouseNumber} owned by {house.OwnerID}");
 			InventoryLogging.LogInventoryAction(player, "(HOUSE;" + house.HouseNumber + ")", eInventoryActionType.Other, item.Template, item.Count);
 			HouseMgr.RemoveHouse(house);
 

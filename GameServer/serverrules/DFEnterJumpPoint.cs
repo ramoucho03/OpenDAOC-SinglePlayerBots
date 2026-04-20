@@ -2,7 +2,7 @@ using System;
 using DOL.Database;
 using DOL.Events;
 using DOL.GS.PacketHandler;
-using JNogueira.Discord.Webhook.Client;
+using JNogueira.Discord.WebhookClient;
 
 namespace DOL.GS.ServerRules
 {
@@ -124,13 +124,11 @@ namespace DOL.GS.ServerRules
 		/// <param name="realm">The realm</param>
 		public static void BroadcastMessage(string message, eRealm realm)
 		{
-			foreach (GamePlayer player in ClientService.GetPlayersOfRealm(realm))
+			foreach (GamePlayer player in ClientService.Instance.GetPlayersOfRealm(realm))
 				player.Out.SendMessage(message, eChatType.CT_Important, eChatLoc.CL_SystemWindow);
-			
-			if (ServerProperties.Properties.DISCORD_ACTIVE && !string.IsNullOrEmpty(ServerProperties.Properties.DISCORD_RVR_WEBHOOK_ID))
-			{
-				var client = new DiscordWebhookClient(ServerProperties.Properties.DISCORD_RVR_WEBHOOK_ID);
 
+			if (DiscordClientManager.TryGetClient(WebhookType.RvR, out var discordClient))
+			{
 				// Create your DiscordMessage with all parameters of your message.
 				var discordMessage = new DiscordMessage(
 					"",
@@ -147,7 +145,7 @@ namespace DOL.GS.ServerRules
 					}
 				);
 
-				client.SendToDiscord(discordMessage);
+				discordClient.SendToDiscordAsync(discordMessage);
 			}
 		}
 
@@ -155,7 +153,7 @@ namespace DOL.GS.ServerRules
 		{
 			if (DarknessFallOwner != NewDFOwner)
 			{
-				foreach (GamePlayer otherPlayer in ClientService.GetPlayersOfRegion(WorldMgr.GetRegion(249)))
+				foreach (GamePlayer otherPlayer in ClientService.Instance.GetPlayersOfRegion(WorldMgr.GetRegion(249)))
 				{
 					if (otherPlayer.Realm == DarknessFallOwner)
 						otherPlayer.Out.SendSoundEffect(217, 0, 0, 0, 0, 0);

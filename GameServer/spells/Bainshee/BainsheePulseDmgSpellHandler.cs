@@ -1,5 +1,5 @@
 using System;
-using DOL.AI.Brain;
+using System.Collections.Generic;
 using DOL.Events;
 using DOL.GS.Effects;
 using DOL.GS.PacketHandler;
@@ -9,8 +9,6 @@ namespace DOL.GS.Spells
     [SpellHandler(eSpellType.BainsheePulseDmg)]
 	public class BainsheePulseDmgSpellHandler : SpellHandler
 	{
-		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
-
 		public const string FOCUS_WEAK = "FocusSpellHandler.Online";
 		/// <summary>
 		/// Execute direct damage spell
@@ -28,22 +26,24 @@ namespace DOL.GS.Spells
 		}
         public override bool CancelPulsingSpell(GameLiving living, eSpellType spellType)
         {
-            lock (living.effectListComponent.ConcentrationEffectsLock)
+            List<ECSGameSpellEffect> concentrationEffects = living.effectListComponent.GetConcentrationEffects();
+
+            for (int i = 0; i < concentrationEffects.Count; i++)
             {
-                for (int i = 0; i < living.effectListComponent.ConcentrationEffects.Count; i++)
+                PulsingSpellEffect effect = null; // concentrationEffects[i] as PulsingSpellEffect;
+
+                if (effect == null)
+                    continue;
+
+                if (effect.SpellHandler.Spell.SpellType == spellType)
                 {
-					PulsingSpellEffect effect = null; //living.ConcentrationEffects[i] as PulsingSpellEffect;
-                    if (effect == null)
-                        continue;
-                    if (effect.SpellHandler.Spell.SpellType == spellType)
-                    {
-                        effect.Cancel(false);
-                        GameEventMgr.RemoveHandler(Caster, GamePlayerEvent.Moving, new DOLEventHandler(EventAction));
-                        GameEventMgr.RemoveHandler(Caster, GamePlayerEvent.Dying, new DOLEventHandler(EventAction));
-                        return true;
-                    }
+                    effect.Cancel(false);
+                    GameEventMgr.RemoveHandler(Caster, GamePlayerEvent.Moving, new DOLEventHandler(EventAction));
+                    GameEventMgr.RemoveHandler(Caster, GamePlayerEvent.Dying, new DOLEventHandler(EventAction));
+                    return true;
                 }
             }
+
             return false;
         }
         public void EventAction(DOLEvent e, object sender, EventArgs args)
@@ -65,46 +65,19 @@ namespace DOL.GS.Spells
 			if (target == null)
 				return;
 
-			if (Spell.Target == eSpellTarget.CONE || (Spell.Target == eSpellTarget.ENEMY && Spell.IsPBAoE))
+			if (Spell.Target is eSpellTarget.CONE || (Spell.Target is eSpellTarget.ENEMY && Spell.IsPBAoE))
 			{
-				GamePlayer player = null;
-				if (target is GamePlayer)
-					player = target as GamePlayer;
-				else
-				{
-					if (Caster is GamePlayer)
-						player = Caster as GamePlayer;
-					else if (Caster is GameNPC && (Caster as GameNPC).Brain is IControlledBrain)
-					{
-						IControlledBrain brain = (Caster as GameNPC).Brain as IControlledBrain;
-						player = brain.GetPlayerOwner();
-					}
-				}
-				if (player != null)
-					player.Out.SendCheckLos(Caster, target, new CheckLosResponse(DealDamageCheckLos));
-				else
+				if (!Caster.castingComponent.StartEndOfCastLosCheck(target, this))
 					DealDamage(target);
 			}
-			else DealDamage(target);
+			else
+				DealDamage(target);
 		}
 
-		private void DealDamageCheckLos(GamePlayer player, eLosCheckResponse response, ushort sourceOID, ushort targetOID)
+		public override void OnEndOfCastLosCheck(GameLiving target, LosCheckResponse response)
 		{
-			if (response is eLosCheckResponse.TRUE)
-			{
-				try
-				{
-					GameLiving target = Caster.CurrentRegion.GetObject(targetOID) as GameLiving;
-
-					if (target != null)
-						DealDamage(target);
-				}
-				catch (Exception e)
-				{
-					if (log.IsErrorEnabled)
-						log.Error(string.Format("targetOID:{0} caster:{1} exception:{2}", targetOID, Caster, e));
-				}
-			}
+			if (response is LosCheckResponse.True)
+				DealDamage(target);
 		}
 
 		private void DealDamage(GameLiving target)
@@ -116,38 +89,6 @@ namespace DOL.GS.Spells
 			DamageTarget(ad, true);
 			SendDamageMessages(ad);
 			target.StartInterruptTimer(target.SpellInterruptDuration, ad.AttackType, Caster);
-		}
-		/*
-		 * We need to send resist spell los check packets because spell resist is calculated first, and
-		 * so you could be inside keep and resist the spell and be interupted when not in view
-		 */
-		protected override void OnSpellResisted(GameLiving target)
-		{
-			if (target is GamePlayer && Caster.TempProperties.GetProperty<bool>("player_in_keep_property"))
-			{
-				GamePlayer player = target as GamePlayer;
-				player.Out.SendCheckLos(Caster, player, new CheckLosResponse(ResistSpellCheckLos));
-			}
-			else
-				base.OnSpellResisted(target);
-		}
-
-		private void ResistSpellCheckLos(GamePlayer player, eLosCheckResponse response, ushort sourceOID, ushort targetOID)
-		{
-			if (response is eLosCheckResponse.TRUE)
-			{
-				try
-				{
-					GameLiving target = Caster.CurrentRegion.GetObject(targetOID) as GameLiving;
-					if (target != null)
-						base.OnSpellResisted(target);
-				}
-				catch (Exception e)
-				{
-					if (log.IsErrorEnabled)
-						log.Error(string.Format("targetOID:{0} caster:{1} exception:{2}", targetOID, Caster, e));
-				}
-			}
 		}
 
 		#endregion

@@ -1,15 +1,15 @@
 ﻿using DOL.GS.PacketHandler;
+using DOL.GS.Scripts;
 using DOL.Language;
 
 namespace DOL.GS
 {
     public class BerserkECSGameEffect : ECSGameAbilityEffect
     {
-        public BerserkECSGameEffect(ECSGameEffectInitParams initParams)
+        public BerserkECSGameEffect(in ECSGameEffectInitParams initParams)
             : base(initParams)
         {
             EffectType = eEffect.Berserk;
-            EffectService.RequestStartEffect(this);
         }
 
         protected ushort m_startModel = 0;
@@ -35,12 +35,13 @@ namespace DOL.GS
         {
             m_startModel = Owner.Model;
 
-            if (OwnerPlayer != null)
+            if (Owner is IGamePlayer iGamePlayer)
             {
                 // "You go into a berserker frenzy!"
-                OwnerPlayer.Out.SendMessage(LanguageMgr.GetTranslation(OwnerPlayer.Client, "Effects.BerserkEffect.StartFrenzy"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                OwnerPlayer?.Out.SendMessage(LanguageMgr.GetTranslation(OwnerPlayer.Client, "Effects.BerserkEffect.StartFrenzy"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+
                 // "{0} goes into a berserker frenzy!"
-                Message.SystemToArea(OwnerPlayer, LanguageMgr.GetTranslation(OwnerPlayer.Client, "Effects.BerserkEffect.AreaStartFrenzy", OwnerPlayer.GetName(0, true)), eChatType.CT_System, OwnerPlayer);
+                Message.SystemToArea(Owner, LanguageMgr.GetTranslation(iGamePlayer.Client, "Effects.BerserkEffect.AreaStartFrenzy", Owner.GetName(0, true)), eChatType.CT_System, Owner);
             }
 
             if (Owner.Race == (int)eRace.Dwarf)
@@ -56,12 +57,12 @@ namespace DOL.GS
             Owner.Model = m_startModel;
 
             // there is no animation on end of the effect
-            if (OwnerPlayer != null)
+            if (Owner is IGamePlayer iGamePlayer)
             {
                 // "Your berserker frenzy ends."
-                OwnerPlayer.Out.SendMessage(LanguageMgr.GetTranslation(OwnerPlayer.Client, "Effects.BerserkEffect.EndFrenzy"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                OwnerPlayer?.Out.SendMessage(LanguageMgr.GetTranslation(OwnerPlayer.Client, "Effects.BerserkEffect.EndFrenzy"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
                 // "{0}'s berserker frenzy ends."
-                Message.SystemToArea(OwnerPlayer, LanguageMgr.GetTranslation(OwnerPlayer.Client, "Effects.BerserkEffect.AreaEndFrenzy", OwnerPlayer.GetName(0, true)), eChatType.CT_System, OwnerPlayer);
+                Message.SystemToArea(Owner, LanguageMgr.GetTranslation(iGamePlayer.Client, "Effects.BerserkEffect.AreaEndFrenzy", Owner.GetName(0, true)), eChatType.CT_System, Owner);
             }
         }
     }

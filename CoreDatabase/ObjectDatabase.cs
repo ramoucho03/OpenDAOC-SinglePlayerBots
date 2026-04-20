@@ -1,13 +1,15 @@
 using System;
-using System.Linq;
+using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
+using System.Linq.Expressions;
 using System.Reflection;
-
 using DOL.Database.Attributes;
 using DOL.Database.Connection;
 using DOL.Database.Handlers;
-
+using DOL.Logging;
 
 namespace DOL.Database
 {
@@ -16,15 +18,16 @@ namespace DOL.Database
 	/// </summary>
 	public abstract class ObjectDatabase : IObjectDatabase
 	{
-		/// <summary>
-		/// Defines a logger for this class.
-		/// </summary>
-		protected static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
+		protected static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
+
+		protected const long LONG_EXEC_THRESHOLD = 100;
 
 		/// <summary>
 		/// Number Format Info to Use for Database
 		/// </summary>
 		protected static readonly NumberFormatInfo Nfi = new CultureInfo("en-US", false).NumberFormat;
+
+		private static readonly ConcurrentDictionary<Type, Func<IEnumerable<object>, Array>> _castToArrayCache = new();
 
 		/// <summary>
 		/// Data Table Handlers for this Database Handler
@@ -510,16 +513,18 @@ namespace DOL.Database
 			{
 				var dataType = grp.Key;
 				var tableName = AttributeUtil.GetTableOrViewName(dataType);
+
 				try
 				{
-					
-					DataTableHandler tableHandler;
-					if (!TableDatasets.TryGetValue(tableName, out tableHandler))
+					if (!TableDatasets.TryGetValue(tableName, out DataTableHandler tableHandler))
 						throw new DatabaseException(string.Format("Table {0} is not registered for Database Connection...", tableName));
-					
+
 					if (!tableHandler.HasRelations)
-						return;
-					
+					{
+						TakeSnapshots(grp);
+						continue;
+					}
+
 					var relations = tableHandler.ElementBindings.Where(bind => bind.Relation != null);
 					foreach (var relation in relations)
 					{
@@ -527,7 +532,7 @@ namespace DOL.Database
 						if (!(relation.Relation.AutoLoad || force))
 							continue;
 						
-						var remoteName = AttributeUtil.GetTableOrViewName(relation.ValueType);						
+						var remoteName = AttributeUtil.GetTableOrViewName(relation.ValueType);
 						try
 						{
 							DataTableHandler remoteHandler;
@@ -547,6 +552,8 @@ namespace DOL.Database
 								                relation.Relation.LocalField, AttributeUtil.GetTableOrViewName(relation.ValueType), relation.Relation.RemoteField, re);
 						}
 					}
+
+					TakeSnapshots(grp);
 				}
 				catch (Exception e)
 				{
@@ -554,8 +561,14 @@ namespace DOL.Database
 						log.ErrorFormat("Could not Resolve Relations for Table {0}\n{1}", tableName, e);
 				}
 			}
+
+			static void TakeSnapshots(IGrouping<Type, DataObject> group)
+			{
+				foreach (DataObject dataObject in group)
+					dataObject.TakeSnapshot();
+			}
 		}
-		
+
 		/// <summary>
 		/// Populate or Refresh Object Relation Implementation
 		/// </summary>
@@ -566,83 +579,131 @@ namespace DOL.Database
 		/// <param name="dataObjects">DataObjects to Populate</param>
 		protected virtual void FillObjectRelationsImpl(ElementBinding relationBind, ElementBinding localBind, ElementBinding remoteBind, DataTableHandler remoteHandler, IEnumerable<DataObject> dataObjects)
 		{
-			var type = relationBind.ValueType;
-			var isElementType = false;
+			Type type = relationBind.ValueType;
+			bool isElementType = false;
+
 			if (type.HasElementType)
 			{
 				type = type.GetElementType();
 				isElementType = true;
 			}
-			
-			var objects = dataObjects.ToArray();
-			IEnumerable<IEnumerable<DataObject>> objsResults = null;
-			
-			// Handle Cache Search if relevent or use a Select Query
+
 			if (remoteHandler.UsesPreCaching)
 			{
-				// Search with Primary Key or use a Where Clause
-				if (remoteHandler.PrimaryKeys.All(pk => pk.ColumnName.Equals(remoteBind.ColumnName, StringComparison.OrdinalIgnoreCase)))
+				// This Select directly corresponds to each item in dataObjects, maintaining order.
+				var objsResults = dataObjects.Select(obj =>
 				{
-					objsResults = objects.Select(obj => {
-					                             	var local = localBind.GetValue(obj);
-					                             	if (local == null)
-					                             		return Array.Empty<DataObject>();
-					                             	
-					                             	var retrieve = remoteHandler.GetPreCachedObject(local);
-					                             	if (retrieve == null)
-					                             		return Array.Empty<DataObject>();
-					                             	
-					                             	return new [] { retrieve };
-					                             });
-				}
-				else
-				{
-					objsResults = objects
-						.Select(obj => remoteHandler.SearchPreCachedObjects(rem => {
-						                                                    	var local = localBind.GetValue(obj);
-						                                                    	var remote = remoteBind.GetValue(rem);
-						                                                    	if (local == null || remote == null)
-						                                                    		return false;
-						                                                    	
-						                                                    	if (localBind.ValueType == typeof(string) || remoteBind.ValueType == typeof(string))
-						                                                    		return remote.ToString().Equals(local.ToString(), StringComparison.OrdinalIgnoreCase);
-						                                                    	
-						                                                    	return remote == local;
-						                                                    }));
-				}
-			}
-			else
-			{
-				var whereClauses = objects.Select(obj => DB.Column(remoteBind.ColumnName).IsEqualTo(localBind.GetValue(obj)));
-				objsResults = MultipleSelectObjectsImpl(remoteHandler, whereClauses);
-			}
-			
-			var resultByObjs = objsResults.Select((obj, index) => new { DataObject = objects[index], Results = obj }).ToArray();
-			
-			// Store Relations
-			foreach (var result in resultByObjs)
-			{
-				if (isElementType)
-				{
-					if (result.Results.Any())
+					if (remoteHandler.PrimaryKeys.All(pk => pk.ColumnName.Equals(remoteBind.ColumnName, StringComparison.OrdinalIgnoreCase)))
 					{
-						MethodInfo castMethod = typeof(Enumerable).GetMethod("OfType").MakeGenericMethod(type);
-						MethodInfo methodToArray = typeof(Enumerable).GetMethod("ToArray").MakeGenericMethod(type);
-						relationBind.SetValue(result.DataObject, methodToArray.Invoke(null, new object[] { castMethod.Invoke(null, new object[] { result.Results }) }));
+						object local = localBind.GetValue(obj);
+
+						if (local == null)
+							return Enumerable.Empty<DataObject>();
+
+						DataObject retrieve = remoteHandler.GetPreCachedObject(local);
+						
+						if (retrieve == null)
+							return Enumerable.Empty<DataObject>();
+							
+						return [retrieve];
 					}
 					else
 					{
-						relationBind.SetValue(result.DataObject, null);
+						return remoteHandler.SearchPreCachedObjects(rem =>
+						{
+							object local = localBind.GetValue(obj);
+							object remote = remoteBind.GetValue(rem);
+
+							if (local == null || remote == null)
+								return false;
+
+							if (localBind.ValueType == typeof(string) || remoteBind.ValueType == typeof(string))
+								return remote.ToString().Equals(local.ToString(), StringComparison.OrdinalIgnoreCase);
+
+							return remote.Equals(local);
+						});
 					}
+				});
+
+				var resultByObjsFromCache = dataObjects.Zip(objsResults, (dataObj, results) => new { DataObject = dataObj, Results = results });
+				AssignRelations(resultByObjsFromCache, isElementType, type, relationBind);
+				FillObjectRelations(resultByObjsFromCache.SelectMany(result => result.Results), false);
+				return;
+			}
+
+			List<object> localKeys = dataObjects
+				.Select(o => localBind.GetValue(o))
+				.Where(v => v != null)
+				.Distinct()
+				.ToList();
+
+			if (localKeys.Count == 0)
+			{
+				foreach (DataObject obj in dataObjects)
+					relationBind.SetValue(obj, null);
+
+				return;
+			}
+
+			WhereClause batchWhereClause = DB.Column(remoteBind.ColumnName).IsIn(localKeys);
+			IEnumerable<DataObject> allRelatedObjects = MultipleSelectObjectsImpl(remoteHandler, [batchWhereClause]).FirstOrDefault() ?? Enumerable.Empty<DataObject>();
+			ILookup<object, DataObject> relatedObjectsMap = allRelatedObjects.ToLookup(r => remoteBind.GetValue(r));
+
+			var resultByObjs = dataObjects.Select(obj =>
+			{
+				object localKeyValue = localBind.GetValue(obj);
+				IEnumerable<DataObject> related;
+
+				if (localKeyValue != null && relatedObjectsMap.Contains(localKeyValue))
+					related = relatedObjectsMap[localKeyValue];
+				else
+					related = [];
+
+				return new { DataObject = obj, Results = related };
+			});
+
+			AssignRelations(resultByObjs, isElementType, type, relationBind);
+			FillObjectRelations(resultByObjs.SelectMany(result => result.Results), false);
+		}
+
+		private static void AssignRelations(IEnumerable<dynamic> resultByObjs, bool isElementType, Type type, ElementBinding relationBind)
+		{
+			foreach (dynamic result in resultByObjs)
+			{
+				// Cast the dynamic property to the non-generic IEnumerable.
+				// This ensures that the LINQ extension methods can be found at runtime,
+				// regardless of the underlying collection type (List<T>, T[], Array, etc.).
+				IEnumerable enumerableResults = result.Results;
+
+				if (isElementType)
+				{
+					DataObject[] resultsArray = enumerableResults.Cast<DataObject>().ToArray();
+
+					if (resultsArray.Length != 0)
+					{
+						Array array = CastAndToArray(resultsArray.Cast<object>(), type);
+						relationBind.SetValue(result.DataObject, array);
+					}
+					else
+						relationBind.SetValue(result.DataObject, null);
 				}
 				else
-				{
-					relationBind.SetValue(result.DataObject, result.Results.SingleOrDefault());
-				}
+					relationBind.SetValue(result.DataObject, enumerableResults.Cast<DataObject>().SingleOrDefault());
 			}
-			
-			// Fill Sub Relations
-			FillObjectRelations(resultByObjs.SelectMany(result => result.Results), false);
+		}
+
+		private static Array CastAndToArray(IEnumerable<object> source, Type targetType)
+		{
+			var func = _castToArrayCache.GetOrAdd(targetType, static t =>
+			{
+				ParameterExpression param = Expression.Parameter(typeof(IEnumerable<object>), "source");
+				MethodCallExpression castCall = Expression.Call(typeof(Enumerable), "OfType", [t], param);
+				MethodCallExpression toArrayCall = Expression.Call(typeof(Enumerable), "ToArray", [t], castCall);
+				Expression<Func<IEnumerable<object>, Array>> lambda = Expression.Lambda<Func<IEnumerable<object>, Array>>(toArrayCall, param);
+				return lambda.Compile();
+			});
+
+			return func(source);
 		}
 		#endregion
 		#region Public Object Select with Key API

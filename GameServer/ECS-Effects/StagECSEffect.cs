@@ -6,13 +6,12 @@ namespace DOL.GS
 {
     public class StagECSGameEffect : ECSGameAbilityEffect
     {
-        public StagECSGameEffect(ECSGameEffectInitParams initParams, int level)
+        public StagECSGameEffect(in ECSGameEffectInitParams initParams, int level)
             : base(initParams)
         {
             m_level = level;
             EffectType = eEffect.Stag;
-            EffectService.RequestStartEffect(this);
-        }
+		}
 
         /// <summary>
         /// The amount of max health gained
@@ -31,7 +30,7 @@ namespace DOL.GS
             get
             {
                 if (OwnerPlayer != null)
-                    return LanguageMgr.GetTranslation(((GamePlayer)Owner).Client, "Effects.StagEffect.Name");
+                    return LanguageMgr.GetTranslation(OwnerPlayer.Client, "Effects.StagEffect.Name");
                 else
                     return "Stag";
             }
@@ -59,11 +58,9 @@ namespace DOL.GS
             else
                 m_amount = (int)(Owner.MaxHealth * m_amountPercent);
 
-            Owner.BaseBuffBonusCategory[(int)eProperty.MaxHealth] += m_amount;
-            Owner.Health += (int)(Owner.GetModified(eProperty.MaxHealth) * m_amountPercent);
-
-            if (Owner.Health > Owner.MaxHealth)
-                Owner.Health = Owner.MaxHealth;
+			Owner.BaseBuffBonusCategory[eProperty.MaxHealth] += m_amount;
+			Owner.Health += (int)(Owner.GetModified(eProperty.MaxHealth) * m_amountPercent);
+			if (Owner.Health > Owner.MaxHealth) Owner.Health = Owner.MaxHealth;
 
             Owner.Emote(eEmote.StagFrenzy);
 
@@ -76,12 +73,11 @@ namespace DOL.GS
 
         public override void OnStopEffect()
         {
-            Owner.Model = m_originalModel;
-
-            Owner.BaseBuffBonusCategory[(int)eProperty.MaxHealth] -= m_amount;
-
-            if (Owner.IsAlive && Owner.Health > Owner.MaxHealth)
-                Owner.Health = Owner.MaxHealth;
+			Owner.Model = m_originalModel;
+			
+			Owner.BaseBuffBonusCategory[eProperty.MaxHealth] -= m_amount;
+			if (Owner.IsAlive && Owner.Health > Owner.MaxHealth)
+				Owner.Health = Owner.MaxHealth;
 
             if (OwnerPlayer != null)
             {

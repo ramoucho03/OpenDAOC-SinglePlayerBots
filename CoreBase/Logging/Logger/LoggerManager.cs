@@ -1,5 +1,4 @@
 ﻿using System;
-using System.IO;
 using System.Threading;
 using System.Xml;
 
@@ -8,7 +7,7 @@ namespace DOL.Logging
     public abstract class LoggerManager
     {
         private static Lock _lock = new();
-        private static ELogLibrary _loggingLibrary;
+        private static LogLibrary _loggingLibrary;
         private static ILoggerFactory _loggerFactory;
         private static LogEntryQueueProcessor _queueProcessor;
         private static bool _initialized;
@@ -17,10 +16,10 @@ namespace DOL.Logging
         {
             return InitializeWithExplicitLibrary(configurationFilePath, GuessLibraryFromFile());
 
-            ELogLibrary GuessLibraryFromFile()
+            LogLibrary GuessLibraryFromFile()
             {
                 if (string.IsNullOrEmpty(configurationFilePath))
-                    return ELogLibrary.Console;
+                    return LogLibrary.Console;
 
                 using XmlReader reader = XmlReader.Create(configurationFilePath);
 
@@ -29,23 +28,20 @@ namespace DOL.Logging
                     if (reader.NodeType is XmlNodeType.Element)
                     {
                         if (reader.Name.Equals("nlog", StringComparison.OrdinalIgnoreCase))
-                            return ELogLibrary.NLog;
-
-                        if (reader.Name.Equals("log4net", StringComparison.OrdinalIgnoreCase))
-                            return ELogLibrary.Log4net;
+                            return LogLibrary.NLog;
                     }
                 }
 
-                return ELogLibrary.Console;
+                return LogLibrary.Console;
             }
         }
 
-        public static bool InitializeWithExplicitLibrary(string configurationFilePath, ELogLibrary loggingLibrary)
+        public static bool InitializeWithExplicitLibrary(string configurationFilePath, LogLibrary loggingLibrary)
         {
             lock (_lock)
             {
                 if (_initialized)
-                    throw new InvalidOperationException($"Logging Manager has already been initialized (file: {configurationFilePath}) (library: {_loggingLibrary})");
+                    return false;
 
                 _loggingLibrary = loggingLibrary;
 
@@ -55,10 +51,9 @@ namespace DOL.Logging
 
                     _loggerFactory = _loggingLibrary switch
                     {
-                        ELogLibrary.None => new NullLoggerFactory(),
-                        ELogLibrary.Console => new ConsoleLoggerFactory(),
-                        ELogLibrary.NLog => new NLogLoggerFactory(configurationFilePath),
-                        ELogLibrary.Log4net => new Log4netLoggerFactory(configurationFilePath),
+                        LogLibrary.None => new NullLoggerFactory(),
+                        LogLibrary.Console => new ConsoleLoggerFactory(),
+                        LogLibrary.NLog => new NLogLoggerFactory(configurationFilePath),
                         _ => throw new NotImplementedException($"{_loggingLibrary}")
                     };
                 }
@@ -79,21 +74,12 @@ namespace DOL.Logging
         {
             lock (_lock)
             {
-                _initialized = false;
+                if (!_initialized)
+                    return;
 
-                if (_queueProcessor != null)
-                {
-                    _queueProcessor.Stop();
-                    _queueProcessor = null;
-                }
-
-                if (_loggerFactory != null)
-                {
-                    _loggerFactory.Shutdown();
-                    _loggerFactory = null;
-                }
-
-                _loggingLibrary = ELogLibrary.None;
+                _queueProcessor.Stop();
+                _loggerFactory.Shutdown();
+                _loggingLibrary = LogLibrary.None;
             }
         }
 
@@ -104,10 +90,7 @@ namespace DOL.Logging
 
         public static Logger Create(string name)
         {
-            if (!_initialized)
-                throw new InvalidOperationException("Logging Manager has not been initialized");
-
-            return _loggerFactory.Create(name);
+            return !_initialized ?  new NullLogger(null) : _loggerFactory.Create(name);
         }
 
         public interface ILoggerFactory
@@ -152,24 +135,6 @@ namespace DOL.Logging
             public void Shutdown()
             {
                 NLog.LogManager.Shutdown();
-            }
-        }
-
-        private class Log4netLoggerFactory : ILoggerFactory
-        {
-            public Log4netLoggerFactory(string configurationFilePath)
-            {
-                log4net.Config.XmlConfigurator.Configure(new FileInfo(configurationFilePath));
-            }
-
-            public Logger Create(string name)
-            {
-                return new Log4netLogger(name, _queueProcessor);
-            }
-
-            public void Shutdown()
-            {
-                log4net.LogManager.Shutdown();
             }
         }
     }

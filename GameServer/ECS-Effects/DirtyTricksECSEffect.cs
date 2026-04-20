@@ -1,15 +1,15 @@
 ﻿using DOL.GS.PacketHandler;
+using DOL.GS.Scripts;
 using DOL.Language;
 
 namespace DOL.GS
 {
     public class DirtyTricksECSGameEffect : ECSGameAbilityEffect
     {
-        public DirtyTricksECSGameEffect(ECSGameEffectInitParams initParams)
+        public DirtyTricksECSGameEffect(in ECSGameEffectInitParams initParams)
             : base(initParams)
         {
             EffectType = eEffect.DirtyTricks;
-            EffectService.RequestStartEffect(this);
         }
 
         public override ushort Icon
@@ -59,23 +59,22 @@ namespace DOL.GS
             if (attackData.Weapon == null) return; // no weapon attack
 
             DirtyTricksDetrimentalECSGameEffect dt = (DirtyTricksDetrimentalECSGameEffect)EffectListService.GetAbilityEffectOnTarget(target, eEffect.DirtyTricksDetrimental);
-            if (dt == null)
-            {
-                new DirtyTricksDetrimentalECSGameEffect(new ECSGameEffectInitParams(target, 10000, 1));
-            }
-        }
-    }
+			if (dt == null)
+			{
+                ECSGameEffectFactory.Create(new(target, 10000, 1), static (in i) => new DirtyTricksDetrimentalECSGameEffect(i));
+			}
+		}
+	}
 }
 
 namespace DOL.GS
 {
     public class DirtyTricksDetrimentalECSGameEffect : ECSGameAbilityEffect
     {
-        public DirtyTricksDetrimentalECSGameEffect(ECSGameEffectInitParams initParams)
+        public DirtyTricksDetrimentalECSGameEffect(in ECSGameEffectInitParams initParams)
             : base(initParams)
         {
             EffectType = eEffect.DirtyTricksDetrimental;
-            EffectService.RequestStartEffect(this);
         }
 
         public override ushort Icon
@@ -99,7 +98,7 @@ namespace DOL.GS
 
         public override void OnStartEffect()
         {
-            Owner.DebuffCategory[(int)eProperty.FumbleChance] += 35;
+            Owner.DebuffCategory[eProperty.FumbleChance] += 35;
 
             if (OwnerPlayer != null)
             {
@@ -114,14 +113,14 @@ namespace DOL.GS
 
         public override void OnStopEffect()
         {
-            Owner.DebuffCategory[(int)eProperty.FumbleChance] -= 35;
+            Owner.DebuffCategory[eProperty.FumbleChance] -= 35;
 
-            if (OwnerPlayer != null)
+            if (Owner is IGamePlayer iGamePlayer)
             {
                 // Message: "You can see clearly again."
-                OwnerPlayer.Out.SendMessage(LanguageMgr.GetTranslation(OwnerPlayer.Client.Account.Language, "Effects.DirtyTricks.EffectCancel"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                OwnerPlayer?.Out.SendMessage(LanguageMgr.GetTranslation(OwnerPlayer.Client.Account.Language, "Effects.DirtyTricks.EffectCancel"), eChatType.CT_System, eChatLoc.CL_SystemWindow);
                 // Message: "{0} can see clearly again."
-                Message.SystemToArea(Owner, LanguageMgr.GetTranslation(OwnerPlayer.Client.Account.Language, "Effects.DirtyTricks.AreaEffectCancel", Owner.GetName(0, true)), eChatType.CT_System);
+                Message.SystemToArea(Owner, LanguageMgr.GetTranslation(iGamePlayer.Client.Account.Language, "Effects.DirtyTricks.AreaEffectCancel", Owner.GetName(0, true)), eChatType.CT_System);
             }
         }
     }

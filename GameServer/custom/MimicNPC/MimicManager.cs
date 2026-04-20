@@ -1,15 +1,13 @@
 ﻿using DOL.AI.Brain;
 using DOL.Database;
 using DOL.Events;
-using DOL.GS.API;
 using DOL.GS.Realm;
-using log4net;
+using DOL.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace DOL.GS.Scripts
 {
@@ -17,7 +15,7 @@ namespace DOL.GS.Scripts
 
     public static class MimicBattlegrounds
     {
-        private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
         public static MimicBattleground ThidBattleground;
 
@@ -97,9 +95,9 @@ namespace DOL.GS.Scripts
 
                     m_masterTimer = new ECSGameTimer(null, new ECSGameTimer.ECSTimerCallback(MasterTimerCallback), m_timerInterval);
 
-                    m_albSpawner = new MimicSpawner(eRealm.Albion, m_minLevel, m_maxLevel, m_currentMaxAlb, 50, m_albSpawnPoint, m_region, 0, true);
-                    m_hibSpawner = new MimicSpawner(eRealm.Hibernia, m_minLevel, m_maxLevel, m_currentMaxHib, 50, m_hibSpawnPoint, m_region, 0, true);
-                    m_midSpawner = new MimicSpawner(eRealm.Midgard, m_minLevel, m_maxLevel, m_currentMaxMid, 50, m_midSpawnPoint, m_region, 0, true);
+                    m_albSpawner = new MimicSpawner(eRealm.Albion, m_minLevel, m_maxLevel, m_currentMaxAlb, 65, m_albSpawnPoint, m_region, 0, true);
+                    m_hibSpawner = new MimicSpawner(eRealm.Hibernia, m_minLevel, m_maxLevel, m_currentMaxHib, 65, m_hibSpawnPoint, m_region, 0, true);
+                    m_midSpawner = new MimicSpawner(eRealm.Midgard, m_minLevel, m_maxLevel, m_currentMaxMid, 65, m_midSpawnPoint, m_region, 0, true);
                 }
             }
 
@@ -305,7 +303,7 @@ namespace DOL.GS.Scripts
 
     public static class MimicManager
     {
-        private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
         public static List<MimicNPC> MimicNPCs = new List<MimicNPC>();
 
@@ -470,7 +468,7 @@ namespace DOL.GS.Scripts
 
     public static class MimicEquipment
     {
-        private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
         public static void SetWeaponROG(GameLiving living, eRealm realm, eCharacterClass charClass, byte level, eObjectType objectType, eInventorySlot slot, eDamageType damageType)
         {
@@ -1073,7 +1071,7 @@ namespace DOL.GS.Scripts
 
     public class SetupMimicsEvent
     {
-        private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
         [ScriptLoadedEvent]
         public static void OnScriptsCompiled(DOLEvent e, object sender, EventArgs args)

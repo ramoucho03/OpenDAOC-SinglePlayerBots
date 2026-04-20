@@ -10,7 +10,7 @@ namespace DOL.GS
         Closed
     }
 
-    public class GameDoorBase : GameLiving
+    public class GameDoorBase : GameLiving, IPooledList<GameDoorBase>
     {
         public override eGameObjectType GameObjectType => eGameObjectType.DOOR;
 
@@ -69,6 +69,8 @@ namespace DOL.GS
 
                         _state = value;
                     }
+
+                    _ = PathfindingProvider.Instance.UpdateDoorFlags(this);
 
                     foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
                         player.Out.SendDoorState(CurrentRegion, this);

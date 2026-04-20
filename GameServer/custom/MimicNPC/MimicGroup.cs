@@ -289,19 +289,5 @@ namespace DOL.GS.Scripts
         }
 
         #endregion
-
-        public class QueueRequest
-        {
-            public GameLiving Requester { get; private set; }
-            public eQueueMessage QueueMessage { get; private set; }
-            public eMimicGroupRole Role { get; private set; }
-
-            public QueueRequest(GameLiving requester, eQueueMessage request, eMimicGroupRole role)
-            {
-                Requester = requester;
-                QueueMessage = request;
-                Role = role;
-            }
-        }
     }
 }

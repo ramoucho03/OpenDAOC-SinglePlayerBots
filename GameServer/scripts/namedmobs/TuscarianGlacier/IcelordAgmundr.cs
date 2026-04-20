@@ -22,10 +22,6 @@ namespace DOL.GS
             }
         }
 
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * Strength / 100 * ServerProperties.Properties.EPICS_DMG_MULTIPLIER;
-        }
         public override int MeleeAttackRange => 350;
         public override bool HasAbility(string keyName)
         {
@@ -74,7 +70,7 @@ namespace DOL.GS
         }
         public void BroadcastMessage(String message)
         {
-            foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.OBJ_UPDATE_DISTANCE))
+            foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
             {
                 player.Out.SendMessage(message, eChatType.CT_Broadcast, eChatLoc.CL_SystemWindow);
             }
@@ -106,7 +102,7 @@ namespace DOL.AI.Brain
         private bool PulledText = false;
         public void BroadcastMessage(String message)
         {
-            foreach (GamePlayer player in Body.GetPlayersInRadius(WorldMgr.OBJ_UPDATE_DISTANCE))
+            foreach (GamePlayer player in Body.GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
             {
                 player.Out.SendMessage(message, eChatType.CT_Broadcast, eChatLoc.CL_SystemWindow);
             }
@@ -224,13 +220,12 @@ namespace DOL.AI.Brain
                 spell.Range = 1500;
                 spell.Radius = 500;
                 spell.SpellID = 11744;
-                spell.Target = "Enemy";
+                spell.Target = eSpellTarget.ENEMY.ToString();
                 spell.Type = "DirectDamageNoVariance";
                 spell.Uninterruptible = true;
                 spell.MoveCast = true;
                 spell.DamageType = (int) eDamageType.Cold;
                 m_AgmundrDD = new Spell(spell, 70);
-                SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_AgmundrDD);
                 return m_AgmundrDD;
             }
         }

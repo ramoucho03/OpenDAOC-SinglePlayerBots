@@ -82,7 +82,7 @@ namespace DOL.AI.Brain
                 return;
             }
 
-            if (_brain.HasPatrolPath())
+            if (_brain.Body.CanMoveOnPath)
             {
                 _brain.FSM.SetCurrentState(eFSMStateType.PATROLLING);
                 return;
@@ -211,7 +211,7 @@ namespace DOL.AI.Brain
 
     public class MimicState_Aggro : MimicState
     {
-        private const int LEAVE_WHEN_OUT_OF_COMBAT_FOR = 25000;
+        private const int LEAVE_WHEN_OUT_OF_COMBAT_FOR = 10000;
         private long _aggroEndTime;
         private long _checkAggroTime;
 
@@ -240,12 +240,15 @@ namespace DOL.AI.Brain
             _brain.ClearAggroList();
             _brain.Body.TargetObject = null;
 
-            if (_brain.MimicBody.CharacterClass.ID == (int)eCharacterClass.Reaver)
+            _brain.IsFleeing = false;
+            _brain.TargetFleePosition = null;
+            _brain.ResetFlanking();
+
+            foreach (ECSPulseEffect pulseEffect in _brain.Body.effectListComponent.GetPulseEffects())
             {
-                foreach (ECSPulseEffect pulseEffect in _brain.MimicBody.effectListComponent.GetAllPulseEffects())
-                {
-                    EffectService.RequestCancelEffect(pulseEffect);
-                }
+                if (pulseEffect.SpellHandler?.Spell != null &&
+                    pulseEffect.SpellHandler.Spell.UsePulsePower)
+                    pulseEffect.End();
             }
 
             _brain.OnExitAggro();
@@ -264,7 +267,7 @@ namespace DOL.AI.Brain
                 _aggroEndTime = GameLoop.GameLoopTime + LEAVE_WHEN_OUT_OF_COMBAT_FOR;
             }
  
-            if (!_brain.HasAggro || (!_brain.Body.InCombatInLast(LEAVE_WHEN_OUT_OF_COMBAT_FOR) && ServiceUtils.ShouldTick(_aggroEndTime)))
+            if (!_brain.HasAggro || (!_brain.Body.InCombatInLast(LEAVE_WHEN_OUT_OF_COMBAT_FOR) && GameServiceUtils.ShouldTick(_aggroEndTime)))
             {
                 if (!_brain.Body.IsMezzed && !_brain.Body.IsStunned)
                 {
@@ -322,6 +325,9 @@ namespace DOL.AI.Brain
             else
                 _brain.AttackMostWanted();
 
+            if (_brain.HasAggro && _brain.Body.TargetObject == null && !_brain.Body.IsMoving)
+                _aggroEndTime = Math.Min(_aggroEndTime, GameLoop.GameLoopTime + 5000);
+
             base.Think();
         }
     }
@@ -346,6 +352,8 @@ namespace DOL.AI.Brain
             if (!_brain.PvPMode)
                 _brain.AggroRange = 2000;
 
+            //_nextRoamingTickSet = false;
+            _brain.Body.SpawnPoint = new Point3D(_brain.Body.X, _brain.Body.Y, _brain.Body.Z);
             base.Enter();
         }
 
@@ -358,7 +366,7 @@ namespace DOL.AI.Brain
         {
             _brain.AlreadyCheckedHeals = false;
 
-            if (_brain.PreventCombat || _brain.IsHealer)
+            if (_brain.PreventCombat)
                 return;
 
             if (!_brain.HasAggro)
@@ -380,11 +388,11 @@ namespace DOL.AI.Brain
                     if (!_nextRoamingTickSet)
                     {
                         _nextRoamingTickSet = true;
-                        _nextRoamingTick += Util.Random(MinCooldown, MaxCooldown) * 1000;
+                        _nextRoamingTick = GameLoop.GameLoopTime + Util.Random(MinCooldown, MaxCooldown) * 1000;
                         _brain.Body.SpawnPoint = new Point3D(_brain.Body.X, _brain.Body.Y, _brain.Body.Z);
                     }
 
-                    if (ServiceUtils.ShouldTickAdjust(ref _nextRoamingTick))
+                    if (GameServiceUtils.ShouldTick(_nextRoamingTick))
                     {
                         // We're not updating `_nextRoamingTick` here because we want it to be set after the NPC stopped moving.
                         _nextRoamingTickSet = false;
@@ -463,17 +471,27 @@ namespace DOL.AI.Brain
                 GameLiving _leader = _brain.MimicBody.Group?.MimicGroup.MainLeader;
                 GameLiving leaderTarget = _leader?.TargetObject as GameLiving;
 
-                if ((_leader != null 
-                        && ((_leader.IsCasting && _leader.castingComponent.SpellHandler.Spell.IsHarmful) || _leader.IsAttacking)
-                        && _brain.CanAggroTarget(leaderTarget))
-                    || _brain.CheckProximityAggro(_brain.AggroRange))
-                {
-                    _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
-                    if (leaderTarget != null)
-                        _brain.AddToAggroList(leaderTarget, 1);
-                    _brain.AttackMostWanted();
-                    return;
-                }
+                // TODO: Add toggle for attacking what we cast or go into attack mode toward or fold into puller. It's detrimental for now in camp mode.
+
+                //if ((_leader != null 
+                //        && ((_leader.IsCasting && _leader.castingComponent.SpellHandler.Spell.IsHarmful) || _leader.IsAttacking)
+                //        && _brain.CanAggroTarget(leaderTarget))
+                //    || _brain.CheckProximityAggro(_brain.AggroRange))
+                //{
+                //    _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
+                //    if (leaderTarget != null)
+                //        _brain.AddToAggroList(leaderTarget, 1);
+
+                //    _brain.AttackMostWanted();
+
+                //    return;
+                //}
+            }
+
+            if (_brain.CheckProximityAggro(_brain.AggroRange))
+            {
+                _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
+                return;
             }
 
             if (!_brain.Body.IsMoving && !_brain.Body.InCombat)

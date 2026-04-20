@@ -33,10 +33,7 @@ namespace DOL.GS.Scripts
 			base.AddToWorld();			
 			return true;
 		}	
-		public override double AttackDamage(DbInventoryItem weapon)
-		{
-			return base.AttackDamage(weapon) * Strength / 100;
-		}
+
 		public override int MeleeAttackRange => 350;
 		public override bool HasAbility(string keyName)
 		{
@@ -136,7 +133,7 @@ namespace DOL.GS.Scripts
 			/// <param name="message">The message to be broadcast.</param>
 			public void BroadcastMessage(String message)
 			{
-				foreach (GamePlayer player in Body.GetPlayersInRadius(WorldMgr.OBJ_UPDATE_DISTANCE))
+				foreach (GamePlayer player in Body.GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
 				{
 					player.Out.SendMessage(message, eChatType.CT_Broadcast, eChatLoc.CL_ChatWindow);
 				}
@@ -185,11 +182,10 @@ namespace DOL.GS.Scripts
 						spell.Damage = 500;
 						spell.DamageType = 12;
 						spell.SpellID = 3541;
-						spell.Target = "Enemy";
+						spell.Target = eSpellTarget.ENEMY.ToString();
 						spell.MoveCast = false;
 						spell.Type = eSpellType.DirectDamageNoVariance.ToString();
 						m_Mjollnir = new Spell(spell, 50);
-						SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_Mjollnir);
 					}
 					return m_Mjollnir;
 				}

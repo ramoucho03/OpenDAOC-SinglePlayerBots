@@ -35,7 +35,7 @@ namespace DOL.GS
         {
             get
             {
-                GamePlayer playerOwner = Owner as GamePlayer;
+                IGamePlayer playerOwner = Owner as IGamePlayer;
 
                 return Source != null && Target != null
                     ? LanguageMgr.GetTranslation(playerOwner?.Client, "Effects.InterceptEffect.InterceptedByName", Target.GetName(0, false), Source.GetName(0, false))
@@ -44,12 +44,11 @@ namespace DOL.GS
         }
         public override bool HasPositiveEffect => true;
 
-        public InterceptECSGameEffect(ECSGameEffectInitParams initParams, GameLiving source, GameLiving target) : base(initParams)
+        public InterceptECSGameEffect(in ECSGameEffectInitParams initParams, GameLiving source, GameLiving target) : base(initParams)
         {
             Source = source;
             Target = target;
             EffectType = eEffect.Intercept;
-            EffectService.RequestStartEffect(this);
         }
 
         public override void OnStartEffect()
@@ -75,16 +74,16 @@ namespace DOL.GS
             {
                 if (!Source.IsWithinRadius(Target, InterceptAbilityHandler.INTERCEPT_DISTANCE))
                 {
-                    playerSource?.Out.SendMessage(LanguageMgr.GetTranslation(playerSource.Client, "Effects.InterceptEffect.YouAttemtInterceptYBut", Target.GetName(0, false)), eChatType.CT_System, eChatLoc.CL_SystemWindow);
-                    playerTarget?.Out.SendMessage(LanguageMgr.GetTranslation(playerTarget.Client, "Effects.InterceptEffect.XAttemtInterceptYouBut", Source.GetName(0, true)), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    playerSource?.Out.SendMessage(LanguageMgr.GetTranslation(playerSource.Client, "Effects.InterceptEffect.YouAttemptInterceptYBut", Target.GetName(0, false)), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    playerTarget?.Out.SendMessage(LanguageMgr.GetTranslation(playerTarget.Client, "Effects.InterceptEffect.XAttemptInterceptYouBut", Source.GetName(0, true)), eChatType.CT_System, eChatLoc.CL_SystemWindow);
                 }
                 else
                 {
-                    playerSource?.Out.SendMessage(LanguageMgr.GetTranslation(playerSource.Client, "Effects.InterceptEffect.YouAttemtInterceptY", Target.GetName(0, false)), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    playerSource?.Out.SendMessage(LanguageMgr.GetTranslation(playerSource.Client, "Effects.InterceptEffect.YouAttemptInterceptY", Target.GetName(0, false)), eChatType.CT_System, eChatLoc.CL_SystemWindow);
                     playerTarget?.Out.SendMessage(LanguageMgr.GetTranslation(playerTarget.Client, "Effects.InterceptEffect.XAttemptInterceptYou", Source.GetName(0, true)), eChatType.CT_System, eChatLoc.CL_SystemWindow);
                 }
 
-                PairedEffect = new InterceptECSGameEffect(new ECSGameEffectInitParams(Target, 0, 1), Source, Target);
+                PairedEffect = ECSGameEffectFactory.Create(new(Target, 0, 1), Source, Target, static (in i, source, target) => new InterceptECSGameEffect(i, source, target));
                 PairedEffect.PairedEffect = this;
             }
 
@@ -95,15 +94,13 @@ namespace DOL.GS
         {
             if (Source == Owner)
             {
-                GamePlayer playerSource = Source as GamePlayer;
-                GamePlayer playerTarget = Target as GamePlayer;
-                playerSource?.Out.SendMessage(LanguageMgr.GetTranslation(playerSource.Client, "Effects.InterceptEffect.YouNoAttemtInterceptY", Target.GetName(0, false)), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                IGamePlayer playerSource = Source as IGamePlayer;
+                IGamePlayer playerTarget = Target as IGamePlayer;
+                playerSource?.Out.SendMessage(LanguageMgr.GetTranslation(playerSource.Client, "Effects.InterceptEffect.YouNoAttemptInterceptY", Target.GetName(0, false)), eChatType.CT_System, eChatLoc.CL_SystemWindow);
                 playerTarget?.Out.SendMessage(LanguageMgr.GetTranslation(playerTarget.Client, "Effects.InterceptEffect.XNoAttemptInterceptYou", Source.GetName(0, true)), eChatType.CT_System, eChatLoc.CL_SystemWindow);
             }
 
-            if (!PairedEffect.CancelEffect)
-                EffectService.RequestCancelEffect(PairedEffect);
-
+            PairedEffect?.End();
             base.OnStopEffect();
         }
     }

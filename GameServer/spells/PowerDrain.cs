@@ -11,9 +11,10 @@ namespace DOL.GS.Spells
 	[SpellHandler(eSpellType.PowerDrain)]
 	public class PowerDrain : DirectDamageSpellHandler
 	{
+		public override string ShortDescription  => $"Inflicts {Spell.Damage} {Spell.DamageTypeToString()} damage and restores {Spell.LifeDrainReturn}% of the damage dealt.";
 		protected override bool IsDualComponentSpell => true;
 
-		public PowerDrain(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
+		public PowerDrain (GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
 
 		public override void OnDirectEffect(GameLiving target)
 		{

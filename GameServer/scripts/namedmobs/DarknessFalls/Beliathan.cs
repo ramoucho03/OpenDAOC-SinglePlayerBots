@@ -125,7 +125,7 @@ namespace DOL.AI.Brain
 
         public void BroadcastMessage(string message)
         {
-            foreach (GamePlayer player in ClientService.GetPlayersOfRegion(Body.CurrentRegion))
+            foreach (GamePlayer player in ClientService.Instance.GetPlayersOfRegion(Body.CurrentRegion))
                 player.Out.SendMessage(message, eChatType.CT_Broadcast, eChatLoc.CL_SystemWindow);
         }
     }
@@ -151,10 +151,7 @@ namespace DOL.GS
         public static void ScriptUnloaded(DOLEvent e, object sender, EventArgs args)
         {
         }
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * Strength / 100 * ServerProperties.Properties.EPICS_DMG_MULTIPLIER;
-        }
+
         public override int AttackSpeed(DbInventoryItem mainWeapon, DbInventoryItem leftWeapon = null)
         {
             return base.AttackSpeed(mainWeapon, leftWeapon) * 2;

@@ -59,10 +59,7 @@ namespace DOL.GS
 					base.TakeDamage(source, damageType, damageAmount, criticalAmount);
 			}
 		}
-		public override double AttackDamage(DbInventoryItem weapon)
-		{
-			return base.AttackDamage(weapon) * Strength / 100;
-		}
+
 		public override int MeleeAttackRange => 350;
 		public override bool HasAbility(string keyName)
 		{
@@ -293,11 +290,10 @@ namespace DOL.AI.Brain
 					spell.Range = 1800;
 					spell.Radius = 1000;
 					spell.SpellID = 11756;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Uninterruptible = true;
 					spell.Type = eSpellType.DamageOverTime.ToString();
 					m_RoesiaDot = new Spell(spell, 50);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_RoesiaDot);
 				}
 				return m_RoesiaDot;
 			}
@@ -325,11 +321,10 @@ namespace DOL.AI.Brain
 					spell.Message2 = "{0} starts healing faster.";
 					spell.Range = 1800;
 					spell.SpellID = 11757;
-					spell.Target = "Self";
+					spell.Target = eSpellTarget.SELF.ToString();
 					spell.Uninterruptible = true;
 					spell.Type = eSpellType.HealOverTime.ToString();
 					m_RoesiaHOT = new Spell(spell, 50);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_RoesiaHOT);
 				}
 				return m_RoesiaHOT;
 			}
@@ -352,13 +347,12 @@ namespace DOL.AI.Brain
 					spell.Name = "Roesia Damage Shield";
 					spell.TooltipId = 57;
 					spell.SpellID = 11758;
-					spell.Target = "Self";
+					spell.Target = eSpellTarget.SELF.ToString();
 					spell.Type = "DamageShield";
 					spell.Uninterruptible = true;
 					spell.MoveCast = true;
 					spell.DamageType = (int)eDamageType.Heat;
 					m_RoesiaDS = new Spell(spell, 70);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_RoesiaDS);
 				}
 				return m_RoesiaDS;
 			}

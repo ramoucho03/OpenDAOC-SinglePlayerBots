@@ -1,8 +1,4 @@
-﻿using DOL.Database;
-using DOL.GS.PlayerClass;
-using log4net;
-using System.Reflection;
-
+﻿
 namespace DOL.GS.Scripts
 {
     //public class MimicArmsman : MimicNPC

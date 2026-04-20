@@ -1,22 +1,3 @@
-/*
- * DAWN OF LIGHT - The first free open source DAoC server emulator
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
- *
- */
-
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -57,7 +38,7 @@ namespace DOL.GS.PacketHandler
 		/// <param name="info"></param>
 		public override void SendDelveInfo(string info)
 		{
-			using (var pak = new GSTCPPacketOut(GetPacketCode(eServerPackets.DelveInfo)))
+			using (var pak = PooledObjectFactory.GetForTick<GSTCPPacketOut>().Init(GetPacketCode(eServerPackets.DelveInfo)))
 			{
 				pak.WriteString(info, 2048);
 				pak.WriteByte(0); // 0-terminated
@@ -72,9 +53,7 @@ namespace DOL.GS.PacketHandler
 				return;
 			}
 
-			var tooltipSpellHandlers = new List<ISpellHandler>();
-
-			using (GSTCPPacketOut pak = new GSTCPPacketOut(GetPacketCode(eServerPackets.UpdateIcons)))
+			using (var pak = PooledObjectFactory.GetForTick<GSTCPPacketOut>().Init(GetPacketCode(eServerPackets.UpdateIcons)))
 			{
 				long initPos = pak.Position;
 
@@ -86,7 +65,7 @@ namespace DOL.GS.PacketHandler
 				pak.WriteByte(Icons); // unknown
 				pak.WriteByte(0); // unknown
 
-				foreach (ECSGameEffect effect in m_gameClient.Player.effectListComponent.GetAllEffects().Where(e => e.EffectType != eEffect.Pulse))
+				foreach (ECSGameEffect effect in m_gameClient.Player.effectListComponent.GetEffects().Where(e => e.EffectType != eEffect.Pulse))
 				{
 					if (effect.Icon == 0)
 						continue;
@@ -100,10 +79,12 @@ namespace DOL.GS.PacketHandler
 					// store tooltip update for gamespelleffect.
 					if (ForceTooltipUpdate && effect is ECSGameSpellEffect gameEffect)
 					{
-						tooltipSpellHandlers.Add(gameEffect.SpellHandler);
+						ISpellHandler spellHandler = gameEffect.SpellHandler;
+
+						if (m_gameClient.CanSendTooltip(24, spellHandler.Spell.InternalID))
+							SendDelveInfo(DetailDisplayHandler.DelveSpell(spellHandler));
 					}
 
-					//						log.DebugFormat("adding [{0}] '{1}'", fxcount-1, effect.Name);
 					// icon index
 					pak.WriteByte((byte)(fxcount - 1));
 					// Determines where to grab the icon from. Spell-based effect icons use a different source than Ability-based icons.
@@ -155,6 +136,7 @@ namespace DOL.GS.PacketHandler
 
 				if (entriesCount == 0)
 				{
+					pak.ReleasePooledObject();
 					return; // nothing changed - no update is needed
 				}
 
@@ -163,13 +145,6 @@ namespace DOL.GS.PacketHandler
 				pak.Seek(0, SeekOrigin.End);
 
 				SendTCP(pak);
-			}
-
-			// force tooltips update
-			foreach (var spellHandler in tooltipSpellHandlers)
-			{
-				if (m_gameClient.CanSendTooltip(24, spellHandler.Spell.InternalID))
-					SendDelveInfo(DetailDisplayHandler.DelveSpell(spellHandler));
 			}
 		}
 
@@ -212,8 +187,8 @@ namespace DOL.GS.PacketHandler
 					{
 						if (style.Procs != null && style.Procs.Count > 0)
 						{
-							foreach ((Spell, int, int) proc in style.Procs)
-								SendDelveInfo(DetailDisplayHandler.DelveSpell(m_gameClient, proc.Item1));
+							foreach (StyleProcInfo proc in style.Procs)
+								SendDelveInfo(DetailDisplayHandler.DelveSpell(m_gameClient, proc.Spell));
 						}
 
 						SendDelveInfo(DetailDisplayHandler.DelveStyle(m_gameClient, t.InternalID));
@@ -251,23 +226,25 @@ namespace DOL.GS.PacketHandler
         {
             if (siegeWeapon == null)
                 return;
-            using (var pak = new GSTCPPacketOut(GetPacketCode(eServerPackets.SiegeWeaponAnimation)))
+            using (var pak = PooledObjectFactory.GetForTick<GSTCPPacketOut>().Init(GetPacketCode(eServerPackets.SiegeWeaponAnimation)))
             {
-                pak.WriteInt((uint)siegeWeapon.ObjectID);
+                bool isGroundTargetValid = siegeWeapon.GroundTarget.IsValid;
+
+                pak.WriteInt(siegeWeapon.ObjectID);
                 pak.WriteInt(
                     (uint)
                     (siegeWeapon.TargetObject == null
-                     ? (siegeWeapon.GroundTarget == null ? 0 : siegeWeapon.GroundTarget.X)
+                     ? (!isGroundTargetValid ? 0 : siegeWeapon.GroundTarget.X)
                      : siegeWeapon.TargetObject.X));
                 pak.WriteInt(
                     (uint)
                     (siegeWeapon.TargetObject == null
-                     ? (siegeWeapon.GroundTarget == null ? 0 : siegeWeapon.GroundTarget.Y)
+                     ? (!isGroundTargetValid ? 0 : siegeWeapon.GroundTarget.Y)
                      : siegeWeapon.TargetObject.Y));
                 pak.WriteInt(
                     (uint)
                     (siegeWeapon.TargetObject == null
-                     ? (siegeWeapon.GroundTarget == null ? 0 : siegeWeapon.GroundTarget.Z)
+                     ? (!isGroundTargetValid ? 0 : siegeWeapon.GroundTarget.Z)
                      : siegeWeapon.TargetObject.Z));
                 pak.WriteInt((uint)(siegeWeapon.TargetObject == null ? 0 : siegeWeapon.TargetObject.ObjectID));
                 pak.WriteShort(siegeWeapon.Effect);
@@ -287,7 +264,7 @@ namespace DOL.GS.PacketHandler
 		{
 			if (siegeWeapon == null)
 				return;
-			using (var pak = new GSTCPPacketOut(GetPacketCode(eServerPackets.SiegeWeaponAnimation)))
+			using (var pak = PooledObjectFactory.GetForTick<GSTCPPacketOut>().Init(GetPacketCode(eServerPackets.SiegeWeaponAnimation)))
 			{
 				pak.WriteInt((uint) siegeWeapon.ObjectID);
 				pak.WriteInt((uint) (siegeWeapon.TargetObject == null ? siegeWeapon.GroundTarget.X : siegeWeapon.TargetObject.X));

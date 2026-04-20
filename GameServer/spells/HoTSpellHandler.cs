@@ -10,9 +10,13 @@ namespace DOL.GS.Spells
 	[SpellHandler(eSpellType.HealOverTime)]
 	public class HoTSpellHandler : SpellHandler
 	{
-		public override ECSGameSpellEffect CreateECSEffect(ECSGameEffectInitParams initParams)
+		public override string ShortDescription => $"The target regenerates {Spell.Value} hit points every {Spell.Frequency / 1000.0} seconds.";
+
+		public HoTSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) {}
+
+		public override ECSGameSpellEffect CreateECSEffect(in ECSGameEffectInitParams initParams)
 		{
-			return new HealOverTimeECSGameEffect(initParams);
+			return ECSGameEffectFactory.Create(initParams, static (in i) => new HealOverTimeECSGameEffect(i));
 		}
 
         /// <summary>
@@ -54,7 +58,7 @@ namespace DOL.GS.Spells
 			base.OnDirectEffect(target);
 			double heal = Spell.Value * CalculateBuffDebuffEffectiveness();
 			
-			if(target.Health < target.MaxHealth)
+			if (target.Health < target.MaxHealth)
             {
                 target.Health += (int)heal;
 
@@ -72,29 +76,23 @@ namespace DOL.GS.Spells
 			MessageToLiving(target, Spell.Message1, eChatType.CT_Spell);
 		}
 
-        /// <summary>
-        /// When an applied effect expires.
-        /// Duration spells only.
-        /// </summary>
-        /// <param name="effect">The expired effect</param>
-        /// <param name="noMessages">true, when no messages should be sent to player and surrounding</param>
-        /// <returns>immunity duration in milliseconds</returns>
-        public override int OnEffectExpires(GameSpellEffect effect, bool noMessages)
-        {
-            base.OnEffectExpires(effect, noMessages);
-
-            if (!noMessages)
-            {
-                //"Your meditative state fades."
-                MessageToLiving(effect.Owner, Spell.Message3, eChatType.CT_SpellExpires);
-                //"{0}'s meditative state fades."
-                Message.SystemToArea(effect.Owner, Util.MakeSentence(Spell.Message4, effect.Owner.GetName(0, false)), eChatType.CT_SpellExpires, effect.Owner);
-            }
-
-            return 0;
-        }
-
-        // constructor
-        public HoTSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
-    }
+		/// <summary>
+		/// When an applied effect expires.
+		/// Duration spells only.
+		/// </summary>
+		/// <param name="effect">The expired effect</param>
+		/// <param name="noMessages">true, when no messages should be sent to player and surrounding</param>
+		/// <returns>immunity duration in milliseconds</returns>
+		public override int OnEffectExpires(GameSpellEffect effect, bool noMessages)
+		{
+			base.OnEffectExpires(effect, noMessages);
+			if (!noMessages) {
+				//"Your meditative state fades."
+				MessageToLiving(effect.Owner, Spell.Message3, eChatType.CT_SpellExpires);
+				//"{0}'s meditative state fades."
+				Message.SystemToArea(effect.Owner, Util.MakeSentence(Spell.Message4, effect.Owner.GetName(0, false)), eChatType.CT_SpellExpires, effect.Owner);
+			}
+			return 0;
+		}
+	}
 }

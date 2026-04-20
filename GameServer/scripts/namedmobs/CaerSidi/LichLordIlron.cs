@@ -33,10 +33,7 @@ namespace DOL.GS.Scripts
 
         public override int MaxHealth => 100000;
         
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * ServerProperties.Properties.EPICS_DMG_MULTIPLIER;
-        }
+
 
         public override int MeleeAttackRange => 180;
         public override bool HasAbility(string keyName)
@@ -257,13 +254,12 @@ namespace DOL.AI.Brain
                     spell.Radius = 300;
                     spell.SpellID = 99999;
                     spell.Duration = 30;
-                    spell.Target = "Enemy";
+                    spell.Target = eSpellTarget.ENEMY.ToString();
                     spell.Type = "Mesmerize";
                     spell.Uninterruptible = true;
                     spell.MoveCast = true;
                     spell.DamageType = (int) eDamageType.Spirit; //Spirit DMG Type
                     m_mezSpell = new Spell(spell, 70);
-                    SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_mezSpell);
                 }
 
                 return m_mezSpell;

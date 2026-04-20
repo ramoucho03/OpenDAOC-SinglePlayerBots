@@ -20,6 +20,7 @@
 using System;
 using DOL.AI.Brain;
 using DOL.Database;
+using DOL.GS.Scripts;
 
 namespace DOL.GS.ServerRules
 {
@@ -157,7 +158,7 @@ namespace DOL.GS.ServerRules
             return true;
         }
 
-        public override bool IsAllowedToGroup(GamePlayer source, GamePlayer target, bool quiet)
+        public override bool IsAllowedToGroup(IGamePlayer source, IGamePlayer target, bool quiet)
         {
             return true;
         }

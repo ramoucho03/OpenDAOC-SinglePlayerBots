@@ -15,7 +15,7 @@ namespace DOL.GS
         {
             get
             {
-                GamePlayer playerOwner = Owner as GamePlayer;
+                IGamePlayer playerOwner = Owner as IGamePlayer;
 
                 return Source != null && Target != null
                     ? LanguageMgr.GetTranslation(playerOwner?.Client, "Effects.GuardEffect.GuardedByName", Target.GetName(0, false), Source.GetName(0, false))
@@ -24,12 +24,11 @@ namespace DOL.GS
         }
         public override bool HasPositiveEffect => true;
 
-        public GuardECSGameEffect(ECSGameEffectInitParams initParams, GameLiving source, GameLiving target) : base(initParams)
+        public GuardECSGameEffect(in ECSGameEffectInitParams initParams, GameLiving source, GameLiving target) : base(initParams)
         {
             Source = source;
             Target = target;
             EffectType = eEffect.Guard;
-            EffectService.RequestStartEffect(this);
         }
 
         public override void OnStartEffect()
@@ -64,7 +63,7 @@ namespace DOL.GS
                     playerTarget?.Out.SendMessage(LanguageMgr.GetTranslation(playerTarget.Client, "Effects.GuardEffect.XIsNowGuardingYou", Source.GetName(0, true)), eChatType.CT_System, eChatLoc.CL_SystemWindow);
                 }
 
-                PairedEffect = new GuardECSGameEffect(new ECSGameEffectInitParams(Target, 0, 1, null), Source, Target);
+                PairedEffect = ECSGameEffectFactory.Create(new(Target, 0, 1), Source, Target, static (in i, source, target) => new GuardECSGameEffect(i, source, target));
                 PairedEffect.PairedEffect = this;
             }
 
@@ -81,9 +80,7 @@ namespace DOL.GS
                 playerTarget?.Out.SendMessage(LanguageMgr.GetTranslation(playerTarget.Client, "Effects.GuardEffect.XNoLongerGuardingYoy", Source.GetName(0, true)), eChatType.CT_System, eChatLoc.CL_SystemWindow);
             }
 
-            if (!PairedEffect.CancelEffect)
-                EffectService.RequestCancelEffect(PairedEffect);
-
+            PairedEffect?.End();
             base.OnStopEffect();
         }
     }

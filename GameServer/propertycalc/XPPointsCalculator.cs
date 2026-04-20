@@ -33,7 +33,7 @@ namespace DOL.GS.PropertyCalc
 		{
 			if (living is IGamePlayer)
 			{
-				return Math.Min(10, living.ItemBonus[(int)property]);
+				return Math.Min(10, living.ItemBonus[property]);
 			}
 
 			return 0;

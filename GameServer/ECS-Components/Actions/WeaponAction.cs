@@ -1,11 +1,12 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using DOL.Database;
 using DOL.GS.PacketHandler;
-using DOL.GS.Scripts;
+using DOL.GS.RealmAbilities;
 using DOL.GS.Spells;
 using DOL.GS.Styles;
+using DOL.GS.Scripts;
 
 namespace DOL.GS
 {
@@ -18,14 +19,14 @@ namespace DOL.GS
         private double _effectiveness;
         private int _interval;
         private Style _combatStyle;
-        private int _leftHandSwingCount;
-        private bool _isDualWieldAttack; // Not necessarily true even if _leftHandSwingCount is > 0, for example H2H isn't technically dual wield.
+
+        public long AttackRoundEndTime { get; private set; }
+        public bool IsAttackRoundFinished => GameServiceUtils.ShouldTick(AttackRoundEndTime);
 
         // The active weapon slot, ranged attack type, and ammo at the time the ammo was released
         public eActiveWeaponSlot ActiveWeaponSlot { get; }
         public eRangedAttackType RangedAttackType { get; }
         public DbInventoryItem Ammo { get; }
-
         public bool HasAmmoReachedTarget { get; private set; } // Used to not cancel the release animation. A bit clunky, may not work perfectly.
 
         public WeaponAction(GameLiving owner, GameObject target, DbInventoryItem attackWeapon, DbInventoryItem leftWeapon, double effectiveness, int interval, Style combatStyle)
@@ -61,24 +62,37 @@ namespace DOL.GS
 
         public void Execute()
         {
+            AttackRoundEndTime = GameLoop.GameLoopTime + _interval;
+
             // 1.89
             //- Pets will no longer continue to attack a character after the character has stealthed.
             // 1.88
             //- Monsters, pets and Non-Player Characters (NPCs) will now halt their pursuit when the character being chased stealths.
 
-            _isDualWieldAttack = IsDualWieldAttack(_attackWeapon, _leftWeapon, _owner); // Should be false for H2H.
-            _leftHandSwingCount = _owner.attackComponent.CalculateLeftHandSwingCount(_attackWeapon, _leftWeapon);
+            bool isDualWieldAttack = IsDualWieldAttack(_attackWeapon, _leftWeapon, _owner); // Must be false for H2H.
+            int extraSwingCount = CalculateExtraSwings();
 
-            if (!MakeMainHandAttack(_attackWeapon, _leftWeapon, _combatStyle, _effectiveness, out AttackData mainHandAttackData))
+            if (!MakeMainHandAttack(_attackWeapon, _leftWeapon, _combatStyle, _effectiveness, isDualWieldAttack, extraSwingCount > 0, out AttackData mainHandAttackData))
                 return;
 
-            MakeOffHandAttack(out AttackData leftHandAttackData); // This returns the last attack for H2H, not sure if this is correct.
+            AttackData extraAttackData = null;
+            DbInventoryItem lastExtraWeapon = null;
+
+            for (int i = 0; i < extraSwingCount; i++)
+            {
+                if (i % 2 == 0)
+                    extraAttackData = _owner.attackComponent.MakeAttack(this, _target, _leftWeapon, null, _effectiveness, _interval, isDualWieldAttack);
+                else
+                    extraAttackData = _owner.attackComponent.MakeAttack(this, _target, _attackWeapon, null, _effectiveness, _interval, isDualWieldAttack);
+
+                MakeAttack(extraAttackData);
+            }
 
             switch (mainHandAttackData.AttackResult)
             {
                 case eAttackResult.HitStyle:
                 {
-                    if (mainHandAttackData.StyleEffects.Count > 0)
+                    if (mainHandAttackData.StyleEffects != null)
                     {
                         foreach (ISpellHandler proc in mainHandAttackData.StyleEffects)
                             proc.StartSpell(mainHandAttackData.Target);
@@ -107,16 +121,81 @@ namespace DOL.GS
                 playerOwner.Stealth(false);
 
             // Show the animation.
-            if (mainHandAttackData.AttackResult is not eAttackResult.HitUnstyled and not eAttackResult.HitStyle && leftHandAttackData != null)
-                ShowAttackAnimation(leftHandAttackData, _leftWeapon);
+            if (mainHandAttackData.AttackResult is not eAttackResult.HitUnstyled and not eAttackResult.HitStyle && extraAttackData != null)
+                ShowAttackAnimation(extraAttackData, lastExtraWeapon);
             else
                 ShowAttackAnimation(mainHandAttackData, _attackWeapon);
 
-            // Mobs' heading isn't updated after they start attacking, so we update it after they swing.
-            if (_owner is GameNPC npcOwner)
-                npcOwner.TurnTo(mainHandAttackData.Target);
+            if (_owner.HasAbilityType(typeof(AtlasOF_PreventFlight)) &&
+                Util.Chance(35) &&
+                _target is GameLiving livingTarget &&
+                _owner.IsObjectInFront(livingTarget, 120) &&
+                livingTarget.IsMoving &&
+                livingTarget.GetAngle(_owner) is >= 150 and < 210)
+            {
+                Spell spell = SkillBase.GetSpellByID(7083);
 
-            return;
+                if (spell != null)
+                {
+                    ISpellHandler spellHandler = ScriptMgr.CreateSpellHandler(_owner, spell, SkillBase.GetSpellLine(GlobalSpellsLines.Reserved_Spells));
+                    spellHandler?.StartSpell(livingTarget);
+                }
+            }
+        }
+
+        private int CalculateExtraSwings()
+        {
+            if (!_owner.attackComponent.CanUseLefthandedWeapon ||
+                _leftWeapon == null ||
+                (eObjectType) _leftWeapon.Object_Type is eObjectType.Shield)
+            {
+                return 0;
+            }
+
+            if (_owner is GameNPC npcOwner && _owner is not MimicNPC)
+            {
+                if (_attackWeapon == null || _attackWeapon.SlotPosition is not Slot.RIGHTHAND)
+                    return 0;
+
+                double random = _owner.GetPseudoDouble(RandomDeckEvent.DualWield) * 100;
+                return random < npcOwner.LeftHandSwingChance ? 1 : 0;
+            }
+
+            if (_owner is not IGamePlayer playerOwner || _attackWeapon == null)
+                return 0;
+
+            // Left Axe.
+            if (_owner.GetBaseSpecLevel(Specs.Left_Axe) > 0)
+                return 1;
+
+            // DW / CD.
+            double leftHandSwingChance = _owner.attackComponent.CalculateDwCdLeftHandSwingChance();
+
+            if (leftHandSwingChance > 0)
+                return _owner.GetPseudoDouble(RandomDeckEvent.DualWield) < leftHandSwingChance ? 1 : 0;
+
+            // H2H.
+            (double doubleChance, double tripleChance, double quadChance) = _owner.attackComponent.CalculateHthSwingChances(_leftWeapon);
+
+            if (doubleChance > 0)
+            {
+                double random = _owner.GetPseudoDouble(RandomDeckEvent.DualWield);
+
+                if (random < doubleChance)
+                    return 1;
+
+                tripleChance += doubleChance;
+
+                if (random < tripleChance)
+                    return 2;
+
+                quadChance += tripleChance;
+
+                if (random < quadChance)
+                    return 3;
+            }
+
+            return 0;
         }
 
         public void ShowAttackAnimation(AttackData ad, DbInventoryItem weapon)
@@ -252,7 +331,7 @@ namespace DOL.GS
             if (leftWeapon == null || (eObjectType) leftWeapon.Object_Type is eObjectType.Shield)
                 return false;
 
-            if (attacker is GamePlayer)
+            if (attacker is IGamePlayer)
             {
                 // The two handed checks shouldn't be necessary.
                 return (eObjectType) mainWeapon.Object_Type is not eObjectType.HandToHand &&
@@ -266,15 +345,22 @@ namespace DOL.GS
             return false;
         }
 
-        private bool MakeMainHandAttack(DbInventoryItem mainWeapon, DbInventoryItem leftWeapon, Style style, double mainHandEffectiveness, out AttackData attackData)
+        private bool MakeMainHandAttack(
+            DbInventoryItem mainWeapon,
+            DbInventoryItem leftWeapon,
+            Style style,
+            double mainHandEffectiveness,
+            bool isDualWieldAttack,
+            bool hasExtraSwings,
+            out AttackData attackData)
         {
             int animationId = 0;
             _owner.attackComponent.UsedHandOnLastDualWieldAttack = 0;
 
             // Determine the weapon and animation to use.
-            if (_leftHandSwingCount > 0)
+            if (hasExtraSwings)
             {
-                if (_isDualWieldAttack)
+                if (isDualWieldAttack)
                     _owner.attackComponent.UsedHandOnLastDualWieldAttack = 2;
 
                 if (style == null)
@@ -283,7 +369,7 @@ namespace DOL.GS
             else if (mainWeapon != null)
             {
                 // One of two hands is used for attack if no style, treated as a main hand attack.
-                if (_isDualWieldAttack && style == null && Util.Chance(50))
+                if (isDualWieldAttack && style == null && Util.Chance(50))
                 {
                     mainWeapon = leftWeapon;
                     _owner.attackComponent.UsedHandOnLastDualWieldAttack = 1;
@@ -291,7 +377,7 @@ namespace DOL.GS
                 }
             }
 
-            attackData = _owner.attackComponent.MakeAttack(this, _target, mainWeapon, style, mainHandEffectiveness, _interval, _isDualWieldAttack);
+            attackData = _owner.attackComponent.MakeAttack(this, _target, mainWeapon, style, mainHandEffectiveness, _interval, isDualWieldAttack);
 
             if (style == null)
                 attackData.AnimationId = animationId;
@@ -321,36 +407,25 @@ namespace DOL.GS
             return true;
         }
 
-        private void MakeOffHandAttack(out AttackData leftHandAttackData)
-        {
-            leftHandAttackData = null;
-
-            for (int i = 0; i < _leftHandSwingCount; i++)
-            {
-                // Savage swings - main, left, main, left.
-                if (i % 2 == 0)
-                    leftHandAttackData = _owner.attackComponent.MakeAttack(this, _target, _leftWeapon, null, _effectiveness, _interval, _isDualWieldAttack);
-                else
-                    leftHandAttackData = _owner.attackComponent.MakeAttack(this, _target, _attackWeapon, null, _effectiveness, _interval, _isDualWieldAttack);
-
-                MakeAttack(leftHandAttackData);
-            }
-        }
-
         private void MakeAttack(AttackData attackData)
         {
-            // Notify the target of our attack (sends damage messages, should be before damage)
-            attackData.Target.OnAttackedByEnemy(attackData);
+            GameLiving target = attackData.Target;
+
+            // Notify the target of our attack (sends damage messages, should be before damage).
+            target.OnAttackedByEnemy(attackData);
 
             // Deal damage and start effects.
+            // `AttackData` doesn't contain the armor / shield hit, so we must again fetch it from the target's inventory.
             if (attackData.AttackResult is eAttackResult.HitUnstyled or eAttackResult.HitStyle)
             {
                 _owner.DealDamage(attackData);
-                _owner.CheckWeaponMagicalEffect(attackData, attackData.Weapon);
                 HandleDamageAdd(_owner, attackData);
+                _owner.CheckWeaponMagicalEffect(attackData);
+                HandleDamageShields(attackData);
+                target.OnArmorHit(attackData, target.Inventory?.GetItem((eInventorySlot) attackData.ArmorHitLocation));
             }
-
-            HandleDamageShields(attackData);
+            else if (attackData.AttackResult is eAttackResult.Blocked)
+                target.OnArmorHit(attackData, target.ActiveLeftWeapon);
 
             if (_target is GameLiving livingTarget && livingTarget.effectListComponent.ContainsEffectForEffectType(eEffect.ReflexAttack))
                 HandleReflexAttack(_owner, attackData.Target, attackData.AttackResult, _interval);
@@ -360,32 +435,44 @@ namespace DOL.GS
         {
             List<ECSGameSpellEffect> damageAddEffects = owner.effectListComponent.GetSpellEffects(eEffect.DamageAdd);
 
-            if (damageAddEffects == null)
+            if (damageAddEffects == null || damageAddEffects.Count == 0)
                 return;
 
-            /// [Atlas - Takii] This could probably be optimized a bit by doing the split below between "affected/unaffected by stacking"
-            /// when the effect is applied in the EffectListComponent instead of every time we swing our weapon?
-            List<ECSGameSpellEffect> damageAddsUnaffectedByStacking = [];
+            List<ECSGameSpellEffect> unaffectedDamageAdds = null;
+            List<ECSGameSpellEffect> regularDamageAdds = null;
 
-            // 1 - Apply the DmgAdds that are unaffected by stacking (usually RA-based DmgAdds, EffectGroup 99999) first regardless of their damage.
-            foreach (ECSGameSpellEffect damageAdd in damageAddEffects)
+            foreach (ECSGameSpellEffect effect in damageAddEffects)
             {
-                if (damageAdd.SpellHandler.Spell.EffectGroup == 99999)
+                if (!effect.IsActive)
+                    continue;
+
+                if (effect.SpellHandler.Spell.EffectGroup == 99999)
                 {
-                    damageAddsUnaffectedByStacking.Add(damageAdd);
-                    (damageAdd.SpellHandler as DamageAddSpellHandler).Handle(ad, 1);
+                    unaffectedDamageAdds ??= GameLoop.GetListForTick<ECSGameSpellEffect>();
+                    unaffectedDamageAdds.Add(effect);
+                }
+                else
+                {
+                    regularDamageAdds ??= GameLoop.GetListForTick<ECSGameSpellEffect>();
+                    regularDamageAdds.Add(effect);
                 }
             }
 
-            // 2 - Apply regular damage adds. We only start reducing to 50% effectiveness if there is more than one regular damage add being applied.
-            // "Unaffected by stacking" dmg adds also dont reduce subsequent damage adds; they are effectively outside of the stacking mechanism.
-            int numRegularDmgAddsApplied = 0;
-
-            foreach (ECSGameSpellEffect damageAdd in damageAddEffects.Except(damageAddsUnaffectedByStacking).OrderByDescending(e => e.SpellHandler.Spell.Damage))
+            if (unaffectedDamageAdds != null)
             {
-                if (damageAdd.IsBuffActive)
+                foreach (ECSGameSpellEffect damageAdd in unaffectedDamageAdds)
+                   (damageAdd.SpellHandler as DamageAddSpellHandler).Handle(ad, 1.0);
+            }
+
+            if (regularDamageAdds != null)
+            {
+                regularDamageAdds.Sort(static (a, b) => b.SpellHandler.Spell.Damage.CompareTo(a.SpellHandler.Spell.Damage));
+                int numRegularDmgAddsApplied = 0;
+
+                foreach (ECSGameSpellEffect damageAdd in regularDamageAdds)
                 {
-                    (damageAdd.SpellHandler as DamageAddSpellHandler).Handle(ad, numRegularDmgAddsApplied > 0 ? 0.5 : 1.0);
+                    double effectiveness = damageAdd.Effectiveness * Math.ScaleB(1.0, -numRegularDmgAddsApplied);
+                    (damageAdd.SpellHandler as DamageAddSpellHandler).Handle(ad, effectiveness);
                     numRegularDmgAddsApplied++;
                 }
             }
@@ -399,7 +486,13 @@ namespace DOL.GS
                 return;
 
             foreach (ECSGameSpellEffect damageShield in damageShieldEffects)
-                (damageShield.SpellHandler as DamageShieldSpellHandler).Handle(ad, 1);
+            {
+                if (!damageShield.IsActive)
+                    continue;
+
+                double effectiveness = damageShield.Effectiveness;
+                (damageShield.SpellHandler as DamageShieldSpellHandler).Handle(ad, effectiveness);
+            }
         }
 
         private static void HandleReflexAttack(GameLiving attacker, GameLiving target, eAttackResult attackResult, int interval)
@@ -416,11 +509,11 @@ namespace DOL.GS
                 case eAttackResult.Parried:
                 {
                     int attackSpeed = target.AttackSpeed(target.ActiveWeapon);
-                    WeaponAction weaponAction = new(target, attacker, target.ActiveWeapon, null, target.Effectiveness, attackSpeed, null);
+                    WeaponAction weaponAction = new(target, attacker, target.ActiveWeapon, null, 1.0, attackSpeed, null);
                     // Don't call `WeaponAction.Execute` here.
                     // It applies damage adds and shields, but Reflex Attack shouldn't trigger them.
                     // It would also cause a stack overflow if the target has Reflex Attack too.
-                    AttackData ReflexAttackAD = target.attackComponent.LivingMakeAttack(weaponAction, attacker, target.ActiveWeapon, null, target.Effectiveness, attackSpeed, false, true);
+                    AttackData ReflexAttackAD = target.attackComponent.LivingMakeAttack(weaponAction, attacker, target.ActiveWeapon, null, 1.0, attackSpeed, false, true);
                     target.DealDamage(ReflexAttackAD);
 
                     // If we get hit by Reflex Attack (it can miss), send a "you were hit" message to the attacker manually

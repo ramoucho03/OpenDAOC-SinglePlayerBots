@@ -190,7 +190,7 @@ namespace DOL.GS.Keeps
         {
             string message = $"{Component.Keep.Name} is under attack!";
 
-            foreach (GamePlayer player in ClientService.GetPlayersOfRealm(Realm))
+            foreach (GamePlayer player in ClientService.Instance.GetPlayersOfRealm(Realm))
             {
                 player.Out.SendMessage(message, eChatType.CT_ScreenCenterSmaller, eChatLoc.CL_SystemWindow);
                 player.Out.SendMessage(message, eChatType.CT_Important, eChatLoc.CL_SystemWindow);
@@ -202,57 +202,45 @@ namespace DOL.GS.Keeps
 
         public override void ModifyAttack(AttackData attackData)
         {
-            // Allow a GM to use commands to damage components, regardless of toughness setting
-            if (attackData.DamageType == eDamageType.GM)
+            if (attackData.DamageType is eDamageType.GM)
                 return;
 
-            int toughness = Properties.SET_KEEP_DOOR_TOUGHNESS;
+            int toughness = Component.Keep is GameKeepTower ? Properties.SET_TOWER_DOOR_TOUGHNESS : Properties.SET_KEEP_DOOR_TOUGHNESS;
+            GameLiving source = attackData.Attacker;
             int baseDamage = attackData.Damage;
             int styleDamage = attackData.StyleDamage;
-            int criticalDamage = 0;
-
-            GameLiving source = attackData.Attacker;
-
-            if (Component.Keep is GameKeepTower)
-                toughness = Properties.SET_TOWER_DOOR_TOUGHNESS;
-
-            if (Component.Keep.KeepID == 11) //Reduce toughness for Thid CK
-                toughness = 25; //Our "normal" toughness is 10% for OF keeps, increasing damage on Thid CK doors
+            int criticalDamage = attackData.CriticalDamage;
 
             if (source is IGamePlayer)
             {
-                baseDamage = (baseDamage - baseDamage * 5 * Component.Keep.Level / 100) * toughness / 100;
-                styleDamage = (styleDamage - styleDamage * 5 * Component.Keep.Level / 100) * toughness / 100;
+                baseDamage = GetAdjustedDamage(baseDamage, toughness, Component.Keep.Level);
+                styleDamage = GetAdjustedDamage(styleDamage, toughness, Component.Keep.Level);
+                criticalDamage = GetAdjustedDamage(criticalDamage, toughness, Component.Keep.Level);
             }
             else if (source is GameNPC npcSource)
             {
                 if (!Properties.DOORS_ALLOWPETATTACK)
                 {
+                    attackData.AttackResult = eAttackResult.NotAllowed_ServerRules;
                     baseDamage = 0;
                     styleDamage = 0;
-                    attackData.AttackResult = eAttackResult.NotAllowed_ServerRules;
+                    criticalDamage = 0;
                 }
                 else
                 {
-                    baseDamage = (baseDamage - baseDamage * 5 * Component.Keep.Level / 100) * toughness / 100;
-                    styleDamage = (styleDamage - styleDamage * 5 * Component.Keep.Level / 100) * toughness / 100;
+                    baseDamage = GetAdjustedDamage(baseDamage, toughness, Component.Keep.Level);
+                    styleDamage = GetAdjustedDamage(styleDamage, toughness, Component.Keep.Level);
+                    criticalDamage = GetAdjustedDamage(criticalDamage, toughness, Component.Keep.Level);
 
-                    if (npcSource.Brain is AI.Brain.IControlledBrain brain)
+                    if (npcSource.Brain is AI.Brain.IControlledBrain brain && brain.Owner is IGamePlayer player)
                     {
-                        if (brain.Owner is IGamePlayer player)
-                        {
-                            // special considerations for pet spam classes
-                            if ((eCharacterClass) player.CharacterClass.ID is eCharacterClass.Theurgist or eCharacterClass.Animist)
-                            {
-                                baseDamage = (int) (baseDamage * Properties.PET_SPAM_DAMAGE_MULTIPLIER);
-                                styleDamage = (int) (styleDamage * Properties.PET_SPAM_DAMAGE_MULTIPLIER);
-                            }
-                            else
-                            {
-                                baseDamage = (int) (baseDamage * Properties.PET_DAMAGE_MULTIPLIER);
-                                styleDamage = (int) (styleDamage * Properties.PET_DAMAGE_MULTIPLIER);
-                            }
-                        }
+                        double multiplier = (eCharacterClass) player.CharacterClass.ID is eCharacterClass.Theurgist or eCharacterClass.Animist ?
+                            Properties.PET_SPAM_DAMAGE_MULTIPLIER :
+                            Properties.PET_DAMAGE_MULTIPLIER;
+
+                        baseDamage = (int) (baseDamage * multiplier);
+                        styleDamage = (int) (styleDamage * multiplier);
+                        criticalDamage = (int) (criticalDamage * multiplier);
                     }
                 }
             }
@@ -260,6 +248,11 @@ namespace DOL.GS.Keeps
             attackData.Damage = baseDamage;
             attackData.StyleDamage = styleDamage;
             attackData.CriticalDamage = criticalDamage;
+
+            static int GetAdjustedDamage(int damage, int toughness, int level)
+            {
+                return (damage - damage * 5 * level / 100) * toughness / 100;
+            }
         }
 
         /// <summary>
@@ -404,40 +397,10 @@ namespace DOL.GS.Keeps
 
         public override void StartHealthRegeneration()
         {
-            if (!IsAttackableDoor)
+            if (!IsAttackableDoor || m_healthRegenerationTimer.IsAlive || Health >= MaxHealth)
                 return;
 
-            if ((m_repairTimer != null && m_repairTimer.IsAlive) || Health >= MaxHealth)
-                return;
-
-            m_repairTimer = new ECSGameTimer(this);
-            m_repairTimer.Callback = new ECSGameTimer.ECSTimerCallback(RepairTimerCallback);
-            m_repairTimer.Start(REPAIR_INTERVAL);
-        }
-
-        public void DeleteObject()
-        {
-            RemoveTimers();
-
-            if (Component != null)
-            {
-                Component.Keep?.Doors.Remove(ObjectID.ToString());
-                Component.Delete();
-            }
-
-            Component = null;
-            Position = null;
-            base.Delete();
-            CurrentRegion = null;
-        }
-
-        public virtual void RemoveTimers()
-        {
-            if (m_repairTimer != null)
-            {
-                m_repairTimer.Stop();
-                m_repairTimer = null;
-            }
+            m_healthRegenerationTimer.Start(REPAIR_INTERVAL);
         }
 
         #endregion
@@ -602,17 +565,14 @@ namespace DOL.GS.Keeps
             }
         }
 
-        protected ECSGameTimer m_repairTimer;
         protected const int REPAIR_INTERVAL = 30 * 60 * 1000;
 
-        public int RepairTimerCallback(ECSGameTimer timer)
+        protected override int HealthRegenerationTimerCallback(ECSGameTimer timer)
         {
-            if (Component == null || Component.Keep == null)
+            if (Component?.Keep == null || HealthPercent >= 100)
                 return 0;
 
-            if (HealthPercent >= 100)
-                return 0;
-            else if (!Component.Keep.InCombat)
+            if (!Component.Keep.InCombat)
                 Repair(MaxHealth / 100 * 5);
 
             return REPAIR_INTERVAL;

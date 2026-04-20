@@ -8,6 +8,7 @@ using DOL.GS.Housing;
 using DOL.GS.Keeps;
 using DOL.GS.PacketHandler.Client.v168;
 using DOL.Language;
+using static DOL.AI.Brain.StandardMobBrain;
 
 namespace DOL.GS.Commands
 {
@@ -108,8 +109,9 @@ namespace DOL.GS.Commands
 					info.Add(" + Size " + target.Size);
 					info.Add(string.Format(" + Flags: {0} (0x{1})", ((GameNPC.eFlags)target.Flags).ToString("G"), target.Flags.ToString("X")));
 					info.Add(" ");
-					info.Add(" + Attacker Count: " + target.attackComponent.Attackers.Count);
-					
+					info.Add(" + Attacker count: " + target.attackComponent.AttackerTracker.Count);
+					info.Add(" + Melee attacker count: " + target.attackComponent.AttackerTracker.MeleeCount);
+
 					IOldAggressiveBrain aggroBrain = target.Brain as IOldAggressiveBrain;
 					if (aggroBrain != null)
 					{
@@ -214,14 +216,6 @@ namespace DOL.GS.Commands
 					info.Add("LastCombatPVP: " + target.LastCombatTickPvP);
 					info.Add("AttackAction: " + target.attackComponent.attackAction);
 					info.Add("WeaponAction: " + target.attackComponent.weaponAction);
-
-					if (target.InCombat || target.attackComponent.AttackState)
-					{
-						info.Add("RegionTick: " + GameLoop.GameLoopTime);
-						info.Add("AttackAction NextTick " + target.attackComponent.attackAction.NextTick);
-						info.Add("AttackAction TimeUntilStart " + (target.attackComponent.attackAction.NextTick - GameLoop.GameLoopTime));
-					}
-
 					info.Add("");
 
 					if (target.TargetObject != null)
@@ -232,24 +226,24 @@ namespace DOL.GS.Commands
 
 					if (target.Brain is StandardMobBrain brain)
 					{
-						List<(GameLiving, long)> aggroList = brain.GetOrderedAggroList();
+						List<OrderedAggroListElement> aggroList = brain.GetOrderedAggroList();
 
 						if (aggroList.Count > 0)
 						{
 							info.Add("");
 							info.Add("Aggro List:");
 
-							foreach ((GameLiving, long) pair in aggroList)
-								info.Add($"{pair.Item1.Name}: {pair.Item2}");
+							foreach (OrderedAggroListElement orderedAggroListElement in aggroList)
+								info.Add($"{orderedAggroListElement.Living.Name}: {orderedAggroListElement.AggroAmount}");
 						}
 					}
 
-					if (target.attackComponent.Attackers != null && !target.attackComponent.Attackers.IsEmpty)
+					if (target.attackComponent.AttackerTracker.Count > 0)
 					{
 						info.Add("");
 						info.Add("Attacker List:");
 
-						foreach (GameObject attacker in target.attackComponent.Attackers.Keys)
+						foreach (GameObject attacker in target.attackComponent.AttackerTracker.Attackers)
 							info.Add(attacker.Name);
 					}
 
@@ -379,13 +373,15 @@ namespace DOL.GS.Commands
 					info.Add(" Model: " + target.Model);
 					info.Add(" Emblem: " + target.Emblem);
 					info.Add(" Realm: " + target.Realm);
-					if (target.Owners.Count > 0)
+
+					if (target is GameStaticItemTimed staticItem && staticItem.Owners.Count > 0)
 					{
 						info.Add(" ");
 
-						foreach (IGameStaticItemOwner owner in target.Owners)
+						foreach (IGameStaticItemOwner owner in staticItem.Owners)
 							info.Add($" Owner: {owner.Name}");
 					}
+
 					info.Add(" ");
 					info.Add(" OID: " + target.ObjectID);
 					info.Add (" Type: " + target.GetType());
@@ -675,13 +671,13 @@ namespace DOL.GS.Commands
 					}
 
 					info.Add(" ");
-					info.Add(" Server players: " + ClientService.ClientCount);
+					info.Add(" Server players: " + ClientService.Instance.ClientCount);
                     info.Add(" ");
                     info.Add(" Region Players:");
-                    info.Add(" All players: " + ClientService.GetPlayersOfRegion(client.Player.CurrentRegion).Count);
-                    info.Add(" Alb players: " + ClientService.GetPlayersOfRegionAndRealm(client.Player.CurrentRegion, eRealm.Albion).Count);
-                    info.Add(" Hib players: " + ClientService.GetPlayersOfRegionAndRealm(client.Player.CurrentRegion, eRealm.Hibernia).Count);
-                    info.Add(" Mid players: " + ClientService.GetPlayersOfRegionAndRealm(client.Player.CurrentRegion, eRealm.Midgard).Count);
+                    info.Add(" All players: " + ClientService.Instance.GetPlayersOfRegion(client.Player.CurrentRegion).Count);
+                    info.Add(" Alb players: " + ClientService.Instance.GetPlayersOfRegionAndRealm(client.Player.CurrentRegion, eRealm.Albion).Count);
+                    info.Add(" Hib players: " + ClientService.Instance.GetPlayersOfRegionAndRealm(client.Player.CurrentRegion, eRealm.Hibernia).Count);
+                    info.Add(" Mid players: " + ClientService.Instance.GetPlayersOfRegionAndRealm(client.Player.CurrentRegion, eRealm.Midgard).Count);
 
 					info.Add(" ");
 					info.Add(" Total objects in region: " + client.Player.CurrentRegion.TotalNumberOfObjects);
@@ -706,7 +702,7 @@ namespace DOL.GS.Commands
 					info.Add(" Zone Height: "+ client.Player.CurrentZone.Height);
 					info.Add(" Zone DivingEnabled: " + client.Player.CurrentZone.IsDivingEnabled);
 					info.Add(" Zone Waterlevel: " + client.Player.CurrentZone.Waterlevel);
-					info.Add(" Zone Pathing: " + (PathingMgr.Instance.HasNavmesh(client.Player.CurrentZone) ? "enabled" : "disabled"));
+					info.Add(" Zone Pathfinding: " + (PathfindingProvider.Instance.HasNavmesh(client.Player.CurrentZone) ? "enabled" : "disabled"));
 					info.Add(" ");
 					info.Add(" Region Name: "+ client.Player.CurrentRegion.Name);
                     info.Add(" Region Description: " + client.Player.CurrentRegion.Description);

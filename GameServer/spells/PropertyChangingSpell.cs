@@ -1,9 +1,13 @@
 using System;
+using System.Collections.Frozen;
+using System.Collections.Generic;
 using DOL.AI.Brain;
 using DOL.Database;
 using DOL.GS.Effects;
 using DOL.GS.PacketHandler;
 using DOL.GS.PropertyCalc;
+using DOL.GS.Scripts;
+using DOL.Logging;
 
 namespace DOL.GS.Spells
 {
@@ -13,11 +17,37 @@ namespace DOL.GS.Spells
 	/// </summary>
 	public abstract class PropertyChangingSpell : SpellHandler
 	{
-		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+		private static readonly Logger log = LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
-		public override ECSGameSpellEffect CreateECSEffect(ECSGameEffectInitParams initParams)
+		private static FrozenDictionary<eProperty, string> _propertyToStringMap =
+			new Dictionary<eProperty, string>()
+			{
+				{eProperty.Strength, "strength" },
+				{eProperty.Constitution, "constitution" },
+				{eProperty.Dexterity, "dexterity" },
+				{eProperty.Quickness, "quickness" },
+				{eProperty.Acuity, "acuity" },
+				{eProperty.ArmorFactor, "armor factor" },
+				{eProperty.ArmorAbsorption, "armor absorption" },
+				{eProperty.PhysicalAbsorption, "physical absorption" },
+				{eProperty.WeaponSkill, "weaponskill" },
+				{eProperty.Resist_Slash, "slash" },
+				{eProperty.Resist_Crush, "crush" },
+				{eProperty.Resist_Thrust, "thrust" },
+				{eProperty.Resist_Heat, "heat" },
+				{eProperty.Resist_Cold, "cold" },
+				{eProperty.Resist_Matter, "matter" },
+				{eProperty.Resist_Body, "body" },
+				{eProperty.Resist_Spirit, "spirit" },
+				{eProperty.Resist_Energy, "energy" },
+				{eProperty.Resist_Natural, "essence" },
+			}.ToFrozenDictionary();
+
+		public PropertyChangingSpell(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
+
+		public override ECSGameSpellEffect CreateECSEffect(in ECSGameEffectInitParams initParams)
 		{
-			return new StatBuffECSEffect(initParams);
+			return ECSGameEffectFactory.Create(initParams, static (in i) => new StatBuffECSEffect(i));
 		}
 
 		/// <summary>
@@ -43,7 +73,7 @@ namespace DOL.GS.Spells
 					if (instrument != null)
 					{
 						duration *= 1.0 + Math.Min(1.0, instrument.Level / (double)Caster.Level); // up to 200% duration for songs
-						duration *= instrument.Condition / (double)instrument.MaxCondition * instrument.Quality / 100;
+						duration *= instrument.Quality * 0.01 * instrument.ConditionPercent * 0.01;
 					}
 				}
 
@@ -61,7 +91,7 @@ namespace DOL.GS.Spells
 		public override void ApplyEffectOnTarget(GameLiving target)
 		{
 			
-			GamePlayer player = target as GamePlayer;
+			IGamePlayer player = target as IGamePlayer;
 			if (player != null)
 			{
 // 				//vampiir, they cannot be buffed except with resists/armor factor/ haste / power regen
@@ -96,19 +126,6 @@ namespace DOL.GS.Spells
 // 						}
 // 					}
 // 				}
-				if (target is GamePlayer && (target as GamePlayer).NoHelp && Caster is GamePlayer && target != Caster && target.Realm == Caster.Realm)
-				{
-					//player not grouped, anyone else
-					//player grouped, different group
-					if ((target as GamePlayer).Group == null ||
-					    (Caster as GamePlayer).Group == null ||
-					    (Caster as GamePlayer).Group != (target as GamePlayer).Group)
-					{
-						MessageToCaster("That player does not want assistance", eChatType.CT_SpellResisted);
-						return;
-					}
-				}
-
 
 				if (this is HeatColdMatterBuff || this is AllMagicResistsBuff)
 				{
@@ -117,9 +134,9 @@ namespace DOL.GS.Spells
 						//GameSpellEffect Matter = FindEffectOnTarget(player, "MatterResistBuff");
 						//GameSpellEffect Cold = FindEffectOnTarget(player, "ColdResistBuff");
 						//GameSpellEffect Heat = FindEffectOnTarget(player, "HeatResistBuff");
-						ECSGameEffect Matter = EffectListService.GetEffectOnTarget(player, eEffect.MatterResistBuff);
-						ECSGameEffect Cold = EffectListService.GetEffectOnTarget(player, eEffect.ColdResistBuff);
-						ECSGameEffect Heat = EffectListService.GetEffectOnTarget(player, eEffect.HeatResistBuff);
+						ECSGameEffect Matter = EffectListService.GetEffectOnTarget((GameLiving)player, eEffect.MatterResistBuff);
+						ECSGameEffect Cold = EffectListService.GetEffectOnTarget((GameLiving)player, eEffect.ColdResistBuff);
+						ECSGameEffect Heat = EffectListService.GetEffectOnTarget((GameLiving)player, eEffect.HeatResistBuff);
 						if (Matter != null || Cold != null || Heat != null)
 						{
 							MessageToCaster(target.Name + " already has this effect", eChatType.CT_SpellResisted);
@@ -135,9 +152,9 @@ namespace DOL.GS.Spells
 						//GameSpellEffect Body = FindEffectOnTarget(player, "BodyResistBuff");
 						//GameSpellEffect Spirit = FindEffectOnTarget(player, "SpiritResistBuff");
 						//GameSpellEffect Energy = FindEffectOnTarget(player, "EnergyResistBuff");
-						ECSGameEffect Body = EffectListService.GetEffectOnTarget(player, eEffect.BodyResistBuff);
-						ECSGameEffect Spirit = EffectListService.GetEffectOnTarget(player, eEffect.SpiritResistBuff);
-						ECSGameEffect Energy = EffectListService.GetEffectOnTarget(player, eEffect.EnergyResistBuff);
+						ECSGameEffect Body = EffectListService.GetEffectOnTarget((GameLiving)player, eEffect.BodyResistBuff);
+						ECSGameEffect Spirit = EffectListService.GetEffectOnTarget((GameLiving)player, eEffect.SpiritResistBuff);
+						ECSGameEffect Energy = EffectListService.GetEffectOnTarget((GameLiving)player, eEffect.EnergyResistBuff);
 						if (Body != null || Spirit != null || Energy != null)
 						{
 							MessageToCaster(target.Name + " already has this effect", eChatType.CT_SpellResisted);
@@ -478,23 +495,23 @@ namespace DOL.GS.Spells
 		/// <param name="BonusCat"></param>
 		/// <param name="Property"></param>
 		/// <param name="Value"></param>
-		/// <param name="IsSubstracted"></param>
-		protected void ApplyBonus(GameLiving owner,  eBuffBonusCategory BonusCat, eProperty Property, int Value, bool IsSubstracted)
+		/// <param name="IsSubtracted"></param>
+		protected void ApplyBonus(GameLiving owner,  eBuffBonusCategory BonusCat, eProperty Property, int Value, bool IsSubtracted)
 		{
 			IPropertyIndexer tblBonusCat;
 			if (Property != eProperty.Undefined)
 			{
 				tblBonusCat = GetBonusCategory(owner, BonusCat);
-				if (IsSubstracted)
-					tblBonusCat[(int)Property] -= Value;
+				if (IsSubtracted)
+					tblBonusCat[Property] -= Value;
 				else
-					tblBonusCat[(int)Property] += Value;
+					tblBonusCat[Property] += Value;
 			}
 		}
 
-		// constructor
-		public PropertyChangingSpell(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line)
+		protected static string PropertyToString(eProperty property)
 		{
+			return _propertyToStringMap.TryGetValue(property, out string result) ? result : $"<{property}>";
 		}
 	}
 }

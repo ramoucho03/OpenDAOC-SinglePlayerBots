@@ -25,9 +25,9 @@ namespace DOL.GS.Spells
             return base.CheckBeginCast(selectedTarget);
         }
 
-        public override void OnPetReleased(GameSummonedPet pet)
+        public override void OnPetReleased()
         {
-            CommanderPet commanderPet = pet as CommanderPet;
+            CommanderPet commanderPet = Pet as CommanderPet;
 
             if (commanderPet == null)
                 return;
@@ -38,7 +38,7 @@ namespace DOL.GS.Spells
                     bdPetBrain?.OnRelease();
             }
 
-            base.OnPetReleased(commanderPet);
+            base.OnPetReleased();
         }
 
         protected override IControlledBrain GetPetBrain(GameLiving owner)

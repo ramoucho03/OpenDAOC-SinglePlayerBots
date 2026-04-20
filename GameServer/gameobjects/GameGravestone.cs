@@ -1,3 +1,4 @@
+using DOL.GS.Scripts;
 using DOL.Language;
 
 namespace DOL.GS
@@ -15,7 +16,7 @@ namespace DOL.GS
 		/// <summary>
 		/// Constructs a new empty Gravestone
 		/// </summary>
-		public GameGravestone(GamePlayer player, long xpValue):base()
+		public GameGravestone(IGamePlayer player, long xpValue):base()
 		{
 			//Objects should NOT be saved back to the DB
 			//as standard! We want our mobs/items etc. at
@@ -35,6 +36,8 @@ namespace DOL.GS
 				m_model = 636; //Midgard Gravestone
 			else if (player.Realm == eRealm.Hibernia)
 				m_model = 637; //Hibernia Gravestone
+			else
+				m_model = 1681; // Some rock.
 
 			m_xpValue = xpValue;
 

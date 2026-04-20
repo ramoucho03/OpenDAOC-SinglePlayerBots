@@ -72,7 +72,7 @@ namespace DOL.GS.ServerRules
 		/// <param name="target"></param>
 		/// <param name="quiet"></param>
 		/// <returns></returns>
-		bool IsAllowedToGroup(GamePlayer source, GamePlayer target, bool quiet);
+		bool IsAllowedToGroup(IGamePlayer source, IGamePlayer target, bool quiet);
 
 		/// <summary>
 		/// Is source allowed to join this guild

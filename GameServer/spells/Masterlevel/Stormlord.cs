@@ -35,7 +35,7 @@ namespace DOL.GS.Spells
             dbs.ClientEffect = 7210;
             dbs.Damage = spell.Damage;
             dbs.DamageType = (int)spell.DamageType;
-            dbs.Target = "Realm";
+            dbs.Target = eSpellTarget.REALM.ToString();
             dbs.Radius = 0;
             dbs.Type = eSpellType.StormMissHit.ToString();
             dbs.Value = spell.Value;
@@ -66,7 +66,7 @@ namespace DOL.GS.Spells
             neweffect.Start(target);
 
             if (target is GamePlayer)
-                ((GamePlayer)target).Out.SendMessage("You're harder to hit!", eChatType.CT_YouWereHit, eChatLoc.CL_SystemWindow);
+                ((GamePlayer)target).Out.SendMessage("You're harder to hit!", eChatType.CT_System, eChatLoc.CL_SystemWindow);
 
         }
 
@@ -102,10 +102,10 @@ namespace DOL.GS.Spells
             base.FinishSpellCast(target);
         }
 
-        public override IList<GameLiving> SelectTargets(GameObject CasterTarget)
+        public override List<GameLiving> SelectTargets(GameObject CasterTarget)
         {
             
-            var list = new List<GameLiving>(8);
+            var list = GameLoop.GetListForTick<GameLiving>();
             foreach (GameNPC storms in Caster.GetNPCsInRadius(350))
             {
                 if ((storms is GameStorm) && (GameServer.ServerRules.IsSameRealm(storms, Caster, true))) list.Add(storms);
@@ -169,7 +169,7 @@ namespace DOL.GS.Spells
             dbs.ClientEffect = 7273;
             dbs.Damage = Math.Abs(spell.Damage);
             dbs.DamageType = (int)spell.DamageType;
-            dbs.Target = "Enemy";
+            dbs.Target = eSpellTarget.ENEMY.ToString();
             dbs.Radius = 0;
             dbs.Type = eSpellType.StormEnduDrain.ToString();
             dbs.Value = spell.Value;
@@ -206,8 +206,8 @@ namespace DOL.GS.Spells
             target.ChangeEndurance(target, eEnduranceChangeType.Spell, (-end));
 
             if (target is GamePlayer)
-                ((GamePlayer)target).Out.SendMessage(" You lose " + end + " endurance!", eChatType.CT_YouWereHit, eChatLoc.CL_SystemWindow);
-            (m_caster as GamePlayer).Out.SendMessage("" + target.Name + " loses " + end + " endurance!", eChatType.CT_YouWereHit, eChatLoc.CL_SystemWindow);
+                ((GamePlayer)target).Out.SendMessage(" You lose " + end + " endurance!", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+            (m_caster as GamePlayer).Out.SendMessage("" + target.Name + " loses " + end + " endurance!", eChatType.CT_System, eChatLoc.CL_SystemWindow);
         }
 
         public override int OnEffectExpires(GameSpellEffect effect, bool noMessages)
@@ -251,7 +251,7 @@ namespace DOL.GS.Spells
             dbs.ClientEffect = 7258;
             dbs.Damage = spell.Damage;
             dbs.DamageType = (int)spell.Damage;
-            dbs.Target = "Enemy";
+            dbs.Target = eSpellTarget.ENEMY.ToString();
             dbs.Radius = 0;
             dbs.Type = eSpellType.StormDexQuickDebuff.ToString();
             dbs.Value = spell.Value;
@@ -286,7 +286,7 @@ namespace DOL.GS.Spells
             neweffect.Start(target);
 
             if (target is GamePlayer)
-                ((GamePlayer)target).Out.SendMessage("Your dexterity and quickness decreased!", eChatType.CT_YouWereHit, eChatLoc.CL_SystemWindow);
+                ((GamePlayer)target).Out.SendMessage("Your dexterity and quickness decreased!", eChatType.CT_System, eChatLoc.CL_SystemWindow);
 
         }
 
@@ -334,7 +334,7 @@ namespace DOL.GS.Spells
             dbs.ClientEffect = 7303;
             dbs.Damage = Math.Abs(spell.Damage);
             dbs.DamageType = (int)spell.DamageType;
-            dbs.Target = "Enemy";
+            dbs.Target = eSpellTarget.ENEMY.ToString();
             dbs.Radius = 0;
             dbs.Type = eSpellType.PowerDrainStorm.ToString();
             dbs.Value = spell.Value;
@@ -374,7 +374,7 @@ namespace DOL.GS.Spells
 
             if (target is GamePlayer)
             {
-                ((GamePlayer)target).Out.SendMessage(m_caster.Name + " steals you " + mana + " points of power!", eChatType.CT_YouWereHit, eChatLoc.CL_SystemWindow);
+                ((GamePlayer)target).Out.SendMessage(m_caster.Name + " steals you " + mana + " points of power!", eChatType.CT_System, eChatLoc.CL_SystemWindow);
             }
 
             StealMana(target, mana);
@@ -430,7 +430,7 @@ namespace DOL.GS.Spells
             {
                 GameStorm targetStorm = effect.Owner as GameStorm;
                 targetStorm.Movable = false;
-                MessageToCaster("Now the vortex of this storm is locked!", eChatType.CT_YouWereHit);
+                MessageToCaster("Now the vortex of this storm is locked!", eChatType.CT_System);
                 GameEventMgr.AddHandler(m_caster, GameLivingEvent.Moving, new DOLEventHandler(LivingMoves));
             }
         }
@@ -488,7 +488,7 @@ namespace DOL.GS.Spells
             dbs.ClientEffect = 7223;
             dbs.Damage = spell.Damage;
             dbs.DamageType = (int)spell.DamageType;
-            dbs.Target = "Enemy";
+            dbs.Target = eSpellTarget.ENEMY.ToString();
             dbs.Radius = 0;
             dbs.Type = eSpellType.StormStrConstDebuff.ToString();
             dbs.Value = spell.Value;
@@ -523,7 +523,7 @@ namespace DOL.GS.Spells
             neweffect.Start(target);
 
             if (target is GamePlayer)
-                ((GamePlayer)target).Out.SendMessage("Your strenght and constitution decreased!", eChatType.CT_YouWereHit, eChatLoc.CL_SystemWindow);
+                ((GamePlayer)target).Out.SendMessage("Your strenght and constitution decreased!", eChatType.CT_System, eChatLoc.CL_SystemWindow);
 
         }
 
@@ -571,7 +571,7 @@ namespace DOL.GS.Spells
             dbs.ClientEffect = 7305;
             dbs.Damage = spell.Damage;
             dbs.DamageType = (int)spell.DamageType;
-            dbs.Target = "Enemy";
+            dbs.Target = eSpellTarget.ENEMY.ToString();
             dbs.Radius = 0;
             dbs.Type = eSpellType.StormAcuityDebuff.ToString();
             dbs.Value = spell.Value;
@@ -617,7 +617,7 @@ namespace DOL.GS.Spells
             neweffect.Start(target);
 
             if (target is GamePlayer)
-                ((GamePlayer)target).Out.SendMessage("Your acuity decreased!", eChatType.CT_YouWereHit, eChatLoc.CL_SystemWindow);
+                ((GamePlayer)target).Out.SendMessage("Your acuity decreased!", eChatType.CT_System, eChatLoc.CL_SystemWindow);
 
         }
 
@@ -665,7 +665,7 @@ namespace DOL.GS.Spells
             dbs.ClientEffect = 7216;
             dbs.Damage = spell.Damage;
             dbs.DamageType = (int)spell.DamageType;
-            dbs.Target = "Enemy";
+            dbs.Target = eSpellTarget.ENEMY.ToString();
             dbs.Radius = 0;
             dbs.Type = eSpellType.StormEnergyTempest.ToString();
             dbs.Value = spell.Value;

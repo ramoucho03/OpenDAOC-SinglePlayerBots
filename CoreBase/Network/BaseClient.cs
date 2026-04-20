@@ -23,8 +23,9 @@ namespace DOL.Network
         private long _isReceivingAsyncCompleted; // Use `ReceivingAsyncCompleted` instead.
 
         public Socket Socket { get; }
-        public byte[] ReceiveBuffer { get; }
-        public int ReceiveBufferOffset { get; set; }
+        public SessionId SessionId { get; private set; }
+        protected byte[] ReceiveBuffer { get; }
+        protected int ReceiveBufferOffset { get; set; }
 
         private bool ReceivingAsyncCompleted
         {
@@ -57,15 +58,22 @@ namespace DOL.Network
 
             void OnAsyncReceiveCompletion(object sender, SocketAsyncEventArgs tcpReceiveArgs)
             {
+                // Processing packets should be done by the game loop.
                 ReceivingAsyncCompleted = true;
             }
         }
 
         protected virtual void OnReceive(int size) { }
 
-        public virtual void OnConnect() { }
+        public virtual void OnConnect(SessionId sessionId)
+        {
+            SessionId = sessionId;
+        }
 
-        protected virtual void OnDisconnect() { }
+        protected virtual void OnDisconnect()
+        {
+            SessionId.Dispose();
+        }
 
         public bool SendAsync(SocketAsyncEventArgs tcpSendArgs)
         {
@@ -141,7 +149,7 @@ namespace DOL.Network
             if (received <= 0)
             {
                 if (log.IsDebugEnabled)
-                    log.Debug($"Disconnecting client because of 0 bytes received. (Client: {this}");
+                    log.Debug($"Disconnecting client because of 0 bytes received. (Client: {this})");
 
                 Disconnect();
                 return false;
@@ -153,6 +161,8 @@ namespace DOL.Network
 
         public void Disconnect()
         {
+            _receiveArgs.Dispose();
+
             try
             {
                 OnDisconnect();

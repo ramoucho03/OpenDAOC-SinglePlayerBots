@@ -1,42 +1,19 @@
-using System.Reflection;
 using DOL.GS;
+using DOL.GS.Scripts;
 
 namespace DOL.AI.Brain
 {
-    /// <summary>
-    /// A brain that can be controlled
-    /// </summary>
     public class BdBufferBrain : BdPetBrain
     {
-        /// <summary>
-        /// Defines a logger for this class.
-        /// </summary>
-        private static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
-
-        /// <summary>
-        /// Constructs new controlled npc brain
-        /// </summary>
-        /// <param name="owner"></param>
         public BdBufferBrain(GameLiving owner) : base(owner) { }
 
-        /// <summary>
-        /// Attack the target on command
-        /// </summary>
-        /// <param name="target"></param>
-        public override void Attack(GameObject target)
+        public override void Think()
         {
-            // Don't stop casting. Buffers should prioritize buffing.
-            // 'AttackMostWanted()' will be called automatically once the pet is done buffing.
-            if (m_orderAttackTarget == target)
-                return;
-
-            m_orderAttackTarget = target as GameLiving;
-            FSM.SetCurrentState(eFSMStateType.AGGRO);
+            if (base.CheckSpells(eCheckSpellType.Defensive))
+                Body.StopAttack();
+            else
+                base.Think();
         }
-
-        /// <summary>
-        /// Checks the Abilities
-        /// </summary>
         public override void CheckAbilities() { }
 
         protected override GameLiving FindTargetForDefensiveSpell(Spell spell)
@@ -49,9 +26,6 @@ namespace DOL.AI.Brain
                 case eSpellType.DamageShield:
                 case eSpellType.Bladeturn:
                 {
-                    if (Body.IsAttacking)
-                        break;
-
                     //Buff self
                     if (!LivingHasEffect(Body, spell))
                     {
@@ -66,14 +40,14 @@ namespace DOL.AI.Brain
                         // Buff owner.
                         if (owner != null)
                         {
-                            GamePlayer player = GetPlayerOwner();
+                            IGamePlayer player = GetIPlayerOwner();
 
                             // Buff player.
                             if (player != null)
                             {
-                                if (!LivingHasEffect(player, spell))
+                                if (!LivingHasEffect((GameLiving)player, spell))
                                 {
-                                    target = player;
+                                    target = (GameLiving)player;
                                     break;
                                 }
                             }

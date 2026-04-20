@@ -18,12 +18,12 @@ namespace DOL.GS.Spells
 			return 0;
 		}
 
-		public override bool IsOverwritable(ECSGameSpellEffect compare)
+		public override bool HasConflictingEffectWith(ISpellHandler compare)
 		{
-			if (Spell.EffectGroup != 0 || compare.SpellHandler.Spell.EffectGroup != 0)
-				return Spell.EffectGroup == compare.SpellHandler.Spell.EffectGroup;
-			if (base.IsOverwritable(compare) == false) return false;
-			if (compare.SpellHandler.Spell.Duration != Spell.Duration) return false;
+			if (Spell.EffectGroup != 0 || compare.Spell.EffectGroup != 0)
+				return Spell.EffectGroup == compare.Spell.EffectGroup;
+			if (base.HasConflictingEffectWith(compare) == false) return false;
+			if (compare.Spell.Duration != Spell.Duration) return false;
 			return true;
 		}
 
@@ -55,11 +55,17 @@ namespace DOL.GS.Spells
 
 		public override void OnEffectPulse(GameSpellEffect effect)
 		{
-            if ( !m_caster.IsAlive || !effect.Owner.IsAlive || m_caster.Mana < Spell.PulsePower || !m_caster.IsWithinRadius( effect.Owner, (int)( Spell.Range * m_caster.GetModified( eProperty.SpellRange ) * 0.01 ) ) || m_caster.IsMezzed || m_caster.IsStunned || ( m_caster.TargetObject is GameLiving ? effect.Owner != m_caster.TargetObject as GameLiving : true ) )
+			if (m_caster.IsIncapacitated ||
+				!effect.Owner.IsAlive ||
+				m_caster.Mana < Spell.PulsePower ||
+				!m_caster.IsWithinRadius(effect.Owner, Spell.CalculateEffectiveRange(m_caster)) ||
+				m_caster.TargetObject is not GameLiving ||
+				effect.Owner != (m_caster.TargetObject as GameLiving))
 			{
 				effect.Cancel(false);
 				return;
 			}
+
 			base.OnEffectPulse(effect);
 			SendEffectAnimation(effect.Owner, 0, false, 1);
 			// An acidic cloud surrounds you!

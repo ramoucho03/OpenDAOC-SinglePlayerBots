@@ -5,7 +5,7 @@ using DOL.Events;
 using DOL.GS.PacketHandler;
 using DOL.GS.ServerProperties;
 using DOL.Language;
-using JNogueira.Discord.Webhook.Client;
+using JNogueira.Discord.WebhookClient;
 
 namespace DOL.GS.Commands
 {
@@ -92,12 +92,13 @@ namespace DOL.GS.Commands
 				date = date.AddSeconds(m_counter);
 				string msg = $"Automated server restart in {m_counter / 60} mins! (Restart at {date:HH:mm \"GMT\" zzz})";
 
-				foreach (GamePlayer player in ClientService.GetPlayers())
+				foreach (GamePlayer player in ClientService.Instance.GetPlayers())
 					player.Out.SendDialogBox(eDialogCode.SimpleWarning, 0, 0, 0, 0, eDialogType.Ok, true, msg);
 
-				log.Warn(msg);
+				if (log.IsWarnEnabled)
+					log.Warn(msg);
 			}
-			else
+			else if (log.IsInfoEnabled)
 				log.Info($"Uptime = {uptime.TotalHours:N1}, restart uptime = {Properties.HOURS_UPTIME_BETWEEN_SHUTDOWN} | current hour = {DateTime.Now.Hour}, restart hour = {AUTOMATEDSHUTDOWN_HOURTOSHUTDOWN}");
 		}
 		
@@ -115,10 +116,13 @@ namespace DOL.GS.Commands
 			}
 			else
 			{
-				if (m_counter > 120)
-					log.Warn("Server restart in " + (int)(m_counter / 60) + " minutes!");
-				else
-					log.Warn("Server restart in " + m_counter + " seconds!");
+				if (log.IsWarnEnabled)
+				{
+					if (m_counter > 120)
+						log.Warn("Server restart in " + (int)(m_counter / 60) + " minutes!");
+					else
+						log.Warn("Server restart in " + m_counter + " seconds!");
+				}
 
 				long secs = m_counter;
 				long mins = secs / 60;
@@ -237,7 +241,7 @@ namespace DOL.GS.Commands
 
 				if (translationID != string.Empty)
 				{
-					foreach (GamePlayer player in ClientService.GetPlayers())
+					foreach (GamePlayer player in ClientService.Instance.GetPlayers())
 					{
 						if (args2 == -1)
 							ChatUtil.SendServerMessage(player.Client, translationID, args1);
@@ -250,33 +254,31 @@ namespace DOL.GS.Commands
 				{
 					GameServer.Instance.Close();
 
-					foreach (GamePlayer player in ClientService.GetPlayers())
+					foreach (GamePlayer player in ClientService.Instance.GetPlayers())
 					{
 						// Message: "The server is now closed to all incoming connections! The server will shut down in {0} seconds!"
 						ChatUtil.SendDebugMessage(player.Client, "AdminCommands.Account.Msg.ServerClosed", secs);
 					}
 				}
 				
-				if (secs == 119 && GameServer.Instance.ServerStatus != EGameServerStatus.GSS_Closed && Properties.DISCORD_ACTIVE && (!string.IsNullOrEmpty(Properties.DISCORD_WEBHOOK_ID))) // 2 mins remaining
+				if (secs == 119 && GameServer.Instance.ServerStatus != EGameServerStatus.GSS_Closed && DiscordClientManager.TryGetClient(WebhookType.Default, out var discordClient))
 				{
-						var discordClient = new DiscordWebhookClient(Properties.DISCORD_WEBHOOK_ID);
+					var message = new DiscordMessage(
+						"",
+						username: "Game Server",
+						avatarUrl: "",
+						tts: false,
+						embeds: new[]
+						{
+							new DiscordMessageEmbed(
+								color: 15158332,
+								description: "The server will reboot in **2 minutes** and is temporarily not accepting new incoming connections!",
+								thumbnail: new DiscordMessageEmbedThumbnail("")
+							)
+						}
+					);
 
-						var message = new DiscordMessage(
-							"",
-							username: "Game Server",
-							avatarUrl: "",
-							tts: false,
-							embeds: new[]
-							{
-								new DiscordMessageEmbed(
-									color: 15158332,
-									description: "The server will reboot in **2 minutes** and is temporarily not accepting new incoming connections!",
-									thumbnail: new DiscordMessageEmbedThumbnail("")
-								)
-							}
-						);
-
-						discordClient.SendToDiscord(message);
+					discordClient.SendToDiscordAsync(message);
 				}
 			}
 		}
@@ -294,10 +296,13 @@ namespace DOL.GS.Commands
 			}
 			else
 			{
-				if (m_counter > 120)
-					log.Warn("Server restart in " + (int)(m_counter / 60) + " minutes!");
-				else
-					log.Warn("Server restart in " + m_counter + " seconds!");
+				if (log.IsWarnEnabled)
+				{
+					if (m_counter > 120)
+						log.Warn("Server restart in " + (int)(m_counter / 60) + " minutes!");
+					else
+						log.Warn("Server restart in " + m_counter + " seconds!");
+				}
 
 				long secs = m_counter;
 				long mins = secs / 60;
@@ -416,7 +421,7 @@ namespace DOL.GS.Commands
 
 				if (translationID != string.Empty)
 				{
-					foreach (GamePlayer player in ClientService.GetPlayers())
+					foreach (GamePlayer player in ClientService.Instance.GetPlayers())
 					{
 						if (args2 == -1)
 							ChatUtil.SendServerMessage(player.Client, translationID, args1);
@@ -429,33 +434,31 @@ namespace DOL.GS.Commands
 				{
 					GameServer.Instance.Close();
 
-					foreach (GamePlayer player in ClientService.GetPlayers())
+					foreach (GamePlayer player in ClientService.Instance.GetPlayers())
 					{
 						// Message: "The server is now closed to all incoming connections! The server will shut down in {0} seconds!"
 						ChatUtil.SendDebugMessage(player.Client, "AdminCommands.Account.Msg.ServerClosed", secs);
 					}
 				}
 				
-				if (secs == 119 && GameServer.Instance.ServerStatus != EGameServerStatus.GSS_Closed && Properties.DISCORD_ACTIVE && (!string.IsNullOrEmpty(Properties.DISCORD_WEBHOOK_ID))) // 2 mins remaining
+				if (secs == 119 && GameServer.Instance.ServerStatus != EGameServerStatus.GSS_Closed && DiscordClientManager.TryGetClient(WebhookType.Default, out var discordClient))
 				{
-						var discordClient = new DiscordWebhookClient(Properties.DISCORD_WEBHOOK_ID);
+					var message = new DiscordMessage(
+						"",
+						username: "Game Server",
+						avatarUrl: "",
+						tts: false,
+						embeds: new[]
+						{
+							new DiscordMessageEmbed(
+								color: 15158332,
+								description: "The server will reboot in **2 minutes** and is temporarily not accepting new incoming connections!",
+								thumbnail: new DiscordMessageEmbedThumbnail("")
+							)
+						}
+					);
 
-						var message = new DiscordMessage(
-							"",
-							username: "Game Server",
-							avatarUrl: "",
-							tts: false,
-							embeds: new[]
-							{
-								new DiscordMessageEmbed(
-									color: 15158332,
-									description: "The server will reboot in **2 minutes** and is temporarily not accepting new incoming connections!",
-									thumbnail: new DiscordMessageEmbedThumbnail("")
-								)
-							}
-						);
-
-						discordClient.SendToDiscord(message);
+					discordClient.SendToDiscordAsync(message);
 				}
 			}
 		}
@@ -467,10 +470,10 @@ namespace DOL.GS.Commands
 		{
 			if (GameServer.Instance.IsRunning)
 			{
+				if (log.IsInfoEnabled)
+					log.Info("Executed server shutdown!");
+
 				GameServer.Instance.Stop();
-				log.Info("Executed server shutdown!");
-				Thread.Sleep(2000);
-				Environment.Exit(0);
 			}
 		}
 
@@ -482,10 +485,10 @@ namespace DOL.GS.Commands
 				DisplaySyntax(client);
 				return;
 			}
-			
+
+			DiscordWebhookClient discordClient;
 			DateTime date;
-			//if (m_counter > 0) return 0;
-			
+
 			// Player executing command
 			GamePlayer user = client.Player;
 
@@ -522,6 +525,7 @@ namespace DOL.GS.Commands
 				// See the comments above 'using' about SendMessage translation IDs
 				case "stop":
 				{
+
 					// If the server is counting down
 					if (m_counter != 0)
 					{
@@ -535,7 +539,7 @@ namespace DOL.GS.Commands
 						ChatUtil.SendDebugMessage(client, "AdminCommands.Shutdown.Msg.YouCancel", null);
 						
 						// Send message to all players letting them know the shutdown isn't occurring
-						foreach (GamePlayer player in ClientService.GetPlayers())
+						foreach (GamePlayer player in ClientService.Instance.GetPlayers())
 						{
 							// Message: "{0} stopped the server shutdown!"
 							ChatUtil.SendDebugMessage(player.Client, "AdminCommands.Shutdown.Msg.StaffCancel", user.Name);
@@ -550,19 +554,15 @@ namespace DOL.GS.Commands
 							GameServer.Instance.Open();
 							// Message: "The server is now open and accepting incoming connections!"
 							ChatUtil.SendDebugMessage(client, "AdminCommands.Shutdown.Msg.ServerOpen", null);
-							log.Info("Shutdown aborted. Server now accepting incoming connections!");
+
+							if (log.IsInfoEnabled)
+								log.Info("Shutdown aborted. Server now accepting incoming connections!");
 						}
-						else
-						{
+						else if (log.IsInfoEnabled)
 							log.Info("Shutdown aborted. Server still accepting incoming connections!");
-						}
-						
-						if (Properties.DISCORD_ACTIVE && (!string.IsNullOrEmpty(Properties.DISCORD_WEBHOOK_ID)))
+
+						if (DiscordClientManager.TryGetClient(WebhookType.Default, out discordClient))
 						{
-
-							var discordClient = new DiscordWebhookClient(Properties.DISCORD_WEBHOOK_ID);
-							// var discordClient = new DiscordWebhookClient("https://discord.com/api/webhooks/928723074898075708/cyZbVefc0gc__9c2wq3DwVxOBFIT45VyK-1-z7tT_uXDd--WcHrY1lw1y9H6wPg6SEyM");
-
 							var message = new DiscordMessage(
 								"",
 								username: "Game Server",
@@ -578,9 +578,8 @@ namespace DOL.GS.Commands
 								}
 							);
 
-							discordClient.SendToDiscord(message);
+							discordClient.SendToDiscordAsync(message);
 						}
-						
 					}
 					// If no countdown is detected
 					else
@@ -715,7 +714,7 @@ namespace DOL.GS.Commands
 			bool popup = (m_counter / 60) < 60;
 			long counter = m_counter / 60;
 			
-			foreach (GamePlayer player in ClientService.GetPlayers())
+			foreach (GamePlayer player in ClientService.Instance.GetPlayers())
 			{
 				if (popup)
 				{
@@ -740,11 +739,8 @@ namespace DOL.GS.Commands
 				ChatUtil.SendServerMessage(player.Client, "AdminCommands.Shutdown.Msg.AttentionShutdown", m_counter / 60, date.ToString("HH:mm \"GMT\" zzz"));
 			}
 
-			if (Properties.DISCORD_ACTIVE && (!string.IsNullOrEmpty(Properties.DISCORD_WEBHOOK_ID)))
+			if (DiscordClientManager.TryGetClient(WebhookType.Default, out discordClient))
 			{
-
-				var discordClient = new DiscordWebhookClient(Properties.DISCORD_WEBHOOK_ID);
-
 				var message = new DiscordMessage(
 					"",
 					username: "Game Server",
@@ -760,7 +756,7 @@ namespace DOL.GS.Commands
 					}
 				);
 
-				discordClient.SendToDiscord(message);
+				discordClient.SendToDiscordAsync(message);
 			}
 
 			m_currentCallbackTime = 0;

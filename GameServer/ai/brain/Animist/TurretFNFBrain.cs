@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using DOL.GS;
 using DOL.GS.ServerProperties;
 
@@ -7,7 +6,7 @@ namespace DOL.AI.Brain
 {
     public class TurretFNFBrain : TurretBrain
     {
-        private List<GameLiving> _filteredAggroList = [];
+        private List<GameLiving> _filteredAggroList = new();
 
         public TurretFNFBrain(GameLiving owner) : base(owner) { }
 
@@ -44,9 +43,9 @@ namespace DOL.AI.Brain
                     continue;
 
                 if (Properties.CHECK_LOS_BEFORE_AGGRO_FNF)
-                    SendLosCheckForAggro(player, player);
+                    SendAggroLosCheck(player, player);
                 else
-                    AddToAggroList(player, 1);
+                    AddToAggroList(player);
             }
         }
 
@@ -65,17 +64,17 @@ namespace DOL.AI.Brain
                 {
                     if (npc.Brain is ControlledMobBrain theirControlledNpcBrain && theirControlledNpcBrain.GetPlayerOwner() is GamePlayer theirOwner)
                     {
-                        SendLosCheckForAggro(theirOwner, npc);
+                        SendAggroLosCheck(theirOwner, npc);
                         continue;
                     }
                     else if (GetPlayerOwner() is GamePlayer ourOwner)
                     {
-                        SendLosCheckForAggro(ourOwner, npc);
+                        SendAggroLosCheck(ourOwner, npc);
                         continue;
                     }
                 }
 
-                AddToAggroList(npc, 1);
+                AddToAggroList(npc);
             }
         }
 
@@ -112,7 +111,8 @@ namespace DOL.AI.Brain
                 return _filteredAggroList[Util.Random(_filteredAggroList.Count - 1)];
             else if ((Body as TurretPet).TurretSpell.Damage > 0)
             {
-                List<GameLiving> tempAggroList = AggroList.Keys.ToList();
+                List<GameLiving> tempAggroList = GameLoop.GetListForTick<GameLiving>();
+                tempAggroList.AddRange(AggroList.Keys); // Wasteful, but we don't expect this to be called often.
 
                 if (tempAggroList.Count != 0)
                     return tempAggroList[Util.Random(tempAggroList.Count - 1)];

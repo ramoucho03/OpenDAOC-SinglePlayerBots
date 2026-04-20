@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using DOL.AI.Brain;
 using DOL.Database;
 using DOL.Events;
 using DOL.GS.Effects;
@@ -27,7 +28,7 @@ namespace DOL.GS.Spells
             m_caster.Mana -= PowerCost(target);
             base.FinishSpellCast(target);
         }
-        public override bool IsOverwritable(ECSGameSpellEffect compare)
+        public override bool HasConflictingEffectWith(ISpellHandler compare)
         {
             return false;
         }
@@ -148,7 +149,7 @@ namespace DOL.GS.Spells
             Unstealth = false;
 
             //Construct a new mine.
-            mine = new GameMine();
+            mine = new(new BlankBrain());
             mine.Model = 2592;
             mine.Name = spell.Name;
             mine.Realm = caster.Realm;
@@ -157,7 +158,7 @@ namespace DOL.GS.Spells
             mine.Z = caster.Z;
             mine.CurrentRegionID = caster.CurrentRegionID;
             mine.Heading = caster.Heading;
-            mine.Owner = (GamePlayer)caster;
+            mine.Owner = caster;
 
             // Construct the mine spell
             dbs = new DbSpell();
@@ -166,7 +167,7 @@ namespace DOL.GS.Spells
             dbs.ClientEffect = 7220;
             dbs.Damage = spell.Damage;
             dbs.DamageType = (int)spell.DamageType;
-            dbs.Target = "Enemy";
+            dbs.Target = eSpellTarget.ENEMY.ToString();
             dbs.Radius = 0;
             dbs.Type = eSpellType.SpeedDecrease.ToString();
             dbs.Value = spell.Value;
@@ -198,7 +199,7 @@ namespace DOL.GS.Spells
             Unstealth = false;
 
             //Construct a new font.
-            mine = new GameMine();
+            mine = new(new BlankBrain());
             mine.Model = 2589;
             mine.Name = spell.Name;
             mine.Realm = caster.Realm;
@@ -207,7 +208,7 @@ namespace DOL.GS.Spells
             mine.Z = caster.Z;
             mine.CurrentRegionID = caster.CurrentRegionID;
             mine.Heading = caster.Heading;
-            mine.Owner = (GamePlayer)caster;
+            mine.Owner = caster;
 
             // Construct the mine spell
             dbs = new DbSpell();
@@ -216,7 +217,7 @@ namespace DOL.GS.Spells
             dbs.ClientEffect = 7281;
             dbs.Damage = spell.Damage;
             dbs.DamageType = (int)spell.DamageType;
-            dbs.Target = "Enemy";
+            dbs.Target = eSpellTarget.ENEMY.ToString();
             dbs.Radius = 350;
             dbs.Type = eSpellType.PoisonspikeDot.ToString();
             dbs.Value = spell.Value;
@@ -267,7 +268,7 @@ namespace DOL.GS.Spells
             m_target = effect.Owner as GamePlayer;
             if (m_target == null) return;
             if (!m_target.IsAlive || m_target.ObjectState != GameLiving.eObjectState.Active || !m_target.IsSitting) return;
-            Caster.BaseBuffBonusCategory[(int)eProperty.Skill_Stealth] += 100;
+            Caster.BaseBuffBonusCategory[eProperty.Skill_Stealth] += 100;
             GameEventMgr.AddHandler(m_target, GamePlayerEvent.Moving, new DOLEventHandler(PlayerAction));
             GameEventMgr.AddHandler(Caster, GamePlayerEvent.Moving, new DOLEventHandler(PlayerAction));
             new LoockoutOwner().Start(Caster);
@@ -276,7 +277,7 @@ namespace DOL.GS.Spells
 
         public override int OnEffectExpires(GameSpellEffect effect, bool noMessages)
         {
-            Caster.BaseBuffBonusCategory[(int)eProperty.Skill_Stealth] -= 100;
+            Caster.BaseBuffBonusCategory[eProperty.Skill_Stealth] -= 100;
             GameEventMgr.RemoveHandler(Caster, GamePlayerEvent.Moving, new DOLEventHandler(PlayerAction));
             GameEventMgr.RemoveHandler(m_target, GamePlayerEvent.Moving, new DOLEventHandler(PlayerAction));
             return base.OnEffectExpires(effect, noMessages);
@@ -333,7 +334,7 @@ namespace DOL.GS.Spells
             Unstealth = false;
 
             //Construct a new mine.
-            mine = new GameMine();
+            mine = new(new BlankBrain());
             mine.Model = 2591;
             mine.Name = spell.Name;
             mine.Realm = caster.Realm;
@@ -343,7 +344,7 @@ namespace DOL.GS.Spells
             mine.MaxSpeedBase = 0;
             mine.CurrentRegionID = caster.CurrentRegionID;
             mine.Heading = caster.Heading;
-            mine.Owner = (GamePlayer)caster;
+            mine.Owner = caster;
 
             // Construct the mine spell
             dbs = new DbSpell();
@@ -352,7 +353,7 @@ namespace DOL.GS.Spells
             dbs.ClientEffect = 7301;
             dbs.Damage = spell.Damage;
             dbs.DamageType = (int)spell.DamageType;
-            dbs.Target = "Enemy";
+            dbs.Target = eSpellTarget.ENEMY.ToString();
             dbs.Radius = 0;
             dbs.Type = eSpellType.DirectDamage.ToString();
             dbs.Value = spell.Value;
@@ -419,7 +420,7 @@ namespace DOL.GS.Spells
                     playerTarget.Stealth(true);
                     if (effect.Owner != Caster)
                     {
-                        //effect.Owner.BuffBonusCategory1[(int)eProperty.Skill_Stealth] += 80;
+                        //effect.Owner.BuffBonusCategory1[eProperty.Skill_Stealth] += 80;
                         GameEventMgr.AddHandler(playerTarget, GamePlayerEvent.Moving, new DOLEventHandler(PlayerAction));
                         GameEventMgr.AddHandler(playerTarget, GamePlayerEvent.AttackFinished, new DOLEventHandler(PlayerAction));
                         GameEventMgr.AddHandler(playerTarget, GamePlayerEvent.CastStarting, new DOLEventHandler(PlayerAction));
@@ -439,7 +440,7 @@ namespace DOL.GS.Spells
             {
                 if (effect.Owner != Caster && effect.Owner is GamePlayer)
                 {
-                    //effect.Owner.BuffBonusCategory1[(int)eProperty.Skill_Stealth] -= 80;
+                    //effect.Owner.BuffBonusCategory1[eProperty.Skill_Stealth] -= 80;
                     GamePlayer playerTarget = effect.Owner as GamePlayer;
                     GameEventMgr.RemoveHandler(playerTarget, GamePlayerEvent.AttackFinished, new DOLEventHandler(PlayerAction));
                     GameEventMgr.RemoveHandler(playerTarget, GamePlayerEvent.CastStarting, new DOLEventHandler(PlayerAction));

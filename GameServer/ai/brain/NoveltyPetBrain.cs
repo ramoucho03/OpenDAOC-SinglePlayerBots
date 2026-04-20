@@ -26,9 +26,9 @@ namespace DOL.AI.Brain
 	{
 		public const string HAS_PET = "HasNoveltyPet";
 
-		private GamePlayer m_owner;
+		private IGamePlayer m_owner;
 
-		public NoveltyPetBrain(GamePlayer owner)
+		public NoveltyPetBrain(IGamePlayer owner)
 			: base()
 		{
 			m_owner = owner;
@@ -69,7 +69,7 @@ namespace DOL.AI.Brain
 			if (m_owner == null || 
 				m_owner.IsAlive == false || 
 				m_owner.Client.ClientState != GameClient.eClientState.Playing || 
-				Body.IsWithinRadius(m_owner, WorldMgr.VISIBILITY_DISTANCE) == false)
+				Body.IsWithinRadius((GameObject)m_owner, WorldMgr.VISIBILITY_DISTANCE) == false)
 			{
 				Body.Delete();
 				Body = null;
@@ -87,7 +87,7 @@ namespace DOL.AI.Brain
 		public void SetAggressionState(eAggressionState state) { }
 		public eWalkState WalkState { get { return eWalkState.Follow; } }
 		public eAggressionState AggressionState { get { return eAggressionState.Passive; } set { } }
-		public GameLiving Owner { get { return m_owner; } }
+		public GameLiving Owner { get { return (GameLiving)m_owner; } }
 		public void Attack(GameObject target) { }
 		public void Disengage() { }
 		public void CheckAggressionStateOnPlayerOrder() { }

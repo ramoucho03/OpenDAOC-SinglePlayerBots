@@ -1,40 +1,39 @@
 ﻿using System;
+using DOL.Timing;
 
 namespace DOL.GS.PerformanceStatistics
 {
     public class PerSecondStatistic : IPerformanceStatistic
     {
-        private DateTime _lastMeasurementTime;
-        private IPerformanceStatistic _totalValueStatistic;
+        private long _lastMeasurementTime;
+        private readonly IPerformanceStatistic _totalValueStatistic;
         private double _lastTotal;
-        private double _cachedLastStatisticValue;
 
         public PerSecondStatistic(IPerformanceStatistic totalValueStatistic)
         {
-            _lastMeasurementTime = DateTime.UtcNow;
             _totalValueStatistic = totalValueStatistic;
-            _lastTotal = totalValueStatistic.GetNextValue();
-            _cachedLastStatisticValue = -1;
+            _lastMeasurementTime = MonotonicTime.NowMs;
+            _lastTotal = _totalValueStatistic.GetNextValue();
         }
 
         public double GetNextValue()
         {
             if (_totalValueStatistic == null)
-                return -1;
+                return 0.0;
 
-            DateTime currentTime = DateTime.UtcNow;
-            double secondsPassed = (currentTime - _lastMeasurementTime).TotalSeconds;
-
-            if (secondsPassed < 1)
-                return _cachedLastStatisticValue;
-
+            long currentTime = MonotonicTime.NowMs;
             double currentTotal = _totalValueStatistic.GetNextValue();
-            double valuePerSecond = (currentTotal - _lastTotal) / secondsPassed;
+            double secondsPassed = (currentTime - _lastMeasurementTime) / 1000.0;
+
+            if (secondsPassed <= 0)
+                return 0.0;
+
+            double valueChange = currentTotal - _lastTotal;
+            double valuePerSecond = valueChange / secondsPassed;
 
             _lastMeasurementTime = currentTime;
             _lastTotal = currentTotal;
-            _cachedLastStatisticValue = valuePerSecond;
-            return _cachedLastStatisticValue;
+            return Math.Max(0, valuePerSecond);
         }
     }
 }

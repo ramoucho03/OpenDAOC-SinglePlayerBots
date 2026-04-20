@@ -27,7 +27,7 @@ namespace DOL.GS.PacketHandler
         public override void SendVersionAndCryptKey()
 		{
 			//Construct the new packet
-			using (var pak = new GSTCPPacketOut(GetPacketCode(eServerPackets.CryptKey)))
+			using (var pak = PooledObjectFactory.GetForTick<GSTCPPacketOut>().Init(GetPacketCode(eServerPackets.CryptKey)))
 			{
 				pak.WriteByte((byte)m_gameClient.ClientType);
 
@@ -50,7 +50,7 @@ namespace DOL.GS.PacketHandler
 
 		public override void SendLoginGranted(byte color)
 		{
-			using (GSTCPPacketOut pak = new GSTCPPacketOut(GetPacketCode(eServerPackets.LoginGranted)))
+			using (var pak = PooledObjectFactory.GetForTick<GSTCPPacketOut>().Init(GetPacketCode(eServerPackets.LoginGranted)))
 			{
 				pak.WritePascalString(m_gameClient.Account.Name);
 				pak.WritePascalString(GameServer.Instance.Configuration.ServerNameShort); //server name
@@ -108,7 +108,7 @@ namespace DOL.GS.PacketHandler
 			if (m_gameClient.Player == null)
 				return;
 
-			using (GSTCPPacketOut pak = new GSTCPPacketOut(GetPacketCode(eServerPackets.KeepInfo)))
+			using (var pak = PooledObjectFactory.GetForTick<GSTCPPacketOut>().Init(GetPacketCode(eServerPackets.KeepInfo)))
 			{
 				pak.WriteShort((ushort)keep.KeepID);
 				pak.WriteShort(0);
@@ -129,7 +129,7 @@ namespace DOL.GS.PacketHandler
 		{
 			if (m_gameClient.Player == null) return;
 
-			using (GSTCPPacketOut pak = new GSTCPPacketOut(GetPacketCode(eServerPackets.WarMapClaimedKeeps)))
+			using (var pak = PooledObjectFactory.GetForTick<GSTCPPacketOut>().Init(GetPacketCode(eServerPackets.WarMapClaimedKeeps)))
 			{
 				int KeepCount = 0;
 				int TowerCount = 0;
@@ -141,7 +141,16 @@ namespace DOL.GS.PacketHandler
 					else
 						TowerCount++;
 				}
-				pak.WriteShort(0x0F00);
+
+				// Flame on relic temples. Intermediate bits unknown / unnecessary.
+				// Castle Excalibur  = 1 << 1
+				// Castle Myrddin    = 1 << 3
+				// Mjollner Faste    = 1 << 5
+				// Grallarhorn Faste = 1 << 7
+				// Dun Lamfhota      = 1 << 9
+				// Dun Dagda         = 1 << 11
+				pak.WriteShort(0);
+
 				pak.WriteByte((byte)KeepCount);
 				pak.WriteByte((byte)TowerCount);
 				byte albStr = 0;
@@ -150,7 +159,7 @@ namespace DOL.GS.PacketHandler
 				byte albMagic = 0;
 				byte hibMagic = 0;
 				byte midMagic = 0;
-				foreach (GameRelic relic in RelicMgr.getNFRelics())
+				foreach (GameRelic relic in RelicMgr.GetRelics())
 				{
 					switch (relic.OriginalRealm)
 					{

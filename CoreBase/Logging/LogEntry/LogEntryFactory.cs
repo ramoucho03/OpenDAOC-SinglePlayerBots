@@ -6,17 +6,23 @@ namespace DOL.Logging
     {
         public static LogEntry Create(Logger logger, ELogLevel level, string message)
         {
-            return new LogEntry(logger, level, message);
+            LogEntry logEntry = new();
+            logEntry.Initialize(logger, level, message);
+            return logEntry;
         }
 
         public static LogEntry Create(Logger logger, ELogLevel level, string message, Exception exception)
         {
-            return new LogEntryWithException(logger, level, message, exception);
+            LogEntry logEntry = new();
+            logEntry.Initialize(logger, level, message, exception);
+            return logEntry;
         }
 
-        public static LogEntry Create(Logger logger, ELogLevel level, string message, params object[] args)
+        public static LogEntry Create(Logger logger, ELogLevel level, string message, params ReadOnlySpan<object> args)
         {
-            return new LogEntryWithArgs(logger, level, message, args);
+            LogEntry logEntry = new();
+            logEntry.Initialize(logger, level, message, args);
+            return logEntry;
         }
     }
 }

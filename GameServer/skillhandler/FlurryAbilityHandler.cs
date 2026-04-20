@@ -113,7 +113,7 @@ namespace DOL.GS.SkillHandler
 				SputinsLegacyEffect SputinLegacy = (player.TargetObject as GamePlayer).EffectList.GetOfType<SputinsLegacyEffect>();
 				if(SputinLegacy != null)
 				{
-                    player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "Skill.Ability.TargetIsUnderSputinLegacy", player.TargetObject.Name), eChatType.CT_Missed, eChatLoc.CL_SystemWindow);
+                    player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "Skill.Ability.TargetIsUnderSputinLegacy", player.TargetObject.Name), eChatType.CT_Action, eChatLoc.CL_SystemWindow);
                     return;
 				}
 			}
@@ -136,7 +136,7 @@ namespace DOL.GS.SkillHandler
 			int primaryResistModifier = target.GetResist(eDamageType.Slash);
 
 			//Using the resist BuffBonusCategory2 - its unused in ResistCalculator
-			int secondaryResistModifier = target.SpecBuffBonusCategory[(int)eProperty.Resist_Slash];
+			int secondaryResistModifier = target.SpecBuffBonusCategory[eProperty.Resist_Slash];
 
 			int resistModifier = 0;
 			//primary resists

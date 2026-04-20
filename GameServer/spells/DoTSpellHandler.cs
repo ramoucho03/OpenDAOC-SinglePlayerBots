@@ -1,58 +1,60 @@
+using System;
+using System.Collections.Generic;
 using DOL.AI.Brain;
 using DOL.GS.Effects;
 using DOL.GS.PacketHandler;
 using DOL.GS.Scripts;
 using DOL.Language;
-using System;
+using static DOL.GS.GameObject;
 
 namespace DOL.GS.Spells
 {
-	/// <summary>
-	/// Damage Over Time spell handler
-	/// </summary>
-	[SpellHandler(eSpellType.DamageOverTime)]
-	public class DoTSpellHandler : SpellHandler
-	{
-		public int CriticalDamage { get; protected set; } = 0;
-		private bool firstTick = true;
+    [SpellHandler(eSpellType.DamageOverTime)]
+    public class DoTSpellHandler : SpellHandler
+    {
+        private const int UNITIALIZED_CRIT_PERCENT = -1;
 
-		public DoTSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
+        private Dictionary<GameLiving, double> _criticalDamagePercentByTarget = new();
 
-		public override ECSGameSpellEffect CreateECSEffect(ECSGameEffectInitParams initParams)
-		{
-			return new DamageOverTimeECSGameEffect(initParams);
-		}
+        public override string ShortDescription => $"Inflicts {Spell.Damage} {Spell.DamageTypeToString()} damage every {Spell.Frequency / 1000.0} seconds for {Spell.Duration / 1000.0} seconds.";
 
-        /// <summary>
-        /// Execute damage over time spell
-        /// </summary>
-        /// <param name="target"></param>
+        public DoTSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
+
+        public override ECSGameSpellEffect CreateECSEffect(in ECSGameEffectInitParams initParams)
+        {
+            return ECSGameEffectFactory.Create(initParams, static (in i) => new DamageOverTimeECSGameEffect(i));
+        }
+
         public override void FinishSpellCast(GameLiving target)
         {
             m_caster.Mana -= PowerCost(target);
             base.FinishSpellCast(target);
         }
 
-		public override double CalculateDamageVarianceOffsetFromLevelDifference(GameLiving caster, GameLiving target)
-		{
-			return 0;
-		}
+        public override double CalculateDamageVarianceOffsetFromLevelDifference(GameLiving caster, GameLiving target)
+        {
+            return 0;
+        }
 
         protected override double CalculateDistanceFallOff(int distance, int radius)
         {
             return 0;
         }
 
-        /// <summary>
-        /// Determines wether this spell is compatible with given spell
-        /// and therefore overwritable by better versions
-        /// spells that are overwritable cannot stack
-        /// </summary>
-        /// <param name="compare"></param>
-        /// <returns></returns>
-        public override bool IsOverwritable(ECSGameSpellEffect compare)
+        public override bool HasConflictingEffectWith(ISpellHandler compare)
         {
-            return Spell.SpellType == compare.SpellHandler.Spell.SpellType && Spell.DamageType == compare.SpellHandler.Spell.DamageType && SpellLine.IsBaseLine == compare.SpellHandler.SpellLine.IsBaseLine;
+            if (Spell.EffectGroup != 0 || compare.Spell.EffectGroup != 0)
+                return Spell.EffectGroup == compare.Spell.EffectGroup;
+
+            if (Spell.SpellType != compare.Spell.SpellType)
+                return false;
+
+            // For Cabalist, Bonedancer and Mentalist, we know that one baseline and one specline DoT can coexist.
+            // However, this doesn't apply to Shaman's DoTs before 1.90. Meaning a simple check on the spell line is not enough.
+            // Checking the frequency instead preserves the ability for those classes to have one baseline and one specline DoT coexist, excepted Shaman.
+            // Other rules are unknown: Poison vs spell DoTs vs procs vs other specializations lines...
+            // Damage type appears to be irrelevant and simply a guess based on the fact that some weapon procs should stack with poisons.
+            return Spell.Frequency == compare.Spell.Frequency;
         }
 
         public override AttackData CalculateDamageToTarget(GameLiving target)
@@ -69,94 +71,35 @@ namespace DOL.GS.Spells
             return ad;
         }
 
-		/// <summary>
-		/// Sends damage text messages but makes no damage
-		/// </summary>
-		/// <param name="ad"></param>
-		public override void SendDamageMessages(AttackData ad)
-		{
-			// Graveen: only GamePlayer should receive messages :p
-			GamePlayer PlayerReceivingMessages = null;
-			if (m_caster is GamePlayer)
-				PlayerReceivingMessages = m_caster as GamePlayer;
-            if ( m_caster is GameSummonedPet)
-                if ((m_caster as GameSummonedPet).Brain is IControlledBrain)
-                    PlayerReceivingMessages = ((m_caster as GameSummonedPet).Brain as IControlledBrain).GetPlayerOwner();
+        public override void SendDamageMessages(AttackData ad)
+        {
+            IGamePlayer player = null;
 
-            if (PlayerReceivingMessages == null)
+            if (m_caster is IGamePlayer)
+                player = m_caster as IGamePlayer;
+            else if (m_caster is GameNPC npc && npc.Brain is IControlledBrain brain)
+                player = brain.GetIPlayerOwner();
+
+            if (player == null)
                 return;
 
-            if (Spell.Name.StartsWith("Proc"))
-            {
-                MessageToCaster(String.Format(LanguageMgr.GetTranslation(PlayerReceivingMessages.Client, "DoTSpellHandler.SendDamageMessages.YouHitFor",
-                    ad.Target.GetName(0, false), ad.Damage)), eChatType.CT_YouHit);
-            }
+            if (SpellLine.KeyName is GlobalSpellsLines.Item_Effects)
+                MessageToCaster(string.Format(LanguageMgr.GetTranslation(player.Client, "DoTSpellHandler.SendDamageMessages.YouHitFor", ad.Target.GetName(0, false), ad.Damage)), eChatType.CT_Spell);
             else
-            {
-                MessageToCaster(String.Format(LanguageMgr.GetTranslation(PlayerReceivingMessages.Client, "DoTSpellHandler.SendDamageMessages.YourHitsFor",
-                    Spell.Name, ad.Target.GetName(0, false), ad.Damage)), eChatType.CT_YouHit);
-            }
-            //if (ad.CriticalDamage > 0)
-            //    MessageToCaster(String.Format(LanguageMgr.GetTranslation(PlayerReceivingMessages.Client, "DoTSpellHandler.SendDamageMessages.YourCriticallyHits",
-            //        Spell.Name, ad.Target.GetName(0, false), ad.CriticalDamage)) + " (" + (ad.Attacker.SpellCriticalChance - 10) + "%)", eChatType.CT_YouHit);
+                MessageToCaster(string.Format(LanguageMgr.GetTranslation(player.Client, "DoTSpellHandler.SendDamageMessages.YourHitsFor", Spell.Name, ad.Target.GetName(0, false), ad.Damage)), eChatType.CT_Spell);
 
-			if (this.CriticalDamage > 0)
-				MessageToCaster("You critically hit for an additional " + this.CriticalDamage + " damage!" + " (" + m_caster.DebuffCriticalChance + "%)", eChatType.CT_YouHit);
-
-			//			if (ad.Damage > 0)
-			//			{
-			//				string modmessage = string.Empty;
-			//				if (ad.Modifier > 0) modmessage = " (+"+ad.Modifier+")";
-			//				if (ad.Modifier < 0) modmessage = " ("+ad.Modifier+")";
-			//				MessageToCaster("You hit "+ad.Target.GetName(0, false)+" for " + ad.Damage + " damage!", eChatType.CT_Spell);
-			//			}
-			//			else
-			//			{
-			//				MessageToCaster("You hit "+ad.Target.GetName(0, false)+" for " + ad.Damage + " damage!", eChatType.CT_Spell);
-			//				MessageToCaster(ad.Target.GetName(0, true) + " resists the effect!", eChatType.CT_SpellResisted);
-			//				MessageToLiving(ad.Target, "You resist the effect!", eChatType.CT_SpellResisted);
-			//			}
-		}
+            if (ad.CriticalDamage > 0)
+                MessageToCaster($"You critically hit for an additional {ad.CriticalDamage} damage! ({m_caster.DebuffCriticalChance}%)", eChatType.CT_Spell);
+        }
 
         public override void ApplyEffectOnTarget(GameLiving target)
         {
-            //((compare.SpellHandler is DoTSpellHandler dot) && Spell.Damage + this.CriticalDamage < compare.Spell.Damage + dot.CriticalDamage)
-            // var dots = target.effectListComponent.GetSpellEffects(eEffect.DamageOverTime)
-            // 									 .Where(x => x.SpellHandler?.Spell != null)
-            // 									 .Select(x => x.SpellHandler)
-            // 									 .Where(x => x.Spell.SpellType == Spell.SpellType &&
-            // 												 x.Spell.DamageType == Spell.DamageType &&
-            // 												 x.SpellLine.IsBaseLine == SpellLine.IsBaseLine);
-
-            // foreach (var dotEffect in dots)
-            // {
-            // 	var dotHandler = (dotEffect as DoTSpellHandler);
-
-            // 	if (dotHandler == null)
-            // 		continue;
-
-            // 	// Check for Overwriting.
-            // 	if (dotEffect.Spell.Damage + dotHandler.CriticalDamage >= Spell.Damage + CriticalDamage)
-            // 	{
-            // 		// Old Spell is Better than new one
-
-            // 		//apply first hit, then quit
-            // 		OnDirectEffect(target, effectiveness);
-
-            // 		this.MessageToCaster(eChatType.CT_SpellResisted, "{0} already has that effect.", target.GetName(0, true));
-            // 		MessageToCaster("Wait until it expires. Spell Failed.", eChatType.CT_SpellResisted);
-            // 		// Prevent Adding.
-            // 		return;
-            // 	}
-            // }
-
             base.ApplyEffectOnTarget(target);
             target.StartInterruptTimer(target.SpellInterruptDuration, AttackData.eAttackType.Spell, Caster);
         }
 
         protected override GameSpellEffect CreateSpellEffect(GameLiving target, double effectiveness)
         {
-            // damage is not reduced with distance
             return new GameSpellEffect(this, m_spell.Duration, m_spell.Frequency, effectiveness);
         }
 
@@ -179,16 +122,10 @@ namespace DOL.GS.Spells
             }
         }
 
-        /// <summary>
-        /// When an applied effect expires.
-        /// Duration spells only.
-        /// </summary>
-        /// <param name="effect">The expired effect</param>
-        /// <param name="noMessages">true, when no messages should be sent to player and surrounding</param>
-        /// <returns>immunity duration in milliseconds</returns>
         public override int OnEffectExpires(GameSpellEffect effect, bool noMessages)
         {
             base.OnEffectExpires(effect, noMessages);
+
             if (!noMessages)
             {
                 // The acidic mist around you dissipates.
@@ -200,81 +137,62 @@ namespace DOL.GS.Spells
             return 0;
         }
 
+        public override List<GameLiving> SelectTargets(GameObject castTarget)
+        {
+            // Intercept the target list for critical damage percent calculation, which will be reused on each tick.
+            List<GameLiving> _targets = base.SelectTargets(castTarget);
+            _criticalDamagePercentByTarget = new();
+
+            foreach (GameLiving target in _targets)
+                _criticalDamagePercentByTarget[target] = UNITIALIZED_CRIT_PERCENT;
+
+            return _targets;
+        }
+
         public override void OnDirectEffect(GameLiving target)
         {
-            if (target == null)
+            if (target == null || !target.IsAlive || target.ObjectState is not eObjectState.Active)
                 return;
 
-            if (!target.IsAlive || target.ObjectState != GameLiving.eObjectState.Active) 
-                return;
-
-            // no interrupts on DoT direct effect
-            // calc damage
             AttackData ad = CalculateDamageToTarget(target);
 
-            ad.CriticalDamage = CalculateCriticalDamage(ad);
+            if (!_criticalDamagePercentByTarget.TryGetValue(target, out double criticalDamagePercent))
+                return; // Shouldn't happen.
 
-            //ad.CausesCombat = true;
-            SendDamageMessages(ad);
-            if (ad.Attacker.Realm == 0)
+            if (criticalDamagePercent == UNITIALIZED_CRIT_PERCENT)
             {
-                ad.Target.LastAttackTickPvE = GameLoop.GameLoopTime;
+                // First tick.
+                criticalDamagePercent = CalculateCriticalDamagePercent(ad);
+                _criticalDamagePercentByTarget[target] = criticalDamagePercent;
+                ad.CausesCombat = true;
             }
             else
-            {
-                ad.Target.LastAttackTickPvP = GameLoop.GameLoopTime;
-            }
+                ad.CausesCombat = false;
 
-            DamageTarget(ad, false);
-
-            if (firstTick) 
-                firstTick = false;
-        }
-
-        public void OnDirectEffect(GameLiving target, double effectiveness, bool causesCombat)
-        {
-            if (target == null) 
-                return;
-            
-            if (!target.IsAlive || target.ObjectState != GameLiving.eObjectState.Active)
-                return;
-
-            // no interrupts on DoT direct effect
-            // calc damage
-            AttackData ad = CalculateDamageToTarget(target);
-            ad.CausesCombat = causesCombat;
+            ad.CriticalDamage = (int) (ad.Damage * criticalDamagePercent);
             SendDamageMessages(ad);
             DamageTarget(ad, false);
         }
 
-		private int CalculateCriticalDamage(AttackData ad)
+        public bool IsFirstTick(GameLiving target)
         {
-            if (CriticalDamage > 0 || !firstTick)
-                return CriticalDamage;
+            return _criticalDamagePercentByTarget.TryGetValue(target, out double criticalDamagePercent) && criticalDamagePercent == UNITIALIZED_CRIT_PERCENT;
+        }
 
-			ad.CriticalChance = Caster.DebuffCriticalChance;
+        private double CalculateCriticalDamagePercent(AttackData ad)
+        {
+            ad.CriticalChance = Math.Min(50, Caster.DebuffCriticalChance);
 
-			if (ad.CriticalChance < 0)
-				return 0;
+            if (!Caster.Chance(RandomDeckEvent.CriticalChance, ad.CriticalChance))
+                return 0;
 
-			double randNum = Util.RandomDouble() * 100;
-			int critCap = Math.Min(50, ad.CriticalChance);
+            // Crit damage for DoTs is up to 100% against players too.
+            return 0.1 + Caster.GetPseudoDoubleIncl(RandomDeckEvent.CriticalVariance) * 0.9;
+        }
 
-			if (Caster is GamePlayer spellCaster && spellCaster.UseDetailedCombatLog && critCap > 0)
-				spellCaster.Out.SendMessage($"dot crit chance: {critCap:0.##} random: {randNum:0.##}", eChatType.CT_DamageAdd, eChatLoc.CL_SystemWindow);
-
-            if (critCap > randNum && (ad.Damage >= 1))
-            {
-                int critmax = (ad.Target is IGamePlayer) ? ad.Damage / 2 : ad.Damage;
-                CriticalDamage = Util.Random(ad.Damage / 10, critmax); //tThink min crit is 10% of damage
-            }
-
-			return CriticalDamage;
-		}
-
-		protected override double CalculateBuffDebuffEffectiveness()
-		{
-			return 1.0; // Unused by DoTs.
-		}
-	}
+        protected override double CalculateBuffDebuffEffectiveness()
+        {
+            return 1.0; // Unused by DoTs.
+        }
+    }
 }

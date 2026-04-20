@@ -53,6 +53,11 @@ namespace DOL.GS.Scripts
         {
         }
 
+        public void SendChangeGroundTarget(int x, int y, int z)
+        {
+            throw new NotImplementedException();
+        }
+
         public void SendChangeTarget(GameObject newTarget)
         {
         }
@@ -70,10 +75,6 @@ namespace DOL.GS.Scripts
         }
 
         public void SendCharStatsUpdate()
-        {
-        }
-
-        public void SendCheckLos(GameObject source, GameObject target, CheckLosResponse callback)
         {
         }
 
@@ -332,6 +333,11 @@ namespace DOL.GS.Scripts
         {
         }
 
+        public bool SendLosCheckRequest(GameObject source, GameObject target, ILosCheckListener listener)
+        {
+            return false;
+        }
+
         public void SendMarketExplorerWindow(IList<DbInventoryItem> items, byte page, byte maxpage)
         {
         }
@@ -513,6 +519,10 @@ namespace DOL.GS.Scripts
         }
 
         public void SendQuestUpdate(AbstractQuest quest)
+        {
+        }
+
+        public void SendRawMessage(string msg, eChatType type, eChatLoc loc)
         {
         }
 
@@ -702,11 +712,6 @@ namespace DOL.GS.Scripts
 
         public void SendXFireInfo(byte flag)
         {
-        }
-
-        bool IPacketLib.SendCheckLos(GameObject source, GameObject target, CheckLosResponse callback)
-        {
-            return true;
         }
     }
 }

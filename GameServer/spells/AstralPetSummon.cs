@@ -12,14 +12,14 @@ namespace DOL.GS.Spells
             base.ApplyEffectOnTarget(target);
 
             m_pet.TempProperties.SetProperty("target", target);
-            (m_pet.Brain as IOldAggressiveBrain).AddToAggroList(target, 1);
+            (m_pet.Brain as IOldAggressiveBrain).AddToAggroList(target);
             (m_pet.Brain as ProcPetBrain).Think();
 
         }
 
-        public override void OnPetReleased(GameSummonedPet pet)
+        public override void OnPetReleased()
         {
-            Effects.GameSpellEffect effect = FindEffectOnTarget(pet, this);
+            Effects.GameSpellEffect effect = FindEffectOnTarget(Pet, this);
             effect?.Cancel(false);
         }
 

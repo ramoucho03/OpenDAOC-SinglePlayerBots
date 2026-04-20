@@ -1468,7 +1468,7 @@ namespace DOL.GS.Quests
 				return 0;
 			}
             int currentLevel = player.Level;
-            if (currentLevel > player.MaxLevel)
+            if (currentLevel > GamePlayer.MAX_LEVEL)
                 return 0;
             long experienceToLevel = player.GetExperienceNeededForLevel(currentLevel + 1) -
                 player.GetExperienceNeededForLevel(currentLevel);
@@ -2601,7 +2601,7 @@ namespace DOL.GS.Quests
 					if (player == null)
 						return;
 
-					playerKillers = new List<GamePlayer>();
+					playerKillers = GameLoop.GetListForTick<GamePlayer>();
 					playerKillers.Add(player);
 				}
 

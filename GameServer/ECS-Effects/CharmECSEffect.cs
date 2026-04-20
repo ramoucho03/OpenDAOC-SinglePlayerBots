@@ -1,5 +1,4 @@
-﻿using System.Collections.Generic;
-using System.Linq;
+﻿using System.Linq;
 using DOL.AI.Brain;
 using DOL.GS.PacketHandler;
 using DOL.GS.Scripts;
@@ -10,10 +9,13 @@ namespace DOL.GS
 {
     public class CharmECSGameEffect : ECSGameSpellEffect
     {
-        public CharmECSGameEffect(ECSGameEffectInitParams initParams) : base(initParams) { }
+        public CharmECSGameEffect(in ECSGameEffectInitParams initParams) : base(initParams) { }
 
         public override void OnStartEffect()
         {
+            if (IsBeingReplaced)
+                return;
+
             if (Owner is not GameNPC charmNpc)
                 return;
 
@@ -40,19 +42,20 @@ namespace DOL.GS
                 playerCaster.AddControlledBrain(newBrain);
             }
 
-            ClientService.CreateNpcForPlayers(charmNpc);
+            ClientService.CreateObjectForPlayers(charmNpc);
             charmSpellHandler.SendEffectAnimation(charmNpc, 0, false, 1);
         }
 
         public override void OnStopEffect()
         {
+            if (IsBeingReplaced)
+                return;
+
             if (Owner is not GameNPC charmNpc)
                 return;
 
-            ECSGameSpellEffect[] immunityEffects = charmNpc.effectListComponent.GetSpellEffects().Where(e => e.TriggersImmunity).ToArray();
-
-            for (int i = 0; i < immunityEffects.Length; i++)
-                EffectService.RequestCancelEffect(immunityEffects[i]);
+            foreach (ECSGameSpellEffect immunityEffect in charmNpc.effectListComponent.GetSpellEffects().Where(e => e.TriggersImmunity && e is ECSImmunityEffect))
+                immunityEffect.End();
 
             ControlledMobBrain oldBrain = SpellHandler.Caster.ControlledBrain as ControlledMobBrain;
             SpellHandler.Caster.RemoveControlledBrain(oldBrain);
@@ -84,7 +87,7 @@ namespace DOL.GS
                 }
 
                 // Remove NPC with new brain from all attackers aggro list.
-                foreach (GameLiving attacker in charmNpc.attackComponent.Attackers.Keys)
+                foreach (GameLiving attacker in charmNpc.attackComponent.AttackerTracker.Attackers)
                 {
                     if (attacker is GameNPC npcAttacker && npcAttacker.Brain is IOldAggressiveBrain attackerAggroBrain)
                     {
@@ -116,9 +119,7 @@ namespace DOL.GS
             if (!keepSongAlive)
             {
                 ECSPulseEffect song = EffectListService.GetPulseEffectOnTarget(SpellHandler.Caster, SpellHandler.Spell);
-
-                if (song != null)
-                    EffectService.RequestCancelConcEffect(song);
+                song?.End();
             }
         }
     }

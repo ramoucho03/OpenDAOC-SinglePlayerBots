@@ -74,7 +74,7 @@ namespace DOL.GS.Commands
 			}
 
 			AbstractGameKeep myKeep = client.Player.TempProperties.GetProperty<AbstractGameKeep>(TEMP_KEEP_LAST);
-			if (myKeep == null) myKeep = GameServer.KeepManager.GetKeepCloseToSpot(client.Player.CurrentRegionID, client.Player, 10000);
+			if (myKeep == null) myKeep = GameServer.KeepManager.GetClosestKeepToSpot(client.Player.CurrentRegionID, client.Player, 10000);
 			
 			switch (args[1])
 			{
@@ -111,7 +111,7 @@ namespace DOL.GS.Commands
 							return;
 						}
 
-						if ((keepID >> 8) != 0 || GameServer.KeepManager.Keeps[keepID] != null)
+						if ((keepID >> 8) != 0 || GameServer.KeepManager.GetKeepByID(keepID) != null)
 						{
 							DisplayMessage(client, "KeepID must be unused and less than 256.");
 							return;
@@ -1958,7 +1958,7 @@ namespace DOL.GS.Commands
 
 						log.Debug("Keep creation: check of components complete");
 
-						foreach (GamePlayer otherPlayer in ClientService.GetPlayersOfRegion(client.Player.CurrentRegion))
+						foreach (GamePlayer otherPlayer in ClientService.Instance.GetPlayersOfRegion(client.Player.CurrentRegion))
 						{
 							otherPlayer.Out.SendKeepInfo(keep);
 
@@ -2035,7 +2035,7 @@ namespace DOL.GS.Commands
 						DisplayMessage(client, LanguageMgr.GetTranslation(client.Account.Language, "GMCommands.Keep.TowerCreate.CreatedSaved"));
 
 						//send the creation packets
-						foreach (GamePlayer otherPlayer in ClientService.GetPlayersOfRegion(client.Player.CurrentRegion))
+						foreach (GamePlayer otherPlayer in ClientService.Instance.GetPlayersOfRegion(client.Player.CurrentRegion))
 						{
 							otherPlayer.Out.SendKeepInfo(k);
 							otherPlayer.Out.SendKeepComponentUpdate(k, false);
@@ -2160,7 +2160,7 @@ namespace DOL.GS.Commands
 						DisplayMessage(client, LanguageMgr.GetTranslation(client.Account.Language, "GMCommands.Keep.FastCreate.KeepCreated"));
 
 						//send the creation packets
-						foreach (GamePlayer otherPlayer in ClientService.GetPlayersOfRegion(client.Player.CurrentRegion))
+						foreach (GamePlayer otherPlayer in ClientService.Instance.GetPlayersOfRegion(client.Player.CurrentRegion))
 						{
 							otherPlayer.Out.SendKeepInfo(k);
 
@@ -2451,6 +2451,7 @@ namespace DOL.GS.Commands
 							banner.Y = client.Player.Y;
 							banner.Z = client.Player.Z;
 							banner.Heading = client.Player.Heading;
+							banner.LoadedFromScript = false;
 							banner.SaveIntoDatabase();
 
 							foreach (AbstractArea area in banner.CurrentAreas)
@@ -2542,7 +2543,7 @@ namespace DOL.GS.Commands
 							}
 						}
 
-						foreach (GamePlayer otherPlayer in ClientService.GetPlayersOfRegion(client.Player.CurrentRegion))
+						foreach (GamePlayer otherPlayer in ClientService.Instance.GetPlayersOfRegion(client.Player.CurrentRegion))
 						{
 							otherPlayer.Out.SendKeepRemove(myKeep);
 							otherPlayer.Out.SendKeepInfo(myKeep);

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using DOL.AI.Brain;
 using DOL.GS.Effects;
 using DOL.GS.PacketHandler;
@@ -20,9 +19,8 @@ namespace DOL.GS.Spells
 			Rapid = 4
 		}
 
-		/// <summary>
-		/// Does this spell break stealth on start?
-		/// </summary>
+		public override SpellCostType CostType => SpellCostType.Endurance;
+
 		public override bool UnstealthCasterOnStart
 		{
 			get { return false; }
@@ -78,7 +76,7 @@ namespace DOL.GS.Spells
 			{
 				// 1.33 per level difference.
 				hitChance += (Caster.EffectiveLevel - target.EffectiveLevel) * (1 + 1 / 3.0);
-				hitChance += Math.Max(0, target.attackComponent.Attackers.Count - 1) * ServerProperties.Properties.MISSRATE_REDUCTION_PER_ATTACKERS;
+				hitChance += Math.Max(0, target.attackComponent.AttackerTracker.Count - 1) * ServerProperties.Properties.MISSRATE_REDUCTION_PER_ATTACKERS;
 			}
 
 			return hitChance;
@@ -100,49 +98,47 @@ namespace DOL.GS.Spells
 			AttackData ad = base.CalculateDamageToTarget(target);
 			IGamePlayer player;
 			//GameSpellEffect bladeturn = FindEffectOnTarget(target, "Bladeturn");
-            target.effectListComponent.Effects.TryGetValue(eEffect.Bladeturn, out var bladeturn);
+			ECSGameEffect bladeturn = EffectListService.GetEffectOnTarget(target, eEffect.Bladeturn);
 			if (bladeturn != null)
 			{
 				switch (Spell.LifeDrainReturn)
 				{
 					case (int)eShotType.Critical:
+					{
+						if (target is GamePlayer)
 						{
-							if (target is IGamePlayer)
-							{
-								player = target as IGamePlayer;
-								player.Out.SendMessage("A shot penetrated your magic barrier!", eChatType.CT_SpellResisted, eChatLoc.CL_SystemWindow);
-							}
-							ad.AttackResult = eAttackResult.HitUnstyled;
-						}
-						break;
-
-					case (int)eShotType.Power:
-						{
-							player = target as IGamePlayer;
+							player = target as GamePlayer;
 							player.Out.SendMessage("A shot penetrated your magic barrier!", eChatType.CT_SpellResisted, eChatLoc.CL_SystemWindow);
-							ad.AttackResult = eAttackResult.HitUnstyled;
-                            EffectService.RequestCancelEffect(bladeturn.FirstOrDefault());
-                        }
-                        break;
-
+						}
+						ad.AttackResult = eAttackResult.HitUnstyled;
+						break;
+					}
+					case (int)eShotType.Power:
+					{
+						player = target as GamePlayer;
+						player.Out.SendMessage("A shot penetrated your magic barrier!", eChatType.CT_SpellResisted, eChatLoc.CL_SystemWindow);
+						ad.AttackResult = eAttackResult.HitUnstyled;
+						bladeturn.End();
+						break;
+					}
 					case (int)eShotType.Other:
 					default:
+					{
+						if (Caster is GamePlayer)
 						{
-							if (Caster is GamePlayer)
-							{
-								player = Caster as GamePlayer;
-								player.Out.SendMessage("Your strike was absorbed by a magical barrier!", eChatType.CT_SpellResisted, eChatLoc.CL_SystemWindow);
-							}
+							player = Caster as GamePlayer;
+							player.Out.SendMessage("Your strike was absorbed by a magical barrier!", eChatType.CT_SpellResisted, eChatLoc.CL_SystemWindow);
+						}
 
-							if (target is IGamePlayer)
-							{
-								player = target as IGamePlayer;
-								player.Out.SendMessage("The blow was absorbed by a magical barrier!", eChatType.CT_SpellResisted, eChatLoc.CL_SystemWindow);
-								ad.AttackResult = eAttackResult.Missed;
-								EffectService.RequestCancelEffect(bladeturn.FirstOrDefault());
-							}
+						if (target is IGamePlayer)
+						{
+							player = target as IGamePlayer;
+							player.Out.SendMessage("The blow was absorbed by a magical barrier!", eChatType.CT_SpellResisted, eChatLoc.CL_SystemWindow);
+							ad.AttackResult = eAttackResult.Missed;
+							bladeturn.End();
 						}
 						break;
+					}
 				}
 			}
 
@@ -201,7 +197,7 @@ namespace DOL.GS.Spells
 				Caster.LastAttackTickPvE = GameLoop.GameLoopTime;
 				Caster.LastAttackTickPvP = GameLoop.GameLoopTime;
 
-				foreach (GameLiving npc in WorldMgr.GetNPCsCloseToSpot(Caster.CurrentRegionID, Caster.GroundTarget.X, Caster.GroundTarget.Y, Caster.GroundTarget.Z, (ushort)Spell.Radius))
+				foreach (GameLiving npc in WorldMgr.GetNPCsCloseToSpot(Caster.CurrentRegionID, Caster.GroundTarget, (ushort)Spell.Radius))
 				{
 					if (npc.Realm == 0 || Caster.Realm == 0)
 					{
@@ -265,7 +261,7 @@ namespace DOL.GS.Spells
 				{
 					Caster.TempProperties.SetProperty(INTERRUPT_TIMEOUT_PROPERTY, GameLoop.GameLoopTime + Caster.SpellInterruptDuration);
 					MessageToLiving(Caster, attacker.GetName(0, true) + " attacks you and your shot is interrupted!", eChatType.CT_SpellResisted);
-					InterruptCasting();
+					InterruptCasting(false);
 					return true;
 				}
 			}
@@ -279,7 +275,7 @@ namespace DOL.GS.Spells
 				var list = new List<string>();
 				//list.Add("Function: " + (Spell.SpellType == string.Empty ? "(not implemented)" : Spell.SpellType));
 				//list.Add(" "); //empty line
-				list.Add(Spell.Description);
+				list.Add(ShortDescription);
 				list.Add(" "); //empty line
 				if (Spell.InstrumentRequirement != 0)
 					list.Add("Instrument require: " + GlobalConstants.InstrumentTypeToName(Spell.InstrumentRequirement));

@@ -15,6 +15,7 @@ namespace DOL.GS.RealmAbilities
 		private int dmgValue = 0;
 		private int duration = 0;
 		private GamePlayer caster;
+		private ECSGameEffect _ichorEffect;
 
 		public override void Execute(GameLiving living)
 		{
@@ -166,12 +167,12 @@ namespace DOL.GS.RealmAbilities
 
 		protected virtual int RootExpires(ECSGameTimer timer)
 		{
-			GameLiving living = timer.Owner as GameLiving;
-			if (living != null)
+			if (timer.Owner is GameLiving living && _ichorEffect != null)
 			{
-				living.BuffBonusMultCategory1.Remove((int)eProperty.MaxSpeed, this);
+				living.BuffBonusMultCategory1.Remove((int) eProperty.MaxSpeed, _ichorEffect);
 				living.OnMaxSpeedChange();
 			}
+
 			timer.Stop();
 			return 0;
 		}
@@ -179,21 +180,22 @@ namespace DOL.GS.RealmAbilities
 		/// <summary>
 		/// Handles attack on buff owner
 		/// </summary>
-		/// <param name="e"></param>
-		/// <param name="sender"></param>
-		/// <param name="arguments"></param>
 		protected virtual void OnAttacked(DOLEvent e, object sender, EventArgs arguments)
 		{
-			AttackedByEnemyEventArgs attackArgs = arguments as AttackedByEnemyEventArgs;
-			GameLiving living = sender as GameLiving;
-			if (attackArgs == null) return;
-			if (living == null) return;
+			if (arguments is not AttackedByEnemyEventArgs attackArgs)
+				return;
+
+			if (sender is not GameLiving living)
+				return;
+
+			if (_ichorEffect == null)
+				return;
 
 			switch (attackArgs.AttackData.AttackResult)
 			{
 				case eAttackResult.HitStyle:
 				case eAttackResult.HitUnstyled:
-					living.BuffBonusMultCategory1.Remove((int)eProperty.MaxSpeed, this);
+					living.BuffBonusMultCategory1.Remove((int) eProperty.MaxSpeed, _ichorEffect);
 					living.OnMaxSpeedChange();
 					break;
 			}
@@ -212,7 +214,7 @@ namespace DOL.GS.RealmAbilities
 
 			#region Resists and Determination
 			var primaryResistModifier = target.GetResist(eDamageType.Spirit);
-			var secondaryResistModifier = target.SpecBuffBonusCategory[(int)eProperty.Resist_Spirit];
+			var secondaryResistModifier = target.SpecBuffBonusCategory[eProperty.Resist_Spirit];
 			var rootdet = ((target.GetModified(eProperty.SpeedDecreaseDurationReduction) - 100) * -1);
 
 			var resistModifier = 0;
@@ -242,11 +244,8 @@ namespace DOL.GS.RealmAbilities
 			if (!GameServer.ServerRules.IsAllowedToAttack(caster, target, true))
 				return;
 
-			//GameSpellEffect mez = SpellHandler.FindEffectOnTarget(aeplayer, "Mesmerize");
 			ECSGameEffect mez = EffectListService.GetEffectOnTarget(target, eEffect.Mez);
-			if (mez != null)
-				EffectService.RequestCancelEffect(mez);
-				//mez.Cancel(false);
+			mez?.End();
 
 			// Falloff damage
 			int dmgWithFalloff = CalculateDamageWithFalloff(dmgValue, living, target);
@@ -293,7 +292,7 @@ namespace DOL.GS.RealmAbilities
 					//TODO - Refresh existing Ichor duration (or whatever the proper mechanic is?)
 				}
 				else
-					new AtlasOF_IchorECSEffect(new ECSGameEffectInitParams(target, duration, 1));
+					ECSGameEffectFactory.Create(new(target, duration, 1), static (in i) => new AtlasOF_IchorECSEffect(i));
 			}
 			else
 				// Send resist animation if they cannot be rooted

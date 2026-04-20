@@ -99,15 +99,10 @@ namespace DOL.GS
         // The DOL Heading grid is 0 at the bottom of the Y-axis and increases clockwise.
         // General trigonometry and the System.Math library use the Cartesian grid.
 
-        /// <summary>
-        /// Get the heading to a point
-        /// </summary>
-        /// <param name="point">Target point</param>
-        /// <returns>Heading to target point</returns>
-        public ushort GetHeading(IPoint2D point)
-        {
-            float dx = point.X - X;
-            float dy = point.Y - Y;
+		public ushort GetHeading(int x, int y)
+		{
+			float dx = x - X;
+			float dy = y - Y;
 
 			double heading = Math.Atan2(-dx, dy) * RADIAN_TO_HEADING;
 
@@ -116,6 +111,16 @@ namespace DOL.GS
 
             return (ushort)heading;
         }
+
+		/// <summary>
+		/// Get the heading to a point
+		/// </summary>
+		/// <param name="point">Target point</param>
+		/// <returns>Heading to target point</returns>
+		public ushort GetHeading(IPoint2D point)
+		{
+			return GetHeading(point.X, point.Y);
+		}
 
 		/// <summary>
 		/// Get the point at the given heading and distance
@@ -152,13 +157,7 @@ namespace DOL.GS
 			return (int)Math.Sqrt(dx * dx + dy * dy);
 		}
 
-        public virtual void Clear()
-        {
-            X = 0;
-            Y = 0;
-        }
-
-        #endregion IPoint2D Members
+		#endregion
 
 		/// <summary>
 		/// Creates the string representation of this point
@@ -193,11 +192,6 @@ namespace DOL.GS
 			int dy = Y - point.Y;
 			dist += (long)dy * dy;
 			return dist <= rSquared;
-		}
-
-		public bool IsSamePosition(Point2D point)
-		{
-			return X == point.X && Y == point.Y;
 		}
 	}
 }

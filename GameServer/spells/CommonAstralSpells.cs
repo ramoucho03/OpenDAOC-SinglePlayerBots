@@ -5,6 +5,7 @@ using DOL.Database;
 using DOL.Events;
 using DOL.GS.Effects;
 using DOL.GS.PacketHandler;
+using DOL.GS.Scripts;
 
 namespace DOL.GS.Spells
 {
@@ -36,16 +37,16 @@ namespace DOL.GS.Spells
             base.OnEffectStart(effect);
             foreach (eProperty property in Stats)
             {
-                m_caster.BaseBuffBonusCategory[(int)property] += (int)m_spell.Value;
-                Target.DebuffCategory[(int)property] -= (int)m_spell.Value;
+                m_caster.BaseBuffBonusCategory[property] += (int)m_spell.Value;
+                Target.DebuffCategory[property] -= (int)m_spell.Value;
             }
         }
         public override int OnEffectExpires(GameSpellEffect effect, bool noMessages)
         {
             foreach (eProperty property in Stats)
             {
-                Target.DebuffCategory[(int)property] += (int)m_spell.Value;
-                m_caster.BaseBuffBonusCategory[(int)property] -= (int)m_spell.Value;
+                Target.DebuffCategory[property] += (int)m_spell.Value;
+                m_caster.BaseBuffBonusCategory[property] -= (int)m_spell.Value;
             }
             return base.OnEffectExpires(effect, noMessages);
         }
@@ -77,7 +78,7 @@ namespace DOL.GS.Spells
 
         public override void ApplyEffectOnTarget(GameLiving target)
         {
-            GamePlayer player = Caster as GamePlayer;
+            IGamePlayer player = Caster as IGamePlayer;
             if (player == null)
             {
                 return;
@@ -97,7 +98,7 @@ namespace DOL.GS.Spells
             {
                 summonloc = target.GetPointFromHeading(target.Heading, 64);
 
-                BrittleBrain controlledBrain = new BrittleBrain(player);
+                BrittleBrain controlledBrain = new BrittleBrain((GameLiving)player);
                 controlledBrain.IsMainPet = false;
                 summoned = new GameNPC(template);
                 summoned.SetOwnBrain(controlledBrain);
@@ -148,7 +149,7 @@ namespace DOL.GS.Spells
             ProcPetBrain petBrain = (ProcPetBrain)m_pet.Brain;
             m_pet.Level = Caster.Level;
             m_pet.Strength = 0;
-            petBrain.AddToAggroList(target, 1);
+            petBrain.AddToAggroList(target);
             petBrain.Think();
         }
 
@@ -180,7 +181,7 @@ namespace DOL.GS.Spells
             dbs.Icon = 4107;
             dbs.ClientEffect = 5435;
             dbs.DamageType = 15;
-            dbs.Target = "Enemy";
+            dbs.Target = eSpellTarget.ENEMY.ToString();
             dbs.Radius = 0;
             dbs.Type = eSpellType.DirectDamage.ToString();
             dbs.Damage = 80;

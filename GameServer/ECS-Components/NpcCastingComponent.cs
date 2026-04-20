@@ -1,16 +1,66 @@
-﻿using DOL.GS.Keeps;
+﻿using System.Collections.Generic;
+using System.Threading;
+using DOL.AI.Brain;
+using DOL.GS.Keeps;
 
 namespace DOL.GS
 {
-    public class NpcCastingComponent : CastingComponent
+    public class NpcCastingComponent : CastingComponent, ILosCheckListener
     {
         private GameNPC _npcOwner;
+        private Dictionary<GameObject, List<SpellWaitingForLosCheck>> _spellsWaitingForLosCheck = new();
+        private Lock _spellsWaitingForLosCheckLock = new();
 
         private bool IsCasterGuardOrImmobile => _npcOwner is GuardCaster || _npcOwner.MaxSpeedBase == 0;
 
         public NpcCastingComponent(GameNPC npcOwner) : base(npcOwner)
         {
             _npcOwner = npcOwner;
+        }
+
+        protected override bool RequestCastSpellInternal(
+            Spell spell,
+            SpellLine spellLine,
+            ISpellCastingAbilityHandler spellCastingAbilityHandler,
+            GameLiving target,
+            GamePlayer losChecker)
+        {
+            if (losChecker == null)
+                return base.RequestCastSpellInternal(spell, spellLine, spellCastingAbilityHandler, target, null);
+
+            SpellWaitingForLosCheck spellWaitingForLosCheck = new(spell, spellLine);
+
+            lock (_spellsWaitingForLosCheckLock)
+            {
+                if (_spellsWaitingForLosCheck.TryGetValue(target, out var list))
+                    list.Add(spellWaitingForLosCheck);
+                else
+                    _spellsWaitingForLosCheck[target] = [spellWaitingForLosCheck];
+            }
+
+            losChecker.Out.SendLosCheckRequest(_npcOwner, target, this);
+            return true; // Consider the NPC is casting while waiting for the reply to prevent it from moving.
+        }
+
+        protected override GamePlayer GetLosChecker(GameLiving target)
+        {
+            if (target == Owner || target == null)
+                return null;
+
+            GamePlayer losChecker = target as GamePlayer;
+
+            if (losChecker == null && _npcOwner.Brain is IControlledBrain controlledBrain)
+                losChecker = controlledBrain.GetPlayerOwner();
+
+            if (losChecker == null && _npcOwner.Brain is StandardMobBrain)
+            {
+                List<GamePlayer> playersInRadius = _npcOwner.GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE);
+
+                if (playersInRadius.Count > 0)
+                    losChecker = playersInRadius[Util.Random(playersInRadius.Count - 1)];
+            }
+
+            return losChecker;
         }
 
         public override void OnSpellCast(Spell spell)
@@ -21,12 +71,19 @@ namespace DOL.GS
             _npcOwner.ApplyInstantHarmfulSpellDelay();
         }
 
-        public override void ClearUpSpellHandlers()
+        public override void ClearSpellHandlers()
         {
             // Make sure NPCs don't start casting pending spells after being told to stop.
-            _startSkillRequests.Clear(); // This also clears pending abilities.
-            _npcOwner.ClearSpellsWaitingForLosCheck();
-            base.ClearUpSpellHandlers();
+            lock (_spellsWaitingForLosCheckLock)
+            {
+                _spellsWaitingForLosCheck.Clear();
+            }
+
+            // Don't clear the attack spell queue here.
+            if (_npcOwner.Brain is NecromancerPetBrain necromancerPetBrain)
+                necromancerPetBrain.ClearSpellQueue();
+
+            base.ClearSpellHandlers();
         }
 
         public bool IsAllowedToFollow(GameObject target)
@@ -39,5 +96,36 @@ namespace DOL.GS
 
             return livingTarget.ActiveWeaponSlot is not eActiveWeaponSlot.Distance && livingTarget.IsWithinRadius(_npcOwner, livingTarget.attackComponent.AttackRange);
         }
+
+        public void HandleLosCheckResponse(GamePlayer losChecker, LosCheckResponse response, ushort targetId)
+        {
+            GameObject target = _npcOwner.CurrentRegion.GetObject(targetId);
+
+            if (target == null)
+                return;
+
+            lock (_spellsWaitingForLosCheckLock)
+            {
+                if (!_spellsWaitingForLosCheck.TryGetValue(target, out var list))
+                    return;
+
+                bool success = response is LosCheckResponse.True;
+
+                foreach (SpellWaitingForLosCheck spellWaitingForLosCheck in list)
+                {
+                    Spell spell = spellWaitingForLosCheck.Spell;
+                    SpellLine spellLine = spellWaitingForLosCheck.SpellLine;
+
+                    if (success && spellLine != null && spell != null)
+                        base.RequestCastSpellInternal(spell, spellLine, null, target as GameLiving, losChecker);
+                    else
+                        _npcOwner.OnCastSpellLosCheckFail(target);
+                }
+
+                list.Clear();
+            }
+        }
+
+        private readonly record struct SpellWaitingForLosCheck(Spell Spell, SpellLine SpellLine);
     }
 }

@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using DOL.GS;
+using DOL.GS.Scripts;
 namespace DOL.Events
 {
 	/// <summary>

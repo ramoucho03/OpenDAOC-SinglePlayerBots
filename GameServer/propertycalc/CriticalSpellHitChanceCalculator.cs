@@ -21,7 +21,7 @@ namespace DOL.GS.PropertyCalc
 
         public override int CalcValue(GameLiving living, eProperty property) 
         {
-            int chance = living.AbilityBonus[(int) property];
+            int chance = living.AbilityBonus[property];
 
             if (living is IGamePlayer player)
             {
@@ -31,11 +31,9 @@ namespace DOL.GS.PropertyCalc
             else if (living is NecromancerPet necroPet)
             {
                 chance += 10;
-                chance += necroPet.Owner.AbilityBonus[(int) property];
+                chance += necroPet.Owner.AbilityBonus[property];
             }
-
-            // Summoned or Charmed pet.
-            else if (living is GameNPC npc && ServerProperties.Properties.EXPAND_WILD_MINION)
+            else if (living is GameNPC npc && ServerProperties.Properties.EXPAND_WILD_MINION) // Summoned or Charmed pet.
             {
                 if (npc.Brain is IControlledBrain petBrain && petBrain.GetIPlayerOwner() is IGamePlayer playerOwner)
                     chance += playerOwner.GetAbility<RealmAbilities.AtlasOF_WildMinionAbility>()?.Amount ?? 0;

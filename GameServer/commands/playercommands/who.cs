@@ -23,8 +23,7 @@ namespace DOL.GS.Commands
 		"/WHO <level> <level> - lists players in level range",
 		"/WHO BG - lists all players leading a public BattleGroup",
 		"/WHO nogroup - lists all ungrouped players",
-		"/WHO hc - lists all Hardcore players",
-		"/WHO solo - lists all SOLO players"
+		"/WHO hc - lists all Hardcore players"
 	)]
 	public class WhoCommandHandler : AbstractCommandHandler, ICommandHandler
 	{
@@ -46,7 +45,7 @@ namespace DOL.GS.Commands
 			ArrayList clientsList = new ArrayList();
 			ArrayList resultMessages = new ArrayList();
 
-			foreach (GamePlayer otherPlayer in ClientService.GetPlayers())
+			foreach (GamePlayer otherPlayer in ClientService.Instance.GetPlayers())
 			{
 				if (otherPlayer.Client.Account.PrivLevel > (uint) ePrivLevel.Player && otherPlayer.IsAnonymous == false)
 				{
@@ -136,13 +135,6 @@ namespace DOL.GS.Commands
 				{
 					filters = new ArrayList(1);
 					filters.Add(new HCFilter());
-					break;
-				}
-				case "solo":
-				case "nohelp":
-				{
-					filters = new ArrayList(1);
-					filters.Add(new NoHelpFilter());
 					break;
 				}
 				case "frontiers":
@@ -289,10 +281,6 @@ namespace DOL.GS.Commands
 			if (player.HCFlag)
 			{
 				result.Append(" <HC>");
-			}
-			if (player.NoHelp)
-			{
-				result.Append(" <SOLO>");
 			}
 			if(player.Client.Account.PrivLevel == (uint)ePrivLevel.GM)
 			{
@@ -488,7 +476,7 @@ namespace DOL.GS.Commands
 				return player.RPFlag;
 			}
 		}
-		
+
 		private class AdvisorFilter : IWhoFilter
 		{
 			public bool ApplyFilter(GamePlayer player)
@@ -496,20 +484,12 @@ namespace DOL.GS.Commands
 				return player.Advisor;
 			}
 		}
-		
+
 		private class HCFilter : IWhoFilter
 		{
 			public bool ApplyFilter(GamePlayer player)
 			{
 				return player.HCFlag;
-			}
-		}
-		
-		private class NoHelpFilter : IWhoFilter
-		{
-			public bool ApplyFilter(GamePlayer player)
-			{
-				return player.NoHelp;
 			}
 		}
 
@@ -524,7 +504,7 @@ namespace DOL.GS.Commands
 				return false;
 			}
 		}
-		
+
 		private class BGFilter : IWhoFilter
 		{
 			public bool ApplyFilter(GamePlayer player)

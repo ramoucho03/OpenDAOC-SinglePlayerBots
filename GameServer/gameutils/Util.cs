@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace DOL.GS
@@ -49,7 +50,7 @@ namespace DOL.GS
             return chancePercent > _random.Next(100);
         }
 
-        public static bool ChanceDouble(double chancePercent)
+        public static bool Chance(double chancePercent)
         {
             return chancePercent > _random.NextDouble();
         }
@@ -81,11 +82,6 @@ namespace DOL.GS
 
         private const char PRIMARY_CSV_SEPARATOR = ';';
         private const char SECONDARY_CSV_SEPARATOR = '-';
-
-        public static string TruncateString(string value, int maxLength)
-        {
-            return string.IsNullOrEmpty(value) ? value : value.Length <= maxLength ? value : value.Substring(0, maxLength);
-        }
 
         public static List<string> SplitCSV(string str, bool rangeCheck = false)
         {
@@ -137,6 +133,8 @@ namespace DOL.GS
 
     public static class Extensions
     {
+        private static readonly Vector3 _xyMask = new(1.0f, 1.0f, 0.0f);
+
         public static void Resize<T>(this List<T> list, int size, bool fill = false, T element = default)
         {
             int count = list.Count;
@@ -156,17 +154,16 @@ namespace DOL.GS
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsInRange(this Vector3 value, Vector3 target, float range)
         {
-            // SH: Removed Z checks when one of the two Z values is zero(on ground)
-            if (value.Z == 0 || target.Z == 0)
-                return Vector2.DistanceSquared(value.ToVector2(), target.ToVector2()) <= range * range;
             return Vector3.DistanceSquared(value, target) <= range * range;
         }
 
-        public static Vector2 ToVector2(this Vector3 value)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool EqualsXY(this Vector3 a, Vector3 b)
         {
-            return new Vector2(value.X, value.Y);
+            return (a - b) * _xyMask == Vector3.Zero;
         }
 
         public static void SwapRemoveAt<T>(this IList<T> list, int index)

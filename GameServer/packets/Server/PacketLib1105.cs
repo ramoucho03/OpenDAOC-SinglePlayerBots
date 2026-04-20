@@ -1,23 +1,4 @@
-﻿/*
- * DAWN OF LIGHT - The first free open source DAoC server emulator
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
- *
- */
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -56,7 +37,7 @@ namespace DOL.GS.PacketHandler
 			IList<string> autotrains = player.CharacterClass.GetAutotrainableSkills();
 
 			// Send Trainer Window with Trainable Specs
-			using (var pak = new GSTCPPacketOut(GetPacketCode(eServerPackets.TrainerWindow)))
+			using (var pak = PooledObjectFactory.GetForTick<GSTCPPacketOut>().Init(GetPacketCode(eServerPackets.TrainerWindow)))
 			{
 				pak.WriteByte((byte)specs.Count);
 				pak.WriteByte((byte)player.SkillSpecialtyPoints);
@@ -67,8 +48,8 @@ namespace DOL.GS.PacketHandler
 				foreach (Specialization spec in specs)
 				{
 					pak.WriteByte((byte)i++);
-					pak.WriteByte((byte)Math.Min(player.MaxLevel, spec.Level));
-					pak.WriteByte((byte)(Math.Min(player.MaxLevel, spec.Level) + 1));
+					pak.WriteByte((byte)Math.Min(GamePlayer.MAX_LEVEL, spec.Level));
+					pak.WriteByte((byte)(Math.Min(GamePlayer.MAX_LEVEL, spec.Level) + 1));
 					pak.WritePascalString(spec.Name);
 				}
 				SendTCP(pak);
@@ -76,7 +57,7 @@ namespace DOL.GS.PacketHandler
 
 			// send RA usable by this class
 			var raList = SkillBase.GetClassRealmAbilities(m_gameClient.Player.CharacterClass.ID).Where(ra => !(ra is RR5RealmAbility));
-			using (var pak = new GSTCPPacketOut(GetPacketCode(eServerPackets.TrainerWindow)))
+			using (var pak = PooledObjectFactory.GetForTick<GSTCPPacketOut>().Init(GetPacketCode(eServerPackets.TrainerWindow)))
 			{
 				pak.WriteByte((byte)raList.Count());
 				pak.WriteByte((byte)player.RealmSpecialtyPoints);
@@ -109,12 +90,12 @@ namespace DOL.GS.PacketHandler
 				{
 					var toAdd = new List<Tuple<int, int, Skill>>();
 
-					foreach (Ability ab in spec.PretendAbilitiesForLiving(player, player.MaxLevel))
+					foreach (Ability ab in spec.PretendAbilitiesForLiving(player, GamePlayer.MAX_LEVEL))
 					{
 						toAdd.Add(new Tuple<int, int, Skill>(5, ab.InternalID, ab));
 					}
 
-					foreach (KeyValuePair<SpellLine, List<Skill>> ls in spec.PretendLinesSpellsForLiving(player, player.MaxLevel).Where(k => !k.Key.IsBaseLine))
+					foreach (KeyValuePair<SpellLine, List<Skill>> ls in spec.PretendLinesSpellsForLiving(player, GamePlayer.MAX_LEVEL).Where(k => !k.Key.IsBaseLine))
 					{
 						foreach (Skill sk in ls.Value)
 						{
@@ -122,7 +103,7 @@ namespace DOL.GS.PacketHandler
 						}
 					}
 
-					foreach (Style st in spec.PretendStylesForLiving(player, player.MaxLevel))
+					foreach (Style st in spec.PretendStylesForLiving(player, GamePlayer.MAX_LEVEL))
 					{
 						toAdd.Add(new Tuple<int, int, Skill>((int)st.SkillType, st.InternalID, st));
 					}
@@ -140,7 +121,7 @@ namespace DOL.GS.PacketHandler
 			int index = 0;
 			for (int skindex = 0; skindex < skillDictCache.Count; skindex++)
 			{
-				using (GSTCPPacketOut pakindex = new GSTCPPacketOut(GetPacketCode(eServerPackets.TrainerWindow)))
+				using (var pakindex = PooledObjectFactory.GetForTick<GSTCPPacketOut>().Init(GetPacketCode(eServerPackets.TrainerWindow)))
 				{
 					pakindex.WriteByte((byte)skillDictCache[skindex].Item2.Count); //size
 					pakindex.WriteByte((byte)player.SkillSpecialtyPoints);
@@ -160,9 +141,8 @@ namespace DOL.GS.PacketHandler
 			}
 
 			// Send Skill Secondly
-			using (GSTCPPacketOut pakskill = new GSTCPPacketOut(GetPacketCode(eServerPackets.TrainerWindow)))
+			using (var pakskill = PooledObjectFactory.GetForTick<GSTCPPacketOut>().Init(GetPacketCode(eServerPackets.TrainerWindow)))
 			{
-
 				pakskill.WriteByte((byte)skillDictCache.Count); //size we send for all specs
 				pakskill.WriteByte((byte)player.SkillSpecialtyPoints);
 				pakskill.WriteByte(3); // Skill description code
@@ -244,7 +224,7 @@ namespace DOL.GS.PacketHandler
 						else if (sk.Item3 is Style)
 						{
 							Style st = (Style)sk.Item3;
-							pakskill.WriteByte((byte)Math.Min(player.MaxLevel, st.SpecLevelRequirement));
+							pakskill.WriteByte((byte)Math.Min(GamePlayer.MAX_LEVEL, st.SpecLevelRequirement));
 							// tooltip
 							pakskill.WriteShort((ushort)st.Icon);
 							pakskill.WriteByte((byte)sk.Item1);
@@ -270,7 +250,7 @@ namespace DOL.GS.PacketHandler
 			}
 
 			// type 5 (realm abilities)
-			using (var pak = new GSTCPPacketOut(GetPacketCode(eServerPackets.TrainerWindow)))
+			using (var pak = PooledObjectFactory.GetForTick<GSTCPPacketOut>().Init(GetPacketCode(eServerPackets.TrainerWindow)))
 			{
 				pak.WriteByte((byte)raList.Count());
 				pak.WriteByte((byte)player.RealmSpecialtyPoints);

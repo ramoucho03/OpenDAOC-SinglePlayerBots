@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using DOL.Events;
 using DOL.GS.PacketHandler;
 using DOL.GS.Scripts;
@@ -11,10 +9,9 @@ namespace DOL.GS
 {
     public class StealthECSGameEffect : ECSGameAbilityEffect
     {
-        public StealthECSGameEffect(ECSGameEffectInitParams initParams) : base(initParams)
+        public StealthECSGameEffect(in ECSGameEffectInitParams initParams) : base(initParams)
         {
             EffectType = eEffect.Stealth;
-            EffectService.RequestStartEffect(this);
         }
 
         public override ushort Icon => 0x193;
@@ -36,19 +33,12 @@ namespace DOL.GS
                     gamePlayer.Out.SendPlayerModelTypeChange(OwnerPlayer, 3);
                 }
 
-                if (gamePlayer.EffectListComponent.ContainsEffectForEffectType(eEffect.MovementSpeedBuff))
-                {
-                    foreach (var speedBuff in gamePlayer.EffectListComponent.GetSpellEffects(eEffect.MovementSpeedBuff))
-                    {
-                        EffectService.RequestDisableEffect(speedBuff);
-                    }
-                }
+            foreach (ECSGameEffect speedBuff in gamePlayer.EffectListComponent.GetSpellEffects(eEffect.MovementSpeedBuff))
+                speedBuff.Disable();
 
-                // Cancel pulse effects.
-                List<ECSPulseEffect> effects = gamePlayer.EffectListComponent.GetAllPulseEffects();
-
-            for (int i = 0; i < effects.Count; i++)
-                EffectService.RequestCancelConcEffect(effects[i]);
+            // Cancel pulse effects.
+            foreach (ECSPulseEffect pulseEffect in gamePlayer.EffectListComponent.GetSpellEffects(eEffect.Pulse))
+                pulseEffect.End();
 
             gamePlayer.Sprint(false);
 
@@ -91,14 +81,11 @@ namespace DOL.GS
                     var speedBuff = gamePlayer.EffectListComponent.GetBestDisabledSpellEffect(eEffect.MovementSpeedBuff);
 
                     if (speedBuff != null)
-                    {
-                        speedBuff.IsBuffActive = false;
-                        EffectService.RequestEnableEffect(speedBuff);
-                    }
+                        speedBuff.Enable();
                 }
 
-                EffectService.RequestCancelEffect(EffectListService.GetEffectOnTarget(Owner, eEffect.Vanish));
-                EffectService.RequestCancelEffect(EffectListService.GetEffectOnTarget(Owner, eEffect.Camouflage));
+                EffectListService.GetEffectOnTarget(Owner, eEffect.Vanish)?.End();
+                EffectListService.GetEffectOnTarget(Owner, eEffect.Camouflage)?.End();
                 StealthStateChanged();
             }
         }

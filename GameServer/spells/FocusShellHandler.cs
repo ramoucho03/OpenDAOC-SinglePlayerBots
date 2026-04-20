@@ -2,6 +2,7 @@ using System;
 using DOL.Events;
 using DOL.GS.Effects;
 using DOL.GS.PacketHandler;
+using DOL.GS.Scripts;
 
 namespace DOL.GS.Spells
 {
@@ -11,12 +12,12 @@ namespace DOL.GS.Spells
 	[SpellHandler(eSpellType.FocusShell)]
 	public class FocusShellHandler : SpellHandler
 	{
-		public override ECSGameSpellEffect CreateECSEffect(ECSGameEffectInitParams initParams)
+		public override ECSGameSpellEffect CreateECSEffect(in ECSGameEffectInitParams initParams)
 		{
-			return new FocusECSEffect(initParams);
+			return ECSGameEffectFactory.Create(initParams, static (in i) => new FocusECSEffect(i));
 		}
 		
-		private GamePlayer FSTarget = null;
+		private IGamePlayer FSTarget = null;
 		private FSTimer timer = null;
 
 		public FocusShellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
@@ -27,20 +28,20 @@ namespace DOL.GS.Spells
 			if (GameServer.ServerRules.IsAllowedToAttack(selectedTarget, Caster, true) == false)
 			{
 				//This spell doesn't work on pets or monsters
-				if (selectedTarget is GameNPC)
+				if (selectedTarget is GameNPC && selectedTarget is not MimicNPC)
 				{
 					MessageToCaster("This spell may not be cast on pets!", eChatType.CT_SpellResisted);
 					return false;
 				}
 
-				if (selectedTarget is GamePlayer)
+				if (selectedTarget is IGamePlayer)
 				{
 					Caster.ActivePulseSpells.TryGetValue(m_spell.SpellType, out Spell currentSpell);
 
 					if (currentSpell != null && currentSpell == Spell)
-						CancelFocusSpells(false);
+						CancelFocusSpells();
 
-					FSTarget = selectedTarget as GamePlayer;
+					FSTarget = selectedTarget as IGamePlayer;
 				}
 				else
 				{
@@ -95,7 +96,7 @@ namespace DOL.GS.Spells
 		private void CancelSpell(DOLEvent e, object sender, EventArgs args)
 		{
 			//Send the cancel signal, we need to use the faster as the sender!
-			CancelFocusSpells(false);
+			CancelFocusSpells();
 		}
 
 		private void OnAttacked(DOLEvent e, object sender, EventArgs args)
@@ -144,7 +145,7 @@ namespace DOL.GS.Spells
 			protected override int OnTick(ECSGameTimer ecsGameTimer)
 			{
 				//If the target is still in range
-				if (m_handler.Caster.Mana >= m_handler.Spell.PulsePower && m_handler.Caster.IsWithinRadius(m_handler.FSTarget, m_handler.Spell.Range))
+				if (m_handler.Caster.Mana >= m_handler.Spell.PulsePower && m_handler.Caster.IsWithinRadius((GameObject)m_handler.FSTarget, m_handler.Spell.Range))
 				{
 					m_handler.Caster.Mana -= m_handler.Spell.PulsePower;
 					m_handler.Caster.LastAttackTickPvP = m_handler.Caster.CurrentRegion.Time;

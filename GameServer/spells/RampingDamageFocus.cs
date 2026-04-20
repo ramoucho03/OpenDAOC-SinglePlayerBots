@@ -10,7 +10,6 @@ namespace DOL.GS.Spells
 	[SpellHandler(eSpellType.RampingDamageFocus)]
 	public class RampingDamageFocus : SpellHandler
 	{
-		private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 		private int pulseCount = 0;
 		private ISpellHandler snareSubSpell;
 
@@ -31,7 +30,7 @@ namespace DOL.GS.Spells
 		{
 			if (Caster.ObjectState != GameObject.eObjectState.Active)
 				return;
-			if (Caster.IsStunned || Caster.IsMezzed)
+			if (Caster.IsCrowdControlled)
 				return;
 
 			//(Caster as GamePlayer).Out.SendCheckLOS(Caster, m_spellTarget, CheckLOSPlayerToTarget);
@@ -46,7 +45,7 @@ namespace DOL.GS.Spells
 			else
 			{
 				MessageToCaster("You do not have enough power and your spell was canceled.", eChatType.CT_SpellExpires);
-				CancelFocusSpells(false);
+				CancelFocusSpells();
 				effect.Cancel(false);
 			}
 		}
@@ -70,7 +69,7 @@ namespace DOL.GS.Spells
 			{
 				Caster.LastInterruptMessage = attacker.GetName(0, true) + " attacks you and your spell is interrupted!";
 				MessageToLiving(Caster, Caster.LastInterruptMessage, eChatType.CT_SpellResisted);
-				InterruptCasting(); // always interrupt at the moment
+				InterruptCasting(false); // always interrupt at the moment
 				return true;
 			}
 			return false;
@@ -84,9 +83,9 @@ namespace DOL.GS.Spells
 
 			foreach (GameLiving t in targets)
 			{
-				if (Util.ChanceDouble(CalculateSpellResistChance(t)))
+				if (Util.Chance(CalculateSpellResistChance(t)))
 				{
-					OnSpellResisted(t);
+					OnSpellNegated(target, SpellNegatedReason.Resisted);
 					continue;
 				}
 				
@@ -154,7 +153,7 @@ namespace DOL.GS.Spells
 			dbSpell.Icon = Spell.Icon;
 			dbSpell.Type = eSpellType.SpeedDecrease.ToString();
 			dbSpell.Duration = (Spell.Radius == 0) ? 10 : 3;
-			dbSpell.Target = "Enemy";
+			dbSpell.Target = eSpellTarget.ENEMY.ToString();
 			dbSpell.Range = 1500;
 			dbSpell.Value = Spell.Value;
 			dbSpell.Name = Spell.Name + " Snare";

@@ -93,7 +93,7 @@ namespace DOL.GS
 
             if (m_pet != null && m_pet.IsAlive && !m_pet.InCombat && m_pet.Brain is StandardMobBrain petBrain)
             {
-                petBrain.AddToAggroList(ad.Attacker, 1);
+                petBrain.AddToAggroList(ad.Attacker);
                 petBrain.Think();
              }
         }
@@ -147,7 +147,7 @@ namespace DOL.GS
                     else
                         m_pet.Level = (byte)(Level * PetLevel / -100);
 
-                    m_pet.AutoSetStats();
+                    m_pet.SetStats();
 
                     if (m_pet.Brain is StandardMobBrain petBrain && Brain is StandardMobBrain brain && TargetObject is GameLiving living)
                     {

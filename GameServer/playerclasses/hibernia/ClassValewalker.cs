@@ -19,6 +19,8 @@ namespace DOL.GS.PlayerClass
             m_baseHP = 720;
         }
 
+		// It's suspected that Valewalker was originally (until early ToA at least) bugged and was treated as a focus caster,
+		// because the current power pool formula appears to give them too much power when compared to what happens on videos.
 		public override bool IsFocusCaster => false;
 
 		public override bool HasAdvancedFromBaseClass()
@@ -26,14 +28,9 @@ namespace DOL.GS.PlayerClass
 			return true;
 		}
 
-        public override eClassType ClassType
-        {
-            get { return eClassType.ListCaster; }
-        }
-
-        public override List<PlayerRace> EligibleRaces => new List<PlayerRace>()
-        {
-             PlayerRace.Celt, PlayerRace.Firbolg, PlayerRace.Sylvan,
-        };
-    }
+		public override List<PlayerRace> EligibleRaces => new List<PlayerRace>()
+		{
+			 PlayerRace.Celt, PlayerRace.Firbolg, PlayerRace.Sylvan,
+		};
+	}
 }

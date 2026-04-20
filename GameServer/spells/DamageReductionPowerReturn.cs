@@ -165,22 +165,22 @@ namespace DOL.GS.Spells
             {
                 var list = new List<string>();
 
-                list.Add("Name: " + Spell.Name);
-                list.Add("Description: " + Spell.Description);
-                list.Add("Target: " + Spell.Target);
-                if (Spell.Damage != 0)
-                    list.Add("Damage Absorb: " + Spell.Damage + "%");
-                if (Spell.Value != 0)
-                    list.Add("Power Return: " + Spell.Damage + "%");
-                if (Spell.CastTime < 0.1)
-                    list.Add("Casting time: Instant");
-                else if (Spell.CastTime > 0)
-                    list.Add("Casting time: " + (Spell.CastTime * 0.001).ToString("0.0## sec;-0.0## sec;'instant'"));
-                if (Spell.Duration >= ushort.MaxValue * 1000)
-                    list.Add("Duration: Permanent.");
-                else if (Spell.Duration > 60000)
-                    list.Add(string.Format("Duration: {0}:{1} min", Spell.Duration / 60000, (Spell.Duration % 60000 / 1000).ToString("00")));
-                else if (Spell.Duration != 0)
+				list.Add("Name: " + Spell.Name);
+				list.Add("Description: " + ShortDescription);
+				list.Add("Target: " + Spell.Target);
+				if (Spell.Damage != 0)
+					list.Add("Damage Absorb: " + Spell.Damage + "%");
+				if (Spell.Value != 0)
+					list.Add("Power Return: " + Spell.Damage +"%");
+				if (Spell.CastTime < 0.1)
+					list.Add("Casting time: Instant");
+				else if (Spell.CastTime > 0)
+					list.Add("Casting time: " + (Spell.CastTime * 0.001).ToString("0.0## sec;-0.0## sec;'instant'"));
+				if (Spell.Duration >= ushort.MaxValue * 1000)
+					list.Add("Duration: Permanent.");
+				else if (Spell.Duration > 60000)
+					list.Add(string.Format("Duration: {0}:{1} min", Spell.Duration / 60000, (Spell.Duration % 60000 / 1000).ToString("00")));
+				else if (Spell.Duration != 0)
 
                     if (Spell.Range != 0)
                         list.Add("Range: " + Spell.Range);

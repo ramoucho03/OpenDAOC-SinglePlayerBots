@@ -1,5 +1,6 @@
 using System;
 using DOL.GS.PacketHandler;
+using DOL.GS.Scripts;
 
 namespace DOL.GS.Spells
 {
@@ -22,19 +23,19 @@ namespace DOL.GS.Spells
 
 			bool healed = false;
 
-			if (Spell.Value < 0 && m_caster is GamePlayer player)
+			if (Spell.Value < 0 && m_caster is IGamePlayer player)
 				Spell.Value = (Spell.Value * -0.01) * player.MaxMana;
 
 			int spellValue = (int)Math.Round(Spell.Value);
 
 			foreach (GameLiving healTarget in targets)
 			{
-				if (healTarget is GamePlayer 
+				if (healTarget is IGamePlayer 
 				    && (
-				    ((GamePlayer)healTarget).CharacterClass is PlayerClass.ClassVampiir
-					|| ((GamePlayer)healTarget).CharacterClass is PlayerClass.ClassMaulerAlb
-					|| ((GamePlayer)healTarget).CharacterClass is PlayerClass.ClassMaulerHib
-					|| ((GamePlayer)healTarget).CharacterClass is PlayerClass.ClassMaulerMid))
+				    ((IGamePlayer)healTarget).CharacterClass is PlayerClass.ClassVampiir
+					|| ((IGamePlayer)healTarget).CharacterClass is PlayerClass.ClassMaulerAlb
+					|| ((IGamePlayer)healTarget).CharacterClass is PlayerClass.ClassMaulerHib
+					|| ((IGamePlayer)healTarget).CharacterClass is PlayerClass.ClassMaulerMid))
 					continue;
 
 				if (Spell.Value < 0)

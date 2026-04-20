@@ -106,7 +106,7 @@ namespace DOL.GS.Spells
     [SpellHandler(eSpellType.Oppression)]
     public class OppressionSpellHandler : MasterlevelHandling
     {
-        public override bool IsOverwritable(ECSGameSpellEffect compare)
+        public override bool HasConflictingEffectWith(ISpellHandler compare)
         {
             return true;
         }
@@ -234,7 +234,7 @@ namespace DOL.GS.Spells
         {
             if (target.HasAbility(Abilities.CCImmunity)||target.HasAbility(Abilities.StunImmunity))
             {
-                MessageToCaster(target.Name + " is immune to this effect!", eChatType.CT_SpellResisted);
+                MessageToCaster("Your target is immune to this effect!", eChatType.CT_SpellResisted);
                 return;
             }
 
@@ -284,16 +284,7 @@ namespace DOL.GS.Spells
                 if (player.Group != null)
                     player.Group.UpdateMember(player, false, false);
             }
-            else
-            {
-                GameNPC npc = effect.Owner as GameNPC;
-                if (npc != null)
-                {
-                    IOldAggressiveBrain aggroBrain = npc.Brain as IOldAggressiveBrain;
-                    if (aggroBrain != null)
-                        aggroBrain.AddToAggroList(Caster, 1);
-                }
-            }
+
             return 0;
         }
 
@@ -302,12 +293,12 @@ namespace DOL.GS.Spells
             return Spell.Duration;
         }
 
-        public override bool IsOverwritable(ECSGameSpellEffect compare)
+        public override bool HasConflictingEffectWith(ISpellHandler compare)
         {
-            if (Spell.EffectGroup != 0 || compare.SpellHandler.Spell.EffectGroup != 0)
-                return Spell.EffectGroup == compare.SpellHandler.Spell.EffectGroup;
-            if (compare.SpellHandler.Spell.SpellType == eSpellType.UnrresistableNonImunityStun) return true;
-            return base.IsOverwritable(compare);
+            if (Spell.EffectGroup != 0 || compare.Spell.EffectGroup != 0)
+                return Spell.EffectGroup == compare.Spell.EffectGroup;
+            if (compare.Spell.SpellType == eSpellType.UnrresistableNonImunityStun) return true;
+            return base.HasConflictingEffectWith(compare);
         }
 
         public override double CalculateSpellResistChance(GameLiving target)
@@ -348,6 +339,8 @@ namespace DOL.GS.Spells
     [SpellHandler(eSpellType.EffectivenessDebuff)]
     public class EffectivenessDeBuff : MasterlevelHandling
     {
+        public override string ShortDescription => $"Point blank area effect shout that reduces effective spec of enemies by {Spell.Value}% for determining variance for spell and melee damage.";
+
         /// <summary>
         /// called after normal spell cast is completed and effect has to be started
         /// </summary>
@@ -428,10 +421,10 @@ namespace DOL.GS.PropertyCalc
         public override int CalcValue(GameLiving living, eProperty property)
         {
             return (int)(
-                +living.BaseBuffBonusCategory[(int)property]
-                + living.SpecBuffBonusCategory[(int)property]
-                - living.DebuffCategory[(int)property]
-                + living.OtherBonus[(int)property]);
+                +living.BaseBuffBonusCategory[property]
+                + living.SpecBuffBonusCategory[property]
+                - living.DebuffCategory[property]
+                + living.OtherBonus[property]);
         }
     }
 }

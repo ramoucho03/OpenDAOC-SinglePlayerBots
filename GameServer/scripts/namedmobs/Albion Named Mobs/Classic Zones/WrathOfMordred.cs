@@ -27,10 +27,7 @@ namespace DOL.GS
 				default: return 40;// dmg reduction for rest resists
 			}
 		}
-		public override double AttackDamage(DbInventoryItem weapon)
-		{
-			return base.AttackDamage(weapon) * Strength / 100;
-		}
+
 		public override int MeleeAttackRange => 350;
 		public override bool HasAbility(string keyName)
 		{
@@ -138,7 +135,6 @@ namespace DOL.GS
 					spell.MoveCast = true;
 					spell.DamageType = (int)eDamageType.Heat;
 					m_HeatProc = new Spell(spell, 70);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_HeatProc);
 				}
 				return m_HeatProc;
 			}
@@ -179,9 +175,9 @@ namespace DOL.AI.Brain
 					}
 					if (!living.effectListComponent.ContainsEffectForEffectType(eEffect.Stun))
 					{
-						AttackAction attackAction = Body.attackComponent.attackAction;
+						WeaponAction weaponAction = Body.attackComponent.weaponAction;
 
-						if (attackAction.NextTick - GameLoop.GameLoopTime <= 800 && CanWalk == false)
+						if (weaponAction != null && weaponAction.AttackRoundEndTime - GameLoop.GameLoopTime <= 800 && CanWalk == false)
 						{
 							Body.styleComponent.NextCombatStyle = null;
 							Body.styleComponent.NextCombatBackupStyle = null;
@@ -222,4 +218,3 @@ namespace DOL.AI.Brain
         }
 	}
 }
-

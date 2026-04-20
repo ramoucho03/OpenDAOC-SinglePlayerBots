@@ -51,10 +51,7 @@ namespace DOL.GS
 			}
 			base.OnAttackEnemy(ad);
 		}
-		public override double AttackDamage(DbInventoryItem weapon)
-		{
-			return base.AttackDamage(weapon) * Strength / 100;
-		}
+
 		public override int MeleeAttackRange => 350;
 		public override bool HasAbility(string keyName)
 		{
@@ -100,13 +97,12 @@ namespace DOL.GS
 					spell.Range = 350;
 					spell.Duration = 650;
 					spell.SpellID = 11803;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Type = "Disease";
 					spell.Uninterruptible = true;
 					spell.MoveCast = true;
 					spell.DamageType = (int)eDamageType.Energy; //Energy DMG Type
 					m_DelegaltDisease = new Spell(spell, 70);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_DelegaltDisease);
 				}
 				return m_DelegaltDisease;
 			}

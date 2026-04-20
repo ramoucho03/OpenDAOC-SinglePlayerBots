@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Linq;
 using DOL.AI.Brain;
 using DOL.Database;
 using DOL.GS.Commands;
@@ -14,8 +13,6 @@ namespace DOL.GS.ServerRules
 	[ServerRules(EGameServerType.GST_Normal)]
 	public class NormalServerRules : AbstractServerRules
 	{
-        public static readonly log4net.ILog log = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
-
         public override string RulesDescription()
 		{
 			return "standard Normal server rules";
@@ -26,47 +23,51 @@ namespace DOL.GS.ServerRules
 			if (!base.IsAllowedToAttack(attacker, defender, quiet))
 				return false;
 
-			//if (attacker is MimicNPC && ((MimicNPC)attacker).Duel != null && defender != ((MimicNPC)attacker).DuelTarget)
-			//	return false;
+			GameNPC npcAttacker = attacker as GameNPC;
 
-			// if controlled NPC - do checks for owner instead
-			if (attacker is GameNPC)
+			if (npcAttacker != null && npcAttacker.Brain is IControlledBrain attackerBrain)
 			{
-				IControlledBrain controlled = ((GameNPC)attacker).Brain as IControlledBrain;
-				if (controlled != null)
-				{
-                    attacker = controlled.GetLivingOwner();
-					quiet = true; // silence all attacks by controlled npc
-				}
+				attacker = attackerBrain.GetLivingOwner();
+				quiet = true; // Silence all attacks by controlled npcs.
 			}
 
-			if (defender is GameNPC)
+			if (defender is GameNPC npcDefender)
 			{
-				IControlledBrain controlled = ((GameNPC)defender).Brain as IControlledBrain;
-				if (controlled != null)
-                    defender = controlled.GetLivingOwner();
+				if (npcDefender.Brain is IControlledBrain defenderBrain)
+					defender = defenderBrain.GetLivingOwner();
 			}
 
-			//"You can't attack yourself!"
-			if(attacker == defender)
+			// "You can't attack yourself!"
+			if (attacker == defender)
 			{
-				if (quiet == false) MessageToLiving(attacker, "You can't attack yourself!");
+				if (!quiet)
+					MessageToLiving(attacker, "You can't attack yourself!");
+
 				return false;
 			}
 
-            //Don't allow attacks on same realm members on Normal Servers
-            if (attacker.Realm == defender.Realm && !(attacker is IGamePlayer && ((IGamePlayer)attacker).IsDuelPartner(defender)))
+			// Don't allow attacks on same realm members.
+			if (attacker.Realm == defender.Realm)
 			{
-				// allow confused mobs to attack same realm
-				if (attacker is GameNPC && (attacker as GameNPC).IsConfused)
+				// Allow players to attack their duel partner.
+				if (attacker is IGamePlayer player && player.IsDuelPartner(defender))
 					return true;
-				
-				if (attacker.Realm == 0)
+
+				if (npcAttacker != null && npcAttacker is not MimicNPC)
 				{
-					return FactionMgr.CanLivingAttack(attacker, defender);
+					// Allow confused NPCs to attack realm mates.
+					// Pets can't attack their owner however, since attacker == defender.
+					if (npcAttacker.IsConfused)
+						return true;
+
+					// If the NPC is neutral, delegate to `FactionMgr`.
+					if (attacker.Realm == 0)
+						return FactionMgr.CanLivingAttack(attacker, defender);
 				}
 
-				if(quiet == false) MessageToLiving(attacker, "You can't attack a member of your realm!");
+				if (!quiet)
+					MessageToLiving(attacker, "You can't attack a member of your realm!");
+
 				return false;
 			}
 
@@ -75,7 +76,7 @@ namespace DOL.GS.ServerRules
 
 		public override bool IsSameRealm(GameLiving source, GameLiving target, bool quiet)
 		{
-			if(source == null || target == null) 
+			if (source == null || target == null) 
 				return false;
 
 			// if controlled NPC - do checks for owner instead
@@ -88,6 +89,7 @@ namespace DOL.GS.ServerRules
 					quiet = true; // silence all attacks by controlled npc
 				}
 			}
+
 			if (target is GameNPC)
 			{
 				IControlledBrain controlled = ((GameNPC)target).Brain as IControlledBrain;
@@ -99,7 +101,7 @@ namespace DOL.GS.ServerRules
 				return true;
 
 			// clients with priv level > 1 are considered friendly by anyone
-			if(target is GamePlayer && ((GamePlayer)target).Client.Account.PrivLevel > 1) return true;
+			if (target is GamePlayer && ((GamePlayer)target).Client.Account.PrivLevel > 1) return true;
 			// checking as a gm, targets are considered friendly
 			if (source is GamePlayer && ((GamePlayer)source).Client.Account.PrivLevel > 1) return true;
 
@@ -112,11 +114,12 @@ namespace DOL.GS.ServerRules
 				if ((((GameNPC)source).Flags & GameNPC.eFlags.PEACE) != 0)
 					return true;
 
-			if(source.Realm != target.Realm)
+			if (source.Realm != target.Realm)
 			{
-				if(quiet == false) MessageToLiving(source, target.GetName(0, true) + " is not a member of your realm!");
-				return false;
+				if (quiet == false) MessageToLiving(source, target.GetName(0, true) + " is not a member of your realm!");
+					return false;
 			}
+
 			return true;
 		}
 
@@ -129,13 +132,13 @@ namespace DOL.GS.ServerRules
 			return false;
 		}
 
-		public override bool IsAllowedToGroup(GamePlayer source, GamePlayer target, bool quiet)
+		public override bool IsAllowedToGroup(IGamePlayer source, IGamePlayer target, bool quiet)
 		{
 			if(source == null || target == null) return false;
 			
 			if (source.Realm != target.Realm)
 			{
-				if(quiet == false) MessageToLiving(source, "You can't group with a player from another realm!");
+				if(quiet == false) MessageToLiving((GameLiving)source, "You can't group with a player from another realm!");
 				return false;
 			}
 
@@ -166,20 +169,6 @@ namespace DOL.GS.ServerRules
 			{
 				if ((source as GamePlayer).Client.Account.PrivLevel > 1 || (target as GamePlayer).Client.Account.PrivLevel > 1)
 					return true;
-			}
-			
-			if((source as GamePlayer).NoHelp)
-			{
-				if(quiet == false) MessageToLiving(source, "You have renounced to any kind of help!");
-				if(quiet == false) MessageToLiving(target, "This player has chosen to receive no help!");
-				return false;
-			}
-			
-			if((target as GamePlayer).NoHelp)
-			{
-				if(quiet == false) MessageToLiving(target, "You have renounced to any kind of help!");
-				if(quiet == false) MessageToLiving(source, "This player has chosen to receive no help!");
-				return false;
 			}
 
 			//Peace flag NPCs can trade with everyone

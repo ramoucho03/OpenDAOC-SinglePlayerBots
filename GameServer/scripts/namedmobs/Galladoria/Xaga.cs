@@ -52,10 +52,7 @@ namespace DOL.GS
                 }
             }
         }
-        public override double AttackDamage(DbInventoryItem weapon)
-        {
-            return base.AttackDamage(weapon) * Strength / 100 * ServerProperties.Properties.EPICS_DMG_MULTIPLIER;
-        }
+
         public override int MaxHealth
         {
             get { return 100000; }
@@ -322,15 +319,15 @@ namespace DOL.GS
             BeathaBrain.path2 = false;
             BeathaBrain.path3 = false;
 
-            AbilityBonus[(int)eProperty.Resist_Body] = 60;
-            AbilityBonus[(int)eProperty.Resist_Heat] = -20;//weak to heat
-            AbilityBonus[(int)eProperty.Resist_Cold] = 99;//resi to cold
-            AbilityBonus[(int)eProperty.Resist_Matter] = 60;
-            AbilityBonus[(int)eProperty.Resist_Energy] = 60;
-            AbilityBonus[(int)eProperty.Resist_Spirit] = 60;
-            AbilityBonus[(int)eProperty.Resist_Slash] = 40;
-            AbilityBonus[(int)eProperty.Resist_Crush] = 40;
-            AbilityBonus[(int)eProperty.Resist_Thrust] = 40;
+            AbilityBonus[eProperty.Resist_Body] = 60;
+            AbilityBonus[eProperty.Resist_Heat] = -20;//weak to heat
+            AbilityBonus[eProperty.Resist_Cold] = 99;//resi to cold
+            AbilityBonus[eProperty.Resist_Matter] = 60;
+            AbilityBonus[eProperty.Resist_Energy] = 60;
+            AbilityBonus[eProperty.Resist_Spirit] = 60;
+            AbilityBonus[eProperty.Resist_Slash] = 40;
+            AbilityBonus[eProperty.Resist_Crush] = 40;
+            AbilityBonus[eProperty.Resist_Thrust] = 40;
 
             ++BeathaCount;
             Faction = FactionMgr.GetFactionByID(96);
@@ -453,13 +450,12 @@ namespace DOL.AI.Brain
                     spell.Range = 3000;
                     spell.Radius = 450;
                     spell.SpellID = 11707;
-                    spell.Target = "Area";
+                    spell.Target = eSpellTarget.AREA.ToString();
                     spell.Type = eSpellType.DirectDamageNoVariance.ToString();
                     spell.Uninterruptible = true;
                     spell.MoveCast = true;
                     spell.DamageType = (int) eDamageType.Cold;
                     m_BeathaAoe = new Spell(spell, 70);
-                    SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_BeathaAoe);
                 }
                 return m_BeathaAoe;
             }
@@ -524,15 +520,15 @@ namespace DOL.GS
             TineBrain.path2_2 = false;
             TineBrain.path3_2 = false;
 
-            AbilityBonus[(int)eProperty.Resist_Body] = 60;
-            AbilityBonus[(int)eProperty.Resist_Heat] = 99;//resi to heat
-            AbilityBonus[(int)eProperty.Resist_Cold] = -20;//weak to cold
-            AbilityBonus[(int)eProperty.Resist_Matter] = 60;
-            AbilityBonus[(int)eProperty.Resist_Energy] = 60;
-            AbilityBonus[(int)eProperty.Resist_Spirit] = 60;
-            AbilityBonus[(int)eProperty.Resist_Slash] = 40;
-            AbilityBonus[(int)eProperty.Resist_Crush] = 40;
-            AbilityBonus[(int)eProperty.Resist_Thrust] = 40;
+            AbilityBonus[eProperty.Resist_Body] = 60;
+            AbilityBonus[eProperty.Resist_Heat] = 99;//resi to heat
+            AbilityBonus[eProperty.Resist_Cold] = -20;//weak to cold
+            AbilityBonus[eProperty.Resist_Matter] = 60;
+            AbilityBonus[eProperty.Resist_Energy] = 60;
+            AbilityBonus[eProperty.Resist_Spirit] = 60;
+            AbilityBonus[eProperty.Resist_Slash] = 40;
+            AbilityBonus[eProperty.Resist_Crush] = 40;
+            AbilityBonus[eProperty.Resist_Thrust] = 40;
 
             ++TineCount;
             TineBrain sBrain = new TineBrain();
@@ -655,13 +651,12 @@ namespace DOL.AI.Brain
                     spell.Range = 3000;
                     spell.Radius = 450;
                     spell.SpellID = 11708;
-                    spell.Target = "Area";
+                    spell.Target = eSpellTarget.AREA.ToString();
                     spell.Type = eSpellType.DirectDamageNoVariance.ToString();
                     spell.Uninterruptible = true;
                     spell.MoveCast = true;
                     spell.DamageType = (int) eDamageType.Heat;
                     m_TineAoe = new Spell(spell, 70);
-                    SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_TineAoe);
                 }
                 return m_TineAoe;
             }

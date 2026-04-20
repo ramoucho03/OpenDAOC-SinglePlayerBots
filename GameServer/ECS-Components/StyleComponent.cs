@@ -41,6 +41,8 @@ namespace DOL.GS
 
         public static StyleComponent Create(GameLiving owner)
         {
+            if (owner is MimicNPC mimicOwner)
+                return new MimicStyleComponent(mimicOwner);
             if (owner is GameNPC npcOwner)
                 return new NpcStyleComponent(npcOwner);
             else if (owner is GamePlayer playerOwner)
@@ -100,14 +102,9 @@ namespace DOL.GS
         {
             var p = Owner as GameNPC;
 
-            MimicNPC mimic = Owner as MimicNPC;
-
-            if (mimic == null)
-            {
-                if (p.Styles == null || p.Styles.Count < 1 || p.TargetObject == null)
-                    return null;
-            }
-
+            if (p.Styles == null || p.Styles.Count < 1 || p.TargetObject == null)
+                return null;
+            
             AttackData lastAttackData = p.attackComponent.attackAction.LastAttackData;
 
             if (p.StylesChain != null && p.StylesChain.Count > 0)
@@ -120,14 +117,6 @@ namespace DOL.GS
                     if (StyleProcessor.CanUseStyle(lastAttackData, p, s, p.ActiveWeapon)
                         && p.CheckStyleStun(s)) // Make sure we don't spam stun styles like Brutalize
                         return s;
-
-            if (mimic != null && !mimic.MimicBrain.PvPMode && mimic.MimicBrain.IsMainTank)
-            {
-                Style s = CheckTaunt(mimic, lastAttackData);
-
-                if (s != null)
-                    return s;
-            }
 
             if (p.StylesBack != null && p.StylesBack.Count > 0)
             {
@@ -157,109 +146,7 @@ namespace DOL.GS
                     return s;
             }
 
-            if (mimic != null && (mimic.MimicBrain.PvPMode || mimic.Group == null))
-            {
-                Style s = CheckTaunt(mimic, lastAttackData);
-
-                if (s != null)
-                    return s;
-            }
-
             return null;
-        }
-
-        public Style MimicGetStyleToUse()
-        {
-            MimicNPC mimic = Owner as MimicNPC;
-
-            if (mimic.Styles == null || mimic.Styles.Count < 1 || mimic.TargetObject == null)
-                return null;
-
-            AttackData lastAttackData = mimic.attackComponent.attackAction.LastAttackData;
-
-            if (mimic.StylesChain != null && mimic.StylesChain.Count > 0)
-                foreach (Style s in mimic.StylesChain)
-                    if (StyleProcessor.CanUseStyle(lastAttackData, mimic, s, mimic.ActiveWeapon))
-                        return s;
-
-            if (mimic.StylesDefensive != null && mimic.StylesDefensive.Count > 0)
-                foreach (Style s in mimic.StylesDefensive)
-                    if (StyleProcessor.CanUseStyle(lastAttackData, mimic, s, mimic.ActiveWeapon)
-                        && mimic.CheckStyleStun(s)) // Make sure we don't spam stun styles like Brutalize
-                        return s;
-
-            if (!mimic.MimicBrain.PvPMode && mimic.MimicBrain.IsMainTank)
-            {
-                Style s = CheckTaunt(mimic, lastAttackData);
-
-                if (s != null)
-                    return s;
-            }
-
-            if (mimic.StylesBack != null && mimic.StylesBack.Count > 0)
-                return GetStyle(mimic.StylesBack, lastAttackData, mimic);
-
-            if (mimic.StylesSide != null && mimic.StylesSide.Count > 0)
-                return GetStyle(mimic.StylesSide, lastAttackData, mimic);
-
-            if (mimic.StylesFront != null && mimic.StylesFront.Count > 0)
-                return GetStyle(mimic.StylesFront, lastAttackData, mimic);
-
-            if (mimic.StylesAnytime != null && mimic.StylesAnytime.Count > 0)
-                return GetStyle(mimic.StylesAnytime, lastAttackData, mimic);
-
-            if (mimic.MimicBrain.PvPMode || mimic.Group == null)
-            {
-                Style s = CheckTaunt(mimic, lastAttackData);
-
-                if (s != null)
-                    return s;
-            }
-
-            return null;
-        }
-
-        private Style GetStyle(List<Style> styles, AttackData lastAttackData, GameLiving mimic)
-        {
-            Style style = styles.First();
-
-            if (styles.Count > 1)
-            {
-                int startIndex = Util.Random(0, styles.Count - 1);
-
-                for (int i = 0; i < styles.Count; i++)
-                {
-                    int index = startIndex + i;
-
-                    if (index >= styles.Count)
-                        index = i - (styles.Count - startIndex);
-
-                    Style s = styles[index];
-
-                    if (StyleProcessor.CanUseStyle(lastAttackData, mimic, s, mimic.ActiveWeapon))
-                    {
-                        style = s;
-                        break;
-                    }
-                }
-            }
-
-            return style;
-        }
-
-        private Style CheckTaunt(MimicNPC mimic, AttackData lastAttackData)
-        {
-            if (mimic.StylesTaunt != null && mimic.StylesTaunt.Count > 0)
-            {
-                foreach (Style s in mimic.StylesTaunt)
-                {
-                    if (s.WeaponTypeRequirement == mimic.ActiveWeapon.Object_Type)
-                        if (StyleProcessor.CanUseStyle(lastAttackData, mimic, s, mimic.ActiveWeapon))
-                            return s;
-                }
-            }
-
-            return null;
-        }
+        }  
     }
 }

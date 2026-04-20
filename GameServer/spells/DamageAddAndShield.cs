@@ -1,3 +1,4 @@
+using System;
 using DOL.AI.Brain;
 using DOL.Database;
 using DOL.GS.Effects;
@@ -12,9 +13,11 @@ namespace DOL.GS.Spells
     [SpellHandler(eSpellType.DamageAdd)]
     public class DamageAddSpellHandler(GameLiving caster, Spell spell, SpellLine spellLine) : AbstractDamageAddSpellHandler(caster, spell, spellLine)
     {
-        public override ECSGameSpellEffect CreateECSEffect(ECSGameEffectInitParams initParams)
+        public override string ShortDescription => $"{TargetPronounCapitalized} melee attacks inflict an additional {FormatDamage()}.";
+
+        public override ECSGameSpellEffect CreateECSEffect(in ECSGameEffectInitParams initParams)
         {
-            return new DamageAddECSEffect(initParams);
+            return ECSGameEffectFactory.Create(initParams, static (in i) => new DamageAddECSEffect(i));
         }
 
         public override void Handle(AttackData attackData, double effectiveness)
@@ -22,18 +25,7 @@ namespace DOL.GS.Spells
             if (!AreArgumentsValid(attackData, out GameLiving attacker, out GameLiving target))
                 return;
 
-            double damage;
-
-            if (Spell.Damage > 0)
-            {
-                CalculateDamageVariance(target, out double minVariance, out double maxVariance);
-                double variance = minVariance + Util.RandomDoubleIncl() * (maxVariance - minVariance);
-                effectiveness *= 1 + Caster.GetModified(eProperty.BuffEffectiveness) * 0.01;
-                damage = Spell.Damage * variance * effectiveness * attackData.Interval * 0.001;
-            }
-            else
-                damage = attackData.Damage * Spell.Damage / -100.0;
-
+            double damage = CalculateDamage(attackData, target, effectiveness);
             AttackData ad = CreateAttackData(damage, attacker, target);
 
             if (ad.Attacker is GameNPC npcAttacker && npcAttacker.Brain is IControlledBrain brain)
@@ -60,29 +52,24 @@ namespace DOL.GS.Spells
     [SpellHandler(eSpellType.DamageShield)]
     public class DamageShieldSpellHandler(GameLiving caster, Spell spell, SpellLine spellLine) : AbstractDamageAddSpellHandler(caster, spell, spellLine)
     {
-        public override ECSGameSpellEffect CreateECSEffect(ECSGameEffectInitParams initParams)
+        public override string ShortDescription => $"{TargetPronounCapitalized} melee attackers receive {FormatDamage()}.";
+
+        public override ECSGameSpellEffect CreateECSEffect(in ECSGameEffectInitParams initParams)
         {
-            return new DamageShieldECSEffect(initParams);
+            return ECSGameEffectFactory.Create(initParams, static (in i) => new DamageShieldECSEffect(i));
         }
 
         public override void Handle(AttackData attackData, double effectiveness)
         {
-            // Inverts attacker and target.
+            // Damage shields only work on melee attacks.
+            if (!attackData.IsMeleeAttack)
+                return;
+
+            // Swap attacker and target.
             if (!AreArgumentsValid(attackData, out GameLiving target, out GameLiving attacker))
                 return;
 
-            double damage;
-
-            if (Spell.Damage > 0)
-            {
-                CalculateDamageVariance(target, out double minVariance, out double maxVariance);
-                double variance = minVariance + Util.RandomDoubleIncl() * (maxVariance - minVariance);
-                effectiveness *= 1 + Caster.GetModified(eProperty.BuffEffectiveness) * 0.01;
-                damage = Spell.Damage * variance * effectiveness * attackData.Interval * 0.001;
-            }
-            else
-                damage = attackData.Damage * Spell.Damage / -100.0;
-
+            double damage = CalculateDamage(attackData, target, effectiveness);
             AttackData ad = CreateAttackData(damage, attacker, target);
 
             if (attacker is GamePlayer playerAttacker)
@@ -103,22 +90,51 @@ namespace DOL.GS.Spells
         }
     }
 
-    public abstract class AbstractDamageAddSpellHandler(GameLiving caster, Spell spell, SpellLine spellLine) : SpellHandler(caster, spell, spellLine)
+    public abstract class AbstractDamageAddSpellHandler(GameLiving caster, Spell spell, SpellLine spellLine) : SingleStatBuff(caster, spell, spellLine)
     {
+        public override bool BuffReceivesSpecBonus => true;
+        public override eProperty Property1 => eProperty.Undefined; // Not a real property, SingleStatBuff is only implemented to apply buff spec bonus.
+
         public abstract void Handle(AttackData attackData, double effectiveness);
 
         public override void CalculateDamageVariance(GameLiving target, out double min, out double max)
         {
-            // Placeholder. According to live tests, this should be (or close to) the best variance possible.
-            // Damage adds are supposed to scale with weaponskill / armor, but independently from the attack's damage.
-            // Damage shields are supposed to scale with spec to some extent.
-            // Lower bound is supposed to be allowed to be below 1 for both.
-            // Upper bound is equal to lower*(5/3) most of the time.
-            // A similar effectiveness bonus as buffs may be used.
-            // In practice, a damage add generally does less damage than a damage shield of the same value.
-            // We may want to take level difference into account despite not being live like.
-            min = 1;
-            max = min * (5 / 3.0);
+            min = 0.75;
+            max = 1.25;
+        }
+
+        protected double CalculateDamage(AttackData attackData, GameLiving target, double effectiveness)
+        {
+            // How percent-based damage adds should scale isn't very well documented.
+            // Based on a couple of logs, it isn't x% of the damage inflicted, nor it is x% of the weapon's DPS.
+            // We're doing x% of the base damage inflicted (ignores styles, critical hit, but includes resists).
+            // They're also affected by variance.
+
+            double damage;
+
+            if (Spell.Damage > 0)
+                damage = Spell.Damage * attackData.Interval * 0.001;
+            else
+                damage = attackData.BaseDamage * (1 * -Spell.Damage * 0.01);
+
+            CalculateDamageVariance(target, out double minVariance, out double maxVariance);
+            double variance = minVariance + Util.RandomDoubleIncl() * (maxVariance - minVariance);
+            damage *= variance * effectiveness;
+
+            /*
+             * 1.58:
+             * Damage adds are now clamped to be the maximum possible damage you could have done in a swing
+             * rather than the actual damage done (which was subject to randomness).
+             * This will allow those classes that have damage-adds but cannot spec in weapons (i.e. clerical classes)
+             * to once again be able to use damage-adds to help them solo monsters.
+             */
+
+            // To my knowledge, the game doesn't keep track of the maximum possible damage for styled hits,
+            // and so the patch notes probably refer to the unstyled damage cap.
+            // This mechanic was confirmed to still be used on Live (Jan 2026).
+            // Whether it should affect damage shields too is unknown.
+
+            return Math.Min(damage, attackData.BaseDamageCap);
         }
 
         protected static bool AreArgumentsValid(AttackData attackData, out GameLiving attacker, out GameLiving target)
@@ -153,7 +169,6 @@ namespace DOL.GS.Spells
 
         protected AttackData CreateAttackData(double damage, GameLiving attacker, GameLiving target)
         {
-            // Damage adds and shields are unaffected by resistances.
             return new()
             {
                 Attacker = attacker,
@@ -225,6 +240,11 @@ namespace DOL.GS.Spells
             };
 
             return eff;
+        }
+
+        protected string FormatDamage()
+        {
+            return Spell.Damage < 0 ? $"{-Spell.Damage}% damage" : $"{Spell.Damage} damage per second";
         }
     }
 }

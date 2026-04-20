@@ -4,17 +4,24 @@ namespace DOL.GS.PacketHandler.Client.v168
     /// Handles spell cast requests from client
     /// </summary>
     [PacketHandlerAttribute(PacketHandlerType.TCP, eClientPackets.UseSlot, "Handle Player Use Slot Request.", eClientStatus.PlayerInGame)]
-    public class UseSlotHandler : IPacketHandler
+    public class UseSlotHandler : PacketHandler
     {
-        public void HandlePacket(GameClient client, GSPacketIn packet)
+        protected override void HandlePacketInternal(GameClient client, GSPacketIn packet)
         {
+            if (client.Player.ObjectState is not GameObject.eObjectState.Active || client.ClientState is not GameClient.eClientState.Playing)
+                return;
+
             if (client.Version >= GameClient.eClientVersion.Version1124)
             {
-                client.Player.X = (int) packet.ReadFloatLowEndian();
-                client.Player.Y = (int) packet.ReadFloatLowEndian();
-                client.Player.Z = (int) packet.ReadFloatLowEndian();
-                client.Player.CurrentSpeed = (short) packet.ReadFloatLowEndian();
-                client.Player.Heading = packet.ReadShort();
+                if (client.Player.IsPositionUpdateFromPacketAllowed())
+                {
+                    client.Player.X = (int) packet.ReadFloatLowEndian();
+                    client.Player.Y = (int) packet.ReadFloatLowEndian();
+                    client.Player.Z = (int) packet.ReadFloatLowEndian();
+                    client.Player.CurrentSpeed = (short) packet.ReadFloatLowEndian();
+                    client.Player.Heading = packet.ReadShort();
+                    client.Player.OnPositionUpdateFromPacket();
+                }
             }
 
             int flagSpeedData = packet.ReadShort();

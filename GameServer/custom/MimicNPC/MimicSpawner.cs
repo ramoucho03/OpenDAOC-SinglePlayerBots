@@ -2,6 +2,8 @@
 using DOL.GS.PacketHandler;
 using System;
 using System.Collections.Generic;
+using System.Numerics;
+using System.Threading.Tasks;
 
 namespace DOL.GS.Scripts
 {
@@ -50,6 +52,10 @@ namespace DOL.GS.Scripts
         private int _dormantInterval;
         private int _timerIntervalMin = 1000;
         private int _timerIntervalMax = 2000;
+        private int spawningGroupSize;
+        private bool _isRunning = false;
+
+        private Group group;
 
         private List<MimicNPC> _mimics;
 
@@ -76,6 +82,9 @@ namespace DOL.GS.Scripts
 
         private int TimerCallback(ECSGameTimer timer)
         {
+            if (_isRunning)
+                return 1000;
+
             if (SpawnAndStop && _spawnCount > _spawnCountMax)
             {
                 _spawnCount = 0;
@@ -87,45 +96,84 @@ namespace DOL.GS.Scripts
             }
 
             int interval = Util.Random(_timerIntervalMin, _timerIntervalMax);
+            int groupSize = GetGroupSize();
 
-            if (_mimics.Count >= _spawnCountMax)
-                return interval;
+            if (groupSize > 1)
+                interval += 2000 * groupSize;
 
-            int randomX = Util.Random(-350, 350);
-            int randomY = Util.Random(-350, 350);
-
-            Point3D spawnPoint = new Point3D(_position.X + randomX, _position.Y + randomY, _position.Z);
-
-            eMimicClass mimicClass = MimicManager.GetRandomMimicClass(_realm);
-            MimicNPC mimicNPC = MimicManager.GetMimic(mimicClass, (byte)Util.Random(_levelMin, _levelMax));
-
-            if (MimicManager.AddMimicToWorld(mimicNPC, spawnPoint, _region))
-            {
-                _mimics.Add(mimicNPC);
-                mimicNPC.MimicSpawner = this;
-
-                if (SpawnAndStop)
-                    _spawnCount++;
-            }
+            _isRunning = true;
+            _ = SpawnMimics(groupSize);
 
             return interval;
+        }
+
+        async Task SpawnMimics(int numberOfMimics)
+        {
+            try
+            {
+                for (int i = 0; i < numberOfMimics; i++)
+                {
+                    MimicNPC mimic = CreateMimic();
+
+                    if (spawningGroupSize > 0 && group != null)
+                    {
+                        group.AddMember(mimic);
+                        spawningGroupSize--;
+                    }
+
+                    await Task.Yield();
+                }
+            }
+            finally
+            {
+                _isRunning = false;
+            }
         }
 
         private int GetGroupSize()
         {
             int maxGroupSize = Math.Min(ServerProperties.Properties.GROUP_MAX_MEMBER, _spawnCountMax - _spawnCount);
             int currentGroupSize = 1;
+            int groupChance = _groupChance;
 
             for (int i = 0; i < maxGroupSize; i++)
             {
-                if (Util.Chance(_groupChance))
+                if (Util.Chance(groupChance))
                 {
                     currentGroupSize++;
-                    _groupChance -= 5;
+                    groupChance -= 5;
                 }
             }
 
+            if (currentGroupSize > 1)
+            {
+                MimicNPC mimic = CreateMimic();
+                group = new Group(mimic);
+                group.AddMember(mimic);
+
+                spawningGroupSize = currentGroupSize - 1;
+            }
+
             return currentGroupSize;
+        }
+
+        private MimicNPC CreateMimic()
+        {
+            int randomX = Util.Random(-350, 350);
+            int randomY = Util.Random(-350, 350);
+
+            Point3D spawnPoint = new Point3D(_position.X + randomX, _position.Y + randomY, _position.Z);
+            eMimicClass mimicClass = MimicManager.GetRandomMimicClass(_realm);
+            MimicNPC mimicNPC = MimicManager.GetMimic(mimicClass, (byte)Util.Random(_levelMin, _levelMax));
+
+            MimicManager.AddMimicToWorld(mimicNPC, spawnPoint, _region);
+            _mimics.Add(mimicNPC);
+            mimicNPC.MimicSpawner = this;
+
+            if (SpawnAndStop)
+                _spawnCount++;
+
+            return mimicNPC;
         }
 
         public void Remove(MimicNPC mimic)

@@ -1,18 +1,17 @@
 ﻿using DOL.AI.Brain;
 using DOL.GS.Keeps;
-using DOL.GS.PacketHandler;
 using DOL.GS.ServerProperties;
 using static DOL.GS.GameObject;
 
 namespace DOL.GS
 {
-    public class NpcAttackAction : AttackAction
+    public class NpcAttackAction : AttackAction, ILosCheckListener
     {
         private const double TIME_TO_TARGET_THRESHOLD_BEFORE_RANGED_SWITCH = 500; // NPCs will switch to ranged if further than melee range + (this * maxSpeed * 0.001).
 
-        private GameNPC _npcOwner;
-        private bool _hasLos;
+        private readonly GameNPC _npcOwner;
         private CheckLosTimer _checkLosTimer;
+        private bool _hasLos;
         private GameObject _losCheckTarget;
         private bool _wasMeleeWeaponSwitchForced; // Used to prevent NPCs from switching to their ranged weapon automatically if they explicitly switched to a melee weapon during combat.
 
@@ -91,11 +90,31 @@ namespace DOL.GS
 
         protected override bool PrepareMeleeAttack()
         {
+            // Check spells before attacking to allow spell casting opportunity.
+            // The NPC service's think cycles are not synchronized with attack cycles,
+            // so without this, melee-attacking NPCs cannot reliably cast spells.
+            if (_npcOwner.Brain is NecromancerPetBrain necroBrain)
+            {
+                if (necroBrain.CheckSpellQueue())
+                    return false;
+            }
+            else if (_npcOwner.Brain is StandardMobBrain brain)
+            {
+                if (brain.CheckSpells(StandardMobBrain.eCheckSpellType.Offensive))
+                {
+                    _npcOwner.StopAttack();
+                    return false;
+                }
+            }
+
+            if (!_npcOwner.IsAttacking)
+                return false;
+
             int meleeAttackRange = _npcOwner.MeleeAttackRange;
             int maxSpeed = _npcOwner.MaxSpeed;
 
             if (maxSpeed > 0)
-                meleeAttackRange = meleeAttackRange + (int) (TIME_TO_TARGET_THRESHOLD_BEFORE_RANGED_SWITCH * maxSpeed * 0.001);
+                meleeAttackRange += (int) (TIME_TO_TARGET_THRESHOLD_BEFORE_RANGED_SWITCH * maxSpeed * 0.001);
 
             // NPCs try to switch to their ranged weapon whenever possible.
             if (!_npcOwner.IsBeingInterrupted &&
@@ -150,7 +169,7 @@ namespace DOL.GS
             if (Properties.CHECK_LOS_BEFORE_NPC_RANGED_ATTACK)
             {
                 if (_checkLosTimer == null)
-                    _checkLosTimer = new CheckLosTimer(_npcOwner, _target, LosCheckCallback);
+                    _checkLosTimer = new(_npcOwner, _target, this);
                 else if (_losCheckTarget != _target)
                 {
                     _hasLos = false;
@@ -171,14 +190,35 @@ namespace DOL.GS
 
         public override void CleanUp()
         {
+            if (_npcOwner.Brain is NecromancerPetBrain necroBrain)
+                necroBrain.CheckSpellQueue();
+
             if (_checkLosTimer != null)
             {
                 _checkLosTimer.Stop();
                 _checkLosTimer = null;
             }
 
+            _hasLos = false;
+            _losCheckTarget = null;
             _wasMeleeWeaponSwitchForced = false;
             base.CleanUp();
+        }
+
+        public void HandleLosCheckResponse(GamePlayer player, LosCheckResponse response, ushort targetId)
+        {
+            _losCheckTarget = _npcOwner.CurrentRegion.GetObject(targetId);
+
+            if (_losCheckTarget == null || _losCheckTarget != _target)
+                _hasLos = false;
+            else
+                _hasLos = response is LosCheckResponse.True;
+
+            if (!_hasLos)
+            {
+                OnOutOfRangeOrNoLosRangedAttack();
+                return;
+            }
         }
 
         private void SwitchToMeleeAndTick()
@@ -197,21 +237,9 @@ namespace DOL.GS
             _npcOwner.StartAttackWithRangedWeapon(_target);
         }
 
-        private void LosCheckCallback(GamePlayer player, eLosCheckResponse response, ushort sourceOID, ushort targetOID)
+        private void ForceLos()
         {
-            _losCheckTarget = _npcOwner.CurrentRegion.GetObject(targetOID);
-
-            if (_losCheckTarget == null || _losCheckTarget != _target)
-                _hasLos = false;
-            else
-                _hasLos = response is eLosCheckResponse.TRUE;
-
-            if (!_hasLos)
-            {
-                OnOutOfRangeOrNoLosRangedAttack();
-                return;
-            }
-
+            _hasLos = true;
             _npcOwner.TurnTo(_losCheckTarget);
         }
 
@@ -219,13 +247,13 @@ namespace DOL.GS
         {
             private GameNPC _npcOwner;
             private GameObject _target;
-            private CheckLosResponse _callback;
+            private NpcAttackAction _attackAction;
             private GamePlayer _losChecker;
 
-            public CheckLosTimer(GameObject owner, GameObject target, CheckLosResponse callback) : base(owner)
+            public CheckLosTimer(GameObject owner, GameObject target, NpcAttackAction attackAction) : base(owner)
             {
                 _npcOwner = owner as GameNPC;
-                _callback = callback;
+                _attackAction = attackAction;
                 ChangeTarget(target);
             }
 
@@ -240,10 +268,11 @@ namespace DOL.GS
                 if (_target != newTarget)
                 {
                     _target = newTarget;
+                    _losChecker = null;
 
                     if (_npcOwner.Brain is IControlledBrain brain)
                         _losChecker = brain.GetPlayerOwner();
-                    if (_target is GamePlayer targetPlayer)
+                    else if (_target is GamePlayer targetPlayer)
                         _losChecker = targetPlayer;
                     else if (_target is GameNPC npcTarget && npcTarget.Brain is IControlledBrain targetBrain)
                         _losChecker = targetBrain.GetPlayerOwner();
@@ -252,7 +281,7 @@ namespace DOL.GS
                 // Don't bother starting the timer if there's no one to perform the LoS check.
                 if (_losChecker == null)
                 {
-                    // _callback(null, eLosCheckResponse.TRUE, 0, 0);
+                    _attackAction.ForceLos();
                     return;
                 }
 
@@ -269,7 +298,7 @@ namespace DOL.GS
                 if (!_npcOwner.attackComponent.AttackState || _npcOwner.ObjectState is not eObjectState.Active)
                     return 0;
 
-                _losChecker.Out.SendCheckLos(_npcOwner, _target, new CheckLosResponse(_callback));
+                _losChecker.Out.SendLosCheckRequest(_npcOwner, _target, _attackAction);
                 return LosCheckInterval;
             }
         }

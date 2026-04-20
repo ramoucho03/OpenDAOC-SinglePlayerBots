@@ -50,10 +50,6 @@ namespace DOL.GS
 			}
 			base.OnAttackEnemy(ad);
 		}
-		public override double AttackDamage(DbInventoryItem weapon)
-		{
-			return base.AttackDamage(weapon) * Strength / 100;
-		}
 		public override int MeleeAttackRange => 350;
 		public override bool HasAbility(string keyName)
 		{
@@ -96,13 +92,12 @@ namespace DOL.GS
 					spell.Range = 350;
 					spell.Radius = 350;
 					spell.SpellID = 11824;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Type = eSpellType.DirectDamageNoVariance.ToString();
 					spell.Uninterruptible = true;
 					spell.MoveCast = true;
 					spell.DamageType = (int)eDamageType.Cold;
 					m_SyverDD = new Spell(spell, 70);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_SyverDD);
 				}
 				return m_SyverDD;
 			}
@@ -218,12 +213,11 @@ namespace DOL.AI.Brain
 					spell.Range = 1500;
 					spell.Value = 46;
 					spell.SpellID = 11826;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Type = eSpellType.StrengthDebuff.ToString();
 					spell.Uninterruptible = true;
 					spell.MoveCast = true;
 					m_Syver_Str_Debuff = new Spell(spell, 70);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_Syver_Str_Debuff);
 				}
 				return m_Syver_Str_Debuff;
 			}
@@ -251,13 +245,12 @@ namespace DOL.AI.Brain
 					spell.Range = 0;
 					spell.Duration = 210;
 					spell.SpellID = 11825;
-					spell.Target = "Enemy";
+					spell.Target = eSpellTarget.ENEMY.ToString();
 					spell.Type = "Disease";
 					spell.Uninterruptible = true;
 					spell.MoveCast = true;
 					spell.DamageType = (int)eDamageType.Energy; //Energy DMG Type
 					m_SyverDisease = new Spell(spell, 70);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_SyverDisease);
 				}
 				return m_SyverDisease;
 			}
@@ -283,12 +276,11 @@ namespace DOL.AI.Brain
 					spell.Range = 0;
 					spell.Value = 50;
 					spell.SpellID = 11827;
-					spell.Target = "Self";
+					spell.Target = eSpellTarget.SELF.ToString();
 					spell.Type = eSpellType.CombatSpeedBuff.ToString();
 					spell.Uninterruptible = true;
 					spell.MoveCast = true;
 					m_Syver_Haste_Buff = new Spell(spell, 70);
-					SkillBase.AddScriptedSpell(GlobalSpellsLines.Mob_Spells, m_Syver_Haste_Buff);
 				}
 				return m_Syver_Haste_Buff;
 			}

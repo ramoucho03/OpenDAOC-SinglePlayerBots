@@ -35,10 +35,7 @@ namespace DOL.GS.Scripts
 			return true;
 		}
 		
-		public override double AttackDamage(DbInventoryItem weapon)
-		{
-			return base.AttackDamage(weapon) * Strength / 100;
-		}
+
 		public override int MeleeAttackRange => 350;
 		public override bool HasAbility(string keyName)
 		{
@@ -88,16 +85,7 @@ namespace DOL.GS.Scripts
 
 		public override void Die(GameObject killer)
 		{
-			log.Debug($"{Name} killed by {killer.Name}");
-
 			GamePlayer playerKiller = killer as GamePlayer;
-
-			if (playerKiller?.Group != null)
-			{
-				foreach (GamePlayer groupPlayer in playerKiller.Group.GetPlayersInTheGroup())
-					AtlasROGManager.GenerateReward(groupPlayer,OrbsReward);
-			}
-
 			base.Die(killer);
 		}
 		[ScriptLoadedEvent]
@@ -133,7 +121,7 @@ namespace DOL.GS.Scripts
 			/// <param name="message">The message to be broadcast.</param>
 			public void BroadcastMessage(String message)
 			{
-				foreach (GamePlayer player in Body.GetPlayersInRadius(WorldMgr.OBJ_UPDATE_DISTANCE))
+				foreach (GamePlayer player in Body.GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
 				{
 					player.Out.SendMessage(message, eChatType.CT_Broadcast, eChatLoc.CL_ChatWindow);
 				}
