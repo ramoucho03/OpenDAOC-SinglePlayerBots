@@ -1563,7 +1563,19 @@ namespace DOL.GS
 					for (int i = 0; i < dProcEffects.Count; i++)
 						(dProcEffects[i].SpellHandler as DefensiveProcSpellHandler).EventHandler(ad);
 				}
-			}
+
+                if (Group != null)
+                {
+                    if (Group.GetMembersInTheGroup().Count > 0)
+                    {
+                        foreach (GameLiving groupMember in Group.GetMembersInTheGroup())
+                        {
+                            if (groupMember is MimicNPC mimic && groupMember != this)
+                                ((MimicBrain)mimic.Brain).OnGroupMemberAttacked(ad);
+                        }
+                    }
+                }
+            }
 			else if (ad.IsSpellResisted && ad.Target is GameNPC npc)
 				npc.CancelReturnToSpawnPoint();
 		}

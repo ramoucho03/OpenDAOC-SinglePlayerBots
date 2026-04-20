@@ -416,7 +416,8 @@ namespace DOL.AI.Brain
 
     public class MimicState_Camp : MimicState
     {
-        public int AggroRange = 0;
+        public int AggroRange = 0; // Used to set custom AggroRange
+        private int prevAggroRange;
 
         public MimicState_Camp(MimicBrain brain) : base(brain)
         {
@@ -438,6 +439,7 @@ namespace DOL.AI.Brain
             _brain.Body.SpawnPoint.X += randomX;
             _brain.Body.SpawnPoint.Y += randomY;
 
+            prevAggroRange = _brain.AggroRange;
             _brain.AggroRange = _brain.Body.CurrentRegion.IsDungeon ? 250 : 550;
 
             if (AggroRange != 0)
@@ -449,6 +451,13 @@ namespace DOL.AI.Brain
             _brain.PvPMode = false;
 
             base.Enter();
+        }
+
+        public override void Exit()
+        {
+            _brain.AggroRange = prevAggroRange;
+
+            base.Exit();
         }
 
         public override void Think()
@@ -490,6 +499,7 @@ namespace DOL.AI.Brain
 
             if (_brain.CheckProximityAggro(_brain.AggroRange))
             {
+                _brain.Body.StopMoving();
                 _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
                 return;
             }
