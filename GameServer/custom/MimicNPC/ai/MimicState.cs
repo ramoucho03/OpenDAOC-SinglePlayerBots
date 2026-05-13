@@ -36,10 +36,11 @@ namespace DOL.AI.Brain
         /// <summary>
         /// Synchronises the bot's sprint state with its leader so the bot can
         /// keep up when the player presses Sprint. Only follows player leaders
-        /// (bot leaders never sprint by themselves). Skips when out of combat
-        /// is irrelevant — sprint matters for any kind of movement.
+        /// (bot leaders never sprint by themselves). Public so it can be called
+        /// from <see cref="MimicBrain.Think"/> on every tick, regardless of FSM
+        /// state — otherwise a bot in ROAMING / WAKING_UP would fall behind.
         /// </summary>
-        protected static void MirrorLeaderSprint(MimicBrain brain, GameLiving leader)
+        public static void MirrorLeaderSprint(MimicBrain brain, GameLiving leader)
         {
             if (brain?.MimicBody == null)
                 return;

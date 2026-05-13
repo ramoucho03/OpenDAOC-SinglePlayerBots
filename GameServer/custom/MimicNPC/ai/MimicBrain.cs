@@ -144,6 +144,13 @@ namespace DOL.AI.Brain
 
         public override void Think()
         {
+            // Mirror the group leader's sprint state every tick so the bot can
+            // keep up no matter which FSM state it's in (follow, roam, aggro
+            // chase, etc.). Mirroring only inside FollowLeader.Think misses
+            // any state where the bot is moving but not actively following.
+            if (Body?.Group?.LivingLeader is GameLiving gl)
+                MimicState.MirrorLeaderSprint(this, gl);
+
             if (MimicConfig.USE_STRATEGY_SYSTEM)
                 StrategyManager?.Tick();
 

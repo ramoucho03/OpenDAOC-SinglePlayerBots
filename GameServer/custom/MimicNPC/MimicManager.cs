@@ -17,18 +17,93 @@ namespace DOL.GS.Scripts
     {
         private static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
+        // Thidranki: classic 20-24 battleground (region 252).
         public static MimicBattleground ThidBattleground;
+        // Caledonia: 1-50 battleground (region 249).
+        public static MimicBattleground CaledoniaBattleground;
+        // Molvik: 35-39 battleground (region 165).
+        public static MimicBattleground MolvikBattleground;
+
+        // Drives the player-presence check that auto-spawns / auto-clears the
+        // BG mimic populations every minute.
+        private static ECSGameTimer _bgPresenceTimer;
+        private const int BG_PRESENCE_CHECK_MS = 60_000;
+        private const int BG_BOTS_PER_REALM_WHEN_PLAYERS = 20;
 
         public static void Initialize()
         {
+            // We spawn 20 bots / realm with the existing fixed-pool MimicBattleground
+            // engine — it requires min/max totals so we use 60 / 60 to lock the pop.
             ThidBattleground = new MimicBattleground(252,
                                                     new Point3D(37200, 51200, 3950),
                                                     new Point3D(19820, 19305, 4050),
                                                     new Point3D(53300, 26100, 4270),
-                                                    300,
-                                                    1500,
-                                                    20,
-                                                    24);
+                                                    60, 60, 20, 24);
+
+            CaledoniaBattleground = new MimicBattleground(249,
+                                                    new Point3D(37200, 51200, 3950),
+                                                    new Point3D(19820, 19305, 4050),
+                                                    new Point3D(53300, 26100, 4270),
+                                                    60, 60, 45, 50);
+
+            MolvikBattleground = new MimicBattleground(165,
+                                                    new Point3D(37200, 51200, 3950),
+                                                    new Point3D(19820, 19305, 4050),
+                                                    new Point3D(53300, 26100, 4270),
+                                                    60, 60, 35, 39);
+
+            // Start the player-presence loop. Each minute we check each BG region:
+            //   - if a player is present and the BG is dormant → Start (spawns 20/realm)
+            //   - if no player and the BG is running         → Clear (delete all bots)
+            _bgPresenceTimer = new ECSGameTimer(null, BgPresenceTick, BG_PRESENCE_CHECK_MS);
+            _bgPresenceTimer.Start();
+
+            log.Info("MimicBattlegrounds initialized with player-presence auto-spawn.");
+        }
+
+        private static int BgPresenceTick(ECSGameTimer timer)
+        {
+            try
+            {
+                UpdateBgPresence(ThidBattleground, 252);
+                UpdateBgPresence(CaledoniaBattleground, 249);
+                UpdateBgPresence(MolvikBattleground, 165);
+            }
+            catch (Exception e)
+            {
+                log.Error("BgPresenceTick failed", e);
+            }
+            return BG_PRESENCE_CHECK_MS;
+        }
+
+        private static void UpdateBgPresence(MimicBattleground bg, ushort regionId)
+        {
+            if (bg == null) return;
+
+            Region region = WorldMgr.GetRegion(regionId);
+            if (region == null) return;
+
+            int humanPlayersInRegion = 0;
+            foreach (GamePlayer p in ClientService.Instance.GetPlayersOfRegion(region))
+            {
+                if (p == null) continue;
+                if (p.Client?.Account != null && p.Client.Account.PrivLevel > 1)
+                    continue; // ignore GM/Admin invisible spectators
+                humanPlayersInRegion++;
+            }
+
+            bool wantsRunning = humanPlayersInRegion > 0;
+
+            if (wantsRunning && !bg.IsRunning)
+            {
+                bg.Start();
+                log.Info($"BG region {regionId}: {humanPlayersInRegion} player(s) present, starting bot population.");
+            }
+            else if (!wantsRunning && bg.IsRunning)
+            {
+                bg.Clear();
+                log.Info($"BG region {regionId}: no players, clearing bot population.");
+            }
         }
 
         public class MimicBattleground
@@ -77,6 +152,8 @@ namespace DOL.GS.Scripts
             private int m_currentMaxMid;
 
             private int m_groupChance = 50;
+
+            public bool IsRunning => m_masterTimer != null && m_masterTimer.IsAlive;
 
             public void Start()
             {
@@ -313,6 +390,7 @@ namespace DOL.GS.Scripts
 
             MimicBattlegrounds.Initialize();
             RegisterPlayerLifecycleHandlers();
+            PvPFrontierManager.Initialize();
 
             return true;
         }
@@ -464,33 +542,13 @@ namespace DOL.GS.Scripts
             return casterClasses[Util.Random(casterClasses.Count - 1)];
         }
 
-        #region Ownership tracking and persistence
-
-        /// <summary>
-        /// Snapshot of an owned mimic taken at owner-disconnect time so it can
-        /// be respawned identically when the owner logs back in.
-        /// </summary>
-        public sealed class MimicSnapshot
-        {
-            public eMimicClass MimicClass;
-            public byte Level;
-            public string Name;
-            public eGender Gender;
-            public eSpecType Spec;
-            public ushort Region;
-            public bool IsHealerRole;
-            public bool IsLeader;
-            public bool IsTank;
-            public bool IsAssist;
-            public bool IsCC;
-            public bool IsPuller;
-            public bool PreventCombat;
-        }
+        #region Ownership tracking
 
         // Live mimics tracked per owning account so we can find them on disconnect.
+        // We delete owned mimics on disconnect; there is no hibernation/restore
+        // path — the player can re-create their group with /mgroup or /mcreate
+        // after reconnect.
         private static readonly Dictionary<string, List<MimicNPC>> _liveByOwner = new();
-        // Account => last snapshot taken at disconnect. Restored at the next login.
-        private static readonly Dictionary<string, List<MimicSnapshot>> _hibernated = new();
         private static readonly object _ownerLock = new();
 
         /// <summary>
@@ -558,10 +616,9 @@ namespace DOL.GS.Scripts
         }
 
         /// <summary>
-        /// Called when a player quits or link-deaths. Captures the live state
-        /// of every mimic the player owns and deletes them. The snapshot is
-        /// kept in memory until the player logs back in (or the server
-        /// restarts, which is acceptable for now).
+        /// Called when a player quits or link-deaths. Deletes every mimic the
+        /// player owns immediately. No persistence/restore is performed — the
+        /// player must re-create their group with /mgroup or /mcreate after reconnect.
         /// </summary>
         private static void OnPlayerDisconnected(DOLEvent e, object sender, EventArgs args)
         {
@@ -573,148 +630,20 @@ namespace DOL.GS.Scripts
             if (owned.Count == 0)
                 return;
 
-            List<MimicSnapshot> snapshots = new(owned.Count);
-
-            foreach (MimicNPC mimic in owned)
-            {
-                if (mimic == null || mimic.ObjectState != GameObject.eObjectState.Active)
-                    continue;
-
-                MimicGroup mg = mimic.Group?.MimicGroup;
-
-                snapshots.Add(new MimicSnapshot
-                {
-                    MimicClass = (eMimicClass)mimic.CharacterClass.ID,
-                    Level = (byte)mimic.Level,
-                    Name = mimic.Name,
-                    Gender = mimic.Gender,
-                    Spec = mimic.MimicSpec != null ? mimic.MimicSpec.SpecType : eSpecType.None,
-                    Region = mimic.CurrentRegionID,
-                    IsHealerRole = mimic.MimicBrain != null && mimic.MimicBrain.IsHealer,
-                    IsLeader = mg != null && mg.MainLeader == mimic,
-                    IsTank = mg != null && mg.MainTank == mimic,
-                    IsAssist = mg != null && mg.MainAssist == mimic,
-                    IsCC = mg != null && mg.MainCC == mimic,
-                    IsPuller = mg != null && mg.MainPuller == mimic,
-                    PreventCombat = mimic.MimicBrain != null && mimic.MimicBrain.PreventCombat,
-                });
-            }
-
-            if (snapshots.Count > 0)
-            {
-                lock (_ownerLock)
-                    _hibernated[player.Client.Account.Name] = snapshots;
-            }
+            int deleted = 0;
 
             // Take a copy because Delete mutates _liveByOwner via UnregisterOwned.
             foreach (MimicNPC mimic in owned.ToList())
-                mimic?.Delete();
-
-            if (log.IsInfoEnabled)
-                log.Info($"Hibernated {snapshots.Count} mimic(s) for account {player.Client.Account.Name}");
-        }
-
-        /// <summary>
-        /// Called when a player enters the world (login, /release-into-world,
-        /// region change). If we have a hibernation snapshot for the account,
-        /// the mimics are respawned next to the player and re-grouped with the
-        /// same roles they had at disconnect.
-        /// </summary>
-        private static void OnPlayerEntered(DOLEvent e, object sender, EventArgs args)
-        {
-            if (sender is not GamePlayer player || player.Client?.Account == null)
-                return;
-
-            List<MimicSnapshot> snapshots;
-
-            lock (_ownerLock)
             {
-                if (!_hibernated.TryGetValue(player.Client.Account.Name, out snapshots))
-                    return;
-
-                _hibernated.Remove(player.Client.Account.Name);
-            }
-
-            RestoreMimics(player, snapshots);
-        }
-
-        /// <summary>
-        /// Public for /mclear, /mrestore, or to be called manually. Re-spawns
-        /// the given snapshots near the player and assembles them into the
-        /// player's group with the original role layout.
-        /// </summary>
-        public static void RestoreMimics(GamePlayer player, List<MimicSnapshot> snapshots)
-        {
-            if (player == null || snapshots == null || snapshots.Count == 0)
-                return;
-
-            Point3D origin = new(player.X, player.Y, player.Z);
-
-            List<MimicNPC> respawned = new(snapshots.Count);
-
-            foreach (MimicSnapshot s in snapshots)
-            {
-                MimicNPC mimic = GetMimic(s.MimicClass, s.Level, s.Name, s.Gender, s.Spec, s.PreventCombat);
-
-                if (mimic == null)
-                    continue;
-
-                // Spread bots in a ring around the player so they don't all stack.
-                Point3D pos = new(origin.X + Util.Random(-120, 120), origin.Y + Util.Random(-120, 120), origin.Z);
-
-                if (!AddMimicToWorld(mimic, pos, player.CurrentRegionID))
+                if (mimic != null && mimic.ObjectState == GameObject.eObjectState.Active)
                 {
-                    if (log.IsWarnEnabled)
-                        log.Warn($"Failed to restore mimic {s.Name} for account {player.Client.Account.Name}");
-                    continue;
-                }
-
-                RegisterOwned(player, mimic);
-                respawned.Add(mimic);
-
-                if (mimic.MimicBrain != null)
-                    mimic.MimicBrain.IsHealer = s.IsHealerRole;
-            }
-
-            if (respawned.Count == 0)
-                return;
-
-            // Make sure the player has a group to bind the mimics into.
-            if (player.Group == null)
-            {
-                player.Group = new Group(player);
-                GroupMgr.AddGroup(player.Group);
-                player.Group.AddMember(player);
-            }
-
-            foreach (MimicNPC mimic in respawned)
-            {
-                if (player.Group.MemberCount >= ServerProperties.Properties.GROUP_MAX_MEMBER)
-                    break;
-
-                player.Group.AddMember(mimic);
-            }
-
-            // Restore roles after everyone is in the group (MimicGroup is created on first AddMember).
-            MimicGroup mg = player.Group.MimicGroup;
-            if (mg != null)
-            {
-                foreach (var pair in respawned.Zip(snapshots, (m, s) => (m, s)))
-                {
-                    if (pair.s.IsLeader) mg.SetLeader(pair.m);
-                    if (pair.s.IsAssist) mg.SetMainAssist(pair.m);
-                    if (pair.s.IsTank)   mg.SetMainTank(pair.m);
-                    if (pair.s.IsCC)     mg.SetMainCC(pair.m);
-                    if (pair.s.IsPuller) mg.SetMainPuller(pair.m);
+                    mimic.Delete();
+                    deleted++;
                 }
             }
 
-            // Snap them into Follow state so they trail the player immediately.
-            foreach (MimicNPC mimic in respawned)
-                mimic.MimicBrain?.FSM.SetCurrentState(eFSMStateType.WAKING_UP);
-
             if (log.IsInfoEnabled)
-                log.Info($"Restored {respawned.Count} mimic(s) for account {player.Client.Account.Name}");
+                log.Info($"Deleted {deleted} mimic(s) on disconnect for account {player.Client.Account.Name}");
         }
 
         /// <summary>
@@ -738,10 +667,6 @@ namespace DOL.GS.Scripts
                 }
             }
 
-            // Also drop any hibernated snapshot so /mclear is final.
-            lock (_ownerLock)
-                _hibernated.Remove(player.Client.Account.Name);
-
             return count;
         }
 
@@ -749,10 +674,9 @@ namespace DOL.GS.Scripts
         {
             GameEventMgr.AddHandler(GamePlayerEvent.Quit, OnPlayerDisconnected);
             GameEventMgr.AddHandler(GamePlayerEvent.Linkdeath, OnPlayerDisconnected);
-            GameEventMgr.AddHandler(GamePlayerEvent.GameEntered, OnPlayerEntered);
         }
 
-        #endregion Ownership tracking and persistence
+        #endregion Ownership tracking
     }
 
     #region Equipment
