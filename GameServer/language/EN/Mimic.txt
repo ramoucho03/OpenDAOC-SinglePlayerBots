@@ -1,0 +1,111 @@
+# Mimic bot interaction menu and group messages
+# Each Mimic.Button.* key is a clickable label rendered in the popup.
+# WhisperReceive resolves the localized label back to its canonical action.
+# ----------------------------------------------------------------
+
+# Menu sections (header text shown to the player)
+Mimic.Menu.Header:                    --- Bot menu ---
+Mimic.Menu.Sec.State:                 State
+Mimic.Menu.Sec.Roles:                 Roles
+Mimic.Menu.Sec.Defensive:             Defensive
+Mimic.Menu.Sec.Orders:                Orders
+Mimic.Menu.Sec.Spells:                Spells
+Mimic.Menu.Sec.Combat:                Combat
+Mimic.Menu.Sec.Info:                  Info
+Mimic.Menu.Sec.Inventory:             Inventory
+Mimic.Menu.Sec.Equipment:             Equipment
+
+# Clickable button labels (canonical => localized)
+Mimic.Button.State:                   State
+Mimic.Button.PreventCombat:           Prevent Combat
+Mimic.Button.Brain:                   Brain
+Mimic.Button.Debug:                   Debug
+
+Mimic.Button.Group:                   Group
+Mimic.Button.Leader:                  Leader
+Mimic.Button.MainPuller:              MainPuller
+Mimic.Button.MainCC:                  MainCC
+Mimic.Button.MainTank:                MainTank
+Mimic.Button.MainAssist:              MainAssist
+Mimic.Button.Healer:                  Healer
+
+Mimic.Button.Guard:                   Guard
+Mimic.Button.Protect:                 Protect
+Mimic.Button.Intercept:               Intercept
+
+Mimic.Button.Stay:                    Stay
+Mimic.Button.Follow:                  Follow
+Mimic.Button.Camp:                    Camp
+Mimic.Button.Reset:                   Reset
+Mimic.Button.Pull:                    Pull
+Mimic.Button.Roam:                    Roam
+
+Mimic.Button.Spells:                  Spells
+Mimic.Button.InstHarmful:             Inst Harmful
+Mimic.Button.HarmfulSpells:           Harmful Spells
+Mimic.Button.InstMisc:                Inst Misc
+Mimic.Button.MiscSpells:              Misc Spells
+Mimic.Button.InstHeal:                Inst Heal
+Mimic.Button.HealSpells:              Heal Spells
+Mimic.Button.CC:                      CC
+
+Mimic.Button.Styles:                  Styles
+Mimic.Button.Abilities:               Abilities
+
+Mimic.Button.Spec:                    Spec
+Mimic.Button.Stats:                   Stats
+Mimic.Button.AbilityEffects:          Ability Effects
+Mimic.Button.SpellEffects:            Spell Effects
+
+Mimic.Button.Inventory:               Inventory
+Mimic.Button.Hood:                    Hood
+Mimic.Button.RightHand:               RightHand
+Mimic.Button.LeftHand:                LeftHand
+Mimic.Button.TwoHand:                 TwoHand
+Mimic.Button.Ranged:                  Ranged
+Mimic.Button.Helm:                    Helm
+Mimic.Button.Torso:                   Torso
+Mimic.Button.Legs:                    Legs
+Mimic.Button.Arms:                    Arms
+Mimic.Button.Hands:                   Hands
+Mimic.Button.Boots:                   Boots
+Mimic.Button.Jewelry:                 Jewelry
+
+Mimic.Button.Delete:                  Delete
+
+# Replies / status
+Mimic.Reply.IDoNotHaveThatAbility:    I do not have that ability.
+Mimic.Reply.MustBeInSameGroup:        We must be in the same group.
+Mimic.Reply.IWillGuardYou:            I will guard you.
+Mimic.Reply.IWillNoLongerGuard:       I will no longer guard you.
+Mimic.Reply.ICannotGuardYou:          I cannot guard you.
+Mimic.Reply.IWillProtectYou:          I will protect you.
+Mimic.Reply.IWillNoLongerProtect:     I will no longer protect you.
+Mimic.Reply.ICannotProtectYou:        I cannot protect you.
+Mimic.Reply.IWillInterceptForYou:     I will intercept for you.
+Mimic.Reply.IWillNoLongerIntercept:   I will no longer intercept for you.
+Mimic.Reply.ICannotInterceptForYou:   I cannot intercept for you.
+Mimic.Reply.InventoryEmpty:           Inventory is empty.
+Mimic.Reply.NoActiveAbilityEffects:   No active ability effects.
+Mimic.Reply.NoActiveSpellEffects:     No active spell effects.
+Mimic.Reply.NothingEquippedInSlot:    There is nothing equipped in that slot.
+Mimic.Reply.NoRoomInBackpack:         No room in your backpack.
+Mimic.Reply.RoamOn:                   Roaming enabled.
+Mimic.Reply.RoamOff:                  Roaming disabled.
+Mimic.Reply.OrderStay:                Holding position.
+Mimic.Reply.OrderFollow:              Following the leader.
+Mimic.Reply.OrderCamp:                Setting up camp.
+Mimic.Reply.OrderReset:               Resetting state.
+Mimic.Reply.OrderPull:                Pulling now.
+Mimic.Reply.NotInGroup:               I am not in a group.
+
+# MimicGroup role assignment messages (sent to group)
+Mimic.Group.LeaderSet:                Follow me! I am leading the group.
+Mimic.Group.AssistSet:                I am the main assist, target what I target.
+Mimic.Group.TankSet:                  I will tank.
+Mimic.Group.CCSet:                    I will handle crowd control.
+Mimic.Group.PullerSet:                I will handle pulling.
+Mimic.Group.PullerUnset:              I am no longer pulling.
+Mimic.Group.CannotCastHeal:           I cannot cast healing spells.
+Mimic.Group.HealerOn:                 I will stay back and focus on healing.
+Mimic.Group.HealerOff:                I will engage in combat.

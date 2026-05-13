@@ -1,5 +1,5 @@
 ﻿# Unknown
-GamePlayer.RealmTitle.UnknownRealm:				Royaume Inconnu
+GamePlayer.RealmTitle.UnknownRealm:				Royaume inconnu.
 # Starter titles
 GamePlayer.RealmTitle.Defender:					Defenseur
 GamePlayer.RealmTitle.Invader:					Envahisseur

@@ -1,8 +1,8 @@
 ﻿
 
 # Languages
-System.LanguagesName.EN:				English
-System.LanguagesName.IT:				Italian
+System.LanguagesName.EN:				Anglais
+System.LanguagesName.IT:				Italien
 
 # SYSTEM
 System.NoSense:									Cela n'aurait aucun sens !

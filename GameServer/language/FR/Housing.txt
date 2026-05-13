@@ -60,8 +60,8 @@ Scripts.Player.Housing.HookPointLogged:			La position du point d'ancrage {0}!
 Scripts.Player.Housing.HookPointLogLoc:			Afficher les points d'ancrage ?
 Scripts.Player.Housing.HookPointNot:			Ce n'est pas un objet utilisable sur les ancrages!
 Scripts.Player.Housing.HookPointNotPlaced:		L'objet n'a pas été placé sur cet ancrage.
-Scripts.Player.Housing.HouseUseMaterial:		Utilisez shift+clic-droit dans votre maison pour changer l'apparence de votre maison.
-Scripts.Player.Housing.HouseUseMaterial:		Utilisez shift+clic-droit dans votre maison pour changer vos tapis.
+Scripts.Player.Housing.HouseUseMaterials:		Utilisez shift+clic-droit dans votre maison pour changer l'apparence de votre maison.
+Scripts.Player.Housing.HouseUseCarpets:		Utilisez shift+clic-droit dans votre maison pour changer vos tapis.
 Scripts.Player.Housing.IndoorFloorPlaced:		Vous avez placé {0} à l'étage de votre maison.
 Scripts.Player.Housing.IndoorItemPlaced:		Objet intérieur placé. {0} place restante.
 Scripts.Player.Housing.IndoorMaxItems:			Vous avez actuellement placé {0} objets dans votre maison. Vous ne pouvez plus en placer.
@@ -73,7 +73,7 @@ Scripts.Player.Housing.InteriorShieldsRemoved:		Votre emblème de guilde intéri
 Scripts.Player.Housing.LeftHouse:			Sortie de la maison {0}.
 Scripts.Player.Housing.LotAlready:			Vous possédez déjà un autre lot ou une maison (numéro {0})
 Scripts.Player.Housing.LotBought:			Vous venez d'acheter ce lot pour {0} !
-Scripts.Player.Housing.LotCost:				Il peut être acheté pour {0}.
+Scripts.Player.Housing.LotCost:				Ce lot peut être acheté.
 Scripts.Player.Housing.LotNotItem:			Ce n'est pas un acte de propriété valide.
 Scripts.Player.Housing.LotNotYours:			Vous ne possédez pas ce lot !
 Scripts.Player.Housing.LotOffer:			Voulez-vous acheter ce lot ? Il coûte {0}.

@@ -19,7 +19,7 @@ SkillBase.RegisterPropertyNames.Battlesongs:         Chants de guerre
 SkillBase.RegisterPropertyNames.BeastCraft:            Lien Animal
 SkillBase.RegisterPropertyNames.Blades:               Lames
 SkillBase.RegisterPropertyNames.BladeturnReinforcement:   Renforcement de la bulle protectrice {0}% (PvE Uniquement)
-SkillBase.RegisterPropertyNames.BlockChance:         -Taux de blocage: {0}% (PvE Uniquement)
+SkillBase.RegisterPropertyNames.BlockChance:         Chances de blocage
 SkillBase.RegisterPropertyNames.Blunt:               Masse
 SkillBase.RegisterPropertyNames.Body:               Corps
 SkillBase.RegisterPropertyNames.BodyMagic:            Altération
@@ -79,7 +79,7 @@ SkillBase.RegisterPropertyNames.Enhancement:         Bénédictions
 SkillBase.RegisterPropertyNames.Envenom:            Empoisonner
 SkillBase.RegisterPropertyNames.EtherealShriek:         Cri Ethéré
 SkillBase.RegisterPropertyNames.EtherealShriekFocus:   Focus : Cri Ethéré
-SkillBase.RegisterPropertyNames.EvadeChance:         - Esquive: {0}% (PvEUniquement)
+SkillBase.RegisterPropertyNames.EvadeChance:         Chances d'esquive
 SkillBase.RegisterPropertyNames.ExperienceLoss:         Réduction de perte d'expérience
 SkillBase.RegisterPropertyNames.Fatigue:            Endurance
 SkillBase.RegisterPropertyNames.FireMagic:            Voie du Feu
@@ -131,7 +131,7 @@ SkillBase.RegisterPropertyNames.Pacification:         Apaisement
 SkillBase.RegisterPropertyNames.Painworking:         Dolor Inflictus
 SkillBase.RegisterPropertyNames.PainworkingFocus:      Focus : Dolor Inflictus
 SkillBase.RegisterPropertyNames.Parry:               Parade
-SkillBase.RegisterPropertyNames.ParryChance:         - Parade: {0}% (PvE Uniquement)
+SkillBase.RegisterPropertyNames.ParryChance:         Chances de parade
 SkillBase.RegisterPropertyNames.Pathfinding:         Art des Forêts
 SkillBase.RegisterPropertyNames.PhantasmalWail:         Lamentation Sépulcrale
 SkillBase.RegisterPropertyNames.PhantasmalWailFocus:   Focus : Lamentation Sépulcrale

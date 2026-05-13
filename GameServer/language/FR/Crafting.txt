@@ -52,18 +52,18 @@ CraftersTitle.Grandmaster:			Grand Maître {0}
 CraftersTitle.Legendary:			{0} Légendaire
 CraftersTitle.LegendaryGrandmaster:		Grand Maître Légendaire {0}
 
-CraftLevelToCraftTitle.Helper:				Aide {0}
-CraftLevelToCraftTitle.JuniorApprentice:		Apprenti Débutant {0}
-CraftLevelToCraftTitle.Apprentice:			Apprenti {0}
-CraftLevelToCraftTitle.Neophyte:			Néophyte {0}
-CraftLevelToCraftTitle.Assistant:			Assistant {0}
-CraftLevelToCraftTitle.Junior:				Débutant {0}
-CraftLevelToCraftTitle.Journeyman:			Compagnon {0}
-CraftLevelToCraftTitle.Senior:				Expert {0}
-CraftLevelToCraftTitle.Master:				Maître {0}
-CraftLevelToCraftTitle.Grandmaster:			Grand Maître {0}
-CraftLevelToCraftTitle.Legendary:			{0} Légendaire
-CraftLevelToCraftTitle.LegendaryGrandmaster:		Grand Maître Légendaire {0}
+CraftLevelToCraftTitle.Helper:				Aide
+CraftLevelToCraftTitle.JuniorApprentice:		Apprenti Débutant
+CraftLevelToCraftTitle.Apprentice:			Apprenti
+CraftLevelToCraftTitle.Neophyte:			Néophyte
+CraftLevelToCraftTitle.Assistant:			Assistant
+CraftLevelToCraftTitle.Junior:				Débutant
+CraftLevelToCraftTitle.Journeyman:			Compagnon
+CraftLevelToCraftTitle.Senior:				Expert
+CraftLevelToCraftTitle.Master:				Maître
+CraftLevelToCraftTitle.Grandmaster:			Grand Maître
+CraftLevelToCraftTitle.Legendary:			Légendaire
+CraftLevelToCraftTitle.LegendaryGrandmaster:		Grand Maître Légendaire
 
 # /CraftersProfession (NEW)
 CraftersProfession.Alchemist:				Alchimiste
@@ -118,7 +118,7 @@ AbstractCraftingSkill.CraftItem.BeginWork:      Vous commencez à travailler sur
 AbstractCraftingSkill.CraftItem.ChanceToGainPoint:   Chance de gagner des points sur votre compétence primaire {0}%.
 AbstractCraftingSkill.CraftItem.CurrentlyMaking:   Artisanat en cours: {0}
 AbstractCraftingSkill.CraftItem.MoveAndInterrupt:   Vous bougez et interrompé votre travail.
-AbstractCraftingSkill.CraftItem.StopWork:      Vous arrêtez votre travail.
+AbstractCraftingSkill.CraftItem.StopWork:      Vous arrêtez de fabriquer {0}.
 AbstractCraftingSkill.LooseRawMaterial.Count:      Vous perdez ({0}) {1}.
 AbstractCraftingSkill.LooseRawMaterial.Materials:   Vous n'arrivez pas à faire le {0}, et perdez des matériaux!
 AbstractCraftingSkill.MakeItem.LoseNoMaterials:      Vous n'arrivez pas à faire le {0} mais ne perdez aucun matériaux!

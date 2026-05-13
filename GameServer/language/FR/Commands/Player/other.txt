@@ -22,7 +22,7 @@ Scripts.Players.Assist.CantAssistYourself:	Vous ne pouvez pas vous assister vous
 Scripts.Players.Assist.DoesntHaveTarget:	{0} n'a pas de cible actuellement.
 Scripts.Players.Assist.DontSee:				Vous ne voyez pas {0} aux alentours!
 Scripts.Players.Assist.NoTarget:			Vous n'avez pas de cible.
-Scripts.Players.Assist.NotValid:			La cible n'est pas valide.
+Scripts.Players.Assist.NotValid:			{0} n'est pas une cible d'assistance valide !
 Scripts.Players.Assist.YouAssist:			Vous assistez {0}.
 
 # /Autoloot
@@ -101,7 +101,7 @@ Scripts.Players.Cancelstyle.Off: OFF
 # /Cmdhelp
 Scripts.Players.Cmdhelp.NoCommand:			La commande {0} n'existe pas.
 Scripts.Players.Cmdhelp.PlvlCommands:		Commandes disponibles pour le niveau de privilège {0}
-Scripts.Players.Cmdhelp.Usage:				Usage pour {0}
+Scripts.Players.Cmdhelp.Usage:				Usage pour
 
 # /Disband
 Scripts.Players.Disband.Disbanded:			{0} a quitté le groupe.

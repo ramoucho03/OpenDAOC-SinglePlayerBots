@@ -1,5 +1,6 @@
 ﻿using DOL.GS.PacketHandler;
 using DOL.GS.ServerProperties;
+using DOL.Language;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -10,6 +11,23 @@ namespace DOL.GS.Scripts
 {
     public class MimicGroup
     {
+        /// <summary>
+        /// Broadcasts a localized message to every group member in their own language,
+        /// formatted as "[Party] FromName: \"text\"".
+        /// </summary>
+        private static void SayToGroup(GameLiving from, string translationId)
+        {
+            if (from?.Group == null)
+                return;
+
+            string fromName = from.GetName(0, true);
+            foreach (GamePlayer player in from.Group.GetPlayersInTheGroup())
+            {
+                string lang = player.Client?.Account?.Language;
+                string text = LanguageMgr.GetTranslation(lang, translationId);
+                player.Out.SendMessage($"[Party] {fromName}: \"{text}\"", eChatType.CT_Group, eChatLoc.CL_ChatWindow);
+            }
+        }
         public GameLiving MainLeader { get; private set; }
         public GameLiving MainAssist { get; private set; }
         public GameLiving MainTank { get; private set; }
@@ -44,8 +62,7 @@ namespace DOL.GS.Scripts
                 return false;
 
             MainLeader = living;
-            living.Group.SendMessageToGroupMembers(living, "Suivez-moi ! Je dirige le groupe.",
-                PacketHandler.eChatType.CT_Group, PacketHandler.eChatLoc.CL_ChatWindow);
+            SayToGroup(living, "Mimic.Group.LeaderSet");
             return true;
         }
 
@@ -55,8 +72,7 @@ namespace DOL.GS.Scripts
                 return false;
 
             MainAssist = living;
-            living.Group.SendMessageToGroupMembers(living, "Je serai l'assist principal, calquez vos cibles sur les miennes.",
-                PacketHandler.eChatType.CT_Group, PacketHandler.eChatLoc.CL_ChatWindow);
+            SayToGroup(living, "Mimic.Group.AssistSet");
             return true;
         }
 
@@ -66,8 +82,7 @@ namespace DOL.GS.Scripts
                 return false;
 
             MainTank = living;
-            living.Group.SendMessageToGroupMembers(living, "Je tank.",
-                PacketHandler.eChatType.CT_Group, PacketHandler.eChatLoc.CL_ChatWindow);
+            SayToGroup(living, "Mimic.Group.TankSet");
             return true;
         }
 
@@ -77,27 +92,42 @@ namespace DOL.GS.Scripts
                 return false;
 
             MainCC = living;
-            living.Group.SendMessageToGroupMembers(living, "Je m'occupe du CC.",
-                PacketHandler.eChatType.CT_Group, PacketHandler.eChatLoc.CL_ChatWindow);
+            SayToGroup(living, "Mimic.Group.CCSet");
             return true;
+        }
+
+        /// <summary>
+        /// True if the living can act as puller: it must have either a distance
+        /// weapon (archer-style pull) or harmful spells (caster-style pull).
+        /// </summary>
+        public static bool CanPull(GameLiving living)
+        {
+            if (living == null)
+                return false;
+
+            if (living.Inventory?.GetItem(eInventorySlot.DistanceWeapon) != null)
+                return true;
+
+            if (living is MimicNPC mimic && (mimic.CanCastHarmfulSpells || mimic.CanCastInstantHarmfulSpells))
+                return true;
+
+            return false;
         }
 
         public bool SetMainPuller(GameLiving living)
         {
-            if (living == null || living.Inventory.GetItem(eInventorySlot.DistanceWeapon) == null)
+            if (!CanPull(living))
                 return false;
 
             if (MainPuller == living)
             {
                 MainPuller = MainLeader;
-                living.Group.SendMessageToGroupMembers(living, "Je ne pull plus.",
-                    PacketHandler.eChatType.CT_Group, PacketHandler.eChatLoc.CL_ChatWindow);
+                SayToGroup(living, "Mimic.Group.PullerUnset");
             }
             else
             {
                 MainPuller = living;
-                living.Group.SendMessageToGroupMembers(living, "Je m'occupe du pull.",
-                    PacketHandler.eChatType.CT_Group, PacketHandler.eChatLoc.CL_ChatWindow);
+                SayToGroup(living, "Mimic.Group.PullerSet");
             }
 
             return true;
@@ -111,21 +141,21 @@ namespace DOL.GS.Scripts
             if (living is MimicNPC mimic)
             {
                 if (!mimic.CanCastHealSpells && !mimic.CanCastInstantHealSpells)
-                    mimic.Group.SendMessageToGroupMembers(mimic, "Je ne peux pas lancer de sorts de soin.", eChatType.CT_Group, eChatLoc.CL_ChatWindow);
+                    SayToGroup(mimic, "Mimic.Group.CannotCastHeal");
                 else
                 {
                     mimic.MimicBrain.IsHealer = !mimic.MimicBrain.IsHealer;
 
                     if (mimic.MimicBrain.IsHealer)
-                        mimic.Group.SendMessageToGroupMembers(mimic, "Je reste en retrait et je me concentre sur les soins.", eChatType.CT_Group, eChatLoc.CL_ChatWindow);
+                        SayToGroup(mimic, "Mimic.Group.HealerOn");
                     else
-                        mimic.Group.SendMessageToGroupMembers(mimic, "J'engage le combat.", eChatType.CT_Group, eChatLoc.CL_ChatWindow);
+                        SayToGroup(mimic, "Mimic.Group.HealerOff");
                 }
             }
             else
                 return false;
 
-                return true;
+            return true;
         }
 
         public void SetCampPoint(Point3D point)

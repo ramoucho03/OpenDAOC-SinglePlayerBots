@@ -1,6 +1,6 @@
 ﻿# REALMABILITIES
 # /RAPropertyEnhancer
-RAPropertyEnhancer.DelveInfo.Info1:		Niveau {0}: Montant: {1}{2}
+RAPropertyEnhancer.DelveInfo.Info1:		Niveau {0}: Valeur: {1}{2}
 
 # /Handlers
 # /DashingDefenseAbility

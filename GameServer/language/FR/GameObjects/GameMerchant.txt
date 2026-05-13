@@ -2,7 +2,7 @@
 GameMerchant.GetExamineMessages.BuyItemsFor:	{0} dit, "Vous pouvez acheter des objets ici ! (Monnaie: {1} )."
 GameMerchant.GetExamineMessages.Nothing:		Rien
 GameMerchant.GetExamineMessages.RightClick:		[Cliquez-droit pour afficher une fenêtre de marchandage]
-GameMerchant.GetExamineMessages.YouExamine:		Vous observez {0}. C'est un marchand {2}.
+GameMerchant.GetExamineMessages.YouExamine:		Vous observez {0}. {1} est {2} et tient un commerce.
 GameMerchant.OnPlayerAppraise.Offers:			{0} vous offre {1} pour {2}.
 GameMerchant.OnPlayerBuy.Bought:				Vous venez d'acheter {0} pour {1}.
 GameMerchant.OnPlayerBuy.Bought2:				Vous venez d'acheter {0} pour {1} {2}.

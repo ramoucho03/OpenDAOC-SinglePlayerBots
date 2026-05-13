@@ -7,7 +7,7 @@ RewardQuest.OnQuestAssigned:			Vous obtenez la quête {0}.
 RewardQuest.Description:			Objectif: {0} ({1}/{2})
 
 # /AbstractQuest
-AbstractQuest.FinishQuest.Completed:		Vous avez terminé la quête: {0}!
-AbstractQuest.OnQuestAssigned.GetQuest:		Vous avez reçu la quête: {0}.
+AbstractQuest.FinishQuest.Completed:		Vous avez terminé la quête: {0} !
+AbstractQuest.OnQuestAssigned.GetQuest:		Vous avez reçu la quête: {0} !
 
 

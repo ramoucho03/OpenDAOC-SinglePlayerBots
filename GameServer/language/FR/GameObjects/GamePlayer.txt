@@ -86,7 +86,7 @@ GamePlayer.GainBountyPoints.YouGet:			Vous obtenez {0} primes de royaume.
 GamePlayer.GainCraftingSkill.GainSkill:         Vous gagnez une compétence en {0}. ({1})
 GamePlayer.GainCraftingSkill.ReachedSkill:      {0} a atteind le titre "Légendaire" en {1}
 GamePlayer.GainExperience.CampBonus:         ({0} bonus de camp)
-GamePlayer.GainExperience.CannotRaise:         Vous ne pouvez pas atteindre le niveau 6 avant d'avoir choisi votre voie!     
+GamePlayer.GainExperience.CannotRaise:		Vous ne pouvez pas atteindre le niveau 6 tant que vous n'avez pas choisi une spécialisation.
 GamePlayer.GainExperience.GroupBonus:         ({0} bonus de groupe)
 GamePlayer.GainExperience.OutpostBonus:			({0} bonus de forts)
 GamePlayer.GainExperience.RoyaumesouspeupleBonus:         Vous gagnez un bonus de {0} de royaume sous peuplé!
@@ -315,7 +315,7 @@ GamePlayer.UseSlot.SummonHorseLevel:			You must have {0} level for summon this h
 GamePlayer.UseSlot.WhistleMount:			Vous sifflez votre monture.
 GamePlayer.UseSlot.MustWaitBeforeUse:		Vous devez attendre {0} secondes de plus avant d'utiliser cet objet.
 GamePlayer.UseSlot.CantUseState:			Vous ne pouvez pas utiliser {0} dans votre état actuel.
-GamePlayer.UseSlot.CantUseCast:				Vous devez finir votre action en cours pour utiliser votre {0}!
+GamePlayer.UseSlot.CantUseCast:				Vous devez finir votre action en cours pour utiliser votre {0}.
 GamePlayer.UseSlot.Used:			        Vous utilisez {0}.
 GamePlayer.UseSlot.CantUseCast:				Vous devez finir votre action en cours pour utiliser votre {0}.
 GamePlayer.Whisper.SelectTarget:			Sélectionnez une cible à qui chuchoter.

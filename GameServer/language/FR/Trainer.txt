@@ -34,7 +34,7 @@ EnchanterTrainer.WhisperReceive.Text1:			Bienvenue, {0}. À partir de ce jour, v
 HeroTrainer.Interact.Text1:				{0} dit, "You wish for the life of a [hero]? You wish to walk the Path of Focus?"
 HeroTrainer.Interact.Text2:				{0} dit, "Training makes for a strong, healthy Hero! Keep up the good work, {1}!"
 HeroTrainer.WhisperReceiveCase.Text1:			hero
-HeroTrainer.WhisperReceive.Text1:			Let me welcome you then, {0}. Go, honor us with your deeds. Here is a gift for you. Try not to drop it, eh {1}.
+HeroTrainer.WhisperReceive.Text1:			Bienvenue à vous, {0}. Allez, honorez-nous par vos actes. Voici un cadeau pour vous aider. Essayez de ne pas le perdre.
 
 # /AnimistTrainer
 AnimistTrainer.Interact.Text1:				{0} dit, "c'est [Path of Affinity] la voix que vous souhaitez suivre?"

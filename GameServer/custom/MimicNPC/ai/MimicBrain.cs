@@ -658,25 +658,133 @@ namespace DOL.AI.Brain
 
             IsPulling = true;
 
+            // Archer-style: distance weapon takes priority when equipped.
             if (Body.Inventory.GetItem(eInventorySlot.DistanceWeapon) != null)
             {
                 Body.SwitchWeapon(eActiveWeaponSlot.Distance);
                 Body.StartAttack(target);
+                return;
             }
-            else
-            {
-                //if (Body.CanCastInstantHarmfulSpells)
-                //{
-                //    foreach(Spell spell in Body.InstantHarmfulSpells)
 
-                //}
-                //if (!Body.IsWithinRadius(Body.TargetObject, spell.Range))
-                //{
-                //    Body.Follow(Body.TargetObject, spell.Range - 100, 5000);
-                //    QueuedOffensiveSpell = spell;
-                //    return false;
-                //}
+            // Caster-style: no bow but can throw a ranged harmful spell.
+            Spell pullSpell = SelectPullSpell();
+
+            if (pullSpell == null)
+            {
+                // Last resort: walk up and melee the mob to pull. Better than nothing.
+                Body.StartAttack(target);
+                return;
             }
+
+            // Stop any current move/attack so we can position cleanly for the cast.
+            Body.TargetObject = target;
+
+            int castRange = Math.Max(200, pullSpell.Range - 100);
+
+            if (!Body.IsWithinRadius(target, pullSpell.Range))
+            {
+                // Close the gap to within cast range, then we'll try again next tick.
+                Body.Follow(target, castRange, 5000);
+                return;
+            }
+
+            // In range: face the target and cast. Stop following for the cast.
+            Body.StopFollowing();
+            Body.TurnTo(target);
+
+            if (MimicBody == null)
+                return;
+
+            // Use CheckOffensiveSpells if the spell is non-instant so the normal
+            // duration/effect checks apply; otherwise cast directly.
+            if (pullSpell.IsInstantCast)
+                Body.CastSpell(pullSpell, MimicBody.GetSpellLineForSpell(pullSpell));
+            else
+                CheckOffensiveSpells(pullSpell);
+        }
+
+        // Cached pull spell chosen at first request and reused for subsequent pulls.
+        // Reset to null if spellbook contents change (handled by MimicNPC.SortSpells flow).
+        private Spell _cachedPullSpell;
+        private bool _pullSpellCached;
+
+        public void InvalidatePullSpellCache()
+        {
+            _cachedPullSpell = null;
+            _pullSpellCached = false;
+        }
+
+        /// <summary>
+        /// Picks the best spell for pulling: long range, low impact.
+        /// Priority order: Snare/SpeedDecrease > DoT/Disease > stat debuff > weakest direct damage.
+        /// Returns null if no suitable harmful spell exists.
+        /// </summary>
+        public Spell SelectPullSpell()
+        {
+            if (_pullSpellCached)
+                return _cachedPullSpell;
+
+            _pullSpellCached = true;
+
+            if (MimicBody == null)
+                return _cachedPullSpell = null;
+
+            // Build candidate list from both non-instant and instant harmful spells.
+            // We exclude PBAoE (radius > 0 and pulse > 0 or PBAoE flag), pets-only targets and self-only spells.
+            List<Spell> candidates = new();
+
+            if (MimicBody.HarmfulSpells != null)
+                candidates.AddRange(MimicBody.HarmfulSpells);
+            if (MimicBody.InstantHarmfulSpells != null)
+                candidates.AddRange(MimicBody.InstantHarmfulSpells);
+
+            candidates = candidates
+                .Where(s => s != null
+                            && s.Range >= 500            // need real distance
+                            && !s.IsPBAoE
+                            && s.Target != eSpellTarget.SELF
+                            && s.Target != eSpellTarget.PET)
+                .ToList();
+
+            if (candidates.Count == 0)
+                return _cachedPullSpell = null;
+
+            // Score: lower is better. Prefer non-damaging single-target effects.
+            int Score(Spell s)
+            {
+                switch (s.SpellType)
+                {
+                    case eSpellType.SpeedDecrease: return 0;     // snare/root: safest puller
+                    case eSpellType.DamageSpeedDecrease: return 1;
+                    case eSpellType.DamageOverTime: return 2;     // DoT: low alpha damage
+                    case eSpellType.Disease: return 3;
+                    case eSpellType.StrengthDebuff:
+                    case eSpellType.DexterityDebuff:
+                    case eSpellType.StrengthConstitutionDebuff:
+                    case eSpellType.DexterityQuicknessDebuff:
+                    case eSpellType.MeleeDamageDebuff:
+                    case eSpellType.CombatSpeedDebuff:
+                    case eSpellType.ArmorFactorDebuff:
+                    case eSpellType.AllStatsPercentDebuff:
+                    case eSpellType.CrushSlashThrustDebuff:
+                    case eSpellType.EffectivenessDebuff:
+                        return 4;
+                    case eSpellType.DirectDamageWithDebuff: return 5;
+                    case eSpellType.Lifedrain: return 6;
+                    case eSpellType.DirectDamage: return 7;
+                    case eSpellType.Bolt: return 8;
+                    default: return 10;
+                }
+            }
+
+            // Best = lowest score, then longest range, then lowest damage.
+            _cachedPullSpell = candidates
+                .OrderBy(Score)
+                .ThenByDescending(s => s.Range)
+                .ThenBy(s => s.Damage)
+                .First();
+
+            return _cachedPullSpell;
         }
 
         #endregion MainPuller
@@ -1436,9 +1544,33 @@ namespace DOL.AI.Brain
 
         /// <summary>
         /// Returns the best target to attack from the current aggro list.
+        /// Group-aware: DPS / casters not holding a special role focus the MainAssist's
+        /// current target so the group concentrates damage on one mob at a time.
         /// </summary>
         protected virtual GameLiving CalculateNextAttackTarget()
         {
+            MimicGroup mg = Body.Group?.MimicGroup;
+
+            if (mg != null
+                && mg.MainAssist != null
+                && mg.MainAssist != Body
+                && !IsMainTank
+                && !IsMainCC
+                && !IsHealer)
+            {
+                if (mg.MainAssist.TargetObject is GameLiving assistTarget
+                    && assistTarget.IsAlive
+                    && assistTarget.ObjectState == GameObject.eObjectState.Active
+                    && CanAggroTarget(assistTarget))
+                {
+                    // Keep the target in our aggro list so threat tracking stays consistent.
+                    if (!AggroList.ContainsKey(assistTarget))
+                        AddToAggroList(assistTarget, 1);
+
+                    return assistTarget;
+                }
+            }
+
             return CleanUpAggroListAndGetHighestModifiedThreat();
         }
 

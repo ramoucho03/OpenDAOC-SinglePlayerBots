@@ -287,22 +287,178 @@ namespace DOL.GS.Scripts
                 MimicEquipment.SetArmor(this, armorType);
         }
 
+        #region Menu localization
+
+        // Canonical action name => translation key for the clickable button label.
+        // The canonical name is what the dispatcher in WhisperReceive switches on.
+        // For EN players the canonical name and the rendered label match exactly,
+        // so all legacy callers (commands sending "[Stay]", etc.) continue to work.
+        private static readonly (string Action, string Key)[] _menuButtons = new[]
+        {
+            ("State",          "Mimic.Button.State"),
+            ("Prevent Combat", "Mimic.Button.PreventCombat"),
+            ("Brain",          "Mimic.Button.Brain"),
+            ("Debug",          "Mimic.Button.Debug"),
+            ("Group",          "Mimic.Button.Group"),
+            ("Leader",         "Mimic.Button.Leader"),
+            ("MainPuller",     "Mimic.Button.MainPuller"),
+            ("MainCC",         "Mimic.Button.MainCC"),
+            ("MainTank",       "Mimic.Button.MainTank"),
+            ("MainAssist",     "Mimic.Button.MainAssist"),
+            ("Healer",         "Mimic.Button.Healer"),
+            ("Guard",          "Mimic.Button.Guard"),
+            ("Protect",        "Mimic.Button.Protect"),
+            ("Intercept",      "Mimic.Button.Intercept"),
+            ("Stay",           "Mimic.Button.Stay"),
+            ("Follow",         "Mimic.Button.Follow"),
+            ("Camp",           "Mimic.Button.Camp"),
+            ("Reset",          "Mimic.Button.Reset"),
+            ("Pull",           "Mimic.Button.Pull"),
+            ("Roam",           "Mimic.Button.Roam"),
+            ("Spells",         "Mimic.Button.Spells"),
+            ("Inst Harmful",   "Mimic.Button.InstHarmful"),
+            ("Harmful Spells", "Mimic.Button.HarmfulSpells"),
+            ("Inst Misc",      "Mimic.Button.InstMisc"),
+            ("Misc Spells",    "Mimic.Button.MiscSpells"),
+            ("Inst Heal",      "Mimic.Button.InstHeal"),
+            ("Heal Spells",    "Mimic.Button.HealSpells"),
+            ("CC",             "Mimic.Button.CC"),
+            ("Styles",         "Mimic.Button.Styles"),
+            ("Abilities",      "Mimic.Button.Abilities"),
+            ("Spec",           "Mimic.Button.Spec"),
+            ("Stats",          "Mimic.Button.Stats"),
+            ("Ability Effects","Mimic.Button.AbilityEffects"),
+            ("Spell Effects",  "Mimic.Button.SpellEffects"),
+            ("Inventory",      "Mimic.Button.Inventory"),
+            ("Hood",           "Mimic.Button.Hood"),
+            ("RightHand",      "Mimic.Button.RightHand"),
+            ("LeftHand",       "Mimic.Button.LeftHand"),
+            ("TwoHand",        "Mimic.Button.TwoHand"),
+            ("Ranged",         "Mimic.Button.Ranged"),
+            ("Helm",           "Mimic.Button.Helm"),
+            ("Torso",          "Mimic.Button.Torso"),
+            ("Legs",           "Mimic.Button.Legs"),
+            ("Arms",           "Mimic.Button.Arms"),
+            ("Hands",          "Mimic.Button.Hands"),
+            ("Boots",          "Mimic.Button.Boots"),
+            ("Jewelry",        "Mimic.Button.Jewelry"),
+            ("Delete",         "Mimic.Button.Delete"),
+        };
+
+        // Renders "[<localized label>]" — clickable in the popup window.
+        private static string Lbl(string lang, string key)
+        {
+            string label = LanguageMgr.TryGetTranslation(out string t, lang, key) ? t : key;
+            return "[" + label + "]";
+        }
+
+        // Resolves the bracket label clicked by the player back to its canonical action.
+        // Accepts both canonical English (for legacy/script callers) and any localized variant.
+        private static string ResolveAction(string str, string lang)
+        {
+            if (string.IsNullOrEmpty(str))
+                return str;
+
+            for (int i = 0; i < _menuButtons.Length; i++)
+            {
+                if (str == _menuButtons[i].Action)
+                    return _menuButtons[i].Action;
+            }
+
+            for (int i = 0; i < _menuButtons.Length; i++)
+            {
+                if (LanguageMgr.TryGetTranslation(out string t, lang, _menuButtons[i].Key) && t == str)
+                    return _menuButtons[i].Action;
+            }
+
+            return str;
+        }
+
+        private static string T(string lang, string key)
+        {
+            return LanguageMgr.TryGetTranslation(out string t, lang, key) ? t : key;
+        }
+
+        #endregion Menu localization
+
         public override bool Interact(GamePlayer player)
         {
             if (!base.Interact(player))
                 return false;
 
-            player.Out.SendMessage(
-                "---------------------------------------\n" +
-                "[State] [Prevent Combat] [Brain] [Debug]\n\n " +
-                "[Group] - [Leader] - [MainPuller] - [MainCC] - [MainTank] - [MainAssist] - [Healer]\n\n " +
-                "[Guard] [Protect] [Intercept]\n\n " +
-                "[Spells] - [Inst Harmful] - [Harmful Spells] - [Inst Misc] - [Misc Spells] - [Inst Heal] - [Heal Spells] - [CC]\n\n " +
-                "[Styles] - [Abilities]\n\n " +
-                "[Spec] - [Stats] - [Ability Effects] - [Spell Effects]\n\n " +
-                "[Inventory]\n\n" +
-                "[Hood] [RightHand] [LeftHand] [TwoHand] [Ranged] [Helm] [Torso] [Legs] [Arms] [Hands] [Boots] [Jewelry]\n\n " +
-                "[Delete]", eChatType.CT_Say, eChatLoc.CL_PopupWindow);
+            string lang = player.Client?.Account?.Language;
+            System.Text.StringBuilder sb = new();
+            sb.Append(T(lang, "Mimic.Menu.Header")).Append('\n');
+            sb.Append("---------------------------------------\n");
+
+            sb.Append(T(lang, "Mimic.Menu.Sec.State")).Append(": ");
+            sb.Append(Lbl(lang, "Mimic.Button.State")).Append(' ');
+            sb.Append(Lbl(lang, "Mimic.Button.PreventCombat")).Append(' ');
+            sb.Append(Lbl(lang, "Mimic.Button.Brain")).Append(' ');
+            sb.Append(Lbl(lang, "Mimic.Button.Debug")).Append("\n\n");
+
+            sb.Append(T(lang, "Mimic.Menu.Sec.Roles")).Append(": ");
+            sb.Append(Lbl(lang, "Mimic.Button.Group")).Append(" - ");
+            sb.Append(Lbl(lang, "Mimic.Button.Leader")).Append(" - ");
+            sb.Append(Lbl(lang, "Mimic.Button.MainPuller")).Append(" - ");
+            sb.Append(Lbl(lang, "Mimic.Button.MainCC")).Append(" - ");
+            sb.Append(Lbl(lang, "Mimic.Button.MainTank")).Append(" - ");
+            sb.Append(Lbl(lang, "Mimic.Button.MainAssist")).Append(" - ");
+            sb.Append(Lbl(lang, "Mimic.Button.Healer")).Append("\n\n");
+
+            sb.Append(T(lang, "Mimic.Menu.Sec.Defensive")).Append(": ");
+            sb.Append(Lbl(lang, "Mimic.Button.Guard")).Append(' ');
+            sb.Append(Lbl(lang, "Mimic.Button.Protect")).Append(' ');
+            sb.Append(Lbl(lang, "Mimic.Button.Intercept")).Append("\n\n");
+
+            sb.Append(T(lang, "Mimic.Menu.Sec.Orders")).Append(": ");
+            sb.Append(Lbl(lang, "Mimic.Button.Stay")).Append(' ');
+            sb.Append(Lbl(lang, "Mimic.Button.Follow")).Append(' ');
+            sb.Append(Lbl(lang, "Mimic.Button.Camp")).Append(' ');
+            sb.Append(Lbl(lang, "Mimic.Button.Reset")).Append(' ');
+            sb.Append(Lbl(lang, "Mimic.Button.Pull")).Append(' ');
+            sb.Append(Lbl(lang, "Mimic.Button.Roam")).Append("\n\n");
+
+            sb.Append(T(lang, "Mimic.Menu.Sec.Spells")).Append(": ");
+            sb.Append(Lbl(lang, "Mimic.Button.Spells")).Append(" - ");
+            sb.Append(Lbl(lang, "Mimic.Button.InstHarmful")).Append(" - ");
+            sb.Append(Lbl(lang, "Mimic.Button.HarmfulSpells")).Append(" - ");
+            sb.Append(Lbl(lang, "Mimic.Button.InstMisc")).Append(" - ");
+            sb.Append(Lbl(lang, "Mimic.Button.MiscSpells")).Append(" - ");
+            sb.Append(Lbl(lang, "Mimic.Button.InstHeal")).Append(" - ");
+            sb.Append(Lbl(lang, "Mimic.Button.HealSpells")).Append(" - ");
+            sb.Append(Lbl(lang, "Mimic.Button.CC")).Append("\n\n");
+
+            sb.Append(T(lang, "Mimic.Menu.Sec.Combat")).Append(": ");
+            sb.Append(Lbl(lang, "Mimic.Button.Styles")).Append(" - ");
+            sb.Append(Lbl(lang, "Mimic.Button.Abilities")).Append("\n\n");
+
+            sb.Append(T(lang, "Mimic.Menu.Sec.Info")).Append(": ");
+            sb.Append(Lbl(lang, "Mimic.Button.Spec")).Append(" - ");
+            sb.Append(Lbl(lang, "Mimic.Button.Stats")).Append(" - ");
+            sb.Append(Lbl(lang, "Mimic.Button.AbilityEffects")).Append(" - ");
+            sb.Append(Lbl(lang, "Mimic.Button.SpellEffects")).Append("\n\n");
+
+            sb.Append(T(lang, "Mimic.Menu.Sec.Inventory")).Append(": ");
+            sb.Append(Lbl(lang, "Mimic.Button.Inventory")).Append("\n\n");
+
+            sb.Append(T(lang, "Mimic.Menu.Sec.Equipment")).Append(": ");
+            sb.Append(Lbl(lang, "Mimic.Button.Hood")).Append(' ');
+            sb.Append(Lbl(lang, "Mimic.Button.RightHand")).Append(' ');
+            sb.Append(Lbl(lang, "Mimic.Button.LeftHand")).Append(' ');
+            sb.Append(Lbl(lang, "Mimic.Button.TwoHand")).Append(' ');
+            sb.Append(Lbl(lang, "Mimic.Button.Ranged")).Append(' ');
+            sb.Append(Lbl(lang, "Mimic.Button.Helm")).Append(' ');
+            sb.Append(Lbl(lang, "Mimic.Button.Torso")).Append(' ');
+            sb.Append(Lbl(lang, "Mimic.Button.Legs")).Append(' ');
+            sb.Append(Lbl(lang, "Mimic.Button.Arms")).Append(' ');
+            sb.Append(Lbl(lang, "Mimic.Button.Hands")).Append(' ');
+            sb.Append(Lbl(lang, "Mimic.Button.Boots")).Append(' ');
+            sb.Append(Lbl(lang, "Mimic.Button.Jewelry")).Append("\n\n");
+
+            sb.Append(Lbl(lang, "Mimic.Button.Delete"));
+
+            player.Out.SendMessage(sb.ToString(), eChatType.CT_Say, eChatLoc.CL_PopupWindow);
             return true;
         }
 
@@ -316,6 +472,7 @@ namespace DOL.GS.Scripts
             if (player == null)
                 return false;
 
+            string lang = player.Client?.Account?.Language;
             string message = string.Empty;
             int itemIndex;
 
@@ -331,6 +488,10 @@ namespace DOL.GS.Scripts
                         return true;
                 }
             }
+
+            // Translate the clicked label back to a canonical action token so the
+            // dispatcher below can stay in EN regardless of the player's language.
+            str = ResolveAction(str, lang);
 
             switch (str)
             {
@@ -398,24 +559,24 @@ namespace DOL.GS.Scripts
                 {
                     if (!HasAbility("Guard"))
                     {
-                        message = "I do not have that ability.";
+                        message = T(lang, "Mimic.Reply.IDoNotHaveThatAbility");
                         break;
                     }
 
                     if (Group == null || Group != null && !Group.IsInTheGroup(player))
                     {
-                        message = "We must be in the same group.";
+                        message = T(lang, "Mimic.Reply.MustBeInSameGroup");
                         break;
                     }
 
                     if (MimicBrain.SetGuard(player, out bool foundOurEffect))
-                        message = "I will guard you.";
+                        message = T(lang, "Mimic.Reply.IWillGuardYou");
                     else
                     {
                         if (foundOurEffect)
-                            message = "I will no longer guard you.";
+                            message = T(lang, "Mimic.Reply.IWillNoLongerGuard");
                         else
-                            message = "I cannot guard you.";
+                            message = T(lang, "Mimic.Reply.ICannotGuardYou");
                     }
 
                     break;
@@ -425,24 +586,24 @@ namespace DOL.GS.Scripts
                     {
                         if (!HasAbility("Protect"))
                         {
-                            message = "I do not have that ability.";
+                            message = T(lang, "Mimic.Reply.IDoNotHaveThatAbility");
                             break;
                         }
 
                         if (Group == null || Group != null && !Group.IsInTheGroup(player))
                         {
-                            message = "We must be in the same group.";
+                            message = T(lang, "Mimic.Reply.MustBeInSameGroup");
                             break;
                         }
 
                         if (MimicBrain.SetProtect(player, out bool foundOurEffect))
-                            message = "I will protect you.";
+                            message = T(lang, "Mimic.Reply.IWillProtectYou");
                         else
                         {
                             if (foundOurEffect)
-                                message = "I will no longer protect you.";
+                                message = T(lang, "Mimic.Reply.IWillNoLongerProtect");
                             else
-                                message = "I cannot protect you.";
+                                message = T(lang, "Mimic.Reply.ICannotProtectYou");
                         }
 
                         break;
@@ -452,28 +613,82 @@ namespace DOL.GS.Scripts
                     {
                         if (!HasAbility("Intercept"))
                         {
-                            message = "I do not have that ability.";
+                            message = T(lang, "Mimic.Reply.IDoNotHaveThatAbility");
                             break;
                         }
 
                         if (Group == null || Group != null && !Group.IsInTheGroup(player))
                         {
-                            message = "We must be in the same group.";
+                            message = T(lang, "Mimic.Reply.MustBeInSameGroup");
                             break;
                         }
 
                         if (MimicBrain.SetIntercept(player, out bool foundOurEffect))
-                            message = "I will intercept for you.";
+                            message = T(lang, "Mimic.Reply.IWillInterceptForYou");
                         else
                         {
                             if (foundOurEffect)
-                                message = "I will no longer intercept for you.";
+                                message = T(lang, "Mimic.Reply.IWillNoLongerIntercept");
                             else
-                                message = "I cannot intercept for you.";
+                                message = T(lang, "Mimic.Reply.ICannotInterceptForYou");
                         }
 
                         break;
                     }
+
+                case "Stay":
+                    if (Group == null)
+                    {
+                        message = T(lang, "Mimic.Reply.NotInGroup");
+                        break;
+                    }
+                    MimicBrain.FSM.SetCurrentState(eFSMStateType.IDLE);
+                    message = T(lang, "Mimic.Reply.OrderStay");
+                    break;
+
+                case "Follow":
+                    if (Group == null)
+                    {
+                        message = T(lang, "Mimic.Reply.NotInGroup");
+                        break;
+                    }
+                    MimicBrain.FSM.SetCurrentState(eFSMStateType.FOLLOW_THE_LEADER);
+                    message = T(lang, "Mimic.Reply.OrderFollow");
+                    break;
+
+                case "Camp":
+                    if (Group == null)
+                    {
+                        message = T(lang, "Mimic.Reply.NotInGroup");
+                        break;
+                    }
+                    // Use the player's position as the camp anchor when triggered via the menu.
+                    Group.MimicGroup.SetCampPoint(new Point3D(player.X, player.Y, player.Z));
+                    MimicBrain.FSM.SetCurrentState(eFSMStateType.CAMP);
+                    message = T(lang, "Mimic.Reply.OrderCamp");
+                    break;
+
+                case "Reset":
+                    MimicBrain.FSM.SetCurrentState(eFSMStateType.WAKING_UP);
+                    message = T(lang, "Mimic.Reply.OrderReset");
+                    break;
+
+                case "Pull":
+                    if (Group == null)
+                    {
+                        message = T(lang, "Mimic.Reply.NotInGroup");
+                        break;
+                    }
+                    // Force this bot to act as puller this tick. The brain's CheckPuller picks the target.
+                    Group.MimicGroup.SetMainPuller(this);
+                    MimicBrain.CheckPuller();
+                    message = T(lang, "Mimic.Reply.OrderPull");
+                    break;
+
+                case "Roam":
+                    MimicBrain.Roam = !MimicBrain.Roam;
+                    message = T(lang, MimicBrain.Roam ? "Mimic.Reply.RoamOn" : "Mimic.Reply.RoamOff");
+                    break;
 
                 case "Spells":
                 {
@@ -587,7 +802,7 @@ namespace DOL.GS.Scripts
                     }
 
                     if (message == string.Empty)
-                        message = "No active ability effects.";
+                        message = T(lang, "Mimic.Reply.NoActiveAbilityEffects");
 
                     break;
                 }
@@ -601,7 +816,7 @@ namespace DOL.GS.Scripts
                     }
 
                     if (message == string.Empty)
-                        message = "No active spell effects.";
+                        message = T(lang, "Mimic.Reply.NoActiveSpellEffects");
 
                     break;
                 }
@@ -665,7 +880,7 @@ namespace DOL.GS.Scripts
                             message += "[" + index + "]" + ". " + item.Name + "\n";
                     }
                     else
-                        message += "Inventory is empty";
+                        message += T(lang, "Mimic.Reply.InventoryEmpty");
 
                     break;
                 }
@@ -816,7 +1031,7 @@ namespace DOL.GS.Scripts
             if (itemToRemove != null)
                 RemoveAndAddItemToEmptyPlayerInventorySlot(itemToRemove, player);
             else
-                player.Out.SendMessage("There is nothing equipped in that slot.", eChatType.CT_Say, eChatLoc.CL_ChatWindow);
+                player.Out.SendMessage(T(player.Client?.Account?.Language, "Mimic.Reply.NothingEquippedInSlot"), eChatType.CT_Say, eChatLoc.CL_ChatWindow);
         }
 
         private bool RemoveAndAddItemToEmptyPlayerInventorySlot(DbInventoryItem itemToAdd, GamePlayer player)
@@ -830,7 +1045,7 @@ namespace DOL.GS.Scripts
             }
             else
             {
-                player.Out.SendMessage("No room in your backpack.", eChatType.CT_Say, eChatLoc.CL_ChatWindow);
+                player.Out.SendMessage(T(player.Client?.Account?.Language, "Mimic.Reply.NoRoomInBackpack"), eChatType.CT_Say, eChatLoc.CL_ChatWindow);
                 return false;
             }
 
@@ -1402,6 +1617,9 @@ namespace DOL.GS.Scripts
         {
             if (Spells.Count < 1)
                 return;
+
+            // Brain caches the pull-spell pick from these lists; invalidate before rebuild.
+            MimicBrain?.InvalidatePullSpellCache();
 
             // Clear the lists
             InstantHarmfulSpells?.Clear();

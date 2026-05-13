@@ -16,7 +16,7 @@ PlayerMovementComponent.Encumbered:			You are encumbered.
 GameGravestone.GameGravestone.Grave:			{0}'s Grave
 
 # GameGuard
-GameGuard.GetExamineMessages.Examine:			You examine the {0}. {1} is {2} and is a guard.
+GameGuard.GetExamineMessages.Examine:			You examine {0}. {1} is {2} and is a guard.
 
 # GAMESTAICITEM
 GameStaticItem.GetName.Article1:			The {0}

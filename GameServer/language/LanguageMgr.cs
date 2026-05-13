@@ -65,6 +65,17 @@ namespace DOL.Language
                 return true;
             }
 
+            if (!string.Equals(language, DefaultLanguage, StringComparison.OrdinalIgnoreCase))
+            {
+                result = GetLanguageDataObject(DefaultLanguage, translationId, LanguageDataObject.eTranslationIdentifier.eSystem);
+
+                if (result is DbLanguageSystem fallbackResult && !string.IsNullOrEmpty(fallbackResult.Text))
+                {
+                    translationObject = fallbackResult;
+                    return true;
+                }
+            }
+
             return false;
         }
 

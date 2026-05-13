@@ -1,0 +1,111 @@
+# Menu d'interaction et messages de groupe des bots Mimic
+# Chaque cle Mimic.Button.* est un libelle cliquable du menu popup.
+# WhisperReceive remonte du libelle traduit vers l'action canonique.
+# ----------------------------------------------------------------
+
+# Sections du menu (en-tetes affichees au joueur)
+Mimic.Menu.Header:                    --- Menu du bot ---
+Mimic.Menu.Sec.State:                 Etat
+Mimic.Menu.Sec.Roles:                 Roles
+Mimic.Menu.Sec.Defensive:             Defensif
+Mimic.Menu.Sec.Orders:                Ordres
+Mimic.Menu.Sec.Spells:                Sorts
+Mimic.Menu.Sec.Combat:                Combat
+Mimic.Menu.Sec.Info:                  Infos
+Mimic.Menu.Sec.Inventory:             Inventaire
+Mimic.Menu.Sec.Equipment:             Equipement
+
+# Libelles cliquables (action canonique => libelle traduit)
+Mimic.Button.State:                   Etat
+Mimic.Button.PreventCombat:           Pas de combat
+Mimic.Button.Brain:                   Cerveau
+Mimic.Button.Debug:                   Debug
+
+Mimic.Button.Group:                   Groupe
+Mimic.Button.Leader:                  Leader
+Mimic.Button.MainPuller:              Puller
+Mimic.Button.MainCC:                  CC principal
+Mimic.Button.MainTank:                Tank principal
+Mimic.Button.MainAssist:              Assist principal
+Mimic.Button.Healer:                  Soigneur
+
+Mimic.Button.Guard:                   Garde
+Mimic.Button.Protect:                 Protege
+Mimic.Button.Intercept:               Intercepte
+
+Mimic.Button.Stay:                    Reste
+Mimic.Button.Follow:                  Suis
+Mimic.Button.Camp:                    Campe
+Mimic.Button.Reset:                   Reset
+Mimic.Button.Pull:                    Pull
+Mimic.Button.Roam:                    Patrouille
+
+Mimic.Button.Spells:                  Sorts
+Mimic.Button.InstHarmful:             Offensif instantane
+Mimic.Button.HarmfulSpells:           Sorts offensifs
+Mimic.Button.InstMisc:                Divers instantane
+Mimic.Button.MiscSpells:              Sorts divers
+Mimic.Button.InstHeal:                Soin instantane
+Mimic.Button.HealSpells:              Sorts de soin
+Mimic.Button.CC:                      CC
+
+Mimic.Button.Styles:                  Styles
+Mimic.Button.Abilities:               Capacites
+
+Mimic.Button.Spec:                    Spec
+Mimic.Button.Stats:                   Stats
+Mimic.Button.AbilityEffects:          Effets capacites
+Mimic.Button.SpellEffects:            Effets sorts
+
+Mimic.Button.Inventory:               Inventaire
+Mimic.Button.Hood:                    Capuche
+Mimic.Button.RightHand:               Main droite
+Mimic.Button.LeftHand:                Main gauche
+Mimic.Button.TwoHand:                 Deux mains
+Mimic.Button.Ranged:                  Distance
+Mimic.Button.Helm:                    Casque
+Mimic.Button.Torso:                   Torse
+Mimic.Button.Legs:                    Jambes
+Mimic.Button.Arms:                    Bras
+Mimic.Button.Hands:                   Mains
+Mimic.Button.Boots:                   Bottes
+Mimic.Button.Jewelry:                 Bijoux
+
+Mimic.Button.Delete:                  Supprimer
+
+# Reponses / statut
+Mimic.Reply.IDoNotHaveThatAbility:    Je ne possede pas cette capacite.
+Mimic.Reply.MustBeInSameGroup:        Nous devons etre dans le meme groupe.
+Mimic.Reply.IWillGuardYou:            Je vais te garder.
+Mimic.Reply.IWillNoLongerGuard:       Je ne te garde plus.
+Mimic.Reply.ICannotGuardYou:          Je ne peux pas te garder.
+Mimic.Reply.IWillProtectYou:          Je vais te proteger.
+Mimic.Reply.IWillNoLongerProtect:     Je ne te protege plus.
+Mimic.Reply.ICannotProtectYou:        Je ne peux pas te proteger.
+Mimic.Reply.IWillInterceptForYou:     Je vais intercepter pour toi.
+Mimic.Reply.IWillNoLongerIntercept:   Je n'intercepte plus pour toi.
+Mimic.Reply.ICannotInterceptForYou:   Je ne peux pas intercepter pour toi.
+Mimic.Reply.InventoryEmpty:           L'inventaire est vide.
+Mimic.Reply.NoActiveAbilityEffects:   Aucun effet de capacite actif.
+Mimic.Reply.NoActiveSpellEffects:     Aucun effet de sort actif.
+Mimic.Reply.NothingEquippedInSlot:    Rien n'est equipe dans cet emplacement.
+Mimic.Reply.NoRoomInBackpack:         Plus de place dans ton sac.
+Mimic.Reply.RoamOn:                   Patrouille activee.
+Mimic.Reply.RoamOff:                  Patrouille desactivee.
+Mimic.Reply.OrderStay:                Je reste en position.
+Mimic.Reply.OrderFollow:              Je suis le leader.
+Mimic.Reply.OrderCamp:                Je mets en place un camp.
+Mimic.Reply.OrderReset:               Etat reinitialise.
+Mimic.Reply.OrderPull:                Je pull maintenant.
+Mimic.Reply.NotInGroup:               Je ne suis pas dans un groupe.
+
+# Messages de role MimicGroup (envoyes au groupe)
+Mimic.Group.LeaderSet:                Suivez-moi ! Je dirige le groupe.
+Mimic.Group.AssistSet:                Je serai l'assist principal, calquez vos cibles sur les miennes.
+Mimic.Group.TankSet:                  Je tank.
+Mimic.Group.CCSet:                    Je m'occupe du CC.
+Mimic.Group.PullerSet:                Je m'occupe du pull.
+Mimic.Group.PullerUnset:              Je ne pull plus.
+Mimic.Group.CannotCastHeal:           Je ne peux pas lancer de sorts de soin.
+Mimic.Group.HealerOn:                 Je reste en retrait et je me concentre sur les soins.
+Mimic.Group.HealerOff:                J'engage le combat.
