@@ -456,11 +456,40 @@ namespace DOL.AI.Brain
                                     !Body.IsWithinRadius(target, 500))
                                 {
                                     ChargeAbility charge = Body.GetAbility<ChargeAbility>();
-                                    
+
                                     if (charge != null && Body.GetSkillDisabledDuration(charge) <= 0)
                                         charge.Execute(Body);
                                 }
 
+                                break;
+                            }
+
+                            case Abilities.Sprint:
+                            {
+                                // Use sprint to close a melee gap when we still
+                                // have stamina. Capped so we never sprint with
+                                // tank-level endurance reserves. 2H specs prefer
+                                // saving endurance for their styles.
+                                if (Body.TargetObject is not GameLiving sprintTarget)
+                                    break;
+
+                                if (MimicBody.IsSprinting)
+                                    break;
+
+                                if (Body.EndurancePercent <= 40)
+                                    break;
+
+                                if (MimicBody.MimicSpec != null && MimicBody.MimicSpec.Is2H)
+                                    break;
+
+                                if (!GameServer.ServerRules.IsAllowedToAttack(Body, sprintTarget, true))
+                                    break;
+
+                                int dist = Body.GetDistanceTo(sprintTarget);
+                                if (dist <= Body.MeleeAttackRange + 50 || dist > 2500)
+                                    break;
+
+                                MimicBody.Sprint(true);
                                 break;
                             }
                         }
@@ -836,6 +865,8 @@ namespace DOL.AI.Brain
 
         // Picks up to MAX_ADDS_TO_CC hostile mobs from the aggro list (excluding
         // the assist's current focus) and pushes them into the group's CC queue.
+        // Targets are sorted by threat (proximity, low HP = easier to finish if mez
+        // breaks) so the most dangerous add is mezzed first.
         private const int MAX_ADDS_TO_CC = 2;
         private void PopulateAddsForCC()
         {
@@ -846,27 +877,32 @@ namespace DOL.AI.Brain
 
             GameLiving focus = mg.MainAssist?.TargetObject as GameLiving;
 
+            // Build candidate list (alive, not the focus target, not already
+            // mezzed/rooted, not already queued for CC), then sort: closest first,
+            // tie-break by lowest health-percent so a near-dead add gets cleaned up.
+            List<GameLiving> candidates = new();
             foreach (var kv in AggroList)
             {
-                if (mg.CCTargets.Count >= MAX_ADDS_TO_CC)
-                    break;
-
-                GameLiving candidate = kv.Key;
-
-                if (candidate == null || !candidate.IsAlive)
-                    continue;
-
-                if (candidate == focus)
-                    continue; // never mez the assist's target
-
-                if (candidate.IsMezzed || candidate.IsRooted)
-                    continue;
-
-                if (mg.CCTargets.Contains(candidate))
-                    continue;
-
-                mg.CCTargets.Add(candidate);
+                GameLiving c = kv.Key;
+                if (c == null || !c.IsAlive) continue;
+                if (c == focus) continue;
+                if (c.IsMezzed || c.IsRooted) continue;
+                if (mg.CCTargets.Contains(c)) continue;
+                candidates.Add(c);
             }
+
+            candidates.Sort((a, b) =>
+            {
+                int da = Body.GetDistanceTo(a);
+                int db = Body.GetDistanceTo(b);
+                int cmp = da.CompareTo(db);
+                if (cmp != 0) return cmp;
+                return a.HealthPercent.CompareTo(b.HealthPercent);
+            });
+
+            int room = MAX_ADDS_TO_CC - mg.CCTargets.Count;
+            for (int i = 0; i < candidates.Count && room > 0; i++, room--)
+                mg.CCTargets.Add(candidates[i]);
         }
 
         // Test for bad lists. Might not be needed.
@@ -1956,9 +1992,27 @@ namespace DOL.AI.Brain
             }
             else if (!casted && type == eCheckSpellType.Offensive)
             {
-                if (MimicBody.CharacterClass.ID == (int)eCharacterClass.Cleric)
+                // ----------------------------------------------------------------
+                // Generic mana throttle.
+                // Below 20% mana, all caster archetypes stop nuking entirely so the
+                // group's healer/buffer can still cast emergency spells. Between 20%
+                // and 50%, casters skip every other tick (chance scales with mana).
+                // The previous hard-coded Cleric-only check is now subsumed by this
+                // generic rule.
+                // ----------------------------------------------------------------
+                if (MimicBody.CharacterClass.ClassType == eClassType.ListCaster
+                    || MimicBody.CharacterClass.ID == (int)eCharacterClass.Cleric
+                    || MimicBody.CharacterClass.ID == (int)eCharacterClass.Friar
+                    || MimicBody.CharacterClass.ID == (int)eCharacterClass.Druid
+                    || MimicBody.CharacterClass.ID == (int)eCharacterClass.Bard
+                    || MimicBody.CharacterClass.ID == (int)eCharacterClass.Warden
+                    || MimicBody.CharacterClass.ID == (int)eCharacterClass.Healer
+                    || MimicBody.CharacterClass.ID == (int)eCharacterClass.Shaman)
                 {
-                    if (!Util.Chance(Math.Max(5, Body.ManaPercent - 50)))
+                    if (Body.ManaPercent < 20)
+                        return false;
+
+                    if (Body.ManaPercent < 50 && !Util.Chance(Math.Max(5, Body.ManaPercent - 20)))
                         return false;
                 }
 
@@ -2025,6 +2079,8 @@ namespace DOL.AI.Brain
                 {
                     if (Body.CanCastHarmfulSpells)
                     {
+                        GameLiving liveTarget = Body.TargetObject as GameLiving;
+
                         foreach (Spell spell in Body.HarmfulSpells)
                         {
                             if (spell.SpellType == eSpellType.Charm ||
@@ -2033,36 +2089,50 @@ namespace DOL.AI.Brain
                                 spell.SpellType == eSpellType.Taunt)
                                 continue;
 
-                            if (CanCastOffensiveSpell(spell))
-                                spellsToCast.Add(spell);
+                            if (!CanCastOffensiveSpell(spell))
+                                continue;
+
+                            // Skip debuffs / DoTs already applied on the target. We
+                            // would just refresh-stomp our own effect for no gain.
+                            if (liveTarget != null && spell.Duration > 0 && LivingHasEffect(liveTarget, spell))
+                                continue;
+
+                            // Don't try a spell we cannot afford. Saves mana for
+                            // a future cast that might land instead of fizzling.
+                            if (Body.Mana < MimicBody.PowerCost(spell))
+                                continue;
+
+                            spellsToCast.Add(spell);
                         }
                     }
                 }
 
                 if (spellsToCast.Count > 0)
                 {
-                    Spell spellToCast = spellsToCast[Util.Random(spellsToCast.Count - 1)];
+                    // Priority sort: debuff-first, then nuke. Lower score = higher priority.
+                    // Inside the same priority bracket we keep insertion order so
+                    // class-specific tuning by spell-list order still matters.
+                    spellsToCast = spellsToCast
+                        .OrderBy(s => ScoreOffensivePriority(s))
+                        .ThenByDescending(s => s.Damage)
+                        .ToList();
+
+                    // Top of the priority list is normally the best pick. Add a small
+                    // amount of variety (10% chance to pick second-best) so groups
+                    // of mimics don't all cast the exact same spell on the same tick.
+                    Spell spellToCast = spellsToCast[0];
+                    if (spellsToCast.Count > 1 && Util.Chance(10))
+                        spellToCast = spellsToCast[1];
 
                     if (spellToCast.Uninterruptible || !Body.IsBeingInterrupted)
                         casted = CheckOffensiveSpells(spellToCast);
                     else if (!spellToCast.Uninterruptible && Body.IsBeingInterrupted)
                     {
-                        if (MimicBody.CharacterClass.ClassType == eClassType.ListCaster)
-                        {
-                            Ability quickCast = Body.GetAbility(Abilities.Quickcast);
-
-                            if (quickCast != null)
-                            {
-                                if (Body.GetSkillDisabledDuration(quickCast) <= 0)
-                                {
-                                    // Give mimics a small bump in duration, they don't use it as well as humans.
-                                    new QuickCastECSGameEffect(new ECSGameEffectInitParams(Body, QuickCastECSGameEffect.DURATION + 1000, 1));
-                                    Body.DisableSkill(quickCast, 180000);
-
-                                    casted = CheckOffensiveSpells(spellToCast);
-                                }
-                            }
-                        }
+                        // Interrupt reaction: any caster archetype (not just pure
+                        // ListCasters) tries to QuickCast through the interrupt so
+                        // mana isn't burned for nothing.
+                        if (TryQuickCastThroughInterrupt(spellToCast))
+                            casted = CheckOffensiveSpells(spellToCast);
                     }
                 }
             }
@@ -2082,6 +2152,75 @@ namespace DOL.AI.Brain
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Priority score for offensive spell selection. Lower = cast first.
+        /// The order encodes a generic but proven DAoC opener pattern:
+        ///   1. Snare / root  — keeps the mob at range, sets up follow-up
+        ///   2. Disease       — applies the strength debuff before melee swings
+        ///   3. Stat debuffs  — reduces incoming damage to the group
+        ///   4. DoT           — front-loads damage that ticks during the fight
+        ///   5. DD-with-debuff and DD-with-snare — efficient mixed casts
+        ///   6. Bolts         — burst opener
+        ///   7. Direct damage — pure nukes
+        ///   8. Anything else
+        /// </summary>
+        protected static int ScoreOffensivePriority(Spell s)
+        {
+            if (s == null)
+                return 99;
+
+            switch (s.SpellType)
+            {
+                case eSpellType.SpeedDecrease: return 0;
+                case eSpellType.Disease: return 1;
+                case eSpellType.StrengthDebuff:
+                case eSpellType.DexterityDebuff:
+                case eSpellType.StrengthConstitutionDebuff:
+                case eSpellType.DexterityQuicknessDebuff:
+                case eSpellType.MeleeDamageDebuff:
+                case eSpellType.CombatSpeedDebuff:
+                case eSpellType.ArmorFactorDebuff:
+                case eSpellType.AllStatsPercentDebuff:
+                case eSpellType.CrushSlashThrustDebuff:
+                case eSpellType.EffectivenessDebuff:
+                    return 2;
+                case eSpellType.DamageOverTime: return 3;
+                case eSpellType.DirectDamageWithDebuff:
+                case eSpellType.DamageSpeedDecrease:
+                    return 4;
+                case eSpellType.Bolt: return 5;
+                case eSpellType.Lifedrain: return 6;
+                case eSpellType.DirectDamage: return 7;
+                default: return 10;
+            }
+        }
+
+        /// <summary>
+        /// Attempts to fire QuickCast so the next spell can land through an
+        /// interrupt. Used by any caster archetype, not just pure ListCasters.
+        /// Returns true if QuickCast was activated (so the caller can proceed
+        /// with the spell cast), or if QuickCast isn't needed because the bot
+        /// isn't being interrupted any more.
+        /// </summary>
+        private bool TryQuickCastThroughInterrupt(Spell spellToCast)
+        {
+            if (spellToCast == null || spellToCast.Uninterruptible)
+                return true;
+
+            if (!Body.IsBeingInterrupted)
+                return true;
+
+            Ability quickCast = Body.GetAbility(Abilities.Quickcast);
+
+            if (quickCast == null || Body.GetSkillDisabledDuration(quickCast) > 0)
+                return false;
+
+            // Give mimics a small bump in duration, they don't use it as well as humans.
+            new QuickCastECSGameEffect(new ECSGameEffectInitParams(Body, QuickCastECSGameEffect.DURATION + 1000, 1));
+            Body.DisableSkill(quickCast, 180000);
+            return true;
         }
 
         protected bool CanCastDefensiveSpell(Spell spell)
