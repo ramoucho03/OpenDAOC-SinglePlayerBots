@@ -6,6 +6,7 @@ using DOL.GS.Keeps;
 using DOL.GS.PacketHandler;
 using DOL.GS.RealmAbilities;
 using DOL.GS.Scripts;
+using DOL.GS.Scripts.AI.Strategies;
 using DOL.GS.ServerProperties;
 using DOL.GS.SkillHandler;
 using DOL.GS.Spells;
@@ -119,8 +120,33 @@ namespace DOL.AI.Brain
 
         #region AI
 
+        private BotStrategyManager _strategyManager;
+
+        /// <summary>
+        /// Lazy strategy manager. Returns null when the strategy system is
+        /// disabled or no MimicNPC body is available — callers must
+        /// null-check.
+        /// </summary>
+        public BotStrategyManager StrategyManager
+        {
+            get
+            {
+                if (_strategyManager != null)
+                    return _strategyManager;
+
+                if (MimicBody == null)
+                    return null;
+
+                _strategyManager = new BotStrategyManager(MimicBody, this);
+                return _strategyManager;
+            }
+        }
+
         public override void Think()
         {
+            if (MimicConfig.USE_STRATEGY_SYSTEM)
+                StrategyManager?.Tick();
+
             FSM.Think();
         }
 
@@ -537,9 +563,9 @@ namespace DOL.AI.Brain
                 {
                     Body.ReturnToSpawnPoint(Body.MaxSpeed);
 
-                    if ((MimicBody.CharacterClass.ID != (int)eCharacterClass.Hunter ||
-                        MimicBody.CharacterClass.ID != (int)eCharacterClass.Ranger ||
-                        MimicBody.CharacterClass.ID != (int)eCharacterClass.Scout) &&
+                    if (MimicBody.CharacterClass.ID != (int)eCharacterClass.Hunter &&
+                        MimicBody.CharacterClass.ID != (int)eCharacterClass.Ranger &&
+                        MimicBody.CharacterClass.ID != (int)eCharacterClass.Scout &&
                         MimicBody.CharacterClass.ClassType != eClassType.ListCaster)
                     {
                         if (MimicBody.MimicSpec.Is2H)

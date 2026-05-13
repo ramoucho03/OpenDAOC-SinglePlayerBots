@@ -44,7 +44,7 @@ namespace DOL.GS.Scripts
                 return false;
 
             MainLeader = living;
-            living.Group.SendMessageToGroupMembers(living, "Follow me! I will now lead the group. Not really though this isn't implemented.", 
+            living.Group.SendMessageToGroupMembers(living, "Suivez-moi ! Je dirige le groupe.",
                 PacketHandler.eChatType.CT_Group, PacketHandler.eChatLoc.CL_ChatWindow);
             return true;
         }
@@ -55,7 +55,7 @@ namespace DOL.GS.Scripts
                 return false;
 
             MainAssist = living;
-            living.Group.SendMessageToGroupMembers(living, "Assist me! I will be the main assist. Not really though this isn't implemented.",
+            living.Group.SendMessageToGroupMembers(living, "Je serai l'assist principal, calquez vos cibles sur les miennes.",
                 PacketHandler.eChatType.CT_Group, PacketHandler.eChatLoc.CL_ChatWindow);
             return true;
         }
@@ -66,7 +66,7 @@ namespace DOL.GS.Scripts
                 return false;
 
             MainTank = living;
-            living.Group.SendMessageToGroupMembers(living, "I will tank.",
+            living.Group.SendMessageToGroupMembers(living, "Je tank.",
                 PacketHandler.eChatType.CT_Group, PacketHandler.eChatLoc.CL_ChatWindow);
             return true;
         }
@@ -77,7 +77,7 @@ namespace DOL.GS.Scripts
                 return false;
 
             MainCC = living;
-            living.Group.SendMessageToGroupMembers(living, "I'll be the main CC.",
+            living.Group.SendMessageToGroupMembers(living, "Je m'occupe du CC.",
                 PacketHandler.eChatType.CT_Group, PacketHandler.eChatLoc.CL_ChatWindow);
             return true;
         }
@@ -90,13 +90,13 @@ namespace DOL.GS.Scripts
             if (MainPuller == living)
             {
                 MainPuller = MainLeader;
-                living.Group.SendMessageToGroupMembers(living, "I'll stop pulling.",
+                living.Group.SendMessageToGroupMembers(living, "Je ne pull plus.",
                     PacketHandler.eChatType.CT_Group, PacketHandler.eChatLoc.CL_ChatWindow);
             }
             else
             {
                 MainPuller = living;
-                living.Group.SendMessageToGroupMembers(living, "I'll be the puller.",
+                living.Group.SendMessageToGroupMembers(living, "Je m'occupe du pull.",
                     PacketHandler.eChatType.CT_Group, PacketHandler.eChatLoc.CL_ChatWindow);
             }
 
@@ -111,15 +111,15 @@ namespace DOL.GS.Scripts
             if (living is MimicNPC mimic)
             {
                 if (!mimic.CanCastHealSpells && !mimic.CanCastInstantHealSpells)
-                    mimic.Group.SendMessageToGroupMembers(mimic, "I cannot cast healing spells.", eChatType.CT_Group, eChatLoc.CL_ChatWindow);
+                    mimic.Group.SendMessageToGroupMembers(mimic, "Je ne peux pas lancer de sorts de soin.", eChatType.CT_Group, eChatLoc.CL_ChatWindow);
                 else
                 {
                     mimic.MimicBrain.IsHealer = !mimic.MimicBrain.IsHealer;
 
                     if (mimic.MimicBrain.IsHealer)
-                        mimic.Group.SendMessageToGroupMembers(mimic, "I will stay out of combat and focus on healing", eChatType.CT_Group, eChatLoc.CL_ChatWindow);
+                        mimic.Group.SendMessageToGroupMembers(mimic, "Je reste en retrait et je me concentre sur les soins.", eChatType.CT_Group, eChatLoc.CL_ChatWindow);
                     else
-                        mimic.Group.SendMessageToGroupMembers(mimic, "I will engage in combat", eChatType.CT_Group, eChatLoc.CL_ChatWindow);
+                        mimic.Group.SendMessageToGroupMembers(mimic, "J'engage le combat.", eChatType.CT_Group, eChatLoc.CL_ChatWindow);
                 }
             }
             else
@@ -267,7 +267,7 @@ namespace DOL.GS.Scripts
                             if (MemberToCurePoison == null || m_percentCurrent < m_poisonPercent)
                             {
                                 MemberToCurePoison = groupMember;
-                                m_diseasePercent = m_poisonPercent;
+                                m_poisonPercent = m_percentCurrent;
                             }
                         }
 
