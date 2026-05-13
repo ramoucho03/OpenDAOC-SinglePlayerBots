@@ -315,6 +315,13 @@ namespace DOL.GS.Scripts
 
                 NumNeedHealing += NumNeedEmergencyHealing;
                 NumInjured += NumNeedHealing;
+
+                // Priority override: when the MainTank is below the heal threshold,
+                // always target the tank first regardless of who is the most injured.
+                // Keeping the tank up is more valuable for group survival than topping
+                // a slightly more wounded DPS.
+                if (MainTank != null && MainTank.IsAlive && MainTank.HealthPercent < HealThreshold)
+                    MemberToHeal = MainTank;
             }
         }
 

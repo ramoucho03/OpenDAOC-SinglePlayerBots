@@ -33,6 +33,16 @@ namespace DOL.GS.Spells
 			if(target == null || target.IsAlive) return;
 
 			SendEffectAnimation(target, 0, false, 1);
+
+			// MimicNPC bots auto-accept resurrection — they don't have a real
+			// client to display the rez-prompt dialog. The dedicated path on
+			// the bot restores its vitals and reinserts it into combat duty.
+			if (target is MimicNPC mimicTarget && mimicTarget.InRezWait)
+			{
+				mimicTarget.OnResurrected(m_caster, m_spell);
+				return;
+			}
+
 			IGamePlayer targetPlayer = target as IGamePlayer;
 			if (targetPlayer == null)
 			{

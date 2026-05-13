@@ -312,6 +312,7 @@ namespace DOL.GS.Scripts
             log.Info("MimicManager Initializing...");
 
             MimicBattlegrounds.Initialize();
+            RegisterPlayerLifecycleHandlers();
 
             return true;
         }
@@ -462,6 +463,296 @@ namespace DOL.GS.Scripts
 
             return casterClasses[Util.Random(casterClasses.Count - 1)];
         }
+
+        #region Ownership tracking and persistence
+
+        /// <summary>
+        /// Snapshot of an owned mimic taken at owner-disconnect time so it can
+        /// be respawned identically when the owner logs back in.
+        /// </summary>
+        public sealed class MimicSnapshot
+        {
+            public eMimicClass MimicClass;
+            public byte Level;
+            public string Name;
+            public eGender Gender;
+            public eSpecType Spec;
+            public ushort Region;
+            public bool IsHealerRole;
+            public bool IsLeader;
+            public bool IsTank;
+            public bool IsAssist;
+            public bool IsCC;
+            public bool IsPuller;
+            public bool PreventCombat;
+        }
+
+        // Live mimics tracked per owning account so we can find them on disconnect.
+        private static readonly Dictionary<string, List<MimicNPC>> _liveByOwner = new();
+        // Account => last snapshot taken at disconnect. Restored at the next login.
+        private static readonly Dictionary<string, List<MimicSnapshot>> _hibernated = new();
+        private static readonly object _ownerLock = new();
+
+        /// <summary>
+        /// Stamps ownership on the mimic and starts tracking it. Safe to call
+        /// multiple times; subsequent calls only update the owner field.
+        /// </summary>
+        public static void RegisterOwned(GamePlayer owner, MimicNPC mimic)
+        {
+            if (mimic == null)
+                return;
+
+            string acct = owner?.Client?.Account?.Name;
+
+            if (string.IsNullOrEmpty(acct))
+                return;
+
+            mimic.OwnerAccount = acct;
+
+            lock (_ownerLock)
+            {
+                if (!_liveByOwner.TryGetValue(acct, out List<MimicNPC> list))
+                {
+                    list = new List<MimicNPC>();
+                    _liveByOwner[acct] = list;
+                }
+
+                if (!list.Contains(mimic))
+                    list.Add(mimic);
+            }
+        }
+
+        /// <summary>
+        /// Stops tracking the mimic. Called from MimicNPC.Delete so we never
+        /// hold references to dead objects.
+        /// </summary>
+        public static void UnregisterOwned(MimicNPC mimic)
+        {
+            if (mimic?.OwnerAccount == null)
+                return;
+
+            lock (_ownerLock)
+            {
+                if (_liveByOwner.TryGetValue(mimic.OwnerAccount, out List<MimicNPC> list))
+                {
+                    list.Remove(mimic);
+
+                    if (list.Count == 0)
+                        _liveByOwner.Remove(mimic.OwnerAccount);
+                }
+            }
+        }
+
+        public static IReadOnlyList<MimicNPC> GetLiveOwnedBy(string accountName)
+        {
+            if (string.IsNullOrEmpty(accountName))
+                return Array.Empty<MimicNPC>();
+
+            lock (_ownerLock)
+            {
+                if (_liveByOwner.TryGetValue(accountName, out List<MimicNPC> list))
+                    return list.ToList(); // copy out under lock
+
+                return Array.Empty<MimicNPC>();
+            }
+        }
+
+        /// <summary>
+        /// Called when a player quits or link-deaths. Captures the live state
+        /// of every mimic the player owns and deletes them. The snapshot is
+        /// kept in memory until the player logs back in (or the server
+        /// restarts, which is acceptable for now).
+        /// </summary>
+        private static void OnPlayerDisconnected(DOLEvent e, object sender, EventArgs args)
+        {
+            if (sender is not GamePlayer player || player.Client?.Account == null)
+                return;
+
+            IReadOnlyList<MimicNPC> owned = GetLiveOwnedBy(player.Client.Account.Name);
+
+            if (owned.Count == 0)
+                return;
+
+            List<MimicSnapshot> snapshots = new(owned.Count);
+
+            foreach (MimicNPC mimic in owned)
+            {
+                if (mimic == null || mimic.ObjectState != GameObject.eObjectState.Active)
+                    continue;
+
+                MimicGroup mg = mimic.Group?.MimicGroup;
+
+                snapshots.Add(new MimicSnapshot
+                {
+                    MimicClass = (eMimicClass)mimic.CharacterClass.ID,
+                    Level = (byte)mimic.Level,
+                    Name = mimic.Name,
+                    Gender = mimic.Gender,
+                    Spec = mimic.MimicSpec != null ? mimic.MimicSpec.SpecType : eSpecType.None,
+                    Region = mimic.CurrentRegionID,
+                    IsHealerRole = mimic.MimicBrain != null && mimic.MimicBrain.IsHealer,
+                    IsLeader = mg != null && mg.MainLeader == mimic,
+                    IsTank = mg != null && mg.MainTank == mimic,
+                    IsAssist = mg != null && mg.MainAssist == mimic,
+                    IsCC = mg != null && mg.MainCC == mimic,
+                    IsPuller = mg != null && mg.MainPuller == mimic,
+                    PreventCombat = mimic.MimicBrain != null && mimic.MimicBrain.PreventCombat,
+                });
+            }
+
+            if (snapshots.Count > 0)
+            {
+                lock (_ownerLock)
+                    _hibernated[player.Client.Account.Name] = snapshots;
+            }
+
+            // Take a copy because Delete mutates _liveByOwner via UnregisterOwned.
+            foreach (MimicNPC mimic in owned.ToList())
+                mimic?.Delete();
+
+            if (log.IsInfoEnabled)
+                log.Info($"Hibernated {snapshots.Count} mimic(s) for account {player.Client.Account.Name}");
+        }
+
+        /// <summary>
+        /// Called when a player enters the world (login, /release-into-world,
+        /// region change). If we have a hibernation snapshot for the account,
+        /// the mimics are respawned next to the player and re-grouped with the
+        /// same roles they had at disconnect.
+        /// </summary>
+        private static void OnPlayerEntered(DOLEvent e, object sender, EventArgs args)
+        {
+            if (sender is not GamePlayer player || player.Client?.Account == null)
+                return;
+
+            List<MimicSnapshot> snapshots;
+
+            lock (_ownerLock)
+            {
+                if (!_hibernated.TryGetValue(player.Client.Account.Name, out snapshots))
+                    return;
+
+                _hibernated.Remove(player.Client.Account.Name);
+            }
+
+            RestoreMimics(player, snapshots);
+        }
+
+        /// <summary>
+        /// Public for /mclear, /mrestore, or to be called manually. Re-spawns
+        /// the given snapshots near the player and assembles them into the
+        /// player's group with the original role layout.
+        /// </summary>
+        public static void RestoreMimics(GamePlayer player, List<MimicSnapshot> snapshots)
+        {
+            if (player == null || snapshots == null || snapshots.Count == 0)
+                return;
+
+            Point3D origin = new(player.X, player.Y, player.Z);
+
+            List<MimicNPC> respawned = new(snapshots.Count);
+
+            foreach (MimicSnapshot s in snapshots)
+            {
+                MimicNPC mimic = GetMimic(s.MimicClass, s.Level, s.Name, s.Gender, s.Spec, s.PreventCombat);
+
+                if (mimic == null)
+                    continue;
+
+                // Spread bots in a ring around the player so they don't all stack.
+                Point3D pos = new(origin.X + Util.Random(-120, 120), origin.Y + Util.Random(-120, 120), origin.Z);
+
+                if (!AddMimicToWorld(mimic, pos, player.CurrentRegionID))
+                {
+                    if (log.IsWarnEnabled)
+                        log.Warn($"Failed to restore mimic {s.Name} for account {player.Client.Account.Name}");
+                    continue;
+                }
+
+                RegisterOwned(player, mimic);
+                respawned.Add(mimic);
+
+                if (mimic.MimicBrain != null)
+                    mimic.MimicBrain.IsHealer = s.IsHealerRole;
+            }
+
+            if (respawned.Count == 0)
+                return;
+
+            // Make sure the player has a group to bind the mimics into.
+            if (player.Group == null)
+            {
+                player.Group = new Group(player);
+                GroupMgr.AddGroup(player.Group);
+                player.Group.AddMember(player);
+            }
+
+            foreach (MimicNPC mimic in respawned)
+            {
+                if (player.Group.MemberCount >= ServerProperties.Properties.GROUP_MAX_MEMBER)
+                    break;
+
+                player.Group.AddMember(mimic);
+            }
+
+            // Restore roles after everyone is in the group (MimicGroup is created on first AddMember).
+            MimicGroup mg = player.Group.MimicGroup;
+            if (mg != null)
+            {
+                foreach (var pair in respawned.Zip(snapshots, (m, s) => (m, s)))
+                {
+                    if (pair.s.IsLeader) mg.SetLeader(pair.m);
+                    if (pair.s.IsAssist) mg.SetMainAssist(pair.m);
+                    if (pair.s.IsTank)   mg.SetMainTank(pair.m);
+                    if (pair.s.IsCC)     mg.SetMainCC(pair.m);
+                    if (pair.s.IsPuller) mg.SetMainPuller(pair.m);
+                }
+            }
+
+            // Snap them into Follow state so they trail the player immediately.
+            foreach (MimicNPC mimic in respawned)
+                mimic.MimicBrain?.FSM.SetCurrentState(eFSMStateType.WAKING_UP);
+
+            if (log.IsInfoEnabled)
+                log.Info($"Restored {respawned.Count} mimic(s) for account {player.Client.Account.Name}");
+        }
+
+        /// <summary>
+        /// Drops every live mimic owned by the player from the world. Used by
+        /// the /mclear command and as a manual reset hatch.
+        /// </summary>
+        public static int ClearOwned(GamePlayer player)
+        {
+            if (player?.Client?.Account == null)
+                return 0;
+
+            IReadOnlyList<MimicNPC> owned = GetLiveOwnedBy(player.Client.Account.Name);
+            int count = 0;
+
+            foreach (MimicNPC mimic in owned.ToList())
+            {
+                if (mimic != null && mimic.ObjectState == GameObject.eObjectState.Active)
+                {
+                    mimic.Delete();
+                    count++;
+                }
+            }
+
+            // Also drop any hibernated snapshot so /mclear is final.
+            lock (_ownerLock)
+                _hibernated.Remove(player.Client.Account.Name);
+
+            return count;
+        }
+
+        internal static void RegisterPlayerLifecycleHandlers()
+        {
+            GameEventMgr.AddHandler(GamePlayerEvent.Quit, OnPlayerDisconnected);
+            GameEventMgr.AddHandler(GamePlayerEvent.Linkdeath, OnPlayerDisconnected);
+            GameEventMgr.AddHandler(GamePlayerEvent.GameEntered, OnPlayerEntered);
+        }
+
+        #endregion Ownership tracking and persistence
     }
 
     #region Equipment
@@ -930,10 +1221,15 @@ namespace DOL.GS.Scripts
         private static readonly int _minEntryLifetime = 300000;  // 5 minutes
         private static readonly int _maxEntryLifetime = 3600000; // 1 hour
 
-        private static readonly int _maxPoolSize = 20;
-        private static readonly int _spawnChance = 25;
+        private static readonly int _maxPoolSize = 60;
+        private static readonly int _spawnChance = 100;
 
         private static readonly float _removeRandom = 0.25f;
+
+        // Minimum entries the player should see when running /mlfg, after the
+        // level filter has been applied. If the filtered pool is below this,
+        // GetLFG synthesizes extra entries at the caller's level range.
+        private const int _minDisplayedNearCaller = 30;
 
         // TODO: Maybe add class weighting
         //public static readonly Dictionary<eMimicClass, int> ClassWeights = new()
@@ -957,10 +1253,21 @@ namespace DOL.GS.Scripts
             int min = Math.Max(1, level - 3);
             int max = Math.Min(50, level + 3);
 
-            return pool.GetCurrentPool()
+            List<MimicLFGEntry> filtered = pool.GetCurrentPool()
                 .Where(e => e.Level >= min && e.Level <= max)
-                .ToList()
-                .AsReadOnly();
+                .ToList();
+
+            if (filtered.Count < _minDisplayedNearCaller)
+            {
+                int missing = _minDisplayedNearCaller - filtered.Count;
+                pool.TopUpForCaller(level, missing);
+
+                filtered = pool.GetCurrentPool()
+                    .Where(e => e.Level >= min && e.Level <= max)
+                    .ToList();
+            }
+
+            return filtered.AsReadOnly();
         }
 
         public static void Remove(eRealm realm, MimicLFGEntry entry)
@@ -1036,6 +1343,46 @@ namespace DOL.GS.Scripts
                     }
 
                     _currentPool = currentEntries.AsReadOnly();
+                }
+                finally
+                {
+                    Monitor.Exit(_lock);
+                }
+            }
+
+            /// <summary>
+            /// Synchronously grows the pool with extra entries inside the caller's
+            /// level window so /mlfg has at least <see cref="_minDisplayedNearCaller"/>
+            /// matches to show. Bypasses the spawn-chance gate; the pool may temporarily
+            /// exceed <see cref="_maxPoolSize"/> until the next periodic rebuild.
+            /// </summary>
+            public void TopUpForCaller(byte callerLevel, int missing)
+            {
+                if (missing <= 0)
+                    return;
+
+                if (!Monitor.TryEnter(_lock))
+                    return;
+
+                try
+                {
+                    long now = GameLoop.GameLoopTime;
+
+                    List<MimicLFGEntry> entries = _currentPool
+                        .Where(e => now < e.RemoveTime)
+                        .ToList();
+
+                    int minLevel = Math.Max(1, callerLevel - 3);
+                    int maxLevel = Math.Min(50, callerLevel + 3);
+
+                    for (int i = 0; i < missing; i++)
+                    {
+                        byte level = (byte)Util.Random(minLevel, maxLevel);
+                        long removeTime = now + Util.Random(_minEntryLifetime, _maxEntryLifetime);
+                        entries.Add(new MimicLFGEntry(MimicManager.GetRandomMimicClass(_realm), level, _realm, removeTime));
+                    }
+
+                    _currentPool = entries.AsReadOnly();
                 }
                 finally
                 {

@@ -817,6 +817,11 @@ namespace DOL.AI.Brain
 
         public void CheckMainCC()
         {
+            // Auto-detect adds: scan the aggro list for hostile mobs that are NOT
+            // the group's focus target and add them to CCTargets so the CC bot
+            // mezzes them. Caps at 2 adds to avoid mezzing the entire pack.
+            PopulateAddsForCC();
+
             if (Body.Group.MimicGroup.CCTargets.Count > 0)
             {
                 if (CheckSpells(eCheckSpellType.CrowdControl))
@@ -826,6 +831,41 @@ namespace DOL.AI.Brain
             if (!Body.InCombat && Body.Group.MimicGroup.CCTargets.Count > 0)
             {
                 Body.Group.MimicGroup.CCTargets = ValidateCCList(Body.Group.MimicGroup.CCTargets);
+            }
+        }
+
+        // Picks up to MAX_ADDS_TO_CC hostile mobs from the aggro list (excluding
+        // the assist's current focus) and pushes them into the group's CC queue.
+        private const int MAX_ADDS_TO_CC = 2;
+        private void PopulateAddsForCC()
+        {
+            MimicGroup mg = Body.Group?.MimicGroup;
+
+            if (mg == null || AggroList.Count == 0)
+                return;
+
+            GameLiving focus = mg.MainAssist?.TargetObject as GameLiving;
+
+            foreach (var kv in AggroList)
+            {
+                if (mg.CCTargets.Count >= MAX_ADDS_TO_CC)
+                    break;
+
+                GameLiving candidate = kv.Key;
+
+                if (candidate == null || !candidate.IsAlive)
+                    continue;
+
+                if (candidate == focus)
+                    continue; // never mez the assist's target
+
+                if (candidate.IsMezzed || candidate.IsRooted)
+                    continue;
+
+                if (mg.CCTargets.Contains(candidate))
+                    continue;
+
+                mg.CCTargets.Add(candidate);
             }
         }
 
@@ -1245,6 +1285,61 @@ namespace DOL.AI.Brain
             return true;
         }
 
+        // Healer survival: when a healer drops below the threshold and has a mob in
+        // melee range, run away from it so the tank/peeler can taunt the add off.
+        // Sets Body.TargetObject to the threat temporarily so the existing flee
+        // routines compute the escape direction correctly.
+        private const int HEALER_FLEE_HEALTH_THRESHOLD = 60;
+        public bool HealerEmergencyFlee()
+        {
+            if (!IsHealer || IsFleeing || TargetFleePosition != null)
+                return false;
+
+            if (Body.HealthPercent >= HEALER_FLEE_HEALTH_THRESHOLD)
+                return false;
+
+            GameLiving threat = null;
+            int closestSqr = int.MaxValue;
+            int meleeReach = Math.Max(150, Body.MeleeAttackRange + 50);
+
+            foreach (var pair in AggroList)
+            {
+                GameLiving candidate = pair.Key;
+
+                if (candidate == null || !candidate.IsAlive)
+                    continue;
+
+                if (!Body.IsWithinRadius(candidate, meleeReach))
+                    continue;
+
+                int dx = candidate.X - Body.X;
+                int dy = candidate.Y - Body.Y;
+                int sqr = dx * dx + dy * dy;
+
+                if (sqr < closestSqr)
+                {
+                    closestSqr = sqr;
+                    threat = candidate;
+                }
+            }
+
+            if (threat == null)
+                return false;
+
+            GameObject savedTarget = Body.TargetObject;
+            Body.TargetObject = threat;
+
+            int fleeDistance = 1500 - Body.GetDistance(threat);
+
+            if (fleeDistance > 0)
+                Flee(fleeDistance);
+
+            // Restore target so heal logic continues to operate on the right entity.
+            Body.TargetObject = savedTarget;
+
+            return IsFleeing;
+        }
+
         private void Flee(int distance)
         {
             TargetFleePosition = GetFleePoint(distance);
@@ -1544,8 +1639,12 @@ namespace DOL.AI.Brain
 
         /// <summary>
         /// Returns the best target to attack from the current aggro list.
-        /// Group-aware: DPS / casters not holding a special role focus the MainAssist's
-        /// current target so the group concentrates damage on one mob at a time.
+        /// Group-aware:
+        ///  - DPS / casters not holding a special role focus the MainAssist's current
+        ///    target so the group concentrates damage on one mob at a time.
+        ///  - DPS waits for the MainTank to actually engage (i.e. the tank's target
+        ///    has aggro on us) before piling on, preventing the classic "casters pull
+        ///    aggro before tank" wipe.
         /// </summary>
         protected virtual GameLiving CalculateNextAttackTarget()
         {
@@ -1563,6 +1662,23 @@ namespace DOL.AI.Brain
                     && assistTarget.ObjectState == GameObject.eObjectState.Active
                     && CanAggroTarget(assistTarget))
                 {
+                    // DPS hold-fire: if the tank exists and hasn't established aggro
+                    // on this target yet, wait. The bot is already targeting via the
+                    // aggro list (we kept it), but returning null here suppresses the
+                    // next attack/cast in AttackMostWanted. This prevents casters from
+                    // pulling aggro before the tank has the mob.
+                    if (mg.MainTank != null
+                        && mg.MainTank != Body
+                        && mg.MainTank.IsAlive
+                        && !TargetHasAggroOnTank(assistTarget, mg.MainTank))
+                    {
+                        // Still record interest so we'll engage as soon as tank locks in.
+                        if (!AggroList.ContainsKey(assistTarget))
+                            AddToAggroList(assistTarget, 1);
+
+                        return null;
+                    }
+
                     // Keep the target in our aggro list so threat tracking stays consistent.
                     if (!AggroList.ContainsKey(assistTarget))
                         AddToAggroList(assistTarget, 1);
@@ -1572,6 +1688,37 @@ namespace DOL.AI.Brain
             }
 
             return CleanUpAggroListAndGetHighestModifiedThreat();
+        }
+
+        /// <summary>
+        /// True if the given target is actively attacking the tank: either the
+        /// target's current TargetObject IS the tank, or the mob has aggro and
+        /// the tank is the highest-threat entry. Used by the DPS hold-fire rule
+        /// so non-tanks wait for proper engagement before piling on.
+        /// </summary>
+        private static bool TargetHasAggroOnTank(GameLiving target, GameLiving tank)
+        {
+            if (target == null || tank == null)
+                return false;
+
+            if (target.TargetObject == tank)
+                return true;
+
+            if (target is GameNPC npc && npc.Brain is StandardMobBrain mb && mb.HasAggro)
+            {
+                // Scan the public ordered aggro list for the tank entry.
+                var ordered = mb.GetOrderedAggroList();
+                if (ordered != null)
+                {
+                    for (int i = 0; i < ordered.Count; i++)
+                    {
+                        if (ordered[i].Living == tank)
+                            return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         public virtual bool CanAggroTarget(GameLiving target)

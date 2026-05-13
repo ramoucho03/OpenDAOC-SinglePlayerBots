@@ -109,3 +109,59 @@ Mimic.Group.PullerUnset:              Je ne pull plus.
 Mimic.Group.CannotCastHeal:           Je ne peux pas lancer de sorts de soin.
 Mimic.Group.HealerOn:                 Je reste en retrait et je me concentre sur les soins.
 Mimic.Group.HealerOff:                J'engage le combat.
+
+# Banter reactif — plusieurs variantes par situation pour eviter la repetition.
+# AwarenessStrategy / SupportStrategy choisissent une variante au hasard a chaque trigger.
+
+# Vie critique (<15%)
+Mimic.Chat.LowHealthCrit.1:           Je suis critique, soigne-moi MAINTENANT !
+Mimic.Chat.LowHealthCrit.2:           Soigne-moi vite ! Je vais tomber !
+Mimic.Chat.LowHealthCrit.3:           Heal ! Je meurs !
+
+# Vie basse (<30%)
+Mimic.Chat.LowHealth.1:               Ma vie est basse.
+Mimic.Chat.LowHealth.2:               Je prends trop de coups.
+Mimic.Chat.LowHealth.3:               Un soin serait bienvenu.
+
+# Mana basse (<20%)
+Mimic.Chat.LowMana.1:                 Je n'ai presque plus de mana.
+Mimic.Chat.LowMana.2:                 Il faut que je m'asseye pour regen.
+Mimic.Chat.LowMana.3:                 Mon pouvoir s'epuise.
+
+# Endurance basse (<20%)
+Mimic.Chat.LowEnd.1:                  Je suis a bout de souffle.
+Mimic.Chat.LowEnd.2:                  Plus d'endurance.
+Mimic.Chat.LowEnd.3:                  Il me faut une pause pour souffler.
+
+# Annonce de pull
+Mimic.Chat.Pulling.1:                 Pull en cours, soyez prets !
+Mimic.Chat.Pulling.2:                 J'amene la cible !
+Mimic.Chat.Pulling.3:                 Pull lance. Tenez-vous prets.
+
+# Tank engage
+Mimic.Chat.TankEngage.1:               Sur moi ! J'ai l'aggro.
+Mimic.Chat.TankEngage.2:               Le mob est sur moi, focus !
+Mimic.Chat.TankEngage.3:               Je tiens. Burn la cible.
+
+# Annonce CC (mez/root pose)
+Mimic.Chat.CcCast.1:                  CC en place, ne touchez pas !
+Mimic.Chat.CcCast.2:                  Mezz pose, laissez-le !
+Mimic.Chat.CcCast.3:                  Cible mezzee, attention aux AoE.
+
+# Membre du groupe mezz
+Mimic.Chat.MemberMezzed.1:            {0} est mezz, cure incoming.
+Mimic.Chat.MemberMezzed.2:            {0} vient de se faire mezz !
+Mimic.Chat.MemberMezzed.3:            Cure mezz sur {0}.
+
+# Membre du groupe critique
+Mimic.Chat.MemberCrit.1:              {0} va tomber, soigne-le !
+Mimic.Chat.MemberCrit.2:              Gros heal sur {0} !
+Mimic.Chat.MemberCrit.3:              {0} a besoin d'aide immediate.
+
+# Banter en pause (hors combat, repose)
+Mimic.Chat.Banter.1:                  Alors, on fait quoi ?
+Mimic.Chat.Banter.2:                  Pret quand tu veux.
+Mimic.Chat.Banter.3:                  Quelqu'un connait un bon camp dans le coin ?
+Mimic.Chat.Banter.4:                  On devrait chasser plus gros.
+Mimic.Chat.Banter.5:                  Ne me fais pas trop attendre.
+Mimic.Chat.Banter.6:                  J'ai besoin d'experience moi.

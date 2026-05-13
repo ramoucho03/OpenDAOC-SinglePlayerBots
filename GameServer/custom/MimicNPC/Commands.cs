@@ -74,6 +74,7 @@ namespace DOL.GS.Scripts
 
                 MimicNPC mimic = MimicManager.GetMimic(mclass, level, spec: mimicSpec);
                 MimicManager.AddMimicToWorld(mimic, position, player.CurrentRegionID);
+                MimicManager.RegisterOwned(player, mimic);
 
                 if (invite && GameServer.ServerRules.IsSameRealm(player, mimic, true))
                 {
@@ -94,139 +95,105 @@ namespace DOL.GS.Scripts
     [CmdAttribute(
        "&mgroup",
        ePrivLevel.Player,
-       "/mgroup royaume taille niveau preventCombat - Invoque un groupe de mimics d'un royaume donné.")]
+       "/mgroup royaume [taille] [niveau] [preventCombat] - Invoque un groupe equilibre de mimics du royaume choisi (tank/heal/cc/dps).",
+       "Si vous etes en groupe, ils vous y rejoignent ; sinon un nouveau groupe est cree autour de vous.")]
     public class MimicSummonMimicGroupCommandHandler : AbstractCommandHandler, ICommandHandler
     {
         public void OnCommand(GameClient client, string[] args)
         {
-            if (args.Length >= 2)
+            if (args.Length < 2)
+                return;
+
+            args[1] = args[1].ToLower();
+
+            eRealm realm = args[1] switch
             {
-                args[1] = args[1].ToLower();
+                "alb" or "albion"   => eRealm.Albion,
+                "hib" or "hibernia" => eRealm.Hibernia,
+                "mid" or "midgard"  => eRealm.Midgard,
+                _ => eRealm.None,
+            };
 
-                byte groupSize = 8;
-                if (args.Length >= 3)
-                {
-                    if (!byte.TryParse(args[2], out groupSize) || groupSize < 1 || groupSize > 8)
-                        groupSize = 8;
-                }
-
-                byte level;
-                if (args.Length >= 4)
-                {
-                    if (!byte.TryParse(args[3], out level) || level < 1 || level > 50)
-                        level = 1;
-                }
-                else
-                    level = client.Player.Level;
-
-                bool preventCombat = false;
-                if (args.Length >= 5)
-                    bool.TryParse(args[4], out preventCombat);
-
-                Point3D position = new Point3D(client.Player.X, client.Player.Y, client.Player.Z);
-
-                if (client.Player.GroundTarget != null)
-                {
-                    Point2D playerPos = new Point2D(client.Player.X, client.Player.Y);
-
-                    if (client.Player.GroundTarget.GetDistance(playerPos) < 5000)
-                        position = new Point3D(client.Player.GroundTarget);
-                }
-
-                if (position != null)
-                {
-                    List<GameLiving> groupMembers = new List<GameLiving>();
-                    MimicNPC mimic;
-
-                    switch (args[1])
-                    {
-                        case "alb":
-                        case "albion":
-                        {
-                            for (int i = 0; i < groupSize; i++)
-                            {
-                                int randomX = Util.Random(-100, 100);
-                                int randomY = Util.Random(-100, 100);
-
-                                position.X += randomX;
-                                position.Y += randomY;
-
-                                mimic = MimicManager.GetMimic(MimicManager.GetRandomMimicClass(eRealm.Albion), level, preventCombat: preventCombat);
-                                MimicManager.AddMimicToWorld(mimic, position, client.Player.CurrentRegionID);
-
-                                if (mimic != null)
-                                    groupMembers.Add(mimic);
-                            }
-
-                            break;
-                        }
-
-                        case "hib":
-                        case "hibernia":
-                        {
-                            for (int i = 0; i < groupSize; i++)
-                            {
-                                int randomX = Util.Random(-100, 100);
-                                int randomY = Util.Random(-100, 100);
-
-                                position.X += randomX;
-                                position.Y += randomY;
-
-                                mimic = MimicManager.GetMimic(MimicManager.GetRandomMimicClass(eRealm.Hibernia), level, preventCombat: preventCombat);
-                                MimicManager.AddMimicToWorld(mimic, position, client.Player.CurrentRegionID);
-
-                                if (mimic != null)
-                                    groupMembers.Add(mimic);
-                            }
-
-                            break;
-                        }
-
-                        case "mid":
-                        case "midgard":
-                        {
-                            for (int i = 0; i < groupSize; i++)
-                            {
-                                int randomX = Util.Random(-100, 100);
-                                int randomY = Util.Random(-100, 100);
-
-                                position.X += randomX;
-                                position.Y += randomY;
-
-                                mimic = MimicManager.GetMimic(MimicManager.GetRandomMimicClass(eRealm.Midgard), level, preventCombat: preventCombat);
-                                MimicManager.AddMimicToWorld(mimic, position, client.Player.CurrentRegionID);
-
-                                if (mimic != null)
-                                    groupMembers.Add(mimic);
-                            }
-
-                            break;
-                        }
-
-                        default: break;
-                    }
-
-                    if (groupMembers.Count > 0)
-                    {
-                        if (groupMembers[0].Group == null)
-                        {
-                            groupMembers[0].Group = new Group(groupMembers[0]);
-                            groupMembers[0].Group.AddMember(groupMembers[0]);
-                        }
-
-                        foreach (GameLiving living in groupMembers)
-                        {
-                            if (living.Group == null)
-                            {
-                                groupMembers[0].Group.AddMember(living);
-
-                                MimicBrain brain = ((MimicNPC)living).Brain as MimicBrain;
-                                brain.FSM.SetCurrentState(eFSMStateType.WAKING_UP);
-                            }
-                        }
-                    }
-                }
+            if (realm == eRealm.None)
+            {
+                client.Player.Out.SendMessage("Royaume invalide. Utilisez alb, hib ou mid.", eChatType.CT_Say, eChatLoc.CL_ChatWindow);
+                return;
             }
+
+            byte groupSize = 8;
+            if (args.Length >= 3 && (!byte.TryParse(args[2], out groupSize) || groupSize < 1 || groupSize > 8))
+                groupSize = 8;
+
+            byte level;
+            if (args.Length >= 4)
+            {
+                if (!byte.TryParse(args[3], out level) || level < 1 || level > 50)
+                    level = 1;
+            }
+            else
+                level = client.Player.Level;
+
+            bool preventCombat = false;
+            if (args.Length >= 5)
+                bool.TryParse(args[4], out preventCombat);
+
+            Point3D origin = new(client.Player.X, client.Player.Y, client.Player.Z);
+
+            if (client.Player.GroundTarget != null)
+            {
+                Point2D playerPos = new(client.Player.X, client.Player.Y);
+
+                if (client.Player.GroundTarget.GetDistance(playerPos) < 5000)
+                    origin = new Point3D(client.Player.GroundTarget);
+            }
+
+            // Build a balanced composition: tank, healer, support/CC, then fill with DPS/casters.
+            // The template is sized to groupSize and respects realm class availability.
+            List<eMimicClass> composition = MimicGroupComposer.BuildComposition(realm, groupSize);
+
+            List<MimicNPC> created = new();
+
+            foreach (eMimicClass cls in composition)
+            {
+                // Disperse around the origin so they don't stack on the same tile.
+                Point3D pos = new(origin.X + Util.Random(-120, 120), origin.Y + Util.Random(-120, 120), origin.Z);
+
+                MimicNPC mimic = MimicManager.GetMimic(cls, level, preventCombat: preventCombat);
+
+                if (mimic == null)
+                    continue;
+
+                if (!MimicManager.AddMimicToWorld(mimic, pos, client.Player.CurrentRegionID))
+                    continue;
+
+                MimicManager.RegisterOwned(client.Player, mimic);
+                created.Add(mimic);
+            }
+
+            if (created.Count == 0)
+                return;
+
+            // Join the player's group if they have one and there's room; otherwise create a fresh bot group.
+            if (client.Player.Group != null && client.Player.Group.MemberCount + created.Count <= ServerProperties.Properties.GROUP_MAX_MEMBER)
+            {
+                foreach (MimicNPC m in created)
+                    client.Player.Group.AddMember(m);
+            }
+            else
+            {
+                created[0].Group = new Group(created[0]);
+                GroupMgr.AddGroup(created[0].Group);
+                created[0].Group.AddMember(created[0]);
+
+                for (int i = 1; i < created.Count; i++)
+                    created[0].Group.AddMember(created[i]);
+            }
+
+            // Auto-assign roles based on the class roles we just selected.
+            MimicGroupComposer.AutoAssignRoles(created);
+
+            foreach (MimicNPC m in created)
+                m.MimicBrain?.FSM.SetCurrentState(eFSMStateType.WAKING_UP);
         }
     }
 
@@ -591,6 +558,7 @@ namespace DOL.GS.Scripts
                         {
                             MimicNPC mimic = MimicManager.GetMimic(entry.MimicClass, entry.Level, entry.Name, entry.Gender);
                             MimicManager.AddMimicToWorld(mimic, new Point3D(player.X, player.Y, player.Z), player.CurrentRegionID);
+                            MimicManager.RegisterOwned(player, mimic);
 
                             player.Group.AddMember(mimic);
 
@@ -1228,6 +1196,25 @@ namespace DOL.GS.Scripts
             }
 
             return list;
+        }
+    }
+
+    [CmdAttribute(
+        "&mclear",
+        ePrivLevel.Player,
+        "/mclear - Supprime tous les mimics que vous possedez (et efface la sauvegarde de reattachement).")]
+    public class MimicClearCommandHandler : AbstractCommandHandler, ICommandHandler
+    {
+        public void OnCommand(GameClient client, string[] args)
+        {
+            GamePlayer player = client.Player;
+
+            if (player == null)
+                return;
+
+            int removed = MimicManager.ClearOwned(player);
+
+            player.Out.SendMessage($"Mimics supprimes : {removed}.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
         }
     }
 }

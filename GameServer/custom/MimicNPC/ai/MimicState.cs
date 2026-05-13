@@ -32,6 +32,41 @@ namespace DOL.AI.Brain
 
         public override void Exit()
         { }
+
+        /// <summary>
+        /// Synchronises the bot's sprint state with its leader so the bot can
+        /// keep up when the player presses Sprint. Only follows player leaders
+        /// (bot leaders never sprint by themselves). Skips when out of combat
+        /// is irrelevant — sprint matters for any kind of movement.
+        /// </summary>
+        protected static void MirrorLeaderSprint(MimicBrain brain, GameLiving leader)
+        {
+            if (brain?.MimicBody == null)
+                return;
+
+            MimicNPC body = brain.MimicBody;
+
+            // Only mirror a real player's sprint. NPC leaders never sprint manually.
+            if (leader is not GamePlayer playerLeader)
+            {
+                if (body.IsSprinting)
+                    body.Sprint(false);
+                return;
+            }
+
+            bool leaderSprinting = playerLeader.IsSprinting;
+            bool botSprinting = body.IsSprinting;
+
+            if (leaderSprinting && !botSprinting)
+            {
+                // Sprint(true) already checks endurance, alive, and stealth.
+                body.Sprint(true);
+            }
+            else if (!leaderSprinting && botSprinting)
+            {
+                body.Sprint(false);
+            }
+        }
     }
 
     public class MimicState_WakingUp : MimicState
@@ -168,6 +203,9 @@ namespace DOL.AI.Brain
 
             if (_leader == null || (_leader != null && _leader.ObjectState != GameObject.eObjectState.Active || !_brain.Body.Group.IsInTheGroup(_leader)))
                 _leader = _brain.Body.Group.LivingLeader;
+
+            // Mirror the leader's sprint state so bots can keep up when the player presses Sprint.
+            MirrorLeaderSprint(_brain, _leader);
 
             if (_followDistance != _targetFollowDistance)
             {
@@ -321,7 +359,11 @@ namespace DOL.AI.Brain
                 _brain.CheckMainCC();
 
             if (_brain.IsHealer)
+            {
+                // Healer survival: if a mob got past the tank, run away before healing.
+                _brain.HealerEmergencyFlee();
                 _brain.CheckHeals();
+            }
             else
                 _brain.AttackMostWanted();
 

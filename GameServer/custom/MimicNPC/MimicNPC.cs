@@ -81,6 +81,14 @@ namespace DOL.GS.Scripts
         public MimicSpec MimicSpec = new MimicSpec();
         public int Kills;
 
+        /// <summary>
+        /// Account name of the player who created/owns this bot. Used by
+        /// MimicManager to hibernate the bot when the owner disconnects and
+        /// restore it on reconnect. Null for bots spawned by world systems
+        /// (battlegrounds, spawners) which have no individual owner.
+        /// </summary>
+        public string OwnerAccount { get; set; }
+
         private MimicBrain m_mimicBrain;
 
         public MimicBrain MimicBrain
@@ -2137,6 +2145,7 @@ namespace DOL.GS.Scripts
         public override void Delete()
         {
             Group?.RemoveMember(this);
+            MimicManager.UnregisterOwned(this);
             base.Delete();
         }
 
@@ -6395,8 +6404,115 @@ namespace DOL.GS.Scripts
         /// Called when the player dies
         /// </summary>
         /// <param name="killer">the killer</param>
+        // ===== Rez-wait state =====
+        // When a mimic dies in a player's group, we keep its "corpse" in the world
+        // for a short window so a Cleric/Druid/Healer/Friar/Warden can resurrect it.
+        // The bot stays in the group during that window. If no rez arrives in time,
+        // the corpse is removed (Delete) and the bot leaves the group.
+
+        private const int REZ_WAIT_MS = 60_000;          // Window when a rezzer IS available in the group.
+        private const int REZ_WAIT_NO_HEALER_MS = 5_000; // Quick release window when no group member can rez.
+
+        private ECSGameTimer _rezWaitTimer;
+        private bool _inRezWait;
+
+        public bool InRezWait => _inRezWait;
+
+        /// <summary>
+        /// True if any living member of the bot's current group has a Resurrect-type spell
+        /// available. Used to decide whether the corpse should linger waiting for rez,
+        /// or release immediately because no rez is possible.
+        /// </summary>
+        private bool GroupHasRezzer()
+        {
+            if (Group == null)
+                return false;
+
+            foreach (GameLiving member in Group.GetMembersInTheGroup())
+            {
+                if (member == null || !member.IsAlive || member == this)
+                    continue;
+
+                // Real player: scan their spell lines for any Resurrect spell.
+                if (member is GamePlayer p)
+                {
+                    foreach (var line in p.GetSpellLines())
+                    {
+                        foreach (Spell sp in SkillBase.GetSpellList(line.KeyName))
+                        {
+                            if (sp.SpellType == eSpellType.Resurrect)
+                                return true;
+                        }
+                    }
+                }
+
+                // Other mimic: scan its misc / heal spells (Resurrect is classified as misc).
+                if (member is MimicNPC m)
+                {
+                    if (m.MiscSpells != null && m.MiscSpells.Any(s => s != null && s.SpellType == eSpellType.Resurrect))
+                        return true;
+                    if (m.InstantMiscSpells != null && m.InstantMiscSpells.Any(s => s != null && s.SpellType == eSpellType.Resurrect))
+                        return true;
+                    if (m.Spells != null && m.Spells.Any(s => s != null && s.SpellType == eSpellType.Resurrect))
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Called by ResurrectSpellHandler when a rez spell lands on this bot.
+        /// Restores health/mana/end and pulls the bot back into the world fully alive.
+        /// </summary>
+        public void OnResurrected(GameLiving rezzer, Spell rezSpell)
+        {
+            if (IsAlive)
+                return;
+
+            _rezWaitTimer?.Stop();
+            _rezWaitTimer = null;
+            _inRezWait = false;
+
+            // Restore vitals per the rez spell's percentages.
+            int healthPct = rezSpell != null && rezSpell.ResurrectHealth > 0 ? rezSpell.ResurrectHealth : 50;
+            int manaPct = rezSpell != null && rezSpell.ResurrectMana > 0 ? rezSpell.ResurrectMana : 50;
+
+            Health = Math.Max(1, MaxHealth * healthPct / 100);
+            Mana = MaxMana * manaPct / 100;
+            Endurance = MaxEndurance * manaPct / 100;
+
+            // Move next to the rezzer so we don't revive in the middle of mobs.
+            if (rezzer != null && rezzer.CurrentRegionID == CurrentRegionID)
+                MoveTo(rezzer.CurrentRegionID, rezzer.X, rezzer.Y, rezzer.Z, rezzer.Heading);
+
+            // Restart regen + brain.
+            StartHealthRegeneration();
+            StartPowerRegeneration();
+            StartEnduranceRegeneration();
+            MimicBrain?.FSM.SetCurrentState(eFSMStateType.WAKING_UP);
+
+            if (rezzer is GamePlayer rezzerPlayer)
+                rezzerPlayer.Out.SendMessage($"You have resurrected {GetName(0, false)}.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+        }
+
+        private int OnRezWaitExpired(ECSGameTimer timer)
+        {
+            if (!_inRezWait)
+                return 0;
+
+            _inRezWait = false;
+            _rezWaitTimer = null;
+
+            // Release: now actually leave the group and remove from world.
+            Group?.RemoveMember(this);
+            Delete();
+
+            return 0;
+        }
+
         public override void ProcessDeath(GameObject killer)
-        {    
+        {
             // Ambient trigger upon killing player
             if (killer is GameNPC && killer is not MimicNPC)
                 (killer as GameNPC).FireAmbientSentence(GameNPC.eAmbientTrigger.killing, killer as GameLiving);
@@ -6493,8 +6609,53 @@ namespace DOL.GS.Scripts
             IsSitting = false;
             IsSwimming = false;
 
-            // then buffs drop messages
-            base.ProcessDeath(killer);
+            // Decide whether this bot should linger as a rez-able corpse instead of being
+            // immediately removed. Conditions: owned by a player AND currently grouped.
+            // Loose/ungrouped/world-spawned mimics fall through to the standard cleanup.
+            bool enterRezWait = !string.IsNullOrEmpty(OwnerAccount) && Group != null;
+
+            if (enterRezWait)
+            {
+                // Inline GameLiving.ProcessDeath body so we get the proper death teardown
+                // WITHOUT going through GameNPC.ProcessDeath (which would Group.RemoveMember
+                // and Delete the bot, defeating the whole rez window).
+                Brain?.KillFSM();
+                StopMoving();
+                CurrentPathPoint = null;
+
+                attackComponent.StopAttack();
+                attackComponent.AttackerTracker.Clear();
+
+                rangeAttackComponent.AutoFireTarget = null;
+                TargetObject = null;
+
+                EffectList.CancelAll();
+                effectListComponent.CancelAll();
+
+                StopHealthRegeneration();
+                StopPowerRegeneration();
+                StopEnduranceRegeneration();
+
+                Health = 0;
+
+                LastAttackedByEnemyTickPvE = 0;
+                LastAttackedByEnemyTickPvP = 0;
+
+                Notify(GameLivingEvent.Dying, this, new DyingEventArgs(killer));
+
+                // Choose the rez window length. With a rezzer present we wait the full
+                // minute; otherwise release the corpse fast so the group can /assist again.
+                int waitMs = GroupHasRezzer() ? REZ_WAIT_MS : REZ_WAIT_NO_HEALER_MS;
+
+                _inRezWait = true;
+                _rezWaitTimer = new ECSGameTimer(this, OnRezWaitExpired);
+                _rezWaitTimer.Start(waitMs);
+            }
+            else
+            {
+                // No owner or no group: original behavior — leaves the group, deletes the corpse.
+                base.ProcessDeath(killer);
+            }
 
             // sent after buffs drop
             // GamePlayer.Die.CorpseLies:		{0} just died. {1} corpse lies on the ground.
