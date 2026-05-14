@@ -591,8 +591,14 @@ namespace DOL.GS.Scripts
                 }
             }
 
-            player.Out.SendMessage(message, eChatType.CT_System, eChatLoc.CL_PopupWindow);
+            // CT_Say (not CT_System) + CL_PopupWindow is the chat type that lets the
+            // DAoC client treat [bracketed] text as clickable links that type into chat.
+            player.Out.SendMessage(message, eChatType.CT_Say, eChatLoc.CL_PopupWindow);
         }
+
+        // Cap the rendered list to stay under the 2048-byte popup packet limit.
+        // Each line is ~45 chars, header/footer ~120, so ~30 entries is safe.
+        private const int MAX_DISPLAYED = 30;
 
         private string BuildMessage(IReadOnlyList<MimicLFGManager.MimicLFGEntry> entries, bool invalid = false)
         {
@@ -601,7 +607,7 @@ namespace DOL.GS.Scripts
             // bracketed text re-invokes /mlfg with the index, recruiting that bot.
             System.Text.StringBuilder sb = new();
             sb.AppendLine("------- Mimics LFG -------");
-            sb.AppendLine("Clique sur un [/mlfg N] pour recruter ce mimic.");
+            sb.AppendLine("Tape /mlfg N (N = numero ci-dessous) pour recruter.");
             sb.AppendLine();
 
             if (invalid)
@@ -617,12 +623,20 @@ namespace DOL.GS.Scripts
             }
 
             int index = 1;
+            int shown = 0;
             foreach (var entry in entries)
             {
+                if (shown >= MAX_DISPLAYED)
+                    break;
+
                 string cls = Enum.GetName(typeof(eMimicClass), entry.MimicClass);
                 sb.AppendLine($"[/mlfg {index}]  {entry.Name,-20} {cls,-14} lvl {entry.Level}");
                 index++;
+                shown++;
             }
+
+            if (entries.Count > MAX_DISPLAYED)
+                sb.AppendLine($"... ({entries.Count - MAX_DISPLAYED} autres mimics non affiches)");
 
             return sb.ToString();
         }
@@ -1283,7 +1297,9 @@ namespace DOL.GS.Scripts
                     break;
             }
 
-            player.Out.SendMessage(sb.ToString(), eChatType.CT_System, eChatLoc.CL_PopupWindow);
+            // CT_Say + CL_PopupWindow lets the DAoC client treat [bracketed] text as
+            // clickable links that type the bracket contents into chat input.
+            player.Out.SendMessage(sb.ToString(), eChatType.CT_Say, eChatLoc.CL_PopupWindow);
         }
 
         // ----- Hub -----
