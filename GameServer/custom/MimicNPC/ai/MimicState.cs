@@ -622,6 +622,14 @@ namespace DOL.AI.Brain
             if (body == null || body.Group == null)
                 return;
 
+            // Need an actual camp point + we must be close to it. Without this
+            // a stray bot far from camp would deploy fires across the zone.
+            Point3D camp = body.Group.MimicGroup?.CampPoint;
+            if (camp == null)
+                return;
+            if (!body.IsWithinRadius(camp, 1500))
+                return;
+
             // Already a fire alive somewhere in the group → nothing to do.
             foreach (GameLiving gl in body.Group.GetMembersInTheGroup())
             {
@@ -629,12 +637,9 @@ namespace DOL.AI.Brain
                     return;
             }
 
-            // Only sitting bots near the camp deploy — avoids fire spawning
-            // mid-run if a member is still pathing in to camp.
-            if (!body.IsSitting)
-                return;
-
-            body.DeployCampFire();
+            // Drop the fire at the camp point itself so it doesn't shift each
+            // time a different bot becomes the deploy candidate.
+            body.DeployCampFireAt(camp);
         }
     }
 

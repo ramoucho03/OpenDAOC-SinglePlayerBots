@@ -2369,28 +2369,42 @@ namespace DOL.GS.Scripts
         /// `mimic_campfire_model` server property (defaults to a brazier).
         /// Idempotent.
         /// </summary>
-        public void DeployCampFire()
+        public void DeployCampFire() => DeployCampFireAt(null);
+
+        /// <summary>
+        /// Drops the camp fire at the given world point if supplied, otherwise
+        /// at the bot's own current position. Idempotent.
+        /// </summary>
+        public void DeployCampFireAt(Point3D origin)
         {
             if (HasActiveCampFire)
                 return;
 
             ushort model = (ushort)MimicConfig.MIMIC_CAMPFIRE_MODEL;
-            if (model == 0) model = 2603; // fallback: small brazier
+            if (model == 0) model = 2587; // bonfire (housing item)
+
+            int fx = origin?.X ?? X;
+            int fy = origin?.Y ?? Y;
+            int fz = origin?.Z ?? Z;
 
             GameStaticItem fire = new()
             {
                 Name = "Camp Fire",
                 Model = model,
                 CurrentRegionID = CurrentRegionID,
-                X = X,
-                Y = Y,
-                Z = Z,
+                X = fx,
+                Y = fy,
+                Z = fz,
                 Heading = Heading,
                 Realm = eRealm.None,
             };
 
             if (!fire.AddToWorld())
+            {
+                log.WarnFormat("Failed to add campfire (model {0}) for {1} at ({2},{3},{4} in region {5})",
+                    model, Name, fx, fy, fz, CurrentRegionID);
                 return;
+            }
 
             _campFire = fire;
 
