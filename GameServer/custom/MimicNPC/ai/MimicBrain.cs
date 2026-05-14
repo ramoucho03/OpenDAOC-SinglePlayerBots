@@ -1133,9 +1133,17 @@ namespace DOL.AI.Brain
 
         public long GetMaxAggro()
         {
-            return AggroList.IsEmpty
-                ? 0
-                : AggroList.OrderByDescending(x => x.Value.Effective).Select(x => (x.Key, x.Value.Effective)).ToList().First().Effective;
+            if (AggroList.IsEmpty)
+                return 0;
+
+            long max = 0;
+            foreach (var kv in AggroList)
+            {
+                long eff = kv.Value.Effective;
+                if (eff > max)
+                    max = eff;
+            }
+            return max;
         }
 
         public List<OrderedAggroListElement> GetOrderedAggroList()

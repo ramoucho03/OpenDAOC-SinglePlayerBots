@@ -10,6 +10,92 @@ using System.Linq;
 
 namespace DOL.GS.Scripts
 {
+    /// <summary>
+    /// Helpers shared by clickable-popup commands (/mmenu, /mlfg). The DAoC
+    /// client only treats popup `[bracketed]` text as clickable when the
+    /// player has an NPC targeted — clicks become a /whisper to that NPC.
+    /// To make our popup links clickable we make sure a mimic owned by or
+    /// grouped with the caller is targeted before we send the popup, then
+    /// MimicNPC.WhisperReceive forwards `/cmd` whispers to ScriptMgr.HandleCommand.
+    /// </summary>
+    internal static class MimicPopupHelper
+    {
+        /// <summary>
+        /// Returns a mimic to be targeted by the player so popup brackets are
+        /// clickable. If the player already has a mimic targeted, that one is
+        /// returned. Otherwise we pick the closest owned/grouped mimic in the
+        /// same region and send a target-change packet so the client retargets.
+        /// Returns null if no mimic is available.
+        /// </summary>
+        public static MimicNPC EnsureMimicTargeted(GamePlayer player)
+        {
+            if (player == null)
+                return null;
+
+            // Already targeting a mimic? Use it.
+            if (player.TargetObject is MimicNPC current
+                && current.IsAlive
+                && current.ObjectState == GameObject.eObjectState.Active)
+                return current;
+
+            MimicNPC chosen = null;
+            int bestDistSq = int.MaxValue;
+
+            // Prefer mimics owned by this player (account-scoped).
+            string accountName = player.Client?.Account?.Name;
+            if (!string.IsNullOrEmpty(accountName))
+            {
+                var owned = MimicManager.GetLiveOwnedBy(accountName);
+                foreach (MimicNPC m in owned)
+                {
+                    if (m == null || !m.IsAlive || m.ObjectState != GameObject.eObjectState.Active)
+                        continue;
+                    if (m.CurrentRegionID != player.CurrentRegionID)
+                        continue;
+
+                    int dx = m.X - player.X;
+                    int dy = m.Y - player.Y;
+                    int d2 = dx * dx + dy * dy;
+                    if (d2 < bestDistSq)
+                    {
+                        bestDistSq = d2;
+                        chosen = m;
+                    }
+                }
+            }
+
+            // Fall back to any grouped mimic if no owned one is in range.
+            if (chosen == null && player.Group != null)
+            {
+                foreach (GameLiving gl in player.Group.GetMembersInTheGroup())
+                {
+                    if (gl is MimicNPC m
+                        && m.IsAlive
+                        && m.ObjectState == GameObject.eObjectState.Active
+                        && m.CurrentRegionID == player.CurrentRegionID)
+                    {
+                        int dx = m.X - player.X;
+                        int dy = m.Y - player.Y;
+                        int d2 = dx * dx + dy * dy;
+                        if (d2 < bestDistSq)
+                        {
+                            bestDistSq = d2;
+                            chosen = m;
+                        }
+                    }
+                }
+            }
+
+            if (chosen != null)
+            {
+                player.TargetObject = chosen;
+                player.Out.SendChangeTarget(chosen);
+            }
+
+            return chosen;
+        }
+    }
+
     #region Admin/GM/Debug/Cheats
 
     [CmdAttribute(
@@ -591,8 +677,16 @@ namespace DOL.GS.Scripts
                 }
             }
 
-            // CT_Say (not CT_System) + CL_PopupWindow is the chat type that lets the
-            // DAoC client treat [bracketed] text as clickable links that type into chat.
+            // For the `[/mlfg N]` brackets to be clickable, the player must have an NPC
+            // targeted — clicks become whispers to it. Target a mimic so MimicNPC's
+            // WhisperReceive forwards the `/mlfg N` whisper as a command. Without an
+            // owned mimic, fall back to a static note explaining how to use the list.
+            MimicNPC contextMimic = MimicPopupHelper.EnsureMimicTargeted(player);
+            if (contextMimic == null)
+                message += "\n(Astuce : cree d'abord un mimic via /mcreate pour rendre la liste cliquable.)";
+
+            // CT_Say + CL_PopupWindow makes [bracketed] text a clickable /whisper to
+            // the targeted NPC (the mimic chosen above).
             player.Out.SendMessage(message, eChatType.CT_Say, eChatLoc.CL_PopupWindow);
         }
 
@@ -1297,8 +1391,21 @@ namespace DOL.GS.Scripts
                     break;
             }
 
+            // Popup brackets are only clickable when the player has an NPC targeted —
+            // clicks become /whispers to it. Target one of the player's mimics so
+            // clicks route through MimicNPC.WhisperReceive, which forwards `/cmd`
+            // strings to ScriptMgr.HandleCommand.
+            MimicNPC contextMimic = MimicPopupHelper.EnsureMimicTargeted(player);
+            if (contextMimic == null)
+            {
+                sb.AppendLine();
+                sb.AppendLine("(Astuce : cree un mimic via /mcreate ou /mgroup pour rendre");
+                sb.AppendLine(" les liens du menu cliquables. Sans mimic cible, il faut");
+                sb.AppendLine(" taper la commande manuellement.)");
+            }
+
             // CT_Say + CL_PopupWindow lets the DAoC client treat [bracketed] text as
-            // clickable links that type the bracket contents into chat input.
+            // clickable links that whisper the bracket contents to the targeted NPC.
             player.Out.SendMessage(sb.ToString(), eChatType.CT_Say, eChatLoc.CL_PopupWindow);
         }
 

@@ -482,6 +482,18 @@ namespace DOL.GS.Scripts
             if (player == null)
                 return false;
 
+            // Routing for clickable popup brackets sent by /mmenu, /mlfg, etc.
+            // When a player clicks `[/cmd args]` in a popup with this mimic targeted,
+            // the client whispers the bracket contents to us. We forward the whisper
+            // straight into the command pipeline on the player's behalf so the click
+            // executes the command immediately.
+            if (!string.IsNullOrEmpty(str) && str.Length > 1 && str[0] == '/')
+            {
+                if (player.Client != null)
+                    ScriptMgr.HandleCommand(player.Client, str);
+                return true;
+            }
+
             string lang = player.Client?.Account?.Language;
             string message = string.Empty;
             int itemIndex;
