@@ -182,7 +182,25 @@ namespace DOL.AI.Brain
         {
             if (FSM.GetState(eFSMStateType.CAMP) == FSM.GetCurrentState())
             {
-                if (!Body.IsWithinRadius(ad.Attacker, AggroRange))
+                // Camp-mode aggro filter. The old logic ignored any attacker
+                // beyond AggroRange (250/550), which silenced the camp when the
+                // puller was hit far away — the rest of the group only woke up
+                // once the puller actually reached the line. New behaviour:
+                //   • Always propagate when the attacker is the puller's
+                //     IncomingPullTarget — the camp expects this mob.
+                //   • Always propagate when the victim is the puller — pullers
+                //     come back wounded all the time and need backup.
+                //   • Otherwise apply the AggroRange filter as before.
+                MimicGroup mg = Body.Group?.MimicGroup;
+                bool isIncomingPull = mg != null
+                    && mg.IncomingPullTarget == ad.Attacker;
+                bool victimIsPuller = mg != null
+                    && mg.MainPuller != null
+                    && ad.Target == mg.MainPuller;
+
+                if (!isIncomingPull
+                    && !victimIsPuller
+                    && !Body.IsWithinRadius(ad.Attacker, AggroRange))
                     return;
             }
 
@@ -680,8 +698,37 @@ namespace DOL.AI.Brain
         // chasing us). Used to gate chain pulls against the group's budget.
         private int _chainPullCount;
 
+        // Time (GameLoopTime ms) the current pull shot was fired. Used as a
+        // watchdog so a pull that never resolves doesn't permanently brick
+        // the puller (e.g. LoS lost mid-flight, mob despawned, path blocked).
+        private long _pullStartTick;
+
+        // Time the mana throttle activated. If it stays sticky for more than
+        // MAX_MANA_THROTTLE_MS we forcibly release it: the group is either
+        // stuck (a dead caster the throttle is waiting on) or the heuristic
+        // is wrong, and either way we want farming to resume.
+        private long _manaThrottleSinceTick;
+        private const int MAX_MANA_THROTTLE_MS = 90_000;
+
+        // Hard cap on how long a single pull can be in flight. After this we
+        // assume the pull is lost (mob walked away, fell through geometry,
+        // despawn) and reset the puller state so the next CheckPuller picks
+        // a fresh target.
+        private const int PULL_TIMEOUT_MS = 12_000;
+
         public void CheckPuller()
         {
+            // Pre-flight: a pull might have started but already timed out. If
+            // so, recover BEFORE the IsPulling guard takes the early-return
+            // path; otherwise we'd loop forever waiting on a dead pull.
+            if (IsPulling
+                && _pullStartTick > 0
+                && GameLoop.GameLoopTime - _pullStartTick > PULL_TIMEOUT_MS)
+            {
+                ForcePullerRecovery();
+                return;
+            }
+
             if (IsPulling && Body.TargetObject != null && Body.TargetObject.ObjectState == GameObject.eObjectState.Active)
             {
                 if (CheckResetPuller())
@@ -732,6 +779,24 @@ namespace DOL.AI.Brain
         }
 
         /// <summary>
+        /// Hard-recover the puller from a stalled pull (mob unreachable, lost
+        /// LoS, despawned). Used both by the in-CheckPuller timeout and the
+        /// camp-state watchdog when the Pulling phase exceeds its budget.
+        /// </summary>
+        public void ForcePullerRecovery()
+        {
+            Body.StopAttack();
+            Body.StopCurrentSpellcast();
+            Body.StopFollowing();
+            ClearAggroList();
+            ResetPullerState();
+            MimicGroup mg = Body.Group?.MimicGroup;
+            if (mg != null)
+                mg.IncomingPullTarget = null;
+            Body.ReturnToSpawnPoint(Body.MaxSpeed);
+        }
+
+        /// <summary>
         /// Fire a second/third/etc. arrow while running back from the first pull,
         /// up to the group's pull budget. Archer-only — caster pull spells have
         /// cast time + mana cost and don't chain cleanly. Returns true if a
@@ -769,6 +834,10 @@ namespace DOL.AI.Brain
             Body.StopFollowing();
             Body.StartAttack(chainTarget);
             IsPulling = true;
+            _pullStartTick = GameLoop.GameLoopTime;
+            MimicGroup mgChain = Body.Group?.MimicGroup;
+            if (mgChain != null)
+                mgChain.IncomingPullTarget = chainTarget;
             return true;
         }
 
@@ -779,12 +848,18 @@ namespace DOL.AI.Brain
 
         public bool CheckDelayPull()
         {
-            // Old pull target — only block if it's still ALIVE. Previously we
-            // checked ObjectState alone, which stayed Active even for corpses
-            // long enough to permanently brick the puller after one fight.
+            // Old pull target — only block if it's still ALIVE and still in
+            // combat (someone is fighting it). The previous "alive + active"
+            // gate would block re-pulling forever when a mob was alive in the
+            // world but unattached (e.g. the puller's shot interrupted, mob
+            // walked off, never aggro'd). We now require it to be in combat
+            // with the group to count as "still in flight".
             if (LastTargetObject is GameLiving lt
                 && lt.IsAlive
-                && lt.ObjectState == GameObject.eObjectState.Active)
+                && lt.ObjectState == GameObject.eObjectState.Active
+                && lt.InCombat
+                && Body.Group != null
+                && Body.IsWithinRadius(lt, MAX_AGGRO_LIST_DISTANCE))
                 return true;
 
             // Clear stale pointer so the next tick doesn't keep evaluating it.
@@ -799,6 +874,18 @@ namespace DOL.AI.Brain
             if (CheckSpells(eCheckSpellType.Defensive))
                 return true;
 
+            // Camp phase gate — never start a pull while the group is still
+            // recovering. The Ready/Pulling/Engaging/Combat phases all permit
+            // pulling (chain shots etc.); only Regen/PostCombat block.
+            MimicGroup mg = Body.Group?.MimicGroup;
+            if (mg != null && mg.CampPoint != null)
+            {
+                if (mg.CampPhase == MimicGroup.eCampPhase.Regen
+                    || mg.CampPhase == MimicGroup.eCampPhase.PostCombat
+                    || mg.CampPhase == MimicGroup.eCampPhase.Inactive)
+                    return true;
+            }
+
             // Group regen gate.
             if (Body.Group != null)
             {
@@ -807,7 +894,7 @@ namespace DOL.AI.Brain
 
                 foreach (GameLiving gl in Body.Group.GetMembersInTheGroup())
                 {
-                    if (gl.MaxMana <= 0)
+                    if (gl == null || !gl.IsAlive || gl.MaxMana <= 0)
                         continue;
 
                     int pct = gl.ManaPercent;
@@ -816,12 +903,32 @@ namespace DOL.AI.Brain
                 }
 
                 if (anyLow)
+                {
+                    if (!_pullManaThrottled)
+                        _manaThrottleSinceTick = GameLoop.GameLoopTime;
                     _pullManaThrottled = true;
+                }
                 else if (allHigh)
+                {
                     _pullManaThrottled = false;
+                    _manaThrottleSinceTick = 0;
+                }
 
                 if (_pullManaThrottled)
+                {
+                    // Escape valve: if the throttle has been stuck for too long,
+                    // it almost always means a caster is dead or disconnected
+                    // and will never recover. Lift the throttle and let the
+                    // group keep farming — better than standing idle forever.
+                    if (_manaThrottleSinceTick > 0
+                        && GameLoop.GameLoopTime - _manaThrottleSinceTick > MAX_MANA_THROTTLE_MS)
+                    {
+                        _pullManaThrottled = false;
+                        _manaThrottleSinceTick = 0;
+                        return false;
+                    }
                     return true;
+                }
             }
 
             return false;
@@ -837,7 +944,15 @@ namespace DOL.AI.Brain
             LastTargetObject = null;
             IsPulling = false;
             _pullManaThrottled = false;
+            _manaThrottleSinceTick = 0;
             _chainPullCount = 0;
+            _pullStartTick = 0;
+
+            // Camp state is shared — clear the group's incoming-pull pointer
+            // too so the rest of the camp stops chasing a phantom mob.
+            MimicGroup mg = Body.Group?.MimicGroup;
+            if (mg != null && IsMainPuller)
+                mg.IncomingPullTarget = null;
         }
 
         // Maximum distance the puller will scan for a pull target. Independent
@@ -1033,6 +1148,19 @@ namespace DOL.AI.Brain
                 return;
 
             IsPulling = true;
+            _pullStartTick = GameLoop.GameLoopTime;
+
+            // Announce the incoming mob to the rest of the camp — DPS/CC/tank
+            // can pre-stage (move to intercept, pre-mez, etc.) instead of
+            // waiting for the first hit.
+            MimicGroup mg = Body.Group?.MimicGroup;
+            if (mg != null)
+            {
+                mg.IncomingPullTarget = target;
+                if (mg.CampPhase == MimicGroup.eCampPhase.Regen
+                    || mg.CampPhase == MimicGroup.eCampPhase.Ready)
+                    mg.SetCampPhase(MimicGroup.eCampPhase.Pulling);
+            }
 
             // Archer-style: distance weapon takes priority when equipped.
             if (Body.Inventory.GetItem(eInventorySlot.DistanceWeapon) != null)
@@ -1193,6 +1321,13 @@ namespace DOL.AI.Brain
 
         public void CheckMainCC()
         {
+            // Pre-emptive: while the puller is still bringing the mob in, we
+            // also queue the mob's BAF neighbours so the CC has a head-start
+            // on locking them down BEFORE they reach the line. This is the
+            // difference between a CC that mezzes adds AT THE TANK (too late,
+            // healer already taking hits) and one that mezzes them in transit.
+            PreMezIncomingAdds();
+
             // Auto-detect adds: scan the aggro list for hostile mobs that are NOT
             // the group's focus target and add them to CCTargets so the CC bot
             // mezzes them. Caps at 2 adds to avoid mezzing the entire pack.
@@ -1208,6 +1343,67 @@ namespace DOL.AI.Brain
             {
                 Body.Group.MimicGroup.CCTargets = ValidateCCList(Body.Group.MimicGroup.CCTargets);
             }
+        }
+
+        /// <summary>
+        /// CC pre-mez window: while the puller's pull is in flight and the mob
+        /// has been hit but hasn't reached the camp yet, scan the area around
+        /// the incoming mob for likely BAF adds and stage them on the CC queue.
+        /// These adds will become mez targets the second they enter mez range.
+        /// </summary>
+        private void PreMezIncomingAdds()
+        {
+            MimicGroup mg = Body.Group?.MimicGroup;
+            if (mg == null)
+                return;
+
+            if (mg.CampPhase != MimicGroup.eCampPhase.Pulling
+                && mg.CampPhase != MimicGroup.eCampPhase.Engaging)
+                return;
+
+            if (mg.IncomingPullTarget is not GameNPC pulled || !pulled.IsAlive)
+                return;
+
+            if (mg.CCTargets.Count >= MAX_ADDS_TO_CC)
+                return;
+
+            // The focus mob itself stays the tank's responsibility — never mez it.
+            // Only scan close neighbours; mobs further than ~600 won't actually
+            // come along with the pull (BAF radius is typically smaller).
+            foreach (GameNPC neighbour in pulled.GetNPCsInRadius(600))
+            {
+                if (neighbour == null || !neighbour.IsAlive || neighbour == pulled)
+                    continue;
+                if (neighbour is MimicNPC || neighbour is GameTaxi or GameTrainingDummy)
+                    continue;
+                if (neighbour.IsMezzed || neighbour.IsRooted)
+                    continue;
+                if (mg.CCTargets.Contains(neighbour))
+                    continue;
+                if (!GameServer.ServerRules.IsAllowedToAttack(Body, neighbour, true))
+                    continue;
+                // Skip mobs that are already aggro'd on something else (not our pull) —
+                // attacking them would steal aggro from another fight.
+                if (neighbour.Brain is StandardMobBrain mb
+                    && mb.HasAggro
+                    && mb.Body.TargetObject != Body
+                    && (Body.Group == null || !IsTargetInGroup(mb.Body.TargetObject)))
+                    continue;
+
+                mg.CCTargets.Add(neighbour);
+                if (mg.CCTargets.Count >= MAX_ADDS_TO_CC)
+                    break;
+            }
+        }
+
+        private bool IsTargetInGroup(GameObject candidate)
+        {
+            if (candidate is not GameLiving gl || Body.Group == null)
+                return false;
+            foreach (GameLiving gm in Body.Group.GetMembersInTheGroup())
+                if (gm == gl)
+                    return true;
+            return false;
         }
 
         // Picks up to MAX_ADDS_TO_CC hostile mobs from the aggro list (excluding
@@ -1358,6 +1554,67 @@ namespace DOL.AI.Brain
             }
 
             return false;
+        }
+
+        // Last living the tank applied Guard to. Tracked so we can call
+        // GuardAbilityHandler.RemoveOurEffect on camp exit without scanning
+        // every group member for our effect.
+        private GameLiving _campGuardTarget;
+        // Last living the paladin/equivalent applied Protect to.
+        private GameLiving _campProtectTarget;
+
+        /// <summary>
+        /// Tank-side per-tick maintenance at camp: keeps Guard up on the most
+        /// fragile member, and applies Protect if the bot has that ability
+        /// too. Skipped for non-tanks. Idempotent: the underlying handlers
+        /// no-op when the effect is already on the chosen target.
+        /// </summary>
+        public void MaintainTankCampSupport()
+        {
+            if (!IsMainTank || Body == null || !Body.IsAlive)
+                return;
+
+            MimicGroup mg = Body.Group?.MimicGroup;
+            if (mg == null)
+                return;
+
+            GameLiving guardChoice = mg.PickGuardTarget(Body);
+            if (guardChoice == null)
+                return;
+
+            // Only re-apply when the target changes — Guard is a stable effect.
+            if (HasAbility(Abilities.Guard) && _campGuardTarget != guardChoice
+                && Body.IsWithinRadius(guardChoice, 1000))
+            {
+                if (SetGuard(guardChoice, out _))
+                    _campGuardTarget = guardChoice;
+            }
+
+            // Protect targets the same squishy by default. Different ability,
+            // different stacking rules — both can sit on the same member.
+            if (HasAbility(Abilities.Protect) && _campProtectTarget != guardChoice
+                && Body.IsWithinRadius(guardChoice, 1000))
+            {
+                if (SetProtect(guardChoice, out _))
+                    _campProtectTarget = guardChoice;
+            }
+        }
+
+        /// <summary>
+        /// Drops Guard/Protect targets when the tank leaves the camp state.
+        /// Doesn't actively cancel the ECS effects (they're handled by the
+        /// existing ability system); we just forget the bookkeeping so the
+        /// next camp entry will reassign cleanly.
+        /// </summary>
+        public void ClearGuardAtCamp()
+        {
+            _campGuardTarget = null;
+            _campProtectTarget = null;
+        }
+
+        private bool HasAbility(string abilityKey)
+        {
+            return Body?.GetAbility(abilityKey) != null;
         }
 
         #endregion MainTank

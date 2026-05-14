@@ -41,6 +41,102 @@ namespace DOL.GS.Scripts
 
         public int ConLevelFilter = -2;
 
+        #region Camp Phase State Machine
+
+        /// <summary>
+        /// Tracks the high-level group activity inside a camp session so each bot
+        /// can pick the correct sub-behaviour (regen, intercept, focus DPS, etc.)
+        /// without each Think() having to re-derive it from scratch.
+        /// </summary>
+        public enum eCampPhase
+        {
+            /// <summary>No active camp / inactive. CampPoint is null.</summary>
+            Inactive,
+            /// <summary>Group is sitting, regening, buffing. Puller idle.</summary>
+            Regen,
+            /// <summary>Group is at full HP/mana, buffs up — ready for next pull.</summary>
+            Ready,
+            /// <summary>Puller is in flight bringing a mob.</summary>
+            Pulling,
+            /// <summary>Mob is incoming / first contact; tank should intercept, CC pre-mez adds.</summary>
+            Engaging,
+            /// <summary>Active combat on a brought-in mob/pack.</summary>
+            Combat,
+            /// <summary>Combat just ended; group recovers vitals, sits, before next pull.</summary>
+            PostCombat,
+        }
+
+        public eCampPhase CampPhase { get; private set; } = eCampPhase.Inactive;
+
+        /// <summary>
+        /// Last GameLoopTime (ms) the camp phase changed. Used by camp-state
+        /// timers (e.g. "have we been in Pulling for >12s without making
+        /// contact? → recover the puller").
+        /// </summary>
+        public long CampPhaseSinceTick { get; private set; }
+
+        /// <summary>
+        /// The mob the puller currently has on its bow/spell, set when the
+        /// pull is initiated. Cleared once the mob lands or the chain ends.
+        /// Lets the rest of the camp anticipate the incoming target.
+        /// </summary>
+        public GameLiving IncomingPullTarget { get; set; }
+
+        /// <summary>
+        /// Updates the phase, recording the timestamp of the change. Idempotent
+        /// when called with the current phase. Public so the brain / commands
+        /// can drive transitions.
+        /// </summary>
+        public void SetCampPhase(eCampPhase phase)
+        {
+            if (CampPhase == phase)
+                return;
+
+            CampPhase = phase;
+            CampPhaseSinceTick = GameLoop.GameLoopTime;
+
+            if (phase == eCampPhase.Inactive || phase == eCampPhase.Regen)
+                IncomingPullTarget = null;
+        }
+
+        /// <summary>
+        /// True if the supplied bot is the squishy "highest vulnerability"
+        /// member the tank should guard at camp. Returns the chosen target so
+        /// the tank doesn't have to walk every member each tick.
+        /// </summary>
+        public GameLiving PickGuardTarget(GameLiving tank)
+        {
+            if (tank == null || tank.Group == null)
+                return null;
+
+            // Healer first; then any caster; then assist.
+            GameLiving best = null;
+            int bestScore = int.MaxValue;
+            foreach (GameLiving gl in tank.Group.GetMembersInTheGroup())
+            {
+                if (gl == null || gl == tank || !gl.IsAlive)
+                    continue;
+                int s;
+                if (gl is MimicNPC m && m.MimicBrain != null && m.MimicBrain.IsHealer)
+                    s = 0;
+                else if (gl is GamePlayer gp && (gp.CharacterClass.ClassType == eClassType.ListCaster))
+                    s = 1;
+                else if (gl is MimicNPC mc && mc.CharacterClass.ClassType == eClassType.ListCaster)
+                    s = 1;
+                else
+                    s = 2;
+
+                if (s < bestScore)
+                {
+                    bestScore = s;
+                    best = gl;
+                }
+            }
+            return best;
+        }
+
+        #endregion
+
         public GameObject CurrentTarget
         {
             get { return MainAssist.TargetObject; }
@@ -161,9 +257,15 @@ namespace DOL.GS.Scripts
         public void SetCampPoint(Point3D point)
         {
             if (point != null)
+            {
                 CampPoint = new Point3D(point);
+                SetCampPhase(eCampPhase.Regen);
+            }
             else
+            {
                 CampPoint = null;
+                SetCampPhase(eCampPhase.Inactive);
+            }
         }
 
         public void SetPullPoint(Point2D point)

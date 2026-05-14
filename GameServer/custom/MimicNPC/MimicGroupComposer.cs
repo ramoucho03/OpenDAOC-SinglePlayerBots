@@ -146,5 +146,71 @@ namespace DOL.GS.Scripts
                 eMimicClass.Bard or eMimicClass.Enchanter or eMimicClass.Mentalist or
                 eMimicClass.Runemaster or eMimicClass.Spiritmaster;
         }
+
+        /// <summary>
+        /// Fills in any role still null on the supplied group's MimicGroup.
+        /// Cheaper than re-running the whole AutoAssignRoles pass and used by
+        /// /mcamp to make sure a camp session has a usable puller/tank/CC
+        /// even when the player skipped /mgroup.
+        /// </summary>
+        public static void EnsureCampRoles(Group group)
+        {
+            if (group?.MimicGroup is not MimicGroup mg)
+                return;
+
+            // Collect mimic members once.
+            List<MimicNPC> mimics = new();
+            foreach (GameLiving gl in group.GetMembersInTheGroup())
+                if (gl is MimicNPC m) mimics.Add(m);
+
+            if (mimics.Count == 0)
+                return;
+
+            // Puller: any bot that CanPull (distance weapon or harmful spell).
+            // Prefer an archer if one exists — archers chain-pull cleanly.
+            if (mg.MainPuller == null || !MimicGroup.CanPull(mg.MainPuller))
+            {
+                MimicNPC archer = mimics.FirstOrDefault(m =>
+                    m.IsAlive
+                    && m.Inventory?.GetItem(eInventorySlot.DistanceWeapon) != null);
+                MimicNPC anyPull = archer ?? mimics.FirstOrDefault(m => m.IsAlive && MimicGroup.CanPull(m));
+                if (anyPull != null)
+                    mg.SetMainPuller(anyPull);
+            }
+
+            // Tank: best-effort.
+            if (mg.MainTank == null || !mg.MainTank.IsAlive)
+            {
+                MimicNPC tank = mimics.FirstOrDefault(m => m.IsAlive && IsTankClass(m));
+                if (tank != null)
+                    mg.SetMainTank(tank);
+                else if (mg.MainLeader != null && mg.MainLeader.IsAlive)
+                    mg.SetMainTank(mg.MainLeader);
+            }
+
+            // CC: best-effort.
+            if (mg.MainCC == null || !mg.MainCC.IsAlive)
+            {
+                MimicNPC cc = mimics.FirstOrDefault(m => m.IsAlive && IsCCClass(m));
+                if (cc != null)
+                    mg.SetMainCC(cc);
+            }
+
+            // Main assist defaults to the tank so DPS focuses correctly.
+            if (mg.MainAssist == null || !mg.MainAssist.IsAlive)
+            {
+                if (mg.MainTank != null && mg.MainTank.IsAlive)
+                    mg.SetMainAssist(mg.MainTank);
+            }
+
+            // Make sure a healer-flagged member exists in mixed groups.
+            bool anyHealer = mimics.Any(m => m.MimicBrain != null && m.MimicBrain.IsHealer);
+            if (!anyHealer)
+            {
+                MimicNPC healer = mimics.FirstOrDefault(m => m.IsAlive && IsHealerClass(m));
+                if (healer?.MimicBrain != null)
+                    healer.MimicBrain.IsHealer = true;
+            }
+        }
     }
 }

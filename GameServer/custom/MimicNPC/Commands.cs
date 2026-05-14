@@ -884,6 +884,11 @@ namespace DOL.GS.Scripts
                 {
                     case "here":
                         player.Group.MimicGroup.SetCampPoint(new Point3D(player.X, player.Y, player.Z));
+                        // Make sure the camp has a puller/tank/CC before bots
+                        // start trying to drive the pull cycle — without this,
+                        // a group built without /mgroup would silently never
+                        // pull because MainPuller stayed null.
+                        MimicGroupComposer.EnsureCampRoles(player.Group);
                         player.Out.SendMessage("Point de camp défini à votre position.", eChatType.CT_Say, eChatLoc.CL_SystemWindow);
 
                         foreach (GameLiving groupMember in player.Group.GetMembersInTheGroup())
@@ -899,6 +904,7 @@ namespace DOL.GS.Scripts
                         }
 
                         player.Group.MimicGroup.SetCampPoint(target);
+                        MimicGroupComposer.EnsureCampRoles(player.Group);
 
                         player.Out.SendMessage("Point de camp enregistré.", eChatType.CT_Say, eChatLoc.CL_SystemWindow);
 

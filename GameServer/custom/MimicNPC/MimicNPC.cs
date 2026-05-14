@@ -6872,7 +6872,19 @@ namespace DOL.GS.Scripts
             StartHealthRegeneration();
             StartPowerRegeneration();
             StartEnduranceRegeneration();
-            MimicBrain?.FSM.SetCurrentState(eFSMStateType.WAKING_UP);
+
+            // If the group is camping, the rezzed bot belongs at the camp,
+            // not at its old spawn point. Reset SpawnPoint so WAKING_UP/CAMP
+            // transitions don't ping-pong it back to where it died.
+            if (Group?.MimicGroup?.CampPoint is Point3D camp)
+            {
+                SpawnPoint = new Point3D(camp);
+                MimicBrain?.FSM.SetCurrentState(eFSMStateType.CAMP);
+            }
+            else
+            {
+                MimicBrain?.FSM.SetCurrentState(eFSMStateType.WAKING_UP);
+            }
 
             if (rezzer is GamePlayer rezzerPlayer)
                 rezzerPlayer.Out.SendMessage($"You have resurrected {GetName(0, false)}.", eChatType.CT_System, eChatLoc.CL_SystemWindow);

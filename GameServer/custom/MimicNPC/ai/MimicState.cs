@@ -494,18 +494,46 @@ namespace DOL.AI.Brain
         }
     }
 
+    /// <summary>
+    /// Camp mode 2.0 — a group-aware farming FSM state.
+    ///
+    /// The camp is treated as a coordinated farming session: the puller draws
+    /// mobs, the tank intercepts and locks aggro, the CC mezzes adds before
+    /// they reach the line, DPS assist the tank, and healers stay safe behind
+    /// the tank. Between pulls everyone sits to regen with a campfire while a
+    /// readiness gate (HP/mana) blocks the next pull until the group recovers.
+    ///
+    /// Phase tracking lives on <see cref="MimicGroup.CampPhase"/> so each bot
+    /// can read the current phase instead of re-deriving it. Transitions are
+    /// driven exclusively by the puller (or any bot when no puller is set, as
+    /// a safety net) so the phase never races with itself across N bots.
+    /// </summary>
     public class MimicState_Camp : MimicState
     {
         public int AggroRange = 0; // Used to set custom AggroRange
         private int prevAggroRange;
-        // Stable per-bot offset from the camp point, picked once and reused
-        // for the lifetime of the bot. Previously we rolled a new random
-        // offset on every Enter, which caused bots to "shuffle" left/right
-        // each time the FSM dipped through camp (aggro→camp→aggro chains),
-        // and that constant repositioning interfered with the puller.
+
+        // Per-bot stable offset from the camp point. Picked once at first
+        // Enter and reused for the lifetime of the bot. Slots are role-aware:
+        // tanks take a forward slot, healers a back slot, DPS the sides.
         private bool _campOffsetPicked;
         private int _campOffsetX;
         private int _campOffsetY;
+
+        // Throttle for the per-tick "ensure tank guards the squishy" pass —
+        // applying Guard re-checks ability effects, so we rate-limit to ~1Hz.
+        private long _nextTankSupportTick;
+
+        // Watchdog: if the puller stays in the Pulling phase for this long
+        // without a mob actually engaging the group, the camp force-recovers
+        // (resets puller state, ground phase to Regen). Beats permanent stalls
+        // caused by LoS misses, pathing dead-ends, or a mob despawn mid-pull.
+        private const int PULL_WATCHDOG_MS = 12_000;
+
+        // Cooldown between forced phase recoveries — keeps the watchdog from
+        // re-firing every tick if the puller still can't recover.
+        private const int WATCHDOG_RETRY_MS = 5_000;
+        private long _nextWatchdogTick;
 
         public MimicState_Camp(MimicBrain brain) : base(brain)
         {
@@ -522,8 +550,7 @@ namespace DOL.AI.Brain
 
             if (!_campOffsetPicked)
             {
-                _campOffsetX = _brain.Body.CurrentRegion.IsDungeon ? Util.Random(-50, 50) : Util.Random(-100, 100);
-                _campOffsetY = _brain.Body.CurrentRegion.IsDungeon ? Util.Random(-50, 50) : Util.Random(-100, 100);
+                PickCampSlotOffset();
                 _campOffsetPicked = true;
             }
 
@@ -536,21 +563,21 @@ namespace DOL.AI.Brain
 
             // Tanks scan further than the rest of the camp so they spot incoming
             // mobs first and start the intercept run while DPS/healers are still
-            // sitting. When the tank engages, OnAttackedByEnemy propagates the
-            // aggro through the group within one tick, so the rest catches up
-            // without staying alone at camp for long.
+            // sitting.
             if (_brain.IsMainTank)
                 _brain.AggroRange += _brain.Body.CurrentRegion.IsDungeon ? 100 : 250;
+
+            // Pullers need a wider local scan to notice the chain candidates as
+            // they walk back from a successful shot; without this they wait at
+            // the slot for the next CheckPuller tick before re-engaging.
+            if (_brain.IsMainPuller)
+                _brain.AggroRange = Math.Max(_brain.AggroRange, 900);
 
             if (AggroRange != 0)
                 _brain.AggroRange = AggroRange;
 
             _brain.ClearAggroList();
 
-            // Only path back to the camp slot if we're actually away from it.
-            // ReturnToSpawnPoint on every Enter caused bots in melee range of
-            // their slot to keep nudging back to dead centre and looked like
-            // they were shuffling sideways.
             if (!_brain.Body.IsWithinRadius(_brain.Body.SpawnPoint, 60))
                 _brain.Body.ReturnToSpawnPoint(_brain.Body.MaxSpeed);
 
@@ -559,15 +586,26 @@ namespace DOL.AI.Brain
             _brain.ResetPullerState();
             _brain.PvPMode = false;
 
+            // Phase reset: entering camp from elsewhere means a fresh regen
+            // window. Only the first bot through (or the puller) needs to
+            // drive this — calling SetCampPhase from every bot is idempotent.
+            MimicGroup mg = _brain.Body.Group?.MimicGroup;
+            if (mg != null && mg.CampPhase != MimicGroup.eCampPhase.Regen
+                           && mg.CampPhase != MimicGroup.eCampPhase.Ready)
+                mg.SetCampPhase(MimicGroup.eCampPhase.Regen);
+
             base.Enter();
         }
 
         public override void Exit()
         {
             _brain.AggroRange = prevAggroRange;
-            // Whether the bot leaves camp by aggro, /mfollow, or death, the fire
-            // it deployed during the regen break should disappear with the camp.
             _brain.MimicBody?.RemoveCampFire();
+
+            // Drop tank-side defensive buffs (Guard/Protect) when leaving camp
+            // so they get reapplied on the next Enter against whoever is the
+            // current squishy.
+            _brain.ClearGuardAtCamp();
 
             base.Exit();
         }
@@ -584,8 +622,32 @@ namespace DOL.AI.Brain
             if (_brain.CheckHeals())
                 return;
 
-            if (!_brain.IsPulling && _brain.Body.IsDestinationValid)
+            MimicGroup mg = _brain.Body.Group?.MimicGroup;
+
+            // Drive phase transitions from a single bot — by convention the
+            // puller (it owns the pull lifecycle). If no puller is set we let
+            // the group leader do it so the phase never stalls.
+            if (_brain.IsMainPuller || (mg != null && mg.MainPuller == null && _brain.IsMainLeader))
+                DriveCampPhase(mg);
+
+            // Aggro check FIRST — never let the "wait while returning to slot"
+            // shortcut skip the only line that lets the camp respond to a mob
+            // that just walked into our range. Previously this lived BELOW the
+            // IsDestinationValid early-return, which meant the bot could go
+            // silent for the entire path-back leg even with a mob 200u away.
+            if (CheckCampAggroTriggers(mg))
                 return;
+
+            // Now it's safe to skip the rest of the tick while we're pathing
+            // back to our slot (puller exempt — they still need CheckPuller).
+            if (!_brain.IsPulling && _brain.Body.IsDestinationValid)
+            {
+                // The bot is moving back to its slot — still keep ourselves
+                // useful by buffing on the move if applicable.
+                _brain.CheckSpells(MimicBrain.eCheckSpellType.Defensive);
+                base.Think();
+                return;
+            }
 
             if (_brain.IsMainPuller)
                 _brain.CheckPuller();
@@ -593,62 +655,26 @@ namespace DOL.AI.Brain
             if (_brain.IsMainCC)
                 _brain.CheckMainCC();
 
-            // Engage on leader-initiated combat. Without this the camp sits idle
-            // until a mob actually lands a hit on a group member (OnAttackedByEnemy
-            // is the only other trigger that reaches us at camp because the camp
-            // AggroRange is only 250/550). That made bots look broken — they only
-            // moved after the puller/leader had already taken damage.
-            //
-            // Skipped for the puller (still bringing the mob in) and healers (they
-            // engage reactively via aggro propagation, not by chasing the leader).
-            if (!_brain.IsPulling && !_brain.IsHealer)
+            // Tank stays useful between pulls: keep Guard on the most fragile
+            // group member so when the next pull lands the protection is
+            // already in place.
+            if (_brain.IsMainTank && GameLoop.GameLoopTime >= _nextTankSupportTick)
             {
-                // The group leader is the player in mixed groups, a bot in pure
-                // bot groups. LivingLeader is authoritative; MimicGroup.MainLeader
-                // is a separate role and may be null.
-                GameLiving leader = _brain.Body.Group?.LivingLeader;
-                GameLiving leaderTarget = leader?.TargetObject as GameLiving;
-
-                bool leaderEngaging = leader != null
-                    && leader != _brain.Body
-                    && ((leader.IsCasting && leader.castingComponent?.SpellHandler?.Spell?.IsHarmful == true)
-                        || leader.IsAttacking);
-
-                // Cap engagement range so the camp doesn't break formation for a
-                // mob the leader pulled three rooms over.
-                const int LEADER_ENGAGE_RANGE = 2500;
-
-                if (leaderEngaging
-                    && leaderTarget != null
-                    && leaderTarget.IsAlive
-                    && _brain.CanAggroTarget(leaderTarget)
-                    && _brain.Body.IsWithinRadius(leaderTarget, LEADER_ENGAGE_RANGE))
-                {
-                    _brain.AddToAggroList(leaderTarget, 1);
-                    _brain.Body.StopMoving();
-                    _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
-                    return;
-                }
-            }
-
-            if (_brain.CheckProximityAggro(_brain.AggroRange))
-            {
-                _brain.Body.StopMoving();
-                _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
-                return;
+                _nextTankSupportTick = GameLoop.GameLoopTime + 1000;
+                _brain.MaintainTankCampSupport();
             }
 
             if (!_brain.Body.IsMoving && !_brain.Body.InCombat)
             {
                 if (!_brain.CheckSpells(MimicBrain.eCheckSpellType.Defensive))
-                    _brain.MimicBody.Sit(_brain.CheckStats(75));
+                {
+                    // Healers stay standing & alert; everyone else sits to regen.
+                    if (_brain.IsHealer)
+                        _brain.MimicBody.Sit(false);
+                    else
+                        _brain.MimicBody.Sit(_brain.CheckStats(75));
+                }
 
-                // Group-level "keep the fire alive" rule: every bot in the camp
-                // checks whether at least one group member still owns an active
-                // campfire. If none, the first bot that gets here this tick
-                // deploys one — and if its fire is destroyed/despawned, the
-                // next tick re-deploys. This guarantees ≥1 fire during camp
-                // regardless of bot deaths/respawns.
                 EnsureGroupHasCampFire(_brain);
             }
 
@@ -656,10 +682,326 @@ namespace DOL.AI.Brain
         }
 
         /// <summary>
+        /// Centralised aggro/engage check for the camp. Returns true when the
+        /// bot transitioned to AGGRO this tick — caller should short-circuit.
+        /// Runs in this order:
+        ///   1. Bot has aggro of its own (took a hit since last tick).
+        ///   2. A group member is engaging the incoming pull (puller has fired).
+        ///   3. Leader (player) opened combat manually.
+        ///   4. Passive proximity scan.
+        /// </summary>
+        private bool CheckCampAggroTriggers(MimicGroup mg)
+        {
+            if (_brain.IsHealer)
+                return false; // healers engage reactively via aggro propagation only
+
+            // 1. We already have aggro (took a hit, group member relayed aggro).
+            if (_brain.HasAggro)
+            {
+                _brain.Body.StopMoving();
+                _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
+                return true;
+            }
+
+            // 2. The puller's mob is on its way and we should pre-engage. The
+            //    IncomingPullTarget is set by the puller as soon as the shot
+            //    lands; using it here means DPS and tank converge BEFORE the
+            //    mob reaches the camp instead of waiting for first blood.
+            if (mg != null && mg.IncomingPullTarget is GameLiving incoming
+                && incoming.IsAlive
+                && incoming.ObjectState == GameObject.eObjectState.Active
+                && _brain.CanAggroTarget(incoming))
+            {
+                // Range to the mob OR to the puller — whichever is closer. We
+                // want camp members to react when EITHER is in line of sight,
+                // since the mob may be behind a corner while the puller is in
+                // the open.
+                int distToMob = _brain.Body.GetDistanceTo(incoming);
+                int distToPuller = mg.MainPuller != null
+                    ? _brain.Body.GetDistanceTo(mg.MainPuller)
+                    : int.MaxValue;
+                int effective = Math.Min(distToMob, distToPuller);
+
+                const int CAMP_ENGAGE_RANGE = 2500;
+                if (effective <= CAMP_ENGAGE_RANGE)
+                {
+                    _brain.AddToAggroList(incoming, 1);
+                    _brain.Body.StopMoving();
+                    _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
+                    return true;
+                }
+            }
+
+            // 3. Leader (player) opened combat on something — DPS/tank/CC
+            //    converge. Puller stays put (it has its own pulling work).
+            if (!_brain.IsPulling)
+            {
+                GameLiving leader = _brain.Body.Group?.LivingLeader;
+                if (leader != null && leader != _brain.Body)
+                {
+                    bool leaderEngaging = (leader.IsCasting && leader.castingComponent?.SpellHandler?.Spell?.IsHarmful == true)
+                                          || leader.IsAttacking;
+
+                    if (leaderEngaging && leader.TargetObject is GameLiving leaderTarget
+                        && leaderTarget.IsAlive
+                        && _brain.CanAggroTarget(leaderTarget))
+                    {
+                        const int LEADER_ENGAGE_RANGE = 2500;
+                        if (_brain.Body.IsWithinRadius(leaderTarget, LEADER_ENGAGE_RANGE))
+                        {
+                            _brain.AddToAggroList(leaderTarget, 1);
+                            _brain.Body.StopMoving();
+                            _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            // 4. Passive proximity scan (camp's small AggroRange).
+            if (_brain.CheckProximityAggro(_brain.AggroRange))
+            {
+                _brain.Body.StopMoving();
+                _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Advances the group-level camp phase based on observable state.
+        /// Only one bot runs this per tick (the puller, or the leader as
+        /// fallback) so the phase never flaps between bots.
+        ///
+        /// Transitions:
+        ///   Regen     → Ready       : group has recovered HP/mana
+        ///   Ready     → Pulling     : puller is in flight (IsPulling=true)
+        ///   Pulling   → Engaging    : mob acquired aggro (IncomingPullTarget alive + has aggro)
+        ///   Engaging  → Combat      : any group member is InCombat with the target
+        ///   Combat    → PostCombat  : no group member InCombat, no aggro list
+        ///   PostCombat→ Regen       : group has been idle ≥ 2s
+        ///   Watchdog: Pulling stuck > PULL_WATCHDOG_MS → forced Regen + reset puller
+        /// </summary>
+        private void DriveCampPhase(MimicGroup mg)
+        {
+            if (mg == null)
+                return;
+
+            long now = GameLoop.GameLoopTime;
+            MimicGroup.eCampPhase phase = mg.CampPhase;
+
+            // Watchdog: kill stalled pulls.
+            if (phase == MimicGroup.eCampPhase.Pulling
+                && now - mg.CampPhaseSinceTick > PULL_WATCHDOG_MS
+                && now >= _nextWatchdogTick)
+            {
+                _nextWatchdogTick = now + WATCHDOG_RETRY_MS;
+                _brain.ForcePullerRecovery();
+                mg.SetCampPhase(MimicGroup.eCampPhase.Regen);
+                return;
+            }
+
+            bool groupInCombat = AnyGroupMemberInCombat();
+
+            switch (phase)
+            {
+                case MimicGroup.eCampPhase.Inactive:
+                    mg.SetCampPhase(MimicGroup.eCampPhase.Regen);
+                    break;
+
+                case MimicGroup.eCampPhase.Regen:
+                    if (groupInCombat)
+                    {
+                        mg.SetCampPhase(MimicGroup.eCampPhase.Combat);
+                        break;
+                    }
+                    if (IsGroupReady(mg))
+                        mg.SetCampPhase(MimicGroup.eCampPhase.Ready);
+                    break;
+
+                case MimicGroup.eCampPhase.Ready:
+                    if (groupInCombat)
+                    {
+                        mg.SetCampPhase(MimicGroup.eCampPhase.Combat);
+                        break;
+                    }
+                    // Puller is in flight → switch.
+                    if (mg.MainPuller is MimicNPC mp && mp.MimicBrain != null && mp.MimicBrain.IsPulling)
+                    {
+                        mg.SetCampPhase(MimicGroup.eCampPhase.Pulling);
+                        break;
+                    }
+                    // No more ready? drop back to regen so the gate re-evaluates.
+                    if (!IsGroupReady(mg))
+                        mg.SetCampPhase(MimicGroup.eCampPhase.Regen);
+                    break;
+
+                case MimicGroup.eCampPhase.Pulling:
+                    if (groupInCombat)
+                    {
+                        mg.SetCampPhase(MimicGroup.eCampPhase.Combat);
+                        break;
+                    }
+                    if (mg.IncomingPullTarget is GameNPC inc
+                        && inc.IsAlive
+                        && inc.Brain is StandardMobBrain smb && smb.HasAggro)
+                    {
+                        mg.SetCampPhase(MimicGroup.eCampPhase.Engaging);
+                    }
+                    break;
+
+                case MimicGroup.eCampPhase.Engaging:
+                    if (groupInCombat)
+                        mg.SetCampPhase(MimicGroup.eCampPhase.Combat);
+                    else if (mg.IncomingPullTarget == null
+                             || !mg.IncomingPullTarget.IsAlive)
+                        mg.SetCampPhase(MimicGroup.eCampPhase.PostCombat);
+                    break;
+
+                case MimicGroup.eCampPhase.Combat:
+                    if (!groupInCombat && !AnyGroupMemberHasAggro())
+                        mg.SetCampPhase(MimicGroup.eCampPhase.PostCombat);
+                    break;
+
+                case MimicGroup.eCampPhase.PostCombat:
+                    if (groupInCombat)
+                    {
+                        mg.SetCampPhase(MimicGroup.eCampPhase.Combat);
+                        break;
+                    }
+                    // Give a 2s grace period for post-combat loot/buff swaps.
+                    if (now - mg.CampPhaseSinceTick > 2000)
+                        mg.SetCampPhase(MimicGroup.eCampPhase.Regen);
+                    break;
+            }
+        }
+
+        private bool AnyGroupMemberInCombat()
+        {
+            if (_brain.Body.Group == null)
+                return false;
+            foreach (GameLiving gl in _brain.Body.Group.GetMembersInTheGroup())
+            {
+                if (gl != null && gl.IsAlive && gl.InCombat)
+                    return true;
+            }
+            return false;
+        }
+
+        private bool AnyGroupMemberHasAggro()
+        {
+            if (_brain.Body.Group == null)
+                return false;
+            foreach (GameLiving gl in _brain.Body.Group.GetMembersInTheGroup())
+            {
+                if (gl is MimicNPC m && m.MimicBrain != null && m.MimicBrain.HasAggro)
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Group readiness gate. Returns true when the whole group is healthy
+        /// enough to pull again — every member must be at ≥ READY_HP_PCT health,
+        /// and every caster/healer at ≥ READY_MANA_PCT mana. Endurance is
+        /// checked separately (tanks burn it fast on styles).
+        /// </summary>
+        private bool IsGroupReady(MimicGroup mg)
+        {
+            const int READY_HP_PCT = 90;
+            const int READY_MANA_PCT = 85;
+            const int READY_END_PCT = 70;
+
+            if (_brain.Body.Group == null)
+                return true;
+
+            foreach (GameLiving gl in _brain.Body.Group.GetMembersInTheGroup())
+            {
+                if (gl == null || !gl.IsAlive)
+                    continue;
+                if (gl.HealthPercent < READY_HP_PCT)
+                    return false;
+                if (gl.MaxMana > 0 && gl.ManaPercent < READY_MANA_PCT)
+                    return false;
+                if (gl.EndurancePercent < READY_END_PCT)
+                    return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Picks the camp-slot offset based on the bot's role. Tanks anchor a
+        /// step toward the pull point so they intercept first; healers sit
+        /// behind in the back row away from cleaves; CC sits to the side so
+        /// it has LoS without taking melee splash; everyone else picks a
+        /// scattered slot to the sides.
+        /// </summary>
+        private void PickCampSlotOffset()
+        {
+            bool dungeon = _brain.Body.CurrentRegion.IsDungeon;
+            int spread = dungeon ? 50 : 100;
+
+            // Default scatter for generic DPS.
+            _campOffsetX = Util.Random(-spread, spread);
+            _campOffsetY = Util.Random(-spread, spread);
+
+            // Tank forward, healer back, CC offset to a flank — relative to
+            // the pull origin so the formation actually faces the threat.
+            MimicGroup mg = _brain.Body.Group?.MimicGroup;
+            Point2D pullFrom = mg?.PullFromPoint;
+            Point3D camp = mg?.CampPoint;
+            if (camp == null)
+                return;
+
+            // Compute a "forward" unit vector from camp → pull origin (or
+            // east by default). Magnitudes work in raw map units; we only
+            // need direction.
+            double fx = 1, fy = 0;
+            if (pullFrom != null)
+            {
+                double dx = pullFrom.X - camp.X;
+                double dy = pullFrom.Y - camp.Y;
+                double len = Math.Sqrt(dx * dx + dy * dy);
+                if (len > 1) { fx = dx / len; fy = dy / len; }
+            }
+            // Perpendicular (right-hand) vector.
+            double rx = -fy, ry = fx;
+
+            int forward = dungeon ? 80 : 150;
+            int side = dungeon ? 60 : 120;
+
+            if (_brain.IsMainTank)
+            {
+                _campOffsetX = (int)(fx * forward);
+                _campOffsetY = (int)(fy * forward);
+            }
+            else if (_brain.IsHealer)
+            {
+                _campOffsetX = (int)(-fx * forward);
+                _campOffsetY = (int)(-fy * forward);
+                // Small random jitter so two healers don't overlap.
+                _campOffsetX += Util.Random(-30, 30);
+                _campOffsetY += Util.Random(-30, 30);
+            }
+            else if (_brain.IsMainCC)
+            {
+                int sign = Util.Random(1) == 0 ? 1 : -1;
+                _campOffsetX = (int)(rx * side * sign);
+                _campOffsetY = (int)(ry * side * sign);
+            }
+            else if (_brain.IsMainPuller)
+            {
+                // Puller sits slightly forward of the line so its first shot
+                // doesn't risk clipping a teammate.
+                _campOffsetX = (int)(fx * (forward + 40));
+                _campOffsetY = (int)(fy * (forward + 40));
+            }
+        }
+
+        /// <summary>
         /// Looks through the group's mimic members and ensures at least one of
-        /// them owns an active GameStaticItem campfire. If the existing fire
-        /// has been removed (object despawned, owner died), the caller deploys
-        /// a fresh one. Cheap enough to run every Think tick.
+        /// them owns an active GameStaticItem campfire.
         /// </summary>
         private static void EnsureGroupHasCampFire(MimicBrain brain)
         {
@@ -667,23 +1009,18 @@ namespace DOL.AI.Brain
             if (body == null || body.Group == null)
                 return;
 
-            // Need an actual camp point + we must be close to it. Without this
-            // a stray bot far from camp would deploy fires across the zone.
             Point3D camp = body.Group.MimicGroup?.CampPoint;
             if (camp == null)
                 return;
             if (!body.IsWithinRadius(camp, 1500))
                 return;
 
-            // Already a fire alive somewhere in the group → nothing to do.
             foreach (GameLiving gl in body.Group.GetMembersInTheGroup())
             {
                 if (gl is MimicNPC m && m.HasActiveCampFire)
                     return;
             }
 
-            // Drop the fire at the camp point itself so it doesn't shift each
-            // time a different bot becomes the deploy candidate.
             body.DeployCampFireAt(camp);
         }
     }
