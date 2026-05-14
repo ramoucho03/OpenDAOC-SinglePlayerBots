@@ -678,8 +678,14 @@ namespace DOL.AI.Brain
                 return;
 
             // Now it's safe to skip the rest of the tick while we're pathing
-            // back to our slot (puller exempt — they still need CheckPuller).
-            if (!_brain.IsPulling && _brain.Body.IsDestinationValid)
+            // back to our slot. The MAIN PULLER is always exempt: it still
+            // needs CheckPuller to (re-)trigger casts when it closes range on
+            // a target, and to abort stale pulls. The previous "!IsPulling"
+            // check only covered bots already in-flight on a shot — it did
+            // NOT exempt the puller while closing range on the caster path,
+            // which is why the puller could "go back and forth" without ever
+            // firing the pull spell.
+            if (!_brain.IsMainPuller && !_brain.IsPulling && _brain.Body.IsDestinationValid)
             {
                 // The bot is moving back to its slot — still keep ourselves
                 // useful by buffing on the move if applicable.
@@ -933,8 +939,13 @@ namespace DOL.AI.Brain
                         mg.SetCampPhase(MimicGroup.eCampPhase.Pulling);
                         break;
                     }
-                    // No more ready? drop back to regen so the gate re-evaluates.
-                    if (!IsGroupReady(mg))
+                    // Hysteresis: stay in Ready unless a member is SIGNIFICANTLY
+                    // degraded. Using the strict IsGroupReady gate here caused
+                    // Ready ↔ Regen flapping the moment any caster's mana
+                    // ticked from 80% to 79% — and that flap blocked the
+                    // puller in CheckDelayPull's phase gate, producing the
+                    // "Camp pret" → no-pull → back-and-forth symptom.
+                    if (!IsGroupStillFresh(mg))
                         mg.SetCampPhase(MimicGroup.eCampPhase.Regen);
                     break;
 
@@ -1038,6 +1049,35 @@ namespace DOL.AI.Brain
                 if (gl.MaxMana > 0 && gl.ManaPercent < READY_MANA_PCT)
                     return false;
                 if (gl.EndurancePercent < READY_END_PCT)
+                    return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// "Stay in Ready" gate — relaxed thresholds vs IsGroupReady so a
+        /// healthy group doesn't flap back to Regen on every regen tick.
+        /// Only fall back when a member is actually hurt enough to need a
+        /// real rest window (≥15 pp below the entry thresholds).
+        /// </summary>
+        private bool IsGroupStillFresh(MimicGroup mg)
+        {
+            const int FRESH_HP_PCT = 70;
+            const int FRESH_MANA_PCT = 60;
+            const int FRESH_END_PCT = 35;
+
+            if (_brain.Body.Group == null)
+                return true;
+
+            foreach (GameLiving gl in _brain.Body.Group.GetMembersInTheGroup())
+            {
+                if (gl == null || !gl.IsAlive)
+                    continue;
+                if (gl.HealthPercent < FRESH_HP_PCT)
+                    return false;
+                if (gl.MaxMana > 0 && gl.ManaPercent < FRESH_MANA_PCT)
+                    return false;
+                if (gl.EndurancePercent < FRESH_END_PCT)
                     return false;
             }
             return true;
