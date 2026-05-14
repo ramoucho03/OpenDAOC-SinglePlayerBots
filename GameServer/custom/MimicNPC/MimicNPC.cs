@@ -2381,7 +2381,7 @@ namespace DOL.GS.Scripts
                 return;
 
             ushort model = (ushort)MimicConfig.MIMIC_CAMPFIRE_MODEL;
-            if (model == 0) model = 2587; // bonfire (housing item)
+            if (model == 0) model = 2656; // canonical OpenDAOC campfire model
 
             int fx = origin?.X ?? X;
             int fy = origin?.Y ?? Y;

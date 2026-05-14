@@ -631,8 +631,11 @@ namespace DOL.GS.Scripts
 
     [CmdAttribute(
        "&mlfg",
+       new[] { "&m" },
        ePrivLevel.Player,
-       "/mlfg [index] - Liste les mimics cherchant un groupe, ou recrute celui correspondant à l'index donné.")]
+       "/mlfg [index] - Liste les mimics cherchant un groupe, ou recrute celui correspondant à l'index donné.",
+       "/m <index> - Raccourci pour /mlfg <index>.",
+       "/m page <n> - Raccourci pour /mlfg page <n>.")]
     public class MimicLfgCommandHandler : AbstractCommandHandler, ICommandHandler
     {
         public void OnCommand(GameClient client, string[] args)
@@ -767,7 +770,7 @@ namespace DOL.GS.Scripts
             int endIdx = Math.Min(startIdx + MAX_DISPLAYED, entries.Count);
 
             sb.AppendLine($"Page {page} / {totalPages}  —  {entries.Count} mimics au total.");
-            sb.AppendLine("Clique sur un lien pour le taper, puis Entree pour recruter.");
+            sb.AppendLine("Recrute en tapant /m <numero> (ex: /m 5). Pour changer de page : /m page 2");
             sb.AppendLine();
 
             for (int i = startIdx; i < endIdx; i++)
@@ -775,12 +778,7 @@ namespace DOL.GS.Scripts
                 var entry = entries[i];
                 string cls = Enum.GetName(typeof(eMimicClass), entry.MimicClass);
                 int displayIndex = i + 1; // 1-based, global across pages
-                // Slash-prefixed bracket — the DAoC client auto-types the
-                // bracket content into the chat input on click. With the `/`
-                // present, the typed text is a real slash command, so Enter
-                // (or auto-send on this server) executes /mlfg N exactly as
-                // if the player had typed it themselves.
-                sb.AppendLine($"[/mlfg {displayIndex}]  {entry.Name,-20} {cls,-14} lvl {entry.Level}");
+                sb.AppendLine($"  {displayIndex,3}.  /m {displayIndex,-3}  {entry.Name,-20} {cls,-14} lvl {entry.Level}");
             }
 
             if (totalPages > 1)
@@ -788,9 +786,9 @@ namespace DOL.GS.Scripts
                 sb.AppendLine();
                 System.Text.StringBuilder nav = new();
                 if (page > 1)
-                    nav.Append($"[/mlfg page {page - 1}]  <- Precedent   ");
+                    nav.Append($"Precedent : /m page {page - 1}    ");
                 if (page < totalPages)
-                    nav.Append($"[/mlfg page {page + 1}]  Suivant ->");
+                    nav.Append($"Suivant : /m page {page + 1}");
                 sb.AppendLine(nav.ToString());
             }
 

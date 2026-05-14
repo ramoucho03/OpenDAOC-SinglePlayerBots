@@ -26,12 +26,12 @@ namespace DOL.GS.Scripts
             "Emergency heal % threshold for mimic healers (default 50, vs the generic 37).", 50)]
         public static int MIMIC_EMERGENCY_THRESHOLD;
 
-        // Visual-only static item the bot drops at camp. Common DAoC model
-        // IDs that render as a fire: 2587 (bonfire, default), 2603 (brazier),
-        // 2599 (magic flame), 851 (small cooking fire), 1004 (lantern).
-        // Tune live with `/serverproperties mimic_campfire_model <id>`.
+        // Visual-only static item the bot drops at camp. Verified against
+        // the OpenDAOC worldobject database where the canonical campfire
+        // entries use model 2656 (primary, ~15 spawns) with 3460 as a
+        // larger variant. Both are valid; 2656 is the safe default.
         [ServerProperty("npc", "mimic_campfire_model",
-            "GameStaticItem model used as the camp fire visual (2587 bonfire default, 2603 brazier, 2599 magic flame, 851 small cooking fire).", 2587)]
+            "GameStaticItem model used as the camp fire visual (2656 = OpenDAOC standard campfire, 3460 = larger campfire variant).", 2656)]
         public static int MIMIC_CAMPFIRE_MODEL;
     }
 }
