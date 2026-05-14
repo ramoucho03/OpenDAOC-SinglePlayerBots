@@ -508,9 +508,88 @@ namespace DOL.GS.Scripts
 
             sb.Append(Lbl(lang, "Mimic.Button.Delete"));
             sb.Append("  ").Append(Lbl(lang, "Mimic.Button.Help"));
+            sb.Append("\n\n");
+
+            // ----- Global commands -----
+            // These bracket buttons whisper a keyword back to this mimic; the
+            // WhisperReceive dispatcher below maps each to ScriptMgr.HandleCommand
+            // so the click is equivalent to typing the slash command in chat.
+            sb.Append("=== Groupes / LFG / BG ===\n");
+            sb.Append("[lfg]   ");          // /mlfg
+            sb.Append("[lfgPage2]  ");      // /mlfg page 2
+            sb.Append("[grpAlb]  ");        // /mgroup alb
+            sb.Append("[grpHib]  ");        // /mgroup hib
+            sb.Append("[grpMid]  ");        // /mgroup mid
+            sb.Append("[bgThid]  ");        // /mbattle thid start
+            sb.Append("[bgStop]  ");        // /mbattle thid stop
+            sb.Append("[clearAll]\n\n");    // /mclear
+
+            sb.Append("=== Ordres globaux ===\n");
+            sb.Append("[gSummon]  ");       // /msummon
+            sb.Append("[gFollow]  ");       // /mfollow
+            sb.Append("[gAttack]  ");       // /mattack
+            sb.Append("[gPull]  ");         // /mpull
+            sb.Append("[gPullHere]  ");     // /mpullfrom here
+            sb.Append("[gPullClr]\n\n");    // /mpullfrom remove
+
+            sb.Append("=== Camp ===\n");
+            sb.Append("[campSet]  ");       // /mcamp set
+            sb.Append("[campHere]  ");      // /mcamp here
+            sb.Append("[campOff]  ");       // /mcamp remove
+            sb.Append("[campAgg550]  ");    // /mcamp aggrorange 550
+            sb.Append("[campAgg1500]  ");   // /mcamp aggrorange 1500
+            sb.Append("[campBlue]  ");      // /mcamp filter blue
+            sb.Append("[campYellow]  ");    // /mcamp filter yellow
+            sb.Append("[campOrange]\n\n");  // /mcamp filter orange
+
+            sb.Append("=== Modes ===\n");
+            sb.Append("[pvpOn]  [pvpOff]  ");
+            sb.Append("[pcOn]  [pcOff]  ");
+            sb.Append("[help]  [bstats]\n");
 
             player.Out.SendMessage(sb.ToString(), eChatType.CT_Say, eChatLoc.CL_PopupWindow);
             return true;
+        }
+
+        /// <summary>
+        /// Maps a clickable bracket keyword from the global-commands section of
+        /// the right-click menu to its `/slashCommand` equivalent. Returns null
+        /// when the keyword isn't a global menu action.
+        /// </summary>
+        private static string ResolveGlobalMenuKeyword(string str)
+        {
+            return str switch
+            {
+                "lfg"          => "/mlfg",
+                "lfgPage2"     => "/mlfg page 2",
+                "grpAlb"       => "/mgroup alb",
+                "grpHib"       => "/mgroup hib",
+                "grpMid"       => "/mgroup mid",
+                "bgThid"       => "/mbattle thid start",
+                "bgStop"       => "/mbattle thid stop",
+                "clearAll"     => "/mclear",
+                "gSummon"      => "/msummon",
+                "gFollow"      => "/mfollow",
+                "gAttack"      => "/mattack",
+                "gPull"        => "/mpull",
+                "gPullHere"    => "/mpullfrom here",
+                "gPullClr"     => "/mpullfrom remove",
+                "campSet"      => "/mcamp set",
+                "campHere"     => "/mcamp here",
+                "campOff"      => "/mcamp remove",
+                "campAgg550"   => "/mcamp aggrorange 550",
+                "campAgg1500"  => "/mcamp aggrorange 1500",
+                "campBlue"     => "/mcamp filter blue",
+                "campYellow"   => "/mcamp filter yellow",
+                "campOrange"   => "/mcamp filter orange",
+                "pvpOn"        => "/mpvp true",
+                "pvpOff"       => "/mpvp false",
+                "pcOn"         => "/mpc true",
+                "pcOff"        => "/mpc false",
+                "help"         => "/mhelp",
+                "bstats"       => "/mbstats",
+                _              => null,
+            };
         }
 
         public override bool WhisperReceive(GameLiving source, string str)
@@ -523,12 +602,20 @@ namespace DOL.GS.Scripts
             if (player == null)
                 return false;
 
-            // Routing for clickable popup brackets sent by /mmenu, /mlfg, etc.
-            // The DAoC client intercepts `[/cmd]` brackets client-side and does NOT
-            // whisper them — so the bracket text we emit is the bare command name
-            // (e.g. `[mmenu create]`, `[mlfg 3]`). When the player clicks it, the
-            // client whispers the bracket contents to us and we run it as a slash
-            // command on the player's behalf.
+            // Global-menu shortcut keywords come from the right-click menu's
+            // "Groupes / Ordres / Camp / Modes" section. Map them to their full
+            // slash command and run it on the player's behalf — this is the
+            // working clickable path on v1.127 because the right-click menu
+            // popup already has the interaction context the client needs.
+            string globalCmd = ResolveGlobalMenuKeyword(str);
+            if (globalCmd != null && player.Client != null)
+            {
+                ScriptMgr.HandleCommand(player.Client, globalCmd);
+                return true;
+            }
+
+            // Routing for clickable popup brackets that whisper a bare command
+            // name (e.g. `[mmenu create]`). Kept as a fallback path.
             if (TryRouteAsCommand(player, str))
                 return true;
 

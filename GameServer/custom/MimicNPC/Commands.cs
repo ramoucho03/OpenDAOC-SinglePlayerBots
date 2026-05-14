@@ -94,6 +94,35 @@ namespace DOL.GS.Scripts
 
             return chosen;
         }
+
+        /// <summary>
+        /// Sends a popup whose [bracketed] links are clickable on 1.127+ clients.
+        /// The trick is to route the message through GameNPC.SayTo so it ships
+        /// as `"&lt;NpcName&gt; says, \"...\""` (CT_System + CL_PopupWindow). The
+        /// client recognises the NPC source and turns every `[token]` into a
+        /// `/whisper &lt;NpcName&gt; token` shortcut. If no mimic is available we
+        /// fall back to a plain popup with a hint to create a mimic first.
+        /// </summary>
+        public static void SendClickablePopup(GamePlayer player, MimicNPC contextMimic, string body)
+        {
+            if (player?.Out == null || string.IsNullOrEmpty(body))
+                return;
+
+            if (contextMimic != null)
+            {
+                // SayTo wraps the body as "<Name> says, \"<body>\"" and sends
+                // it as CT_System/CL_PopupWindow — exactly the format the
+                // 1.127 client expects for bracket clicks to whisper back.
+                // announce=false skips the "X speaks to Y" area broadcast.
+                contextMimic.SayTo(player, eChatLoc.CL_PopupWindow, body, false);
+                return;
+            }
+
+            string fallback = body
+                + "\n\n(Astuce : cree d'abord un mimic via /mcreate ou /mgroup "
+                + "puis relance la commande pour rendre les liens cliquables.)";
+            player.Out.SendMessage(fallback, eChatType.CT_System, eChatLoc.CL_PopupWindow);
+        }
     }
 
     #region Admin/GM/Debug/Cheats
@@ -603,10 +632,20 @@ namespace DOL.GS.Scripts
 
             var entries = MimicLFGManager.GetLFG(player.Realm, player.Level);
             string message;
+            int page = 1;
 
             if (args.Length < 2)
             {
-                message = BuildMessage(entries);
+                message = BuildMessage(entries, page);
+            }
+            else if (string.Equals(args[1], "page", StringComparison.OrdinalIgnoreCase))
+            {
+                // `/mlfg page N` — pagination only, no recruit
+                if (args.Length < 3 || !int.TryParse(args[2], out int requestedPage) || requestedPage < 1)
+                    requestedPage = 1;
+
+                page = requestedPage;
+                message = BuildMessage(entries, page);
             }
             else
             {
@@ -619,7 +658,7 @@ namespace DOL.GS.Scripts
                 int index = parsed - 1;
 
                 if (index < 0 || index > entries.Count - 1)
-                    message = BuildMessage(entries, true);
+                    message = BuildMessage(entries, page, true);
                 else
                 {
                     MimicLFGManager.MimicLFGEntry entry = entries[index];
@@ -659,10 +698,12 @@ namespace DOL.GS.Scripts
                             // Send a refreshed list with new indexes to avoid using wrong indexes while leaving the dialogue open
                             entries = MimicLFGManager.GetLFG(player.Realm, player.Level);
 
-                            message = BuildMessage(entries);
+                            // Stay on the same page after recruit so the player can keep picking from the same view.
+                            page = Math.Max(1, (index / MAX_DISPLAYED) + 1);
+                            message = BuildMessage(entries, page);
                         }
                         else
-                            message = BuildMessage(entries, true);
+                            message = BuildMessage(entries, page, true);
                     }
                     else
                     {
@@ -677,32 +718,25 @@ namespace DOL.GS.Scripts
                 }
             }
 
-            // For the `[/mlfg N]` brackets to be clickable, the player must have an NPC
-            // targeted — clicks become whispers to it. Target a mimic so MimicNPC's
-            // WhisperReceive forwards the `/mlfg N` whisper as a command. Without an
-            // owned mimic, fall back to a static note explaining how to use the list.
+            // 1.127+ client only treats popup brackets as clickable when the
+            // message is wrapped as "<NpcName> says, '...'" by NPC.SayTo — the
+            // client uses the embedded NPC name to /whisper back. Without that
+            // wrapping the brackets are inert. We target a mimic, then route the
+            // popup through its SayTo so the brackets become whisper-clickable.
             MimicNPC contextMimic = MimicPopupHelper.EnsureMimicTargeted(player);
-            if (contextMimic == null)
-                message += "\n(Astuce : cree d'abord un mimic via /mcreate pour rendre la liste cliquable.)";
-
-            // CT_Say + CL_PopupWindow makes [bracketed] text a clickable /whisper to
-            // the targeted NPC (the mimic chosen above).
-            player.Out.SendMessage(message, eChatType.CT_Say, eChatLoc.CL_PopupWindow);
+            MimicPopupHelper.SendClickablePopup(player, contextMimic, message);
         }
 
         // Cap the rendered list to stay under the 2048-byte popup packet limit.
-        // Each line is ~45 chars, header/footer ~120, so ~30 entries is safe.
+        // Each line is ~45 chars, header/footer ~180, so ~30 entries is safe.
         private const int MAX_DISPLAYED = 30;
 
-        private string BuildMessage(IReadOnlyList<MimicLFGManager.MimicLFGEntry> entries, bool invalid = false)
+        private string BuildMessage(IReadOnlyList<MimicLFGManager.MimicLFGEntry> entries, int page, bool invalid = false)
         {
-            // Each entry is rendered as a clickable popup link:  "[/mlfg N] Name Class Level".
-            // DAoC popup brackets type their content into chat — so clicking the
-            // bracketed text re-invokes /mlfg with the index, recruiting that bot.
+            // Each entry is rendered as a clickable popup link:  "[mlfg N] Name Class Level".
+            // No leading slash — see MimicNPC.TryRouteAsCommand for the routing.
             System.Text.StringBuilder sb = new();
             sb.AppendLine("------- Mimics LFG -------");
-            sb.AppendLine("Tape /mlfg N (N = numero ci-dessous) pour recruter.");
-            sb.AppendLine();
 
             if (invalid)
             {
@@ -716,24 +750,34 @@ namespace DOL.GS.Scripts
                 return sb.ToString();
             }
 
-            int index = 1;
-            int shown = 0;
-            foreach (var entry in entries)
-            {
-                if (shown >= MAX_DISPLAYED)
-                    break;
+            int totalPages = Math.Max(1, (entries.Count + MAX_DISPLAYED - 1) / MAX_DISPLAYED);
+            if (page < 1) page = 1;
+            if (page > totalPages) page = totalPages;
 
+            int startIdx = (page - 1) * MAX_DISPLAYED;       // 0-based start
+            int endIdx = Math.Min(startIdx + MAX_DISPLAYED, entries.Count);
+
+            sb.AppendLine($"Page {page} / {totalPages}  —  {entries.Count} mimics au total. Clique [mlfg N] pour recruter.");
+            sb.AppendLine();
+
+            for (int i = startIdx; i < endIdx; i++)
+            {
+                var entry = entries[i];
                 string cls = Enum.GetName(typeof(eMimicClass), entry.MimicClass);
-                // No leading slash — see MimicNPC.TryRouteAsCommand for the
-                // server-side routing that runs `/mlfg N` when the player clicks
-                // and the targeted mimic whispers `mlfg N` back to us.
-                sb.AppendLine($"[mlfg {index}]  {entry.Name,-20} {cls,-14} lvl {entry.Level}");
-                index++;
-                shown++;
+                int displayIndex = i + 1; // 1-based, global across pages
+                sb.AppendLine($"[mlfg {displayIndex}]  {entry.Name,-20} {cls,-14} lvl {entry.Level}");
             }
 
-            if (entries.Count > MAX_DISPLAYED)
-                sb.AppendLine($"... ({entries.Count - MAX_DISPLAYED} autres mimics non affiches)");
+            if (totalPages > 1)
+            {
+                sb.AppendLine();
+                System.Text.StringBuilder nav = new();
+                if (page > 1)
+                    nav.Append($"[mlfg page {page - 1}]  <- Precedent   ");
+                if (page < totalPages)
+                    nav.Append($"[mlfg page {page + 1}]  Suivant ->");
+                sb.AppendLine(nav.ToString());
+            }
 
             return sb.ToString();
         }
@@ -1394,22 +1438,35 @@ namespace DOL.GS.Scripts
                     break;
             }
 
-            // Popup brackets are only clickable when the player has an NPC targeted —
-            // clicks become /whispers to it. Target one of the player's mimics so
-            // clicks route through MimicNPC.WhisperReceive, which forwards `/cmd`
-            // strings to ScriptMgr.HandleCommand.
-            MimicNPC contextMimic = MimicPopupHelper.EnsureMimicTargeted(player);
-            if (contextMimic == null)
+            // 1.127 client makes popup brackets clickable ONLY after a true
+            // right-click interaction (server can't fake the interaction context
+            // for a brand-new popup). The bullet-proof clickable path is the
+            // mimic's own right-click menu, which now embeds all global commands.
+            // If the player has a mimic, fire its Interact() — that puts the
+            // mimic into interaction state with the client, and the resulting
+            // popup is fully clickable. /mmenu <category> still uses the old
+            // popup as a textual reference.
+            if (args.Length < 2)
             {
-                sb.AppendLine();
-                sb.AppendLine("(Astuce : cree un mimic via /mcreate ou /mgroup pour rendre");
-                sb.AppendLine(" les liens du menu cliquables. Sans mimic cible, il faut");
-                sb.AppendLine(" taper la commande manuellement.)");
+                MimicNPC contextMimic = MimicPopupHelper.EnsureMimicTargeted(player);
+                if (contextMimic != null)
+                {
+                    contextMimic.Interact(player);
+                    return;
+                }
+
+                player.Out.SendMessage(
+                    "Cree un mimic d'abord (/mcreate ou /mgroup), puis relance /mmenu : "
+                    + "clic droit sur ton mimic ouvre le menu cliquable complet (roles, "
+                    + "camp, BG, /mlfg, /mgroup, /mcamp, /mpvp...).",
+                    eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                return;
             }
 
-            // CT_Say + CL_PopupWindow lets the DAoC client treat [bracketed] text as
-            // clickable links that whisper the bracket contents to the targeted NPC.
-            player.Out.SendMessage(sb.ToString(), eChatType.CT_Say, eChatLoc.CL_PopupWindow);
+            // Category subviews still go out as a plain popup — non-clickable,
+            // but the textual reference is useful for power users who already
+            // know the syntax.
+            player.Out.SendMessage(sb.ToString(), eChatType.CT_System, eChatLoc.CL_PopupWindow);
         }
 
         // ----- Hub -----
