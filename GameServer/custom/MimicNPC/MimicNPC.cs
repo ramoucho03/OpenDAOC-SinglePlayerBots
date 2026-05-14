@@ -351,6 +351,7 @@ namespace DOL.GS.Scripts
             ("Boots",          "Mimic.Button.Boots"),
             ("Jewelry",        "Mimic.Button.Jewelry"),
             ("Delete",         "Mimic.Button.Delete"),
+            ("Help",           "Mimic.Button.Help"),
         };
 
         // Renders "[<localized label>]" — clickable in the popup window.
@@ -465,6 +466,7 @@ namespace DOL.GS.Scripts
             sb.Append(Lbl(lang, "Mimic.Button.Jewelry")).Append("\n\n");
 
             sb.Append(Lbl(lang, "Mimic.Button.Delete"));
+            sb.Append("  ").Append(Lbl(lang, "Mimic.Button.Help"));
 
             player.Out.SendMessage(sb.ToString(), eChatType.CT_Say, eChatLoc.CL_PopupWindow);
             return true;
@@ -696,6 +698,11 @@ namespace DOL.GS.Scripts
                 case "Roam":
                     MimicBrain.Roam = !MimicBrain.Roam;
                     message = T(lang, MimicBrain.Roam ? "Mimic.Reply.RoamOn" : "Mimic.Reply.RoamOff");
+                    break;
+
+                case "Help":
+                    // Dispatch to /mhelp so the player gets the full command catalogue.
+                    ScriptMgr.HandleCommand(player.Client, "/mhelp");
                     break;
 
                 case "Spells":

@@ -307,14 +307,36 @@ namespace DOL.AI.Brain
         }
 
         /// <summary>
-        /// The interval for thinking, min 1.5 seconds
-        /// 10 seconds for 0 aggro mobs
+        /// <summary>
+        /// Adaptive tick interval: 500ms when we are in combat or have a player
+        /// or live target near us (responsive AI), 2000ms when truly idle (no
+        /// player within 5000u, not in combat, not following). Cuts CPU usage
+        /// dramatically when hundreds of frontier bots are roaming far from
+        /// any human player. Sampled cheaply — no full region scan.
         /// </summary>
+        private long _nextIdleCheckMs;
+        private bool _idleSlow;
         public override int ThinkInterval
         {
             get
             {
-                return 500;
+                if (Body == null)
+                    return 2000;
+
+                if (Body.InCombat || HasAggro || IsPulling)
+                    return 500;
+
+                long now = GameLoop.GameLoopTime;
+
+                // Re-evaluate idle status only every 5s to avoid full proximity
+                // scans every think tick.
+                if (now >= _nextIdleCheckMs)
+                {
+                    _nextIdleCheckMs = now + 5000;
+                    _idleSlow = !Body.GetPlayersInRadius(5000).GetEnumerator().MoveNext();
+                }
+
+                return _idleSlow ? 2000 : 500;
             }
         }
 

@@ -1202,7 +1202,7 @@ namespace DOL.GS.Scripts
     [CmdAttribute(
         "&mclear",
         ePrivLevel.Player,
-        "/mclear - Supprime tous les mimics que vous possedez (et efface la sauvegarde de reattachement).")]
+        "/mclear - Supprime tous les mimics que vous possedez.")]
     public class MimicClearCommandHandler : AbstractCommandHandler, ICommandHandler
     {
         public void OnCommand(GameClient client, string[] args)
@@ -1215,6 +1215,140 @@ namespace DOL.GS.Scripts
             int removed = MimicManager.ClearOwned(player);
 
             player.Out.SendMessage($"Mimics supprimes : {removed}.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+        }
+    }
+
+    /// <summary>
+    /// Master help command. Lists every Mimic / PvP-frontier command grouped
+    /// by category, with usage and one-line description. `/mhelp <name>` shows
+    /// a single command's full help.
+    /// </summary>
+    [CmdAttribute(
+        "&mhelp",
+        new[] { "&mimichelp" },
+        ePrivLevel.Player,
+        "/mhelp - Affiche l'aide complete sur toutes les commandes des bots.",
+        "/mhelp <commande> - Affiche le detail d'une commande (ex: /mhelp mgroup).")]
+    public class MimicHelpCommandHandler : AbstractCommandHandler, ICommandHandler
+    {
+        // Catalog of every Mimic command exposed to the player. Grouped so the
+        // help output stays readable. Description is the short one-liner; full
+        // syntax/details come from the command's [CmdAttribute] when queried
+        // individually via `/mhelp <name>`.
+        private sealed class Entry
+        {
+            public string Cmd;
+            public string Category;
+            public string Short;
+            public string Usage;
+            public Entry(string cmd, string cat, string s, string u)
+            { Cmd = cmd; Category = cat; Short = s; Usage = u; }
+        }
+
+        private static readonly Entry[] _entries = new[]
+        {
+            // --- Creation ---
+            new Entry("/mcreate",  "Creation",  "Cree un mimic d'une classe et niveau donnes.",
+                "/mcreate <classe> [niveau] [spec] [inv]\nEx: /mcreate armsman 50 inv"),
+            new Entry("/mgroup",   "Creation",  "Invoque un groupe equilibre (tank/heal/cc/dps).",
+                "/mgroup <royaume> [taille=8] [niveau=ton lvl] [preventCombat=false]\nEx: /mgroup alb 8 50"),
+            new Entry("/mclear",   "Creation",  "Supprime tous tes mimics.", "/mclear"),
+            new Entry("/mlfg",     "Creation",  "Liste les mimics LFG ou en recrute un.",
+                "/mlfg          (liste)\n/mlfg <index>  (recrute le numero affiche)"),
+            new Entry("/mspawner", "Creation",  "Spawn periodique de mimics a une position.",
+                "/mspawner <royaume> <lvlMin> <lvlMax> <maxAmount>"),
+
+            // --- Orders ---
+            new Entry("/msummon",  "Ordres",    "Teleporte tes mimics groupes a ta position.", "/msummon"),
+            new Entry("/mfollow",  "Ordres",    "Retire camp/pull et fait suivre tous les mimics.", "/mfollow"),
+            new Entry("/mattack",  "Ordres",    "Fait attaquer ta cible par tous les mimics.", "/mattack"),
+            new Entry("/mpull",    "Ordres",    "Fixe camp+pull a ta position et pull ta cible.", "/mpull"),
+            new Entry("/mpullfrom","Ordres",    "Definit le point depuis lequel puller.",
+                "/mpullfrom here | set <x y z> | remove"),
+            new Entry("/mcamp",    "Ordres",    "Definit camp / aggrorange / filtre con.",
+                "/mcamp here | set | remove | aggrorange <n> | filter <con>"),
+
+            // --- Roles ---
+            new Entry("/mrole",    "Roles",     "Assigne un role a un mimic.",
+                "/mrole leader | tank | assist | cc | puller"),
+            new Entry("/mheal",    "Roles",     "Bascule le soigneur entre 'combat' et 'soin pur'.", "/mheal"),
+            new Entry("/mguard",   "Roles",     "Designe une cible a garder (capacite Garde).",
+                "/mguard [nom ou classe]"),
+            new Entry("/mprotect", "Roles",     "Designe une cible a proteger (Protection).",
+                "/mprotect [nom ou classe]"),
+            new Entry("/mintercept","Roles",    "Designe une cible a intercepter.",
+                "/mintercept [nom ou classe]"),
+
+            // --- Modes ---
+            new Entry("/mpvp",     "Modes",     "Active/desactive le mode PvP sur la cible ou le groupe.",
+                "/mpvp true | false"),
+            new Entry("/mpc",      "Modes",     "Active/desactive PreventCombat (le mimic n'engagera plus).",
+                "/mpc true | false [group]"),
+
+            // --- Strategies / debug ---
+            new Entry("/mstrategy","Strategie", "Liste / ajoute / retire des strategies sur la cible.",
+                "/mstrategy list | add <cle> | remove <cle>"),
+            new Entry("/mbattle",  "Battleground","Controle un battleground (Thid/Caledonia/Molvik).",
+                "/mbattle <Region> Start | Stop | Clear"),
+            new Entry("/mbstats",  "Battleground","Affiche les stats d'un battleground.",
+                "/mbstats <Battleground>"),
+
+            // --- PvP Frontier ---
+            new Entry("/pvpfrontier", "PvP Frontier (admin)",
+                "Manage l'IA frontiere autonome (auto-start au boot).",
+                "/pvpfrontier start | stop | status | clear"),
+        };
+
+        public void OnCommand(GameClient client, string[] args)
+        {
+            GamePlayer player = client.Player;
+            if (player == null) return;
+
+            if (args.Length >= 2)
+            {
+                ShowOne(player, args[1]);
+                return;
+            }
+
+            ShowAll(player);
+        }
+
+        private void ShowAll(GamePlayer player)
+        {
+            System.Text.StringBuilder sb = new();
+            sb.AppendLine("--- AIDE DES COMMANDES BOTS ---");
+            sb.AppendLine("Tape /mhelp <commande> pour le detail (ex: /mhelp mgroup).");
+            sb.AppendLine();
+
+            foreach (var grp in _entries.GroupBy(e => e.Category))
+            {
+                sb.Append("[").Append(grp.Key).AppendLine("]");
+                foreach (var e in grp)
+                    sb.Append("  ").Append(e.Cmd.PadRight(14)).Append(" - ").AppendLine(e.Short);
+                sb.AppendLine();
+            }
+
+            player.Out.SendMessage(sb.ToString(), eChatType.CT_System, eChatLoc.CL_PopupWindow);
+        }
+
+        private void ShowOne(GamePlayer player, string arg)
+        {
+            string q = "/" + arg.TrimStart('/').ToLowerInvariant();
+            Entry hit = _entries.FirstOrDefault(e => string.Equals(e.Cmd, q, StringComparison.OrdinalIgnoreCase));
+            if (hit == null)
+            {
+                player.Out.SendMessage(
+                    $"Commande inconnue : {arg}. Tape /mhelp pour la liste.",
+                    eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                return;
+            }
+
+            string msg =
+                $"=== {hit.Cmd} ({hit.Category}) ===\n" +
+                hit.Short + "\n\n" +
+                "Utilisation :\n" +
+                hit.Usage;
+            player.Out.SendMessage(msg, eChatType.CT_System, eChatLoc.CL_PopupWindow);
         }
     }
 }

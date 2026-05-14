@@ -49,3 +49,119 @@ AdminCommands.Account.InvalidAccountNameOrPassword:	Le nom de compte de jeu et l
 AdminCommands.Account.AccountNameAlreadyRegistered:	Ce nom de compte de jeu est déjà utilisé.
 AdminCommands.Account.AccountCreated:				Compte créé!
 AdminCommands.Account.AccNameForChar:				Le nom de compte de jeu pour le joueur "{0}" est: {1}
+
+# Admin Commands - complements FR
+AdminCommands.Command.SyntaxDesc:			Utilisez la syntaxe suivante pour cette commande:
+AdminCommands.Header.Syntax.Account:			<----- Commandes '/account' (plvl 3) ----->
+AdminCommands.Header.Syntax.Benchmark:			<----- Commandes '/benchmark' (plvl 3) ----->
+AdminCommands.Header.Syntax.Code:			<----- Commandes '/code' (plvl 3) ----->
+AdminCommands.Header.Syntax.Freeze:			<----- Commandes '/freeze' (plvl 3) ----->
+AdminCommands.Header.Syntax.Plvl:			<----- Commandes '/plvl' (plvl 3) ----->
+AdminCommands.Header.Syntax.Refresh:			<----- Commandes '/refresh' (plvl 3) ----->
+AdminCommands.Header.Syntax.Reload:			<----- Commandes '/reload' (plvl 3) ----->
+AdminCommands.Header.Syntax.Serverprop:			<----- Commande '/serverproperties' (plvl 3) ----->
+AdminCommands.Header.Syntax.Shutdown:			<----- Commandes '/shutdown' (plvl 3) ----->
+
+AdminCommands.Account.Syntax.AccountName:			/account accountname <nomPersonnage>
+AdminCommands.Account.Syntax.ChangePassword:			/account changepassword <nomCompte> <nouveauMotDePasse>
+AdminCommands.Account.Syntax.Create:			/account create <nomCompte> <motDePasse>
+AdminCommands.Account.Syntax.Delete:			/account delete <nomCompte>
+AdminCommands.Account.Syntax.DeleteChar:			/account deletecharacter <nomPersonnage>
+AdminCommands.Account.Syntax.MoveChar:			/account movecharacter <nomPersonnage> <compteDestination>
+AdminCommands.Account.Syntax.Status:			/account status <nomCompte> <statut>
+AdminCommands.Account.Syntax.Unban:			/account unban <nomCompte>
+AdminCommands.Account.Usage.Unban:			Retire le bannissement d'un compte, s'il existe. Cette commande ne retire pas les bannissements uniquement IP ('/ban ip'), mais retire les bannissements '/ban both' et '/ban account'.
+AdminCommands.Account.Msg.AccNameForChar:			{0} est associé au compte '{1}'.
+AdminCommands.Account.Err.AccountBanNotFound:			Le compte '{0}' n'est pas actuellement banni!
+AdminCommands.Account.Msg.AccountCreated:			Vous avez créé le compte '{0}' avec succès! Pensez à noter les identifiants pour un usage ultérieur.
+AdminCommands.Account.Msg.AccountDeleted:			Vous avez supprimé le compte '{0}' avec succès!
+AdminCommands.Account.Err.AlreadyRegistered:			Un compte existe déjà sous le nom '{0}'! Essayez une autre valeur.
+AdminCommands.Account.Err.AccountNotFound:			Aucun compte n'existe sous le nom '{0}'. Vérifiez que vous avez saisi le nom complet du compte.
+AdminCommands.Account.Msg.AccountUnbanned:			Vous avez retiré le bannissement du compte '{0}' avec succès!
+AdminCommands.Account.Msg.CharacterDeleted:			Vous avez supprimé le personnage {0} avec succès!
+AdminCommands.Account.Msg.CharacterMovedToAccount:			Vous avez transféré la propriété de {0} vers le compte '{1}' avec succès!
+AdminCommands.Account.Err.CharacterNotFound:			Aucun personnage n'existe sous le nom '{0}'. Vérifiez que vous avez saisi son prénom complet.
+AdminCommands.Account.Err.CharNotFromValidRealm:			{0} est actuellement associé à l'ID de royaume {1}. Cette valeur n'est pas acceptée et le déplacement du personnage a échoué!
+AdminCommands.Account.Err.InvalidNamePass:			Le nouveau compte n'a pas pu être créé! Le nom de compte ou le mot de passe est trop court. Les deux doivent contenir au moins 4 caractères.
+AdminCommands.Account.Err.NoFreeSlots:			Le compte de destination '{0}' n'a aucun emplacement de personnage disponible pour ce royaume! Le transfert du personnage a échoué.
+AdminCommands.Account.Msg.PasswordChanged:			Vous avez changé le mot de passe du compte '{0}' avec succès. Communiquez-le au propriétaire du compte si nécessaire.
+AdminCommands.Account.Err.PasswordChars:			Le nouveau mot de passe n'a pas pu être défini! La valeur attendue était trop courte. Saisissez un mot de passe d'au moins 4 caractères pour des raisons de sécurité.
+AdminCommands.Account.Msg.SetStatus:			Vous avez changé le statut du compte '{0}' de {1} à {2}!
+AdminCommands.Account.Err.SpecialChars:			Le nouveau compte n'a pas pu être créé! Des caractères spéciaux (ex.: !@#.?) ont été détectés dans le nom du compte. Seuls les chiffres et les lettres minuscules sont autorisés.
+AdminCommands.Account.Err.StatusValueReq:			La valeur saisie n'est pas attendue. Indiquez un nombre entre '0' et '255'.
+
+AdminCommands.Benchmark.Description:			Effectue un benchmark système du type indiqué. Cela permet d'évaluer les performances globales du système.
+AdminCommands.Benchmark.Syntax.Listskills:			/benchmark listskills
+AdminCommands.Benchmark.Usage.Listskills:			Teste le temps total, en millisecondes, nécessaire au système pour lister un nombre donné de compétences mises en cache. Cela n'inclut pas les spécialisations de sorts.
+AdminCommands.Benchmark.Syntax.Listspells:			/benchmark listspells
+AdminCommands.Benchmark.Usage.Listspells:			Teste le temps total, en millisecondes, nécessaire au système pour lister un nombre donné de sorts mis en cache.
+AdminCommands.Benchmark.Msg.SkillsIterations:			Le benchmark des compétences a pris {0} ms pour lister {1} compétences utilisables.
+AdminCommands.Benchmark.Msg.SpellsIterations:			Le benchmark des sorts a pris {0} ms pour lister {1} sorts utilisables.
+
+AdminCommands.Plvl.Description:			Modifie le niveau de privilège (plvl) d'un compte et accorde ou retire l'accès aux types de commandes selon le plvl de l'utilisateur. Ces commandes permettent d'accorder l'accès Admin, GM et Joueur depuis le jeu.
+AdminCommands.Plvl.Syntax.Comm:			/plvl command
+AdminCommands.Plvl.Usage.Comm:			Fournit des informations supplémentaires sur le type de commande '/plvl'.
+AdminCommands.Plvl.Syntax.Plvl:			/plvl <nouveauPlvl> <nomJoueur>
+AdminCommands.Plvl.Usage.Plvl:			Définit le niveau de privilège du compte du joueur ciblé. Il aura ensuite accès à toutes les commandes associées à ce rôle. Utilisez '/plvl single' ou '/plvl singleaccount' pour conserver l'accès à certains types de commandes en tant que joueur.
+AdminCommands.Plvl.Syntax.Remove:			/plvl remove <typeCommande> <nomJoueur>
+AdminCommands.Plvl.Usage.Remove:			Retire un type de commande précis précédemment accordé à un joueur avec '/plvl single'.
+AdminCommands.Plvl.Syntax.AcctRemove:			/plvl removeaccount <typeCommande> <nomJoueur>
+AdminCommands.Plvl.Usage.AcctRemove:			Retire un type de commande précis précédemment accordé au compte d'un joueur avec '/plvl singleaccount'.
+AdminCommands.Plvl.Syntax.Single:			/plvl single <typeCommande> <nomJoueur>
+AdminCommands.Plvl.Usage.Single:			Accorde à un personnage la possibilité d'utiliser un type de commande précis quel que soit son niveau de privilège actuel. Pour '<typeCommande>', indiquez seulement l'identifiant de commande (ex.: 'player' pour les commandes '/player', 'plvl' pour les commandes '/plvl', etc.).
+AdminCommands.Plvl.Syntax.AcctSingle:			/plvl singleaccount <typeCommande> <nomJoueur>
+AdminCommands.Plvl.Usage.AcctSingle:			Accorde à tous les personnages du compte d'un joueur la possibilité d'utiliser un type de commande précis quel que soit leur niveau de privilège actuel. Pour '<typeCommande>', indiquez seulement l'identifiant de commande (ex.: 'player' pour les commandes '/player', 'plvl' pour les commandes '/plvl', etc.).
+AdminCommands.Plvl.Comm.Intro:			Le type de commande '/plvl' permet de contrôler le niveau de privilège d'un compte et les types de commandes que ses personnages peuvent utiliser lorsqu'ils sont joueurs. Les valeurs utilisées pour chaque plvl sont:
+AdminCommands.Plvl.Comm.1:			1 = Joueur
+AdminCommands.Plvl.Comm.Usage1:			Vous pouvez être attaqué par des monstres ou des joueurs et subir des dégâts de chute. Les joueurs ont seulement accès aux commandes slash de base (comme '/bg', '/gc', '/cg', etc.).
+AdminCommands.Plvl.Comm.2:			2 = Maître de jeu (GM)
+AdminCommands.Plvl.Comm.Usage2:			Vous ne pouvez pas être attaqué par des monstres ou des joueurs, ni subir de dégâts de chute. Les GM ont accès à la PLUPART des commandes slash spéciales, sauf celles réservées à ePrivLevel.Admin comme '/plvl', '/account', '/shutdown', etc.
+AdminCommands.Plvl.Comm.3:			3 = Admin
+AdminCommands.Plvl.Comm.Usage3:			Vous ne pouvez pas être attaqué par des monstres ou des joueurs, ni subir de dégâts de chute. Les admins ont accès à TOUTES les commandes spéciales, y compris les commandes GM.
+AdminCommands.Plvl.Comm.UseSingleAcct:			Ces nombres sont utilisés lors d'un changement de niveau de privilège ('/plvl <nouveauPlvl> <nomJoueur>') pour tester les fonctionnalités ou le combat en jeu.
+AdminCommands.Plvl.Msg.AddSinglePerm:			Vous avez accordé à {0} l'accès à la commande '/{1}'!
+AdminCommands.Plvl.Msg.GaveSinglePerm:			{0} vous a donné accès à la commande '/{1}'! Tapez '/{1}' pour voir la liste des commandes.
+AdminCommands.Plvl.Msg.RevokeSinglePerm:			Vous avez révoqué l'accès de {0} à la commande '/{1}'!
+AdminCommands.Plvl.Msg.DelSinglePerm:			{0} a retiré votre accès à la commande '/{1}'! Vous ne pourrez plus utiliser ce type de commande avec le niveau de privilège Joueur.
+AdminCommands.Plvl.Msg.AddAcct:			Vous avez accordé au compte de {0} l'accès à la commande '/{1}'!
+AdminCommands.Plvl.Msg.GaveAcct:			{0} a donné à votre compte l'accès à la commande '/{1}'! Tapez '/{1}' pour voir la liste des commandes.
+AdminCommands.Plvl.Msg.RevokeAcctPerm:			Vous avez révoqué l'accès du compte de {0} à la commande '/{1}'!
+AdminCommands.Plvl.Msg.DelAcctPerm:			{0} a retiré l'accès de votre compte à la commande '/{1}'! Vos personnages ne pourront plus utiliser ce type de commande avec le niveau de privilège Joueur.
+AdminCommands.Plvl.Msg.YourPlvlSet:			{0} a changé le niveau de privilège de votre compte en {1}!
+AdminCommands.Plvl.Msg.PlvlSet:			Vous avez changé le niveau de privilège du compte de {0} en {1}!
+AdminCommands.Plvl.Err.NoPlayerExists:			Aucun joueur en ligne ne porte le nom '{0}'. Vérifiez que vous avez saisi le nom complet du joueur et qu'il est en ligne.
+AdminCommands.Plvl.Err.NoPlayerName:			Vous devez indiquer un nom de joueur pour les commandes '/plvl'!
+AdminCommands.Plvl.Err.NoPermFound:			Aucune permission n'a été accordée à {0} pour la commande '/{1}'.
+AdminCommands.Plvl.Err.NoAcctPermFound:			Aucune permission n'a été trouvée pour le compte de {0} et la commande '/{1}"!
+AdminCommands.Plvl.Err.NoPlvlPerm:			La permission '/plvl' ne vous est pas assignée! Vous ne pourrez plus accéder à la commande '/plvl' en tant que GM ou joueur.
+AdminCommands.Plvl.Note.PlvlSingle:			Pour conserver l'accès à certains types de commandes en tant que joueur, saisissez '/plvl single' ou '/plvl singleaccount' pour plus de détails.
+
+AdminCommands.ServerProperties.Description:			Recharge ou nettoie les propriétés serveur depuis la base de données.
+AdminCommands.ServerProperties.Usage:			/serverproperties <refresh | cleanup>
+
+AdminCommands.Shutdown.Msg.CountdownHours:			Un redémarrage serveur est prévu dans {0} heures!
+AdminCommands.Shutdown.Msg.CountdownHrMn:			Un redémarrage serveur est prévu dans {0} heures et {1} minutes!
+AdminCommands.Shutdown.Msg.CountdownMins:			Un redémarrage serveur aura lieu dans {0} minutes!
+AdminCommands.Shutdown.Msg.CountdownSecs:			Un redémarrage serveur aura lieu dans {0} secondes!
+AdminCommands.Shutdown.Msg.CountdownMnSc:			Un redémarrage serveur aura lieu dans {0} minutes et {1} secondes!
+AdminCommands.Shutdown.Msg.CountdownLogoutSecs:			Redémarrage serveur dans {0} secondes! Déconnectez-vous maintenant pour éviter toute perte de progression!
+AdminCommands.Shutdown.Msg.ScheduledShutdown:			Un redémarrage serveur a été planifié à {0}. Le serveur sera alors temporairement indisponible.
+AdminCommands.Account.Msg.ServerClosed:			Le serveur est maintenant fermé à toutes les connexions entrantes! Il s'arrêtera dans {0} secondes!
+AdminCommands.Shutdown.Msg.PlanLogout:			Il est recommandé aux joueurs de se déconnecter avant le redémarrage afin d'éviter la perte de kills RvR, de butin ROG ou d'autre progression.
+AdminCommands.Shutdown.Comm.Desc1:			La commande '/shutdown' lance un compte à rebours qui bloque les nouvelles connexions quand il reste moins de 2 minutes, envoie le code de sortie et arrête l'activité DOL. Elle ne doit pas être confondue avec '/serverreboot', qui ne fonctionne actuellement pas.
+AdminCommands.Shutdown.Msg.YouCancel:			Vous avez arrêté le processus de redémarrage du serveur!
+AdminCommands.Shutdown.Msg.StaffCancel:			{0} a arrêté le redémarrage du serveur!
+AdminCommands.Shutdown.Msg.ShutdownEnd:			Le redémarrage du serveur a été annulé! Merci d'attendre des informations supplémentaires.
+AdminCommands.Shutdown.Msg.ServerOpen:			Le serveur est maintenant ouvert et accepte les connexions entrantes!
+AdminCommands.Shutdown.Err.NoShutdown:			Aucun arrêt serveur n'est actuellement planifié!
+AdminCommands.Shutdown.Err.WrongNumber:			L'arrêt serveur n'a pas pu être lancé! Saisissez une valeur entre '1' (1 minute) et '720' (12 heures) pour démarrer le compte à rebours. Sinon, planifiez un arrêt avec '/shutdown on <HH>:<MM>'.
+AdminCommands.Shutdown.Msg.AttentionShutdown:			ATTENTION: un arrêt serveur aura lieu dans {0} minutes! L'arrêt est planifié à {1}.
+AdminCommands.Shutdown.Description:			Lance un arrêt complet du serveur.
+AdminCommands.Shutdown.Syntax.Comm:			/shutdown command
+AdminCommands.Shutdown.Usage.Comm:			Fournit des informations supplémentaires sur le type de commande '/shutdown'.
+AdminCommands.Shutdown.Syntax.Secs:			/shutdown <secondes>
+AdminCommands.Shutdown.Usage.Secs:			Planifie un arrêt manuel du serveur avec un compte à rebours depuis le nombre de secondes indiqué.
+AdminCommands.Shutdown.Syntax.HrMin:			/shutdown on <HH>:<MM>
+AdminCommands.Shutdown.Usage.HrMin:			Planifie un arrêt manuel du serveur à l'heure indiquée, au format 24:59.
+AdminCommands.Shutdown.Syntax.Stop:			/shutdown stop
+AdminCommands.Shutdown.Usage.Stop:			Annule un arrêt serveur planifié. Utilisez ceci si un arrêt a été déclenché par erreur, n'est plus nécessaire ou manque d'un membre d'équipe qualifié pour relancer le serveur.

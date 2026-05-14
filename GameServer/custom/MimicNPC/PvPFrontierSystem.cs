@@ -283,19 +283,31 @@ namespace DOL.GS.Scripts
             sb.AppendLine($"Target population per realm: {PvPFrontierProperties.PVP_FRONTIER_POPULATION_PER_REALM}");
             sb.AppendLine($"Region: {PvPFrontierProperties.PVP_FRONTIER_REGION}");
             sb.AppendLine();
+            sb.AppendLine($"{"Realm",-9} {"groups",6} {"logical",7} {"hydrated",8} {"npcs",5}");
 
             lock (_configs)
             {
                 foreach (var cfg in _configs.Values)
                 {
-                    int alive = 0;
-                    int groups = cfg.Groups.Count;
+                    int hydrated = 0;
+                    int logical = 0;
+                    int npcs = 0;
                     foreach (var g in cfg.Groups)
-                        alive += g.AliveMemberCount;
-                    sb.AppendLine($"{cfg.Realm,-9} alive={alive,4}  groups={groups,3}");
+                    {
+                        logical += g.LogicalMemberCount;
+                        if (g.IsHydrated)
+                        {
+                            hydrated++;
+                            npcs += g.AliveMemberCount;
+                        }
+                    }
+                    sb.AppendLine($"{cfg.Realm,-9} {cfg.Groups.Count,6} {logical,7} {hydrated,8} {npcs,5}");
                 }
             }
 
+            sb.AppendLine();
+            sb.AppendLine("Dormant groups consume no AI CPU — they only simulate movement.");
+            sb.AppendLine("Hydrated groups have actual MimicNPCs running combat AI.");
             sb.AppendLine();
             sb.AppendLine($"Engagement aggression: {PvPFrontierProperties.PVP_FRONTIER_ENGAGE_AGGRESSION} (0=adv only, 1=parity, 2=always)");
             return sb.ToString();
@@ -326,10 +338,40 @@ namespace DOL.GS.Scripts
 
         public bool IsDisbanded => State == eFrontierState.Disbanded;
 
+        // ----- Logical roster / dormant simulation -----
+        //
+        // A LogicalMember is a persistent identity (class, level, name, gender,
+        // role). It survives dehydration. When the group is dormant, this is
+        // ALL we keep around — no GameObject, no brain, no inventory, no AI tick.
+        //
+        // When a player approaches within HYDRATE_RANGE of VirtualPosition, the
+        // group "materialises" — each LogicalMember becomes a real MimicNPC at
+        // VirtualPosition. When the player leaves and DEHYDRATE_RANGE+grace is
+        // reached, the MimicNPCs are deleted and the Roster persists.
+        public sealed class LogicalMember
+        {
+            public eMimicClass MimicClass;
+            public byte Level;
+            public string Name;
+            public eGender Gender;
+            public bool IsTank;
+            public bool IsHealer;
+            public bool IsCC;
+        }
+
+        public List<LogicalMember> Roster { get; } = new();
+        public Point3D VirtualPosition { get; private set; }
+        public ushort Region { get; private set; }
+        public bool IsHydrated { get; private set; }
+
+        public int LogicalMemberCount => Roster.Count;
+
         public int AliveMemberCount
         {
             get
             {
+                if (!IsHydrated) return Roster.Count;
+
                 int n = 0;
                 foreach (var m in Members)
                     if (m != null && m.IsAlive && m.ObjectState == GameObject.eObjectState.Active)
@@ -343,16 +385,37 @@ namespace DOL.GS.Scripts
         private const int DETECTION_RANGE = 3500;
         private const int WAYPOINT_REACHED_RANGE = 400;
 
+        // Hydration: player must be within HYDRATE_RANGE of VirtualPosition to
+        // wake the group up. Dehydration uses a wider radius + grace period so
+        // a player jogging past doesn't flap the group on/off.
+        private const int HYDRATE_RANGE = 4500;
+        private const int DEHYDRATE_RANGE = 6500;
+        private const int DEHYDRATE_GRACE_MS = 20_000;
+
+        // Dormant movement: how often we advance VirtualPosition and how far
+        // each step covers. 5s tick * 190 (run speed) ≈ 950u per step.
+        private const int DORMANT_STEP_MS = 5_000;
+        private const int DORMANT_STEP_DISTANCE = 950;
+
         private Point3D _currentWaypoint;
         private long _nextScanMs;
         private long _retreatUntilMs;
+        private long _dehydrateAfterMs;   // 0 = no pending dehydration
+        private long _nextDormantStepMs;
+
+        // After leaving combat, the group rests this long before scanning for
+        // new engagements. Prevents a lone human from being chain-wiped by
+        // multiple bot groups converging on the same spot.
+        private const int POST_FIGHT_COOLDOWN_MS = 30_000;
+        private long _postFightUntilMs;
 
         private PvPFrontierGroup(PvPFrontierManager.RealmConfig cfg) => Config = cfg;
 
         /// <summary>
-        /// Spawns a freshly composed PvP group at the realm's anchor and binds
-        /// the mimics into a DAoC group with auto-assigned roles. Returns null
-        /// if no mimic could be spawned (rare, usually class catalog issue).
+        /// Composes a roster (class + level per slot) and registers the group
+        /// in dormant mode at the realm's anchor. NO MimicNPC is instantiated —
+        /// that happens lazily on hydration. Returns null only if the composer
+        /// produces no classes (catalog edge case).
         /// </summary>
         public static PvPFrontierGroup Spawn(PvPFrontierManager.RealmConfig cfg, int groupSize)
         {
@@ -362,87 +425,222 @@ namespace DOL.GS.Scripts
             if (comp.Count == 0)
                 return null;
 
-            ushort region = (ushort)PvPFrontierProperties.PVP_FRONTIER_REGION;
             byte minLevel = (byte)PvPFrontierProperties.PVP_FRONTIER_MIN_LEVEL;
             byte maxLevel = (byte)PvPFrontierProperties.PVP_FRONTIER_MAX_LEVEL;
 
             foreach (eMimicClass cls in comp)
             {
                 byte level = (byte)Util.Random(minLevel, maxLevel);
-                Point3D pos = new(cfg.SpawnAnchor.X + Util.Random(-250, 250),
-                                  cfg.SpawnAnchor.Y + Util.Random(-250, 250),
-                                  cfg.SpawnAnchor.Z);
+                eGender gender = Util.Random(1) > 0 ? eGender.Male : eGender.Female;
 
-                MimicNPC m = MimicManager.GetMimic(cls, level);
+                g.Roster.Add(new LogicalMember
+                {
+                    MimicClass = cls,
+                    Level = level,
+                    Name = MimicNames.GetName(gender, cfg.Realm),
+                    Gender = gender,
+                    IsTank = IsTankClassEnum(cls),
+                    IsHealer = IsHealerClassEnum(cls),
+                    IsCC = IsCCClassEnum(cls),
+                });
+            }
+
+            g.Region = (ushort)PvPFrontierProperties.PVP_FRONTIER_REGION;
+            g.VirtualPosition = new Point3D(cfg.SpawnAnchor.X + Util.Random(-250, 250),
+                                            cfg.SpawnAnchor.Y + Util.Random(-250, 250),
+                                            cfg.SpawnAnchor.Z);
+
+            g.PickNextWaypoint();
+            g.State = eFrontierState.Patrolling;
+            g.IsHydrated = false;
+            g._nextDormantStepMs = GameLoop.GameLoopTime + DORMANT_STEP_MS;
+            return g;
+        }
+
+        // Classify a class by enum so we never have to instantiate a MimicNPC
+        // just to ask "is it a tank?". Mirrors MimicGroupComposer.Is*Class which
+        // takes a MimicNPC instance.
+        private static bool IsTankClassEnum(eMimicClass c) => c is
+            eMimicClass.Armsman or eMimicClass.Paladin or eMimicClass.Mercenary or
+            eMimicClass.Hero or eMimicClass.Champion or eMimicClass.Blademaster or
+            eMimicClass.Warrior or eMimicClass.Thane or eMimicClass.Berserker;
+
+        private static bool IsHealerClassEnum(eMimicClass c) => c is
+            eMimicClass.Cleric or eMimicClass.Friar or
+            eMimicClass.Druid or eMimicClass.Bard or eMimicClass.Warden or
+            eMimicClass.Healer or eMimicClass.Shaman;
+
+        private static bool IsCCClassEnum(eMimicClass c) => c is
+            eMimicClass.Sorcerer or eMimicClass.Minstrel or
+            eMimicClass.Bard or eMimicClass.Enchanter or eMimicClass.Mentalist or
+            eMimicClass.Runemaster or eMimicClass.Spiritmaster;
+
+        public int DisbandAndDelete()
+        {
+            int n = 0;
+            if (IsHydrated)
+            {
+                foreach (var m in Members.ToList())
+                {
+                    if (m != null && m.ObjectState == GameObject.eObjectState.Active)
+                    {
+                        m.Delete();
+                        n++;
+                    }
+                }
+                Members.Clear();
+                IsHydrated = false;
+            }
+            Roster.Clear();
+            State = eFrontierState.Disbanded;
+            return n;
+        }
+
+        /// <summary>
+        /// Materialises every LogicalMember into a real MimicNPC at the current
+        /// VirtualPosition and binds them into a DAoC group. Idempotent: returns
+        /// immediately if already hydrated.
+        /// </summary>
+        public void Hydrate()
+        {
+            if (IsHydrated || Roster.Count == 0) return;
+
+            foreach (LogicalMember lm in Roster)
+            {
+                Point3D pos = new(VirtualPosition.X + Util.Random(-200, 200),
+                                  VirtualPosition.Y + Util.Random(-200, 200),
+                                  VirtualPosition.Z);
+
+                MimicNPC m = MimicManager.GetMimic(lm.MimicClass, lm.Level, lm.Name, lm.Gender);
                 if (m == null) continue;
 
-                if (!MimicManager.AddMimicToWorld(m, pos, region))
+                if (!MimicManager.AddMimicToWorld(m, pos, Region))
                     continue;
 
-                // PvP mode flag tells the brain to roam, engage, etc.
                 if (m.MimicBrain != null)
                 {
                     m.MimicBrain.PvPMode = true;
                     m.MimicBrain.Roam = true;
                     m.MimicBrain.AggroLevel = 100;
                     m.MimicBrain.AggroRange = 3000;
+                    m.MimicBrain.IsHealer = lm.IsHealer;
                 }
 
-                g.Members.Add(m);
+                Members.Add(m);
             }
 
-            if (g.Members.Count == 0)
-                return null;
+            if (Members.Count == 0) return;
 
-            // Form a DAoC group for the squad so heal/assist routines kick in.
-            g.DolGroup = new Group(g.Members[0]);
-            GroupMgr.AddGroup(g.DolGroup);
-            g.DolGroup.AddMember(g.Members[0]);
+            DolGroup = new Group(Members[0]);
+            GroupMgr.AddGroup(DolGroup);
+            DolGroup.AddMember(Members[0]);
+            for (int i = 1; i < Members.Count; i++)
+                DolGroup.AddMember(Members[i]);
 
-            for (int i = 1; i < g.Members.Count; i++)
-                g.DolGroup.AddMember(g.Members[i]);
-
-            // Auto-assign tank/healer/cc/assist/puller roles.
-            PvPGroupComposer.AutoAssignPvPRoles(g.Members);
-
-            g.PickNextWaypoint();
-            g.State = eFrontierState.Patrolling;
-            g.OrderGroupToWaypoint();
-
-            return g;
-        }
-
-        public int DisbandAndDelete()
-        {
-            int n = 0;
-            foreach (var m in Members.ToList())
-            {
-                if (m != null && m.ObjectState == GameObject.eObjectState.Active)
-                {
-                    m.Delete();
-                    n++;
-                }
-            }
-            Members.Clear();
-            State = eFrontierState.Disbanded;
-            return n;
+            PvPGroupComposer.AutoAssignPvPRoles(Members);
+            IsHydrated = true;
+            OrderGroupToWaypoint();
         }
 
         /// <summary>
-        /// Called periodically from PvPFrontierManager. Drives the state machine:
-        /// patrol → spot enemy → assess → engage/retreat → resume patrol.
+        /// Deletes every MimicNPC. The logical Roster is preserved so the group
+        /// can re-hydrate later. If a member died while hydrated, it's already
+        /// gone from Members — we sync Roster too so it stays accurate.
+        /// </summary>
+        public void Dehydrate()
+        {
+            if (!IsHydrated) return;
+
+            // Sync Roster with alive members (drop the dead).
+            // Match by name to keep identities consistent across hydration cycles.
+            HashSet<string> alive = new();
+            foreach (var m in Members)
+                if (m != null && m.IsAlive) alive.Add(m.Name);
+
+            Roster.RemoveAll(lm => !alive.Contains(lm.Name));
+
+            // VirtualPosition becomes the leader's last known position so the
+            // group "appears" where it actually was on the next hydration.
+            MimicNPC leader = FirstAliveMember();
+            if (leader != null)
+                VirtualPosition = new Point3D(leader.X, leader.Y, leader.Z);
+
+            foreach (var m in Members.ToList())
+            {
+                if (m != null && m.ObjectState == GameObject.eObjectState.Active)
+                    m.Delete();
+            }
+            Members.Clear();
+            DolGroup = null;
+            IsHydrated = false;
+            _nextDormantStepMs = GameLoop.GameLoopTime + DORMANT_STEP_MS;
+        }
+
+        /// <summary>
+        /// Called periodically from PvPFrontierManager. Drives:
+        ///   - proximity check + hydration management
+        ///   - hydrated state machine (patrol / engage / retreat)
+        ///   - dormant simulation (advance VirtualPosition)
         /// </summary>
         public void Tick()
         {
             if (IsDisbanded) return;
 
-            // Disband empty groups (all members dead).
-            if (AliveMemberCount == 0)
+            // Disband if the entire roster is gone (e.g. every bot died in a fight).
+            if (Roster.Count == 0)
             {
                 State = eFrontierState.Disbanded;
                 return;
             }
 
+            long now = GameLoop.GameLoopTime;
+            bool playerNear = IsPlayerWithin(HYDRATE_RANGE);
+
+            // ---- Hydration management ----
+            if (!IsHydrated)
+            {
+                if (playerNear)
+                {
+                    Hydrate();
+                }
+                else
+                {
+                    DormantTick(now);
+                    return; // dormant groups don't run combat AI
+                }
+            }
+            else
+            {
+                // Hydrated. If player is now far away (DEHYDRATE_RANGE), start a
+                // grace timer. If they come back within HYDRATE_RANGE before it
+                // expires, cancel the dehydration.
+                bool farFromAll = !IsPlayerWithin(DEHYDRATE_RANGE);
+
+                if (farFromAll)
+                {
+                    if (_dehydrateAfterMs == 0)
+                        _dehydrateAfterMs = now + DEHYDRATE_GRACE_MS;
+                    else if (now >= _dehydrateAfterMs)
+                    {
+                        Dehydrate();
+                        _dehydrateAfterMs = 0;
+                        return;
+                    }
+                }
+                else
+                {
+                    _dehydrateAfterMs = 0;
+                }
+            }
+
+            // Disband if hydrated but every member died (Roster won't refill).
+            if (IsHydrated && AliveMemberCount == 0)
+            {
+                State = eFrontierState.Disbanded;
+                return;
+            }
+
+            // ---- Hydrated state machine ----
             switch (State)
             {
                 case eFrontierState.Forming:
@@ -464,6 +662,56 @@ namespace DOL.GS.Scripts
             }
         }
 
+        /// <summary>
+        /// Cheap simulation tick. Advances VirtualPosition toward the current
+        /// waypoint by DORMANT_STEP_DISTANCE every DORMANT_STEP_MS. No combat,
+        /// no scanning, no AI cost.
+        /// </summary>
+        private void DormantTick(long now)
+        {
+            if (now < _nextDormantStepMs) return;
+            _nextDormantStepMs = now + DORMANT_STEP_MS;
+
+            long dx = _currentWaypoint.X - VirtualPosition.X;
+            long dy = _currentWaypoint.Y - VirtualPosition.Y;
+            long distSq = dx * dx + dy * dy;
+
+            if (distSq < (long)WAYPOINT_REACHED_RANGE * WAYPOINT_REACHED_RANGE)
+            {
+                PickNextWaypoint();
+                return;
+            }
+
+            double dist = Math.Sqrt(distSq);
+            double step = Math.Min(DORMANT_STEP_DISTANCE, dist);
+            double nx = VirtualPosition.X + dx * step / dist;
+            double ny = VirtualPosition.Y + dy * step / dist;
+            VirtualPosition = new Point3D((int)nx, (int)ny, VirtualPosition.Z);
+        }
+
+        /// <summary>
+        /// True if any non-GM human player is within `range` of VirtualPosition
+        /// in our Region. Filters out GMs (PrivLevel > 1) since admins shouldn't
+        /// keep the system busy by being invisible.
+        /// </summary>
+        private bool IsPlayerWithin(int range)
+        {
+            global::DOL.GS.Region region = WorldMgr.GetRegion(Region);
+            if (region == null) return false;
+
+            long rangeSq = (long)range * range;
+            foreach (GamePlayer p in ClientService.Instance.GetPlayersOfRegion(region))
+            {
+                if (p == null || !p.IsAlive) continue;
+                if (p.Client?.Account != null && p.Client.Account.PrivLevel > 1) continue;
+
+                long dx = p.X - VirtualPosition.X;
+                long dy = p.Y - VirtualPosition.Y;
+                if (dx * dx + dy * dy <= rangeSq) return true;
+            }
+            return false;
+        }
+
         private void TickPatrol()
         {
             GameLiving leader = FirstAliveMember();
@@ -481,6 +729,12 @@ namespace DOL.GS.Scripts
 
             // Periodically scan for enemy realm groups within detection range.
             long now = GameLoop.GameLoopTime;
+
+            // Honour the post-fight cooldown: the group keeps patrolling but
+            // doesn't seek a new engagement during the rest window.
+            if (now < _postFightUntilMs)
+                return;
+
             if (now >= _nextScanMs)
             {
                 _nextScanMs = now + 3000 + Util.Random(0, 2000);
@@ -508,11 +762,14 @@ namespace DOL.GS.Scripts
         private void TickEngaging()
         {
             // Stay engaging while at least one bot is in combat. When everyone
-            // is clear of combat (enemy wiped or escaped), resume patrol.
+            // is clear of combat (enemy wiped or escaped), arm the post-fight
+            // cooldown and resume patrol — gives lone humans a chance to
+            // disengage instead of being chain-mobbed by every nearby group.
             bool anyoneInCombat = Members.Any(m => m != null && m.IsAlive && m.InCombat);
 
             if (!anyoneInCombat)
             {
+                _postFightUntilMs = GameLoop.GameLoopTime + POST_FIGHT_COOLDOWN_MS;
                 State = eFrontierState.Patrolling;
                 PickNextWaypoint();
                 OrderGroupToWaypoint();

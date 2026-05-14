@@ -13,8 +13,15 @@
         <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
         <Deterministic>false</Deterministic>
         <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+        <!-- Performance tuning. ServerGC + ConcurrentGC give us multi-heap parallel
+             garbage collection, critical for thousands of bots ticking 24/7.
+             TieredCompilation+TieredPGO lets the JIT recompile hot paths with full
+             optimization, which pays back massively for the game-loop hot path. -->
         <ServerGarbageCollection>true</ServerGarbageCollection>
         <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+        <RetainVMGarbageCollection>true</RetainVMGarbageCollection>
+        <TieredCompilation>true</TieredCompilation>
+        <TieredPGO>true</TieredPGO>
         <EnableLibraryImportGenerator>true</EnableLibraryImportGenerator>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <RegisterForComInterop>false</RegisterForComInterop>

@@ -72,6 +72,7 @@ Mimic.Button.Boots:                   Boots
 Mimic.Button.Jewelry:                 Jewelry
 
 Mimic.Button.Delete:                  Delete
+Mimic.Button.Help:                    Help
 
 # Replies / status
 Mimic.Reply.IDoNotHaveThatAbility:    I do not have that ability.

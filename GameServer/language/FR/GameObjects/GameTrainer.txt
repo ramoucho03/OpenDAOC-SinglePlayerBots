@@ -1,0 +1,75 @@
+# Game Trainer - complements FR
+
+GameTrainer.CheckAbilityToUseItem.Text1:	Vous n'avez plus la capacité d'utiliser {0}.
+GamePlayer.AddToWorld.SpecsPointsIncorrect:	Le total de vos points de spécialisation était incorrect. Il est maintenant corrigé, veuillez vous entraîner à nouveau.
+
+## Albion
+FriarTrainer.Interact.Text1:			{0} dit, "Voulez-vous [rejoindre les Défenseurs d'Albion] et défendre notre royaume en tant que Moine?"
+FriarTrainer.Interact.Text2:
+FriarTrainer.Interact.Text3:
+FriarTrainer.Interact.Text4:
+FriarTrainer.ReceiveItem.Text1:
+FriarTrainer.WhisperReceive.Text1:		Nous vous accueillons dans notre ordre comme un égal! Nous sommes à votre disposition. Nous allons maintenant vous remettre les Robes du Novice. Portez-les toujours afin qu'elles vous rappellent votre foi. Quand vous aurez atteint le titre de Chapelain Mineur, rapportez-les-moi. Nous verrons alors si vous en avez besoin d'autres.
+FriarTrainer.WhisperReceiveCase.Text1:	rejoindre les défenseurs d'albion
+
+## Hibernia
+AnimistTrainer.Interact.Text3:
+AnimistTrainer.Interact.Text4:
+EnchanterTrainer.Interact.Text3:
+EnchanterTrainer.Interact.Text4:
+HeroTrainer.Interact.Text3:
+HeroTrainer.Interact.Text4:
+
+MaulerHibTrainer.Interact.Text1:		{0} dit, "Voulez-vous [rejoindre le Temple du Poing de Fer] et combattre pour le glorieux royaume d'Hibernia?"
+MaulerHibTrainer.Interact.Text2:
+MaulerHibTrainer.Interact.Text3:
+MaulerHibTrainer.Interact.Text4:
+MaulerHibTrainer.ReceiveItem.Text1:
+MaulerHibTrainer.WhisperReceive.Text1:	Bienvenue, jeune Mauler. Que votre séjour en Hibernia soit fructueux. Préférez-vous combattre avec un [bâton] ou avec les [poings]?
+MaulerHibTrainer.WhisperReceive.Text2:	Vous recevez un cadeau de Laresh.
+MaulerHibTrainer.WhisperReceiveCase.Text1:	rejoindre le temple du poing de fer
+MaulerHibTrainer.WhisperReceiveCase.Text2:	bâton
+MaulerHibTrainer.WhisperReceiveCase.Text3:	poings
+
+MentalistTrainer.Interact.Text1:		{0} dit, "Voulez-vous vous entraîner comme [Mentaliste] et suivre la Voie de l'Harmonie?"
+MentalistTrainer.Interact.Text2:		{0} dit, "Notre voie est difficile, {1}. Je ne peux vous former qu'aux compétences. Vous devrez acquérir le savoir et la sagesse par vous-même."
+MentalistTrainer.Interact.Text3:
+MentalistTrainer.Interact.Text4:
+MentalistTrainer.WhisperReceive.Text1:	Bienvenue donc, {0}. La route est difficile, mais je vois que la difficulté ne vous est pas étrangère. Bienvenue, Mentaliste. Prenez ceci, cela vous aidera lors de vos premières rencontres.
+MentalistTrainer.WhisperReceiveCase.Text1:	mentaliste
+
+## Midgard
+BonedancerTrainer.Interact.Text1:		{0} dit, "Voulez-vous [rejoindre la Maison de Bodgar] et défendre notre royaume en tant que Prêtre de Hel?"
+BonedancerTrainer.Interact.Text2:
+BonedancerTrainer.Interact.Text3:
+BonedancerTrainer.Interact.Text4:
+BonedancerTrainer.ReceiveItem.Text1:
+BonedancerTrainer.WhisperReceive.Text1:	Bienvenue, jeune combattant! Que votre temps dans l'armée de Midgard soit fructueux!
+BonedancerTrainer.WhisperReceiveCase.Text1:	rejoindre la maison de bodgar
+
+SpiritmasterTrainer.Interact.Text1:		{0} dit, "Voulez-vous [rejoindre la Maison de Hel] et défendre notre royaume en tant que Prêtre d'Odin?"
+SpiritmasterTrainer.Interact.Text2:
+SpiritmasterTrainer.Interact.Text3:
+SpiritmasterTrainer.Interact.Text4:
+SpiritmasterTrainer.ReceiveItem.Text1:
+SpiritmasterTrainer.WhisperReceive.Text1:	Bienvenue, jeune Prêtre d'Odin! Que votre temps dans l'armée de Midgard soit fructueux!
+SpiritmasterTrainer.WhisperReceiveCase.Text1:	rejoindre la maison de hel
+
+## Unused
+BainsheeTrainer.Interact.Text1:			{0} dit, "Voulez-vous vous entraîner comme [Bainshee] et suivre la Voie de l'Affinité?"
+BainsheeTrainer.Interact.Text2:			{0} dit, "Notre voie est difficile, {1}. Je ne peux vous former qu'aux compétences. Vous devrez acquérir le savoir et la sagesse par vous-même."
+BainsheeTrainer.Interact.Text3:
+BainsheeTrainer.Interact.Text4:
+BainsheeTrainer.WhisperReceive.Text1:	Bienvenue donc, {0}. La route est difficile, mais je vois que la difficulté ne vous est pas étrangère. Bienvenue, Bainshee. Prenez ceci, cela vous aidera lors de vos premières rencontres.
+BainsheeTrainer.WhisperReceiveCase.Text1:	bainshee
+
+ValkyrieTrainer.Interact.Text1:			{0} dit, "Voulez-vous [rejoindre la Maison d'Odin] et défendre notre royaume en tant que Valkyrie?"
+ValkyrieTrainer.Interact.Text2:
+ValkyrieTrainer.Interact.Text3:
+ValkyrieTrainer.Interact.Text4:
+ValkyrieTrainer.ReceiveItem.Text1:
+ValkyrieTrainer.WhisperReceive.Text1:	Bienvenue, jeune Valkyrie! Que votre temps dans l'armée de Midgard soit fructueux! Préférez-vous combattre avec une [épée] ou avec une [lance]?
+ValkyrieTrainer.WhisperReceive.Text2:	Vous recevez un cadeau d'Odin.
+ValkyrieTrainer.WhisperReceiveCase.Text1:	rejoindre la maison d'odin
+ValkyrieTrainer.WhisperReceiveCase.Text2:	épée
+ValkyrieTrainer.WhisperReceiveCase.Text3:	lance

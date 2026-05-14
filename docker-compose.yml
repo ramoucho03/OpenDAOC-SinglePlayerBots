@@ -69,6 +69,22 @@ services:
       UDP_IP: "0.0.0.0"
       UDP_PORT: "10400"
       DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: "False"
+      # ----- .NET runtime performance tuning -----
+      # ServerGC + concurrent + heap-per-cpu => parallel collections without long pauses.
+      # Necessary for the high-allocation game loop with hundreds of bots.
+      DOTNET_gcServer: "1"
+      DOTNET_gcConcurrent: "1"
+      DOTNET_GCRetainVM: "1"
+      # Tiered PGO lets the JIT recompile hot paths with full optimisation after warmup.
+      DOTNET_TieredCompilation: "1"
+      DOTNET_TieredPGO: "1"
+      DOTNET_ReadyToRun: "1"
+      # Pre-allocate worker threads so the pool doesn't slow-start under burst load
+      # (login waves, big group encounters, etc.). Tune these to your VM cores.
+      DOTNET_ThreadPool_ForceMinWorkerThreads: "32"
+      DOTNET_ThreadPool_ForceMaxWorkerThreads: "256"
+      # Bot AI scaling — see ServerProperty pvp_frontier_population_per_realm too.
+      # The game loop runs at 30 TPS by default (game_loop_tick_rate ServerProperty).
     volumes:
       - base-db:/tmp/opendaoc-db
     networks:

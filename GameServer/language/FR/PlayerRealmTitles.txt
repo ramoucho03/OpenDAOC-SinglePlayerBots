@@ -90,3 +90,97 @@ GamePlayer.RealmTitle.Female.EmeraldRidere:		Cavalière d'Emeraude
 GamePlayer.RealmTitle.Female.Banbharun:			Ben Segr
 GamePlayer.RealmTitle.Female.ArdBantiarna:		Ben Reill
 GamePlayer.RealmTitle.Female.CiannCath:			Ciann Cath
+
+# Realm rank titles - keyed by realm/rank/gender
+GamePlayer.RealmTitle.Albion.RR0.Male:			Envahisseur
+GamePlayer.RealmTitle.Albion.RR1.Male:			Défenseur
+GamePlayer.RealmTitle.Albion.RR2.Male:			Gardien
+GamePlayer.RealmTitle.Albion.RR3.Male:			Chevalier
+GamePlayer.RealmTitle.Albion.RR4.Male:			Chevalier-Griffon
+GamePlayer.RealmTitle.Albion.RR5.Male:			Chevalier-Faucon
+GamePlayer.RealmTitle.Albion.RR6.Male:			Chevalier-Phénix
+GamePlayer.RealmTitle.Albion.RR7.Male:			Chevalier-Alérion
+GamePlayer.RealmTitle.Albion.RR8.Male:			Chevalier-Licorne
+GamePlayer.RealmTitle.Albion.RR9.Male:			Chevalier-Lion
+GamePlayer.RealmTitle.Albion.RR10.Male:			Chevalier-Dragon
+GamePlayer.RealmTitle.Albion.RR11.Male:			Seigneur
+GamePlayer.RealmTitle.Albion.RR12.Male:			Baronnet
+GamePlayer.RealmTitle.Albion.RR13.Male:			Baron
+GamePlayer.RealmTitle.Albion.RR14.Male:			Archiduc
+GamePlayer.RealmTitle.Albion.RR0.Female:			Envahisseuse
+GamePlayer.RealmTitle.Albion.RR1.Female:			Défenseuse
+GamePlayer.RealmTitle.Albion.RR2.Female:			Gardienne
+GamePlayer.RealmTitle.Albion.RR3.Female:			Chevalière
+GamePlayer.RealmTitle.Albion.RR4.Female:			Chevalière-Griffon
+GamePlayer.RealmTitle.Albion.RR5.Female:			Chevalière-Faucon
+GamePlayer.RealmTitle.Albion.RR6.Female:			Chevalière-Phénix
+GamePlayer.RealmTitle.Albion.RR7.Female:			Chevalière-Alérion
+GamePlayer.RealmTitle.Albion.RR8.Female:			Chevalière-Licorne
+GamePlayer.RealmTitle.Albion.RR9.Female:			Chevalière-Lion
+GamePlayer.RealmTitle.Albion.RR10.Female:			Chevalière-Dragon
+GamePlayer.RealmTitle.Albion.RR11.Female:			Dame
+GamePlayer.RealmTitle.Albion.RR12.Female:			Baronnette
+GamePlayer.RealmTitle.Albion.RR13.Female:			Baronne
+GamePlayer.RealmTitle.Albion.RR14.Female:			Archiduchesse
+
+GamePlayer.RealmTitle.Midgard.RR0.Male:			Envahisseur
+GamePlayer.RealmTitle.Midgard.RR1.Male:			Skiltvakten
+GamePlayer.RealmTitle.Midgard.RR2.Male:			Isen Vakten
+GamePlayer.RealmTitle.Midgard.RR3.Male:			Flammen Vakten
+GamePlayer.RealmTitle.Midgard.RR4.Male:			Elding Vakten
+GamePlayer.RealmTitle.Midgard.RR5.Male:			Stormur Vakten
+GamePlayer.RealmTitle.Midgard.RR6.Male:			Isen Herra
+GamePlayer.RealmTitle.Midgard.RR7.Male:			Flammen Herra
+GamePlayer.RealmTitle.Midgard.RR8.Male:			Elding Herra
+GamePlayer.RealmTitle.Midgard.RR9.Male:			Stormur Herra
+GamePlayer.RealmTitle.Midgard.RR10.Male:			Einherjar
+GamePlayer.RealmTitle.Midgard.RR11.Male:			Herra
+GamePlayer.RealmTitle.Midgard.RR12.Male:			Hersir
+GamePlayer.RealmTitle.Midgard.RR13.Male:			Vicomte
+GamePlayer.RealmTitle.Midgard.RR14.Male:			Stor Jarl
+GamePlayer.RealmTitle.Midgard.RR0.Female:			Envahisseuse
+GamePlayer.RealmTitle.Midgard.RR1.Female:			Skiltvakten
+GamePlayer.RealmTitle.Midgard.RR2.Female:			Isen Vakten
+GamePlayer.RealmTitle.Midgard.RR3.Female:			Flammen Vakten
+GamePlayer.RealmTitle.Midgard.RR4.Female:			Elding Vakten
+GamePlayer.RealmTitle.Midgard.RR5.Female:			Stormur Vakten
+GamePlayer.RealmTitle.Midgard.RR6.Female:			Isen Fru
+GamePlayer.RealmTitle.Midgard.RR7.Female:			Flammen Fru
+GamePlayer.RealmTitle.Midgard.RR8.Female:			Elding Fru
+GamePlayer.RealmTitle.Midgard.RR9.Female:			Stormur Fru
+GamePlayer.RealmTitle.Midgard.RR10.Female:			Einherjar
+GamePlayer.RealmTitle.Midgard.RR11.Female:			Fru
+GamePlayer.RealmTitle.Midgard.RR12.Female:			Baronsfru
+GamePlayer.RealmTitle.Midgard.RR13.Female:			Vicomtessa
+GamePlayer.RealmTitle.Midgard.RR14.Female:			Stor Hurfru
+
+GamePlayer.RealmTitle.Hibernia.RR0.Male:			Défenseur
+GamePlayer.RealmTitle.Hibernia.RR1.Male:			Savant
+GamePlayer.RealmTitle.Hibernia.RR2.Male:			Cosantoir
+GamePlayer.RealmTitle.Hibernia.RR3.Male:			Brehon
+GamePlayer.RealmTitle.Hibernia.RR4.Male:			Protecteur du Bosquet
+GamePlayer.RealmTitle.Hibernia.RR5.Male:			Corbeau Ardent
+GamePlayer.RealmTitle.Hibernia.RR6.Male:			Main d'Argent
+GamePlayer.RealmTitle.Hibernia.RR7.Male:			Tonnant
+GamePlayer.RealmTitle.Hibernia.RR8.Male:			Lance Dorée
+GamePlayer.RealmTitle.Hibernia.RR9.Male:			Tiarna
+GamePlayer.RealmTitle.Hibernia.RR10.Male:			Cavalier d'Émeraude
+GamePlayer.RealmTitle.Hibernia.RR11.Male:			Barun
+GamePlayer.RealmTitle.Hibernia.RR12.Male:			Ard Tiarna
+GamePlayer.RealmTitle.Hibernia.RR13.Male:			Ciann
+GamePlayer.RealmTitle.Hibernia.RR14.Male:			Ard Diuc
+GamePlayer.RealmTitle.Hibernia.RR0.Female:			Défenseuse
+GamePlayer.RealmTitle.Hibernia.RR1.Female:			Savante
+GamePlayer.RealmTitle.Hibernia.RR2.Female:			Cosantoir
+GamePlayer.RealmTitle.Hibernia.RR3.Female:			Brehon
+GamePlayer.RealmTitle.Hibernia.RR4.Female:			Protectrice du Bosquet
+GamePlayer.RealmTitle.Hibernia.RR5.Female:			Corbeau Ardent
+GamePlayer.RealmTitle.Hibernia.RR6.Female:			Main d'Argent
+GamePlayer.RealmTitle.Hibernia.RR7.Female:			Tonnante
+GamePlayer.RealmTitle.Hibernia.RR8.Female:			Lance Dorée
+GamePlayer.RealmTitle.Hibernia.RR9.Female:			Bantiarna
+GamePlayer.RealmTitle.Hibernia.RR10.Female:			Cavalière d'Émeraude
+GamePlayer.RealmTitle.Hibernia.RR11.Female:			Banbharun
+GamePlayer.RealmTitle.Hibernia.RR12.Female:			Ard Bantiarna
+GamePlayer.RealmTitle.Hibernia.RR13.Female:			Cath
+GamePlayer.RealmTitle.Hibernia.RR14.Female:			Ard Bandiuc

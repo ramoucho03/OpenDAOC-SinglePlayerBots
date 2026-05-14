@@ -1,0 +1,118 @@
+# Player Commands - complements FR
+
+## Error / General
+AllCommands.Error.NoCommand:			Aucune commande de ce type ({0}).
+AllCommands.Command.SyntaxDesc:			Utilisez la syntaxe suivante pour cette commande:
+AllCommands.Header.Note.Divider:			--- NOTE: ---
+AllCommands.Header.Note.Dashes:			--------------
+
+## /advice
+PLCommands.Advice.Syntax.AdvChannel:			'/adv <message>' - Envoie un message sur le canal Conseil.
+PLCommands.Advice.Syntax.Advice:			'/advice' - Liste tous les conseillers en ligne.
+PLCommands.Advice.List.TheFollowing:			Les joueurs suivants sont marqués comme conseillers:
+PLCommands.Advice.List.Wait:			Vous devez attendre {0} secondes avant de reparler sur /advice.
+PLCommands.Advice.List.Result:			{0}) {1}, niveau {2} {3} ({4} jours, {5} heures, {6} minutes jouées)
+PLCommands.Advice.List.1AdvisorOn:			Il y a 1 conseiller en ligne!
+PLCommands.Trade.List.Wait:			Vous devez attendre {0} secondes avant de reparler sur /trade.
+PLCommands.LFG.List.Wait:			Vous devez attendre {0} secondes avant de reparler sur /lfg.
+
+## /advisor
+PLCommands.Advisor.Syntax.Advisor:			'/advisor' - Marque votre personnage comme conseiller (<ADV>) pour indiquer que vous acceptez de répondre aux questions des nouveaux joueurs.
+PLCommands.Advisor.Syntax.SendAdvisor:			'/advisor <advisorName> <message>' - Envoie directement votre question à un conseiller.
+PLCommands.Advisor.Err.NoMessage:			Vous devez inclure un message pour communiquer avec ce conseiller! Utilisez '/advisor <advisorName> <message>' pour lui parler.
+PLCommands.Advisor.Err.MinimumReqs:			Vous ne remplissez pas encore les conditions pour devenir conseiller. Les conseillers de classe doivent avoir au moins 15 heures de jeu au niveau 50. Les conseillers d'artisanat doivent avoir le statut légendaire dans un artisanat principal, avoir activé '/setwho craft' et totaliser au moins 15 heures de jeu.
+
+## /afk / /anonymous
+PLCommands.AFK.Syntax.AFK:			'/afk' - Active ou désactive l'indicateur d'absence et permet d'attacher un message envoyé automatiquement aux joueurs qui vous contactent avec '/send' (par ex. '/afk Pause bio').
+PLCommands.AFK.Syntax.MessageAFK:			'/afk <message>' - Vous marque comme absent et attache un message envoyé automatiquement aux joueurs qui vous contactent avec '/send'.
+PLCommands.Anonymous.Syntax.Anon:			'/anonymous' ou '/anon' - Active ou désactive le mode anonyme, qui vous masque des recherches de joueurs (par ex. '/who').
+
+## /appeal
+Scripts.Players.Appeal.NeedMoreDetail:			Votre appel n'a PAS été envoyé. Veuillez le saisir à nouveau avec plus de détails.
+Scripts.Players.Appeal.AlreadyActiveAppeal:			Vous avez déjà un appel actif. Veuillez attendre que l'équipe du serveur traite votre appel actuel avant d'en envoyer un autre.
+Scripts.Players.Appeal.DoNotHaveAppeal:			Vous n'avez aucun appel à annuler, ou il a déjà été fermé pour vous.
+Scripts.Players.Appeal.StaffClosedYourAppeal:			{0} [ÉQUIPE] a fermé votre appel.
+Scripts.Players.Appeal.PleaseBePatient:			Merci de patienter pendant que nous traitons votre demande aussi vite que possible.
+Scripts.Players.Appeal.IfYouLogOut:			Si vous vous déconnectez avec un appel actif, il sera sauvegardé et rétabli automatiquement à votre reconnexion. (Même si vous changez de personnage)
+Scripts.Players.Appeal.ToCancelYourAppeal:			Pour annuler votre appel, utilisez /checkappeal cancel.
+Scripts.Players.Appeal.CriticalMessage:			Les appels critiques peuvent nécessiter une attention urgente!
+Scripts.Players.Appeal.YouAreMuted:			Vous êtes muet et n'êtes pas autorisé à envoyer un appel pour le moment.
+Scripts.Players.Appeal.AppealSubmitted:			Votre appel a été envoyé avec succès... utilisez /checkappeal pour vérifier son statut.
+Scripts.Players.Appeal.StaffChangedStatus:			{0} [ÉQUIPE] a changé le statut de votre appel en {1}.
+Scripts.Players.Appeal.CanceledYourAppeal:			Vous avez annulé votre appel.
+Scripts.Players.Appeal.LoginMessage:			Si vous avez besoin d'aide en jeu de la part de l'équipe du serveur (personnage bloqué, par exemple), utilisez /appeal.
+Scripts.Players.Appeal.YouHavePendingAppeal:			Vous avez un appel en attente dans la file. Utilisez /checkappeal pour voir son statut ou l'annuler.
+Scripts.Players.Appeal.CurrentStaffAvailable:			Il y a actuellement {0} membres de l'équipe disponibles et {1} appels en file d'attente.
+Scripts.Players.Appeal.SystemDisabled:			Le système d'appel est actuellement désactivé.
+
+## /assist / /groupsort
+Scripts.Players.Assist.MemberNotFound:			Personne de ce nom ne se trouve dans les environs.
+Scripts.Players.Assist.NoRealmMember:			{0} n'est pas membre de votre royaume!
+Scripts.Players.Assist.SelectMember:			Vous devez sélectionner le membre de votre royaume que vous souhaitez assister.
+Scripts.Players.Groupsort.InGroup:			Vous devez être dans un groupe pour utiliser cette commande.
+Scripts.Players.Groupsort.Leader:			Vous devez être le chef du groupe pour utiliser cette commande.
+
+## /battlegroup
+Scripts.Players.Battlegroup.Help.Solo:			/bg solo - Affiche la composition de classe de chaque joueur solo du groupe de combat.
+Scripts.Players.Battlegroup.Help.MakeLeader:			/bg makeleader <name> - Transfère la possession du groupe de combat au joueur indiqué, qui devient alors chef du BG.
+Scripts.Players.Battlegroup.Help.RecordStart:			/bg recordstart [maxRoll] - Commence à enregistrer tous les jets du groupe de combat inférieurs au jet maximum indiqué.
+Scripts.Players.Battlegroup.Help.RecordStop:			/bg recordstop - Arrête l'enregistrement de tous les jets du groupe de combat.
+Scripts.Players.Battlegroup.Help.ShowRolls:			/bg showrolls - Affiche les derniers résultats de jets du groupe de combat.
+Scripts.Players.Battlegroup.RemoveModerator:			{0} n'est plus modérateur.
+Scripts.Players.Battlegroup.NewLeader:			{0} est le nouveau chef du groupe de combat.
+Scripts.Players.Battlegroup.AlreadyInBattlegroup:			Vous êtes déjà dans un groupe de combat.
+
+## /bountyrent
+Scripts.Players.Bountyrent.AlreadyMaxMoney:			Cette maison contient déjà le montant maximum d'argent dans son coffre.
+Scripts.Players.Bountyrent.CmdUsage:			1 point de prime vaut actuellement {0} pièces de cuivre. Utilisez /bountyrent personal/guild <amount> pour payer.
+Scripts.Players.Bountyrent.CorrectFormat:			Le format correct est /bountyrent personal | guild <amount>
+Scripts.Players.Bountyrent.NotAHouseGuildLeader:			Cette maison n'appartient pas à une guilde dont vous êtes le maître de guilde!
+Scripts.Players.Bountyrent.NotEnoughBp:			Vous n'avez pas assez de points de prime!
+Scripts.Players.Bountyrent.NotEnoughGuildBp:			Votre guilde n'a pas assez de points de prime!
+Scripts.Players.Bountyrent.NoPayRentPerm:			Vous n'avez pas la permission d'utiliser /bountyrent ici!
+Scripts.Players.Bountyrent.RangeOfAHouse:			Vous devez être à portée d'une maison pour utiliser la commande /bountyrent.
+Scripts.Players.Bountyrent.ToManyMoney:			Cette somme dépasse la capacité du coffre! Dépôt annulé.
+Scripts.Players.Bountyrent.YouSpend:			Vous dépensez {0} points de prime personnels pour payer {1} pièces d'or de loyer.
+Scripts.Players.Bountyrent.YouSpendGuild:			Vous dépensez {0} points de prime de guilde pour payer {1} pièces d'or de loyer.
+
+## /rent
+Scripts.Players.Rent.AlreadyMaxMoney:			Cette maison contient déjà le montant maximum d'argent dans son coffre.
+Scripts.Players.Rent.CmdUsage:			Utilisez /rent personal/guild <gold> pour payer.
+Scripts.Players.Rent.CorrectFormat:			Le format correct est /rent personal | guild <gold>
+Scripts.Players.Rent.NotAHouseGuildLeader:			Cette maison n'appartient pas à votre guilde!
+Scripts.Players.Rent.NotEnoughMoney:			Vous n'avez pas assez d'or!
+Scripts.Players.Rent.NotEnoughGuildMoney:			Votre guilde n'a pas assez d'or!
+Scripts.Players.Rent.NoPayRentPerm:			Vous n'avez pas la permission d'utiliser /rent ici!
+Scripts.Players.Rent.NoHouse:			Vous ne possédez pas de maison!
+Scripts.Players.Rent.NoGuildHouse:			Votre guilde ne possède pas de maison!
+Scripts.Players.Rent.TooMuchMoney:			Cette somme dépasse la capacité du coffre!
+Scripts.Players.Rent.YouSpend:			Vous dépensez {0} pièces d'or personnelles pour payer le loyer.
+Scripts.Players.Rent.YouSpendGuild:			Vous dépensez {0} pièces d'or de guilde pour payer le loyer.
+
+## /chatgroup
+Scripts.Players.Chatgroup.PasswordUnset:			Le mot de passe de ce groupe de discussion n'est pas défini.
+Scripts.Players.Chatgroup.PasswordClear:			Le mot de passe de ce groupe de discussion a été effacé.
+Scripts.Players.Chatgroup.PrivateAlready:			Ce groupe de discussion est déjà privé.
+Scripts.Players.Chatgroup.PublicAlready:			Ce groupe de discussion est déjà public.
+
+## Duel / Guild
+GamePlayer.Duel.Die.KillerWinsDuel:			{0} remporte le duel!
+Scripts.Player.Guild.Help.GuildALeave:			'/gc aleave' retire votre guilde de l'alliance.
+Scripts.Player.Guild.Help.GuildALeader:			'/gc aleader' promeut une autre guilde comme chef d'alliance.
+Scripts.Player.Guild.XPBuffActive:			Votre guilde possède déjà un bonus d'expérience.
+Scripts.Player.Guild.RPBuffActive:			Votre guilde possède déjà un bonus de points de royaume.
+Scripts.Player.Guild.BPBuffActive:			Votre guilde possède déjà un bonus de points de prime.
+Scripts.Player.Guild.CraftBuffActive:			Votre guilde possède déjà un bonus d'artisanat.
+Scripts.Player.Guild.DepositsAmount:			{0} dépose {1} dans la banque de guilde.
+Scripts.Player.Guild.DuesOnCapped:			La cotisation de guilde ne peut pas dépasser {0}%.
+Scripts.Player.Guild.DuesOnForced:			La cotisation de guilde est imposée à {0}% par le serveur.
+Scripts.Player.Guild.WithdrawAmount:			Vous retirez {0} de la banque de guilde.
+Scripts.Player.Guild.WithdrawsAmount:			{0} retire {1} de la banque de guilde.
+
+## Misc
+Scripts.Players.Language.AvailableLanguages:			Langues disponibles: {0}
+GamePlayer.Pray.CantPrayRiding:			Vous ne pouvez pas prier en monture!
+GamePlayer.Quit.CantQuitInInstance:			Vous ne pouvez pas quitter dans une instance!
+GamePlayer.Release.ReleaseToHouse:			Vous serez maintenant libéré vers votre maison dans {0} secondes!
+PLCommands.SendMessage.Syntax.Send:			'/send <targetName> <message>' - Envoie un message privé au joueur ciblé.
+PLCommands.SetWho.Err.CraftAdvisor:			Vous ne pouvez pas masquer votre titre d'artisan pendant que votre indicateur de conseiller est actif, car vous ne remplissez pas les autres conditions de niveau et/ou de temps de jeu.
