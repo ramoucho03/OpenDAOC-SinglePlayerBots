@@ -133,7 +133,11 @@ namespace DOL.AI.Brain
                 _brain.AggroLevel = 100;
                 _brain.AggroRange = 3600;
 
-                _brain.PvPMode = _brain.Body.CurrentRegion.IsRvR || _brain.Body.CurrentZone.IsRvR;
+                // Snapshot region/zone in case the body is being moved between
+                // worlds during the same tick — both can be transiently null.
+                Region region = _brain.Body.CurrentRegion;
+                Zone zone = _brain.Body.CurrentZone;
+                _brain.PvPMode = (region != null && region.IsRvR) || (zone != null && zone.IsRvR);
                 _brain.Roam = true;
                 _brain.Defend = false;
 

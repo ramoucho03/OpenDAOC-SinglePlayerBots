@@ -1,16 +1,10 @@
 ﻿using DOL.GS.Scripts;
-using System.Collections.Generic;
-using System.Threading;
 
 namespace DOL.GS
 {
     public class MimicEffectListComponent : EffectListComponent
     {
-        private MimicNPC _owner;
-
-        private EffectHelper.PlayerUpdate _requestedPlayerUpdates;                   // Player updates requested by the effects, to be sent in the next tick.
-        private int _lastUpdateEffectsCount;                                         // Number of effects sent in the last player update, used externally.
-        private readonly Lock _playerUpdatesLock = new();
+        private readonly MimicNPC _owner;
 
         public MimicEffectListComponent(MimicNPC owner) : base(owner)
         {
@@ -25,11 +19,10 @@ namespace DOL.GS
 
         private void SendMimicUpdates()
         {
-            if (_owner.Group != null)
-            {
-                _owner.Group?.UpdateMember(_owner, true, false);
-                //_owner.Out.SendUpdateIcons(GetEffects(), ref _lastUpdateEffectsCount);
-            }
+            // Mimics don't have a real player client, so the only thing we
+            // need to do on an effect tick is keep the group window in sync
+            // for the human players who can see this bot.
+            _owner.Group?.UpdateMember(_owner, true, false);
         }
     }
 }

@@ -96,7 +96,9 @@ namespace DOL.GS.Scripts
         public AttackComponent AttackComponent { get; }
         public StyleComponent StyleComponent { get; }
         public EffectListComponent EffectListComponent { get; }
+#pragma warning disable CS0618 // GameEffectList still required by GameLiving base
         public GameEffectList EffectList { get; }
+#pragma warning restore CS0618
         public PropertyCollection TempProperties { get; }
         public PropertyIndexer ItemBonus { get; }
         public PropertyIndexer BaseBuffBonusCategory { get; }
@@ -128,7 +130,7 @@ namespace DOL.GS.Scripts
         public ICharacterClass CharacterClass { get; }
         public eGender Gender { get; set; }
         public short Race { get; set; }
-        public string Name { get; set; }
+        public new string Name { get; set; }
         public byte Level { get; set; }
         public int RealmLevel { get; set; }
         public long RealmPoints { get; set; }

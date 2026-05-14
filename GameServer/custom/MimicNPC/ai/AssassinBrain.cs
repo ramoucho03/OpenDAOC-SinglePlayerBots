@@ -113,7 +113,9 @@ namespace DOL.GS.Scripts
                         if (poison.ID < 30000 || poison.ID > 30049 || poison.Level > envenomSpecLevel)
                             continue;
 
-                        if (!highestPoisons.Select(poison => poison.SpellType).Contains(poison.SpellType))
+                        // Keep only the highest-level poison per SpellType (poisons
+                        // are pre-sorted by descending level above).
+                        if (!highestPoisons.Any(p => p.SpellType == poison.SpellType))
                             highestPoisons.Add(poison);
                     }
 

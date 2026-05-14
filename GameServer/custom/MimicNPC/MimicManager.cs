@@ -127,7 +127,6 @@ namespace DOL.GS.Scripts
             private MimicSpawner m_midSpawner;
 
             private int m_timerInterval = 600000; // 10 minutes
-            private int m_dormantInterval;
             private long m_resetMaxTime = 0;
 
             private readonly List<BattleStats> m_battleStats = new List<BattleStats>();
@@ -144,14 +143,11 @@ namespace DOL.GS.Scripts
             private int m_minTotalMimics;
             private int m_maxTotalMimics;
 
-            private int m_currentMinTotalMimics;
             private int m_currentMaxTotalMimics;
 
             private int m_currentMaxAlb;
             private int m_currentMaxHib;
             private int m_currentMaxMid;
-
-            private int m_groupChance = 50;
 
             public bool IsRunning => m_masterTimer != null && m_masterTimer.IsAlive;
 
@@ -455,21 +451,22 @@ namespace DOL.GS.Scripts
 
         public static eMimicClass GetRandomMimicClass(eRealm realm = eRealm.None)
         {
-            Array mimicClasses = Enum.GetValues(typeof(eMimicClass));
-
-            if (realm == eRealm.None)
-            {
-                int randomIndex = Util.Random(mimicClasses.Length - 1);
-                return (eMimicClass)mimicClasses.GetValue(randomIndex);
-            }
-
             List<eMimicClass> classes = new List<eMimicClass>();
 
-            foreach (eMimicClass mimicClass in mimicClasses)
+            foreach (eMimicClass mimicClass in Enum.GetValues(typeof(eMimicClass)))
             {
-                if (GlobalConstants.STARTING_CLASSES_DICT[realm].Contains((eCharacterClass)mimicClass))
-                    classes.Add(mimicClass);
+                if (mimicClass == eMimicClass.None)
+                    continue;
+
+                if (realm != eRealm.None &&
+                    !GlobalConstants.STARTING_CLASSES_DICT[realm].Contains((eCharacterClass)mimicClass))
+                    continue;
+
+                classes.Add(mimicClass);
             }
+
+            if (classes.Count == 0)
+                return eMimicClass.None;
 
             return classes[Util.Random(classes.Count - 1)];
         }
@@ -496,15 +493,17 @@ namespace DOL.GS.Scripts
                     continue;
 
                     default:
-                    if (realm != eRealm.None)
-                            if (!GlobalConstants.STARTING_CLASSES_DICT[realm].Contains((eCharacterClass)mimicClass))
-                                continue;
+                    if (realm != eRealm.None &&
+                        !GlobalConstants.STARTING_CLASSES_DICT[realm].Contains((eCharacterClass)mimicClass))
+                        continue;
 
                     meleeClasses.Add(mimicClass);
-
                     break;
                 }
             }
+
+            if (meleeClasses.Count == 0)
+                return eMimicClass.None;
 
             return meleeClasses[Util.Random(meleeClasses.Count - 1)];
         }
@@ -528,9 +527,9 @@ namespace DOL.GS.Scripts
                     case eMimicClass.Runemaster:
                     case eMimicClass.Spiritmaster:
 
-                    if (realm != eRealm.None)
-                        if (!GlobalConstants.STARTING_CLASSES_DICT[realm].Contains((eCharacterClass)mimicClass))
-                            continue;
+                    if (realm != eRealm.None &&
+                        !GlobalConstants.STARTING_CLASSES_DICT[realm].Contains((eCharacterClass)mimicClass))
+                        continue;
 
                     casterClasses.Add(mimicClass);
                     break;
@@ -539,6 +538,9 @@ namespace DOL.GS.Scripts
                     continue;
                 }
             }
+
+            if (casterClasses.Count == 0)
+                return eMimicClass.None;
 
             return casterClasses[Util.Random(casterClasses.Count - 1)];
         }
@@ -1403,35 +1405,18 @@ namespace DOL.GS.Scripts
 
         public static string GetName(eGender gender, eRealm realm)
         {
-            string[] names = new string[0];
-
-            switch (realm)
+            string[] names = realm switch
             {
-                case eRealm.Albion:
-                if (gender == eGender.Male)
-                    names = albMaleNames.Split(',');
-                else
-                    names = albFemaleNames.Split(',');
-                break;
+                eRealm.Albion   => (gender == eGender.Male ? albMaleNames : albFemaleNames).Split(','),
+                eRealm.Hibernia => (gender == eGender.Male ? hibMaleNames : hibFemaleNames).Split(','),
+                eRealm.Midgard  => (gender == eGender.Male ? midMaleNames : midFemaleNames).Split(','),
+                _ => Array.Empty<string>()
+            };
 
-                case eRealm.Hibernia:
-                if (gender == eGender.Male)
-                    names = hibMaleNames.Split(',');
-                else
-                    names = hibFemaleNames.Split(",");
-                break;
+            if (names.Length == 0)
+                return "Mimic";
 
-                case eRealm.Midgard:
-                if (gender == eGender.Male)
-                    names = midMaleNames.Split(',');
-                else
-                    names = midFemaleNames.Split(",");
-                break;
-            }
-
-            int randomIndex = Util.Random(names.Length - 1);
-
-            return names[randomIndex];
+            return names[Util.Random(names.Length - 1)];
         }
     }
 }

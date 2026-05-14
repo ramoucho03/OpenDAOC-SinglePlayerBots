@@ -2468,9 +2468,7 @@ namespace DOL.GS.Scripts
                 return 0;
 
             GameStaticItem fire = _campFire;
-            int rx = fire.X, ry = fire.Y, rz = fire.Z;
             ushort regionId = fire.CurrentRegionID;
-            int rangeSq = CAMPFIRE_REGEN_RANGE * CAMPFIRE_REGEN_RANGE;
 
             // Use the fire's region to find players. Group members are the
             // primary audience but any friendly faction in range benefits —
@@ -3778,7 +3776,9 @@ namespace DOL.GS.Scripts
             double damage = (0.01 * fallDamagePercent * (MaxHealth - 1));
 
             // [Freya] Nidel: CloudSong falling damage reduction
+#pragma warning disable CS0618 // legacy effect API still used elsewhere; mirror GamePlayer behavior
             GameSpellEffect cloudSongFall = SpellHandler.FindEffectOnTarget(this, "CloudsongFall");
+#pragma warning restore CS0618
             if (cloudSongFall != null)
                 damage -= (damage * cloudSongFall.Spell.Value) * 0.01;
 
@@ -7211,8 +7211,6 @@ namespace DOL.GS.Scripts
 
         #region Stealth / Wireframe
 
-        private bool m_isWireframe = false;
-
         private bool m_isTorchLighted = false;
 
         /// <summary>
@@ -7496,11 +7494,13 @@ namespace DOL.GS.Scripts
                 }
                 case eGameObjectType.NPC:
                 {
-                    // Custom feature to make stealthed NPCs actually invisible.
-                    // Currently disabled.
+                    // Custom feature to make stealthed NPCs actually invisible
+                    // is currently disabled — NPCs see stealthed mimics at any
+                    // range. Keep the level-based formula here as a reference
+                    // for re-enabling later (see commented return below).
+                    // int detectionRange = Math.Clamp(1500 + (Level - enemy.Level) * 50, 500, 3000);
+                    // return IsWithinRadius(enemy, detectionRange);
                     return true;
-                    int detectionRange = Math.Clamp(1500 + (Level - enemy.Level) * 50, 500, 3000);
-                    return IsWithinRadius(enemy, detectionRange);
                 }
                 default:
                     return true;
