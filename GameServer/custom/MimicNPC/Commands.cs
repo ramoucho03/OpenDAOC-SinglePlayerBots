@@ -119,33 +119,21 @@ namespace DOL.GS.Scripts
 
 
         /// <summary>
-        /// Sends a popup window with the menu body. Brackets containing a
-        /// slash command (e.g. `[/mlfg 5]`) are auto-typed into the chat
-        /// input when clicked — the player presses Enter to execute, exactly
-        /// like clicking quest dialog choices. No NPC SayTo wrapping, no
-        /// chat-window noise: it's a plain dedicated popup window.
+        /// Sends a standalone popup window. Brackets containing a slash
+        /// command (e.g. `[/mlfg 5]`) are auto-typed into the chat input by
+        /// the DAoC client when clicked, then Enter executes them. This does
+        /// NOT require any NPC target — the client treats slash brackets as
+        /// command shortcuts, not as whispers.
         /// </summary>
         public static void SendClickablePopup(GamePlayer player, MimicNPC contextMimic, string body)
         {
             if (player?.Out == null || string.IsNullOrEmpty(body))
                 return;
 
-            // Target a mimic so bracket clicks (which become /say or
-            // /whisper-to-targeted-NPC on the client) have somewhere to route.
-            // MimicNPC.WhisperReceive then forwards `/cmd` whispers to the
-            // command pipeline. If no mimic is available we still send the
-            // popup as a textual reference.
-            if (contextMimic != null && player.TargetObject != contextMimic)
-            {
-                player.TargetObject = contextMimic;
-                player.Out.SendChangeTarget(contextMimic);
-            }
-
-            // CT_Say + CL_PopupWindow = same format as the right-click menu
-            // (MimicNPC.Interact). On a 1.127 client this is the ONLY chat
-            // combination where bracket text inside a popup is treated as a
-            // clickable /say-to-target link. CT_System brackets are inert.
-            player.Out.SendMessage(body, eChatType.CT_Say, eChatLoc.CL_PopupWindow);
+            // contextMimic is kept on the signature for callers that already
+            // resolve it, but we intentionally do NOT retarget the player here:
+            // /mlfg and /mmenu are global slash commands, not NPC dialogs.
+            player.Out.SendMessage(body, eChatType.CT_System, eChatLoc.CL_PopupWindow);
         }
     }
 
@@ -742,13 +730,10 @@ namespace DOL.GS.Scripts
                 }
             }
 
-            // 1.127+ client only treats popup brackets as clickable when the
-            // message is wrapped as "<NpcName> says, '...'" by NPC.SayTo — the
-            // client uses the embedded NPC name to /whisper back. Without that
-            // wrapping the brackets are inert. We target a mimic, then route the
-            // popup through its SayTo so the brackets become whisper-clickable.
-            MimicNPC contextMimic = MimicPopupHelper.EnsureMimicTargeted(player);
-            MimicPopupHelper.SendClickablePopup(player, contextMimic, message);
+            // Standalone popup window with `[/mlfg N]` brackets — the DAoC
+            // client auto-types the bracket content into the chat input on
+            // click. No mimic targeting needed.
+            player.Out.SendMessage(message, eChatType.CT_System, eChatLoc.CL_PopupWindow);
         }
 
         // Cap the rendered list to stay under the 2048-byte popup packet limit.
@@ -1468,34 +1453,9 @@ namespace DOL.GS.Scripts
                     break;
             }
 
-            // 1.127 client makes popup brackets clickable ONLY after a true
-            // right-click interaction (server can't fake the interaction context
-            // for a brand-new popup). The bullet-proof clickable path is the
-            // mimic's own right-click menu, which now embeds all global commands.
-            // If the player has a mimic, fire its Interact() — that puts the
-            // mimic into interaction state with the client, and the resulting
-            // popup is fully clickable. /mmenu <category> still uses the old
-            // popup as a textual reference.
-            if (args.Length < 2)
-            {
-                MimicNPC contextMimic = MimicPopupHelper.EnsureMimicTargeted(player);
-                if (contextMimic != null)
-                {
-                    contextMimic.Interact(player);
-                    return;
-                }
-
-                player.Out.SendMessage(
-                    "Cree un mimic d'abord (/mcreate ou /mgroup), puis relance /mmenu : "
-                    + "clic droit sur ton mimic ouvre le menu cliquable complet (roles, "
-                    + "camp, BG, /mlfg, /mgroup, /mcamp, /mpvp...).",
-                    eChatType.CT_System, eChatLoc.CL_SystemWindow);
-                return;
-            }
-
-            // Category subviews still go out as a plain popup — non-clickable,
-            // but the textual reference is useful for power users who already
-            // know the syntax.
+            // Standalone popup window. Brackets like `[/mmenu create]` are
+            // auto-typed into the chat input by the DAoC client on click;
+            // Enter then runs the slash command. No NPC target required.
             player.Out.SendMessage(sb.ToString(), eChatType.CT_System, eChatLoc.CL_PopupWindow);
         }
 
