@@ -2447,36 +2447,46 @@ namespace DOL.AI.Brain
         /// <returns>True if trying to heal, including moving to get into range</returns>
         public bool CheckHeals()
         {
-            /* Summary of priorities:
-                Below emergency threshold, heal as fast as possible:
-                    Instant heal
-                    Interrupt casting non healing spells
-                    Group heal if doing so heals the group more than single target would
-                    Cast our biggest heal
-                    Cast our most efficient heal
+            /* Summary of priorities — picks the spell that matches the
+               *situation* (small / fast / group), not just availability.
 
-                Cure Mez
-                Cure disease on most injured
-                Cure poison on most injured
+                EMERGENCY (someone below EmergencyThreshold):
+                  - Multi-emergency : instant group → instant single → group
+                                      cast → HealBig (fast) → HealEfficient
+                  - Single emergency: instant single → instant group → HealBig
+                                      → HealEfficient
 
-                Below healing threshold, prioritize efficiency:
-                    Let the current spell finish casting before healing        
-                    Apply HoT
-                    Group heal if doing so is more mana efficient than single target
-                    Cast our biggest heal if we're above mana threshold and they've lost enough health to merit it
-                    Cast our most efficient heal
+                Proactive tank HoT (dedicated healers only): refresh the
+                MainTank's HoT/regen while the group is in combat.
 
-            Notes:
-                Dedicated healers will heal group members over threshold, and are more likely to use group heals efficiently
-                Spread heals are not being considered
-                The following spell types will only be cast by a single group member at a time:
-                    Instant heal, HoT, health regen, cure mezz, cure disease, cure poison
-                Cure disease and poison are on a shared timer so cure spam doesn't stop non-emergency healing,
-                    and gives secondary healers a chance to cure
-                Local functions are used extensively to minimize unnecessary spell checks and move complexity out of spell selection
+                CURES: mezz / disease / poison (shared 5s timer for d/p).
+
+                NON-EMERGENCY (someone below HealThreshold):
+                  Multi-target (≥2 wounded):
+                    - Instant group HoT (low cooldown, free uptime)
+                    - Group HoT if not already running
+                    - HealGroup when 3+ are below threshold OR per-mana value
+                      beats the single-target efficient heal
+                  Single-target:
+                    - Instant HoT (no cast cost)
+                    - HoT if not already running
+                    - HealBig (fast/heavy) when target.HP < HealThreshold AND
+                      missing HP ≥ 60% of the big heal value AND mana ≥ 30%
+                    - HealEfficient (small/economic) — but skipped on trivial
+                      damage (<40% of its value) unless the target is the
+                      MainTank or we're in emergency
+
+                Notes:
+                  - Dedicated healers will heal members above threshold too
+                    and are more likely to fire group heals efficiently.
+                  - Spread heals are not considered.
+                  - Single-instance-per-tick spell types (instant heal, HoT,
+                    regen, cure mezz/disease/poison) are deduped via the
+                    MimicGroup AlreadyCasting* flags.
+                  - Cure d/p share a 5s timer to avoid spamming and to leave
+                    room for secondary healers.
             */
 
-            const byte ManaThreshold = 90;
             const long CureDelay = 5000;
 
             if (AlreadyCheckedHeals || !Body.CanCastHealSpells || Body.IsStunned || Body.IsMezzed || Body.IsSilenced)
@@ -2860,6 +2870,14 @@ namespace DOL.AI.Brain
 
                 if (spellToCast == null && numNeedHealing > 0)
                 {
+                    // -------- Multi-target: prefer GROUP heal/HoT --------
+                    // Group heals are situational: they win when several
+                    // members are actually below the heal threshold, OR when
+                    // their mana-efficiency vs the single-target option is
+                    // genuinely better (the historical check). The 3-wounded
+                    // floor avoids AoE-spamming when only one or two members
+                    // are tagged — a single wounded body wastes most of the
+                    // group heal's healing on already-full members.
                     if (numNeedHealing > 1)
                     {
                         // Instant HoTs usually have low cooldowns, so spam them whenever possible
@@ -2873,14 +2891,22 @@ namespace DOL.AI.Brain
                                     spellToCast = MimicBody.HealOverTimeGroup;
                             else if (CanCastGroupHeal())
                             {
-                                if (!CanCastEfficientHeal()
+                                // Two conditions accept the AoE heal:
+                                //   - 3+ are below heal threshold (broad spread of damage), or
+                                //   - the per-mana value still beats single-target efficient
+                                //     (historical heuristic, kept for sustained heal economy).
+                                bool manyWounded = numNeedHealing >= 3;
+                                bool moreEfficientThanSingle = !CanCastEfficientHeal()
                                     || (GetGroupHealVal() / MimicBody.PowerCost(MimicBody.HealGroup))
-                                    > (MimicNPC.HealAmount(MimicBody.HealEfficient, spellTarget) / MimicBody.PowerCost(MimicBody.HealEfficient)))
-                                        spellToCast = MimicBody.HealGroup;
+                                       > (MimicNPC.HealAmount(MimicBody.HealEfficient, spellTarget) / MimicBody.PowerCost(MimicBody.HealEfficient));
+
+                                if (manyWounded || moreEfficientThanSingle)
+                                    spellToCast = MimicBody.HealGroup;
                             }
                         }
                     }
 
+                    // -------- Single-target: HoT → BIG vs SMALL choice --------
                     if (spellToCast == null)
                     {
                         if (CanCastInstantHot()
@@ -2897,14 +2923,56 @@ namespace DOL.AI.Brain
                             else if (CanCastHotGroup()
                                 && MimicNPC.HealAmount(MimicBody.HealOverTimeGroup, spellTarget) > GetHotEffect(MimicBody.HealOverTimeGroup))
                                     spellToCast = MimicBody.HealOverTimeGroup;
-                            else if (MimicBody.ManaPercent >= ManaThreshold && CanCastBigHeal()
-                                && (spellTarget.MaxHealth - spellTarget.Health) >= MimicNPC.HealAmount(MimicBody.HealBig, spellTarget))
+                            else
+                            {
+                                // Pick the cast-time heal whose magnitude best
+                                // matches the target's missing HP. The previous
+                                // logic required mana ≥ 90% to even consider
+                                // HealBig, so a tank that lost 60% of HP would
+                                // get patched up with the small HealEfficient
+                                // forever. We now decide by *damage taken*, not
+                                // mana headroom, and protect against overheal
+                                // on barely-scratched targets.
+                                int missing = spellTarget.MaxHealth - spellTarget.Health;
+                                double bigAmount = MimicBody.HealBig != null
+                                    ? MimicNPC.HealAmount(MimicBody.HealBig, spellTarget)
+                                    : 0d;
+                                double effAmount = MimicBody.HealEfficient != null
+                                    ? MimicNPC.HealAmount(MimicBody.HealEfficient, spellTarget)
+                                    : 0d;
+                                bool targetIsTank = mGroup != null && spellTarget == mGroup.MainTank;
+
+                                // BIG (fast/heavy) heal — target is significantly
+                                // hurt AND ≥60% of the big heal's value will land
+                                // without overheal. The 30% mana floor keeps the
+                                // healer from blowing the bar on a single cast.
+                                bool canUseBigHeal = CanCastBigHeal()
+                                    && bigAmount > 0
+                                    && missing >= bigAmount * 0.6d
+                                    && spellTarget.HealthPercent < MimicGroup.HealThreshold
+                                    && MimicBody.ManaPercent >= 30;
+
+                                if (canUseBigHeal)
                                     spellToCast = MimicBody.HealBig;
-                            else if (CanCastEfficientHeal())
-                                spellToCast = MimicBody.HealEfficient;
-                            else if (CanCastGroupHeal())
-                                // We don't have a single target heal, but we might have a CL group heal
-                                spellToCast = MimicBody.HealGroup;
+                                else if (CanCastEfficientHeal())
+                                {
+                                    // SMALL/efficient heal — but skip on trivial
+                                    // scratches (< 40% of the efficient heal value)
+                                    // to avoid wasted mana. The MainTank always
+                                    // gets topped regardless: keeping aggro on a
+                                    // full-HP tank is worth a small overheal.
+                                    bool worthCasting = effAmount <= 0d
+                                        || missing >= effAmount * 0.4d
+                                        || numEmergency > 0
+                                        || targetIsTank;
+
+                                    if (worthCasting)
+                                        spellToCast = MimicBody.HealEfficient;
+                                }
+                                else if (CanCastGroupHeal())
+                                    // We don't have a single target heal, but we might have a CL group heal
+                                    spellToCast = MimicBody.HealGroup;
+                            }
                         }
                     }
                 }
