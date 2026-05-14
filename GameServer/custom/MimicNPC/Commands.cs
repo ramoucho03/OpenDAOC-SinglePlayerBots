@@ -96,32 +96,52 @@ namespace DOL.GS.Scripts
         }
 
         /// <summary>
-        /// Sends a popup whose [bracketed] links are clickable on 1.127+ clients.
-        /// The trick is to route the message through GameNPC.SayTo so it ships
-        /// as `"&lt;NpcName&gt; says, \"...\""` (CT_System + CL_PopupWindow). The
-        /// client recognises the NPC source and turns every `[token]` into a
-        /// `/whisper &lt;NpcName&gt; token` shortcut. If no mimic is available we
-        /// fall back to a plain popup with a hint to create a mimic first.
+        /// Sends a clickable menu body to the player, using the DAoC NPC-dialog
+        /// chat pattern. In v1.127 the *only* reliable way to get [bracket]
+        /// clicks routed back to the server as /say-to-NPC is to send the lines
+        /// as "&lt;NpcName&gt; says, '...'" in CT_Say + CL_ChatWindow — this is
+        /// the same shape quest givers use, and the client knows the speaker so
+        /// each bracket click becomes a /whisper to that mimic.
+        ///
+        /// We also retarget the player on the mimic so /say's "whisper to
+        /// targeted NPC" path forwards the bracket text into WhisperReceive.
         /// </summary>
         public static void SendClickablePopup(GamePlayer player, MimicNPC contextMimic, string body)
         {
             if (player?.Out == null || string.IsNullOrEmpty(body))
                 return;
 
-            if (contextMimic != null)
+            if (contextMimic == null)
             {
-                // SayTo wraps the body as "<Name> says, \"<body>\"" and sends
-                // it as CT_System/CL_PopupWindow — exactly the format the
-                // 1.127 client expects for bracket clicks to whisper back.
-                // announce=false skips the "X speaks to Y" area broadcast.
-                contextMimic.SayTo(player, eChatLoc.CL_PopupWindow, body, false);
+                string fallback = body
+                    + "\n\n(Astuce : cree un mimic via /mcreate ou /mgroup, "
+                    + "puis relance la commande — les liens deviendront cliquables.)";
+                player.Out.SendMessage(fallback, eChatType.CT_System, eChatLoc.CL_PopupWindow);
                 return;
             }
 
-            string fallback = body
-                + "\n\n(Astuce : cree d'abord un mimic via /mcreate ou /mgroup "
-                + "puis relance la commande pour rendre les liens cliquables.)";
-            player.Out.SendMessage(fallback, eChatType.CT_System, eChatLoc.CL_PopupWindow);
+            // Make sure the mimic is the active target. /say forwards to the
+            // currently-targeted NPC's WhisperReceive (see GameLiving.Say),
+            // so retargeting is what turns bracket clicks into commands.
+            if (player.TargetObject != contextMimic)
+            {
+                player.TargetObject = contextMimic;
+                player.Out.SendChangeTarget(contextMimic);
+            }
+
+            // Split body into lines, then ship each one as "<Name> says, '<line>'".
+            // We use NPC.SayTo with CL_ChatWindow which renders in the chat
+            // window with the NPC speaker tag — exactly the format quest dialogs
+            // use, and the only one where multi-bracket messages stay clickable
+            // outside of a right-click popup on 1.127.
+            string[] lines = body.Replace("\r\n", "\n").Split('\n');
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i];
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+                contextMimic.SayTo(player, eChatLoc.CL_ChatWindow, line, false);
+            }
         }
     }
 
@@ -757,7 +777,7 @@ namespace DOL.GS.Scripts
             int startIdx = (page - 1) * MAX_DISPLAYED;       // 0-based start
             int endIdx = Math.Min(startIdx + MAX_DISPLAYED, entries.Count);
 
-            sb.AppendLine($"Page {page} / {totalPages}  —  {entries.Count} mimics au total. Clique [mlfg N] pour recruter.");
+            sb.AppendLine($"Page {page} / {totalPages}  —  {entries.Count} mimics au total. Clique sur un lien pour recruter.");
             sb.AppendLine();
 
             for (int i = startIdx; i < endIdx; i++)
@@ -765,7 +785,12 @@ namespace DOL.GS.Scripts
                 var entry = entries[i];
                 string cls = Enum.GetName(typeof(eMimicClass), entry.MimicClass);
                 int displayIndex = i + 1; // 1-based, global across pages
-                sb.AppendLine($"[mlfg {displayIndex}]  {entry.Name,-20} {cls,-14} lvl {entry.Level}");
+                // Slash-prefixed bracket — the DAoC client auto-types the
+                // bracket content into the chat input on click. With the `/`
+                // present, the typed text is a real slash command, so Enter
+                // (or auto-send on this server) executes /mlfg N exactly as
+                // if the player had typed it themselves.
+                sb.AppendLine($"[/mlfg {displayIndex}]  {entry.Name,-20} {cls,-14} lvl {entry.Level}");
             }
 
             if (totalPages > 1)
@@ -773,9 +798,9 @@ namespace DOL.GS.Scripts
                 sb.AppendLine();
                 System.Text.StringBuilder nav = new();
                 if (page > 1)
-                    nav.Append($"[mlfg page {page - 1}]  <- Precedent   ");
+                    nav.Append($"[/mlfg page {page - 1}]  <- Precedent   ");
                 if (page < totalPages)
-                    nav.Append($"[mlfg page {page + 1}]  Suivant ->");
+                    nav.Append($"[/mlfg page {page + 1}]  Suivant ->");
                 sb.AppendLine(nav.ToString());
             }
 

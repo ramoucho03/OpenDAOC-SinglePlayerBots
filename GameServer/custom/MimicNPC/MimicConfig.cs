@@ -25,5 +25,13 @@ namespace DOL.GS.Scripts
         [ServerProperty("npc", "mimic_emergency_threshold",
             "Emergency heal % threshold for mimic healers (default 50, vs the generic 37).", 50)]
         public static int MIMIC_EMERGENCY_THRESHOLD;
+
+        // Visual-only static item the bot drops at camp. DAoC model IDs that
+        // look like a real fire include: 2587 (bonfire), 2603 (brazier),
+        // 2599 (magic flame). Default 2603 — small brazier with flame on top.
+        // Tune live with `/serverproperties mimic_campfire_model <id>`.
+        [ServerProperty("npc", "mimic_campfire_model",
+            "GameStaticItem model used as the camp fire visual (try 2603 brazier, 2587 bonfire, 2599 magic flame).", 2603)]
+        public static int MIMIC_CAMPFIRE_MODEL;
     }
 }

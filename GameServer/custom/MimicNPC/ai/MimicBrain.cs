@@ -1627,16 +1627,16 @@ namespace DOL.AI.Brain
 
         private GameObject CheckAssist()
         {
-            if (Body.Group != null && Body.Group.MimicGroup.MainAssist.InCombat)
-            {
-                GameObject assistTarget = Body.Group.MimicGroup.CurrentTarget;
-                GameObject target = null;
+            // Null-guarded: MainAssist isn't set until the group composer runs,
+            // and CurrentTarget can be cleared mid-fight. Earlier code NPE'd on
+            // MainAssist.InCombat the first tick after group creation.
+            MimicGroup mg = Body.Group?.MimicGroup;
+            if (mg == null || mg.MainAssist == null || !mg.MainAssist.InCombat)
+                return null;
 
-                if (assistTarget != null && CanAggroTarget((GameLiving)assistTarget))
-                    target = assistTarget;
-
-                return target;
-            }
+            GameObject assistTarget = mg.CurrentTarget;
+            if (assistTarget is GameLiving living && CanAggroTarget(living))
+                return assistTarget;
 
             return null;
 
@@ -2173,22 +2173,29 @@ namespace DOL.AI.Brain
 
                 if (MimicBody.CanCastCrowdControlSpells)
                 {
-                    int ccChance = 50;
-
                     GameLiving livingTarget = Body.TargetObject as GameLiving;
 
-                    if (livingTarget?.TargetObject == Body && Body.IsWithinRadius(Body.TargetObject, 500))
-                        ccChance = 95;
-
-                    if (Body.Group?.MimicGroup.CurrentTarget == Body.TargetObject)
-                        ccChance = 0;
-
-                    if (Util.Chance(ccChance))
+                    // Guard against null / non-living targets — earlier code
+                    // unconditionally cast Body.TargetObject to GameLiving
+                    // inside the inner loop and NPE'd when the target died or
+                    // was a GameStaticItem.
+                    if (livingTarget != null)
                     {
-                        foreach (Spell spell in MimicBody.CrowdControlSpells)
+                        int ccChance = 50;
+
+                        if (livingTarget.TargetObject == Body && Body.IsWithinRadius(livingTarget, 500))
+                            ccChance = 95;
+
+                        if (Body.Group?.MimicGroup.CurrentTarget == livingTarget)
+                            ccChance = 0;
+
+                        if (Util.Chance(ccChance))
                         {
-                            if (CanCastOffensiveSpell(spell) && !LivingHasEffect((GameLiving)Body.TargetObject, spell))
-                                spellsToCast.Add(spell);
+                            foreach (Spell spell in MimicBody.CrowdControlSpells)
+                            {
+                                if (CanCastOffensiveSpell(spell) && !LivingHasEffect(livingTarget, spell))
+                                    spellsToCast.Add(spell);
+                            }
                         }
                     }
                 }

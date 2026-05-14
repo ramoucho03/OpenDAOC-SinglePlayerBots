@@ -485,6 +485,14 @@ namespace DOL.AI.Brain
     {
         public int AggroRange = 0; // Used to set custom AggroRange
         private int prevAggroRange;
+        // Stable per-bot offset from the camp point, picked once and reused
+        // for the lifetime of the bot. Previously we rolled a new random
+        // offset on every Enter, which caused bots to "shuffle" left/right
+        // each time the FSM dipped through camp (aggro→camp→aggro chains),
+        // and that constant repositioning interfered with the puller.
+        private bool _campOffsetPicked;
+        private int _campOffsetX;
+        private int _campOffsetY;
 
         public MimicState_Camp(MimicBrain brain) : base(brain)
         {
@@ -499,12 +507,16 @@ namespace DOL.AI.Brain
                 return;
             }
 
-            int randomX = _brain.Body.CurrentRegion.IsDungeon ? Util.Random(-50, 50) : Util.Random(-100, 100);
-            int randomY = _brain.Body.CurrentRegion.IsDungeon ? Util.Random(-50, 50) : Util.Random(-100, 100);
+            if (!_campOffsetPicked)
+            {
+                _campOffsetX = _brain.Body.CurrentRegion.IsDungeon ? Util.Random(-50, 50) : Util.Random(-100, 100);
+                _campOffsetY = _brain.Body.CurrentRegion.IsDungeon ? Util.Random(-50, 50) : Util.Random(-100, 100);
+                _campOffsetPicked = true;
+            }
 
             _brain.Body.SpawnPoint = new Point3D(_brain.Body.Group.MimicGroup.CampPoint);
-            _brain.Body.SpawnPoint.X += randomX;
-            _brain.Body.SpawnPoint.Y += randomY;
+            _brain.Body.SpawnPoint.X += _campOffsetX;
+            _brain.Body.SpawnPoint.Y += _campOffsetY;
 
             prevAggroRange = _brain.AggroRange;
             _brain.AggroRange = _brain.Body.CurrentRegion.IsDungeon ? 250 : 550;
@@ -513,7 +525,14 @@ namespace DOL.AI.Brain
                 _brain.AggroRange = AggroRange;
 
             _brain.ClearAggroList();
-            _brain.Body.ReturnToSpawnPoint(_brain.Body.MaxSpeed);
+
+            // Only path back to the camp slot if we're actually away from it.
+            // ReturnToSpawnPoint on every Enter caused bots in melee range of
+            // their slot to keep nudging back to dead centre and looked like
+            // they were shuffling sideways.
+            if (!_brain.Body.IsWithinRadius(_brain.Body.SpawnPoint, 60))
+                _brain.Body.ReturnToSpawnPoint(_brain.Body.MaxSpeed);
+
             _brain.IsPulling = false;
             _brain.PvPMode = false;
 

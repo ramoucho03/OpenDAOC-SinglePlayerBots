@@ -614,6 +614,31 @@ namespace DOL.GS.Scripts
                 return true;
             }
 
+            // LFG bracket clicks come in as compact single-word tokens — the
+            // 1.127 client refuses to treat multi-word `[mlfg 5]` brackets as
+            // clickable, so the popup uses `[lfg5]` (recruit) and `[lfgp2]`
+            // (page nav) instead. Route them back to the real /mlfg command.
+            if (player.Client != null && !string.IsNullOrEmpty(str))
+            {
+                if (str.Length > 4
+                    && str.StartsWith("lfgp", StringComparison.OrdinalIgnoreCase)
+                    && int.TryParse(str.AsSpan(4), out int pageNum)
+                    && pageNum >= 1)
+                {
+                    ScriptMgr.HandleCommand(player.Client, "/mlfg page " + pageNum);
+                    return true;
+                }
+
+                if (str.Length > 3
+                    && str.StartsWith("lfg", StringComparison.OrdinalIgnoreCase)
+                    && int.TryParse(str.AsSpan(3), out int lfgIdx)
+                    && lfgIdx >= 1)
+                {
+                    ScriptMgr.HandleCommand(player.Client, "/mlfg " + lfgIdx);
+                    return true;
+                }
+            }
+
             // Routing for clickable popup brackets that whisper a bare command
             // name (e.g. `[mmenu create]`). Kept as a fallback path.
             if (TryRouteAsCommand(player, str))
@@ -2319,7 +2344,15 @@ namespace DOL.GS.Scripts
         // Held here so MimicState_Camp can spawn/remove it without leaking
         // GameStaticItem instances between state transitions.
         private GameStaticItem _campFire;
-        private const ushort CAMPFIRE_MODEL = 2965; // "small fire" model
+        private ECSGameTimer _campFireRegenTimer;
+        // Range, period and amount of the mana/health/endurance bump that the
+        // fire ticks on nearby allies. Numbers are intentionally modest — the
+        // fire is a downtime helper, not a combat aura.
+        private const int CAMPFIRE_REGEN_RANGE = 350;
+        private const int CAMPFIRE_REGEN_INTERVAL_MS = 3000;
+        private const int CAMPFIRE_MANA_PER_TICK = 6;
+        private const int CAMPFIRE_HEALTH_PER_TICK = 8;
+        private const int CAMPFIRE_END_PER_TICK = 10;
 
         /// <summary>
         /// True when this bot currently owns an active campfire object.
@@ -2330,18 +2363,24 @@ namespace DOL.GS.Scripts
             _campFire != null && _campFire.ObjectState == eObjectState.Active;
 
         /// <summary>
-        /// Spawns a small camp-fire static item at the bot's current location
-        /// so regen breaks look intentional during /mcamp set sessions. Idempotent.
+        /// Spawns a camp-fire static item at the bot's current location and
+        /// starts a pulse timer that bumps mana/health/endurance for every
+        /// nearby ally in range. Visual model is configurable via the
+        /// `mimic_campfire_model` server property (defaults to a brazier).
+        /// Idempotent.
         /// </summary>
         public void DeployCampFire()
         {
             if (HasActiveCampFire)
                 return;
 
+            ushort model = (ushort)MimicConfig.MIMIC_CAMPFIRE_MODEL;
+            if (model == 0) model = 2603; // fallback: small brazier
+
             GameStaticItem fire = new()
             {
                 Name = "Camp Fire",
-                Model = CAMPFIRE_MODEL,
+                Model = model,
                 CurrentRegionID = CurrentRegionID,
                 X = X,
                 Y = Y,
@@ -2350,16 +2389,85 @@ namespace DOL.GS.Scripts
                 Realm = eRealm.None,
             };
 
-            if (fire.AddToWorld())
-                _campFire = fire;
+            if (!fire.AddToWorld())
+                return;
+
+            _campFire = fire;
+
+            // Start the regen pulse. The timer reads from the fire object's
+            // position so allies can move around the camp without breaking
+            // the aura, and stops automatically if the fire is removed.
+            _campFireRegenTimer = new ECSGameTimer(this, OnCampFireRegenTick);
+            _campFireRegenTimer.Start(CAMPFIRE_REGEN_INTERVAL_MS);
         }
 
         /// <summary>
-        /// Removes the camp fire previously deployed by this bot, if any.
-        /// Idempotent.
+        /// Periodic tick from the deployed camp fire: tops up mana/health/end
+        /// for friendly players (group members + their pets) within range.
+        /// Returns the next tick interval, or 0 to stop the timer when the
+        /// fire is gone.
+        /// </summary>
+        private int OnCampFireRegenTick(ECSGameTimer timer)
+        {
+            if (!HasActiveCampFire)
+                return 0;
+
+            GameStaticItem fire = _campFire;
+            int rx = fire.X, ry = fire.Y, rz = fire.Z;
+            ushort regionId = fire.CurrentRegionID;
+            int rangeSq = CAMPFIRE_REGEN_RANGE * CAMPFIRE_REGEN_RANGE;
+
+            // Use the fire's region to find players. Group members are the
+            // primary audience but any friendly faction in range benefits —
+            // it's a cosy fire, share the warmth.
+            Region region = WorldMgr.GetRegion(regionId);
+            if (region == null)
+                return CAMPFIRE_REGEN_INTERVAL_MS;
+
+            foreach (GamePlayer p in fire.GetPlayersInRadius(CAMPFIRE_REGEN_RANGE))
+            {
+                if (p == null || !p.IsAlive)
+                    continue;
+                if (p.InCombat)
+                    continue;
+
+                if (p.MaxMana > 0 && p.Mana < p.MaxMana)
+                    p.Mana = Math.Min(p.MaxMana, p.Mana + CAMPFIRE_MANA_PER_TICK);
+
+                if (p.Health < p.MaxHealth)
+                    p.ChangeHealth(this, eHealthChangeType.Regenerate, CAMPFIRE_HEALTH_PER_TICK);
+
+                if (p.Endurance < p.MaxEndurance)
+                    p.Endurance = Math.Min(p.MaxEndurance, p.Endurance + CAMPFIRE_END_PER_TICK);
+            }
+
+            foreach (GameNPC npc in fire.GetNPCsInRadius(CAMPFIRE_REGEN_RANGE))
+            {
+                if (npc is not MimicNPC mimic || !mimic.IsAlive || mimic.InCombat)
+                    continue;
+
+                if (mimic.MaxMana > 0 && mimic.Mana < mimic.MaxMana)
+                    mimic.Mana = Math.Min(mimic.MaxMana, mimic.Mana + CAMPFIRE_MANA_PER_TICK);
+
+                if (mimic.Health < mimic.MaxHealth)
+                    mimic.ChangeHealth(this, eHealthChangeType.Regenerate, CAMPFIRE_HEALTH_PER_TICK);
+
+                if (mimic.Endurance < mimic.MaxEndurance)
+                    mimic.Endurance = Math.Min(mimic.MaxEndurance, mimic.Endurance + CAMPFIRE_END_PER_TICK);
+            }
+
+            return CAMPFIRE_REGEN_INTERVAL_MS;
+        }
+
+        /// <summary>
+        /// Removes the camp fire previously deployed by this bot, if any,
+        /// and stops the associated regen pulse timer. Idempotent.
         /// </summary>
         public void RemoveCampFire()
         {
+            _campFireRegenTimer?.Stop();
+            _campFireRegenTimer = null;
+
             if (_campFire == null)
                 return;
 
