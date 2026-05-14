@@ -761,6 +761,24 @@ namespace DOL.AI.Brain
 
             if (IsPulling && Body.TargetObject != null && Body.TargetObject.ObjectState == GameObject.eObjectState.Active)
             {
+                // Target died mid-pull before HasAggro registered (one-shot
+                // by an intercepting DPS, or tank-cleave AoE). CheckResetPuller
+                // only fires on HasAggro, so without this branch the puller
+                // would idle at IsPulling=true until the 12s watchdog —
+                // appearing as "frozen in place after the shot".
+                if (Body.TargetObject is GameLiving dead && !dead.IsAlive)
+                {
+                    IsPulling = false;
+                    LastTargetObject = null;
+                    Body.StopAttack();
+                    ClearAggroList();
+                    MimicGroup mgDead = Body.Group?.MimicGroup;
+                    if (mgDead != null && IsMainPuller)
+                        mgDead.IncomingPullTarget = null;
+                    Body.ReturnToSpawnPoint(Body.MaxSpeed);
+                    return;
+                }
+
                 if (CheckResetPuller())
                 {
                     _chainPullCount++;
@@ -1256,26 +1274,22 @@ namespace DOL.AI.Brain
             if (target == null)
                 return;
 
-            IsPulling = true;
-            _pullStartTick = GameLoop.GameLoopTime;
-
-            // Announce the incoming mob to the rest of the camp — DPS/CC/tank
-            // can pre-stage (move to intercept, pre-mez, etc.) instead of
-            // waiting for the first hit.
             MimicGroup mg = Body.Group?.MimicGroup;
+
+            // Pre-announce the candidate so DPS/CC/tank can pre-stage. We do
+            // this even before the shot/cast actually fires — worst case it
+            // gets cleared on the next tick if the pull aborts.
             if (mg != null)
-            {
                 mg.IncomingPullTarget = target;
-                if (mg.CampPhase == MimicGroup.eCampPhase.Regen
-                    || mg.CampPhase == MimicGroup.eCampPhase.Ready)
-                    mg.SetCampPhase(MimicGroup.eCampPhase.Pulling);
-            }
 
             // Archer-style: distance weapon takes priority when equipped.
+            // StartAttack handles chase-to-bow-range + auto-fire, so it's safe
+            // to commit IsPulling immediately.
             if (Body.Inventory.GetItem(eInventorySlot.DistanceWeapon) != null)
             {
                 Body.SwitchWeapon(eActiveWeaponSlot.Distance);
                 Body.StartAttack(target);
+                CommitPullStart(mg, target);
                 return;
             }
 
@@ -1286,6 +1300,7 @@ namespace DOL.AI.Brain
             {
                 // Last resort: walk up and melee the mob to pull. Better than nothing.
                 Body.StartAttack(target);
+                CommitPullStart(mg, target);
                 return;
             }
 
@@ -1296,7 +1311,13 @@ namespace DOL.AI.Brain
 
             if (!Body.IsWithinRadius(target, pullSpell.Range))
             {
-                // Close the gap to within cast range, then we'll try again next tick.
+                // Close the gap. We deliberately do NOT set IsPulling yet —
+                // if we did, the next tick's CheckPuller would take the
+                // "waiting on aggro" branch (since IsPulling=true) and never
+                // call PerformPull again, leaving the puller frozen at cast
+                // range without firing. By keeping IsPulling=false here, the
+                // next tick re-enters PerformPull and actually casts once
+                // we're in range.
                 Body.Follow(target, castRange, 5000);
                 return;
             }
@@ -1314,6 +1335,27 @@ namespace DOL.AI.Brain
                 Body.CastSpell(pullSpell, MimicBody.GetSpellLineForSpell(pullSpell));
             else
                 CheckOffensiveSpells(pullSpell);
+
+            CommitPullStart(mg, target);
+        }
+
+        /// <summary>
+        /// Marks the puller as actively in-flight on the supplied target and
+        /// advances the camp phase to Pulling. Centralised so every branch of
+        /// PerformPull (archer / spell / melee) commits identically, and so
+        /// the "still closing range" caster branch can deliberately skip it.
+        /// </summary>
+        private void CommitPullStart(MimicGroup mg, GameLiving target)
+        {
+            IsPulling = true;
+            _pullStartTick = GameLoop.GameLoopTime;
+            if (mg != null)
+            {
+                mg.IncomingPullTarget = target;
+                if (mg.CampPhase == MimicGroup.eCampPhase.Regen
+                    || mg.CampPhase == MimicGroup.eCampPhase.Ready)
+                    mg.SetCampPhase(MimicGroup.eCampPhase.Pulling);
+            }
         }
 
         // Cached pull spell chosen at first request and reused for subsequent pulls.
