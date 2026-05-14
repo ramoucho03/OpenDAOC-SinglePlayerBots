@@ -745,13 +745,19 @@ namespace DOL.GS.Scripts
                 }
             }
 
-            // Route the popup through a targeted mimic so the `[lfgN]` /
-            // `[lfgpN]` brackets are clickable (the 1.127 client only treats
-            // popup brackets as clickable links when the message is wrapped
-            // as `<NpcName> says, "..."`). MimicNPC.WhisperReceive already
-            // dispatches lfgN / lfgpN tokens back to /mlfg.
-            MimicNPC contextMimic = MimicPopupHelper.EnsureMimicTargeted(player);
-            MimicPopupHelper.SendClickablePopup(player, contextMimic, message);
+            // Route the popup through an invisible, dedicated whisper anchor
+            // so the `[lfgN]` / `[lfgpN]` brackets are clickable even when
+            // the player has no mimic in range yet (the 1.127 client only
+            // treats popup brackets as clickable links when the message is
+            // wrapped as `<NpcName> says, "..."` AND the client targets that
+            // NPC). MimicLfgAnchor.WhisperReceive dispatches the resulting
+            // whispers back to /mlfg, so clicking a bracket is equivalent to
+            // typing the slash command in chat.
+            MimicLfgAnchor anchor = MimicLfgAnchor.EnsureFor(player);
+            if (anchor != null)
+                anchor.SayTo(player, message, announce: false);
+            else
+                player.Out.SendMessage(message, eChatType.CT_System, eChatLoc.CL_PopupWindow);
         }
 
         // Cap the rendered list to stay under the 2048-byte popup packet limit.
