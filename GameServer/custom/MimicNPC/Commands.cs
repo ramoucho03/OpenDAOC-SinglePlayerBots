@@ -96,52 +96,27 @@ namespace DOL.GS.Scripts
         }
 
         /// <summary>
-        /// Sends a clickable menu body to the player, using the DAoC NPC-dialog
-        /// chat pattern. In v1.127 the *only* reliable way to get [bracket]
-        /// clicks routed back to the server as /say-to-NPC is to send the lines
-        /// as "&lt;NpcName&gt; says, '...'" in CT_Say + CL_ChatWindow — this is
-        /// the same shape quest givers use, and the client knows the speaker so
-        /// each bracket click becomes a /whisper to that mimic.
-        ///
-        /// We also retarget the player on the mimic so /say's "whisper to
-        /// targeted NPC" path forwards the bracket text into WhisperReceive.
+        /// Sends a popup window with the menu body. Brackets containing a
+        /// slash command (e.g. `[/mlfg 5]`) are auto-typed into the chat
+        /// input when clicked — the player presses Enter to execute, exactly
+        /// like clicking quest dialog choices. No NPC SayTo wrapping, no
+        /// chat-window noise: it's a plain dedicated popup window.
         /// </summary>
         public static void SendClickablePopup(GamePlayer player, MimicNPC contextMimic, string body)
         {
             if (player?.Out == null || string.IsNullOrEmpty(body))
                 return;
 
-            if (contextMimic == null)
-            {
-                string fallback = body
-                    + "\n\n(Astuce : cree un mimic via /mcreate ou /mgroup, "
-                    + "puis relance la commande — les liens deviendront cliquables.)";
-                player.Out.SendMessage(fallback, eChatType.CT_System, eChatLoc.CL_PopupWindow);
-                return;
-            }
-
-            // Make sure the mimic is the active target. /say forwards to the
-            // currently-targeted NPC's WhisperReceive (see GameLiving.Say),
-            // so retargeting is what turns bracket clicks into commands.
-            if (player.TargetObject != contextMimic)
+            // If we have a mimic, also target it. Some DAoC clients require an
+            // NPC target to route bracket clicks as /whisper-to-target, which
+            // MimicNPC.WhisperReceive then forwards to ScriptMgr.HandleCommand.
+            if (contextMimic != null && player.TargetObject != contextMimic)
             {
                 player.TargetObject = contextMimic;
                 player.Out.SendChangeTarget(contextMimic);
             }
 
-            // Split body into lines, then ship each one as "<Name> says, '<line>'".
-            // We use NPC.SayTo with CL_ChatWindow which renders in the chat
-            // window with the NPC speaker tag — exactly the format quest dialogs
-            // use, and the only one where multi-bracket messages stay clickable
-            // outside of a right-click popup on 1.127.
-            string[] lines = body.Replace("\r\n", "\n").Split('\n');
-            for (int i = 0; i < lines.Length; i++)
-            {
-                string line = lines[i];
-                if (string.IsNullOrWhiteSpace(line))
-                    continue;
-                contextMimic.SayTo(player, eChatLoc.CL_ChatWindow, line, false);
-            }
+            player.Out.SendMessage(body, eChatType.CT_System, eChatLoc.CL_PopupWindow);
         }
     }
 
