@@ -724,7 +724,10 @@ namespace DOL.GS.Scripts
                     break;
 
                 string cls = Enum.GetName(typeof(eMimicClass), entry.MimicClass);
-                sb.AppendLine($"[/mlfg {index}]  {entry.Name,-20} {cls,-14} lvl {entry.Level}");
+                // No leading slash — see MimicNPC.TryRouteAsCommand for the
+                // server-side routing that runs `/mlfg N` when the player clicks
+                // and the targeted mimic whispers `mlfg N` back to us.
+                sb.AppendLine($"[mlfg {index}]  {entry.Name,-20} {cls,-14} lvl {entry.Level}");
                 index++;
                 shown++;
             }

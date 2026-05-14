@@ -2228,9 +2228,56 @@ namespace DOL.GS.Scripts
         // Without this guard the disband handler would re-enter Delete and recurse.
         internal bool _beingDeleted;
 
+        // Campfire visual the bot can deploy while regening in /mcamp set mode.
+        // Held here so MimicState_Camp can spawn/remove it without leaking
+        // GameStaticItem instances between state transitions.
+        private GameStaticItem _campFire;
+        private const ushort CAMPFIRE_MODEL = 2965; // "small fire" model
+
+        /// <summary>
+        /// Spawns a small camp-fire static item at the bot's current location
+        /// so regen breaks look intentional during /mcamp set sessions. Idempotent.
+        /// </summary>
+        public void DeployCampFire()
+        {
+            if (_campFire != null && _campFire.ObjectState == eObjectState.Active)
+                return;
+
+            GameStaticItem fire = new()
+            {
+                Name = "Camp Fire",
+                Model = CAMPFIRE_MODEL,
+                CurrentRegionID = CurrentRegionID,
+                X = X,
+                Y = Y,
+                Z = Z,
+                Heading = Heading,
+                Realm = eRealm.None,
+            };
+
+            if (fire.AddToWorld())
+                _campFire = fire;
+        }
+
+        /// <summary>
+        /// Removes the camp fire previously deployed by this bot, if any.
+        /// Idempotent.
+        /// </summary>
+        public void RemoveCampFire()
+        {
+            if (_campFire == null)
+                return;
+
+            if (_campFire.ObjectState == eObjectState.Active)
+                _campFire.Delete();
+
+            _campFire = null;
+        }
+
         public override void Delete()
         {
             _beingDeleted = true;
+            RemoveCampFire();
             Group?.RemoveMember(this);
             MimicManager.UnregisterOwned(this);
             base.Delete();

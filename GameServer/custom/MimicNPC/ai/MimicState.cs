@@ -47,8 +47,24 @@ namespace DOL.AI.Brain
 
             MimicNPC body = brain.MimicBody;
 
-            // Only mirror a real player's sprint. NPC leaders never sprint manually.
-            if (leader is not GamePlayer playerLeader)
+            // Pick a reference human player to mirror. The group leader is the
+            // first candidate but it's commonly a mimic (when /mgroup builds an
+            // all-bot group). In that case fall back to any player in the group
+            // — if ANY human in the group sprints, all bots sprint too.
+            GamePlayer playerLeader = leader as GamePlayer;
+            if (playerLeader == null && body.Group != null)
+            {
+                foreach (GameLiving gl in body.Group.GetMembersInTheGroup())
+                {
+                    if (gl is GamePlayer p)
+                    {
+                        playerLeader = p;
+                        break;
+                    }
+                }
+            }
+
+            if (playerLeader == null)
             {
                 if (body.IsSprinting)
                     body.Sprint(false);
@@ -58,12 +74,20 @@ namespace DOL.AI.Brain
             bool leaderSprinting = playerLeader.IsSprinting;
             bool botSprinting = body.IsSprinting;
 
-            if (leaderSprinting && !botSprinting)
+            if (leaderSprinting)
             {
-                // Sprint(true) already checks endurance, alive, and stealth.
-                body.Sprint(true);
+                // Keep the bot topped up while mirroring. The Sprint effect ends
+                // itself at Endurance <= 5, so without this the bot drops out of
+                // sprint after ~5 seconds of continuous following. Refilling on
+                // every think tick is cheap and lets the bot match the player
+                // for as long as the player wants to run.
+                if (body.Endurance < body.MaxEndurance)
+                    body.Endurance = body.MaxEndurance;
+
+                if (!botSprinting)
+                    body.Sprint(true); // checks alive/stealth internally
             }
-            else if (!leaderSprinting && botSprinting)
+            else if (botSprinting)
             {
                 body.Sprint(false);
             }
@@ -499,6 +523,9 @@ namespace DOL.AI.Brain
         public override void Exit()
         {
             _brain.AggroRange = prevAggroRange;
+            // Whether the bot leaves camp by aggro, /mfollow, or death, the fire
+            // it deployed during the regen break should disappear with the camp.
+            _brain.MimicBody?.RemoveCampFire();
 
             base.Exit();
         }
@@ -551,6 +578,17 @@ namespace DOL.AI.Brain
             {
                 if (!_brain.CheckSpells(MimicBrain.eCheckSpellType.Defensive))
                     _brain.MimicBody.Sit(_brain.CheckStats(75));
+
+                // Low-mana regen break: drop a campfire visual while we sit and
+                // refill mana in /mcamp set mode. Removed automatically when
+                // mana is topped up or we leave the camp state (see Exit()).
+                if (_brain.MimicBody != null && _brain.MimicBody.MaxMana > 0)
+                {
+                    if (_brain.MimicBody.ManaPercent < 30 && _brain.MimicBody.IsSitting)
+                        _brain.MimicBody.DeployCampFire();
+                    else if (_brain.MimicBody.ManaPercent >= 80)
+                        _brain.MimicBody.RemoveCampFire();
+                }
             }
 
             base.Think();
