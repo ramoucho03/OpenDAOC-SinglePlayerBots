@@ -740,22 +740,25 @@ namespace DOL.AI.Brain
         private long _manaThrottleSinceTick;
         private const int MAX_MANA_THROTTLE_MS = 90_000;
 
-        // Hard cap on how long a single pull can be in flight. After this we
-        // assume the pull is lost (mob walked away, fell through geometry,
-        // despawn) and reset the puller state so the next CheckPuller picks
-        // a fresh target.
-        private const int PULL_TIMEOUT_MS = 12_000;
+        // Soft cap on how long a single pull can be in flight before we
+        // assume it's lost (cast interrupted, LoS broken, aggro never
+        // landed, mob walked off). Was 12s, lowered to 6s so a failed pull
+        // doesn't waste 6 extra seconds of the puller standing still — that
+        // dead time was a big chunk of the user-reported "5 minute random
+        // pull". The camp-state watchdog still uses 12s as a hard fallback.
+        private const int PULL_TIMEOUT_MS = 6_000;
 
         public void CheckPuller()
         {
-            // Pre-flight: a pull might have started but already timed out. If
-            // so, recover BEFORE the IsPulling guard takes the early-return
-            // path; otherwise we'd loop forever waiting on a dead pull.
+            // Pre-flight: a pull might have started but already timed out.
+            // Soft-reset the puller in place — DON'T sprint all the way back
+            // to spawn, that round-trip was the visible "back and forth" the
+            // user observed. The next tick re-evaluates from where we are.
             if (IsPulling
                 && _pullStartTick > 0
                 && GameLoop.GameLoopTime - _pullStartTick > PULL_TIMEOUT_MS)
             {
-                ForcePullerRecovery();
+                SoftResetPullerInPlace();
                 return;
             }
 
@@ -770,6 +773,7 @@ namespace DOL.AI.Brain
                 {
                     IsPulling = false;
                     LastTargetObject = null;
+                    _committedPullTarget = null;
                     Body.StopAttack();
                     ClearAggroList();
                     MimicGroup mgDead = Body.Group?.MimicGroup;
@@ -816,11 +820,21 @@ namespace DOL.AI.Brain
                 {
                     Body.StopAttack();
                     Body.StopFollowing();
+                    // Drop the committed target too — if we're blocked we don't
+                    // want to immediately resume on the same (possibly stale)
+                    // mob the next time the gate opens.
+                    _committedPullTarget = null;
                 }
                 else
                 {
                     _chainPullCount = 0;
-                    GameLiving pullTarget = GetPullTarget();
+                    // Reuse the locked target across ticks while we close range
+                    // / line up the cast. Only re-scan when we have nothing
+                    // committed yet, or the previous target has become invalid.
+                    GameLiving pullTarget = IsCommittedPullTargetValid()
+                        ? _committedPullTarget
+                        : GetPullTarget();
+                    _committedPullTarget = pullTarget;
                     PerformPull(pullTarget);
                 }
             }
@@ -845,6 +859,27 @@ namespace DOL.AI.Brain
         }
 
         /// <summary>
+        /// Lightweight reset for the in-CheckPuller pull timeout. Clears just
+        /// enough state to retry from the current position on the next tick —
+        /// no return-to-spawn (which is what produced the visible back-and-
+        /// forth), no aggro-list wipe (the rest of the camp may have valid
+        /// aggro on the failed mob already). The full ForcePullerRecovery is
+        /// still used by the camp-state watchdog as a hard fallback.
+        /// </summary>
+        private void SoftResetPullerInPlace()
+        {
+            Body.StopAttack();
+            Body.StopCurrentSpellcast();
+            Body.StopFollowing();
+            IsPulling = false;
+            _pullStartTick = 0;
+            _committedPullTarget = null;
+            MimicGroup mg = Body.Group?.MimicGroup;
+            if (mg != null && IsMainPuller)
+                mg.IncomingPullTarget = null;
+        }
+
+        /// <summary>
         /// Fire a chain pull on the next candidate while running back from the
         /// previous one, up to the group's pull budget. Class-agnostic:
         ///   - Archer / thrown (DistanceWeapon equipped): release another shot
@@ -862,6 +897,12 @@ namespace DOL.AI.Brain
                 return false; // budget reached
 
             if (Body.IsAttacking || Body.IsCasting)
+                return false;
+
+            // Honour the same mana gate as initial pulls — without this the
+            // puller would keep chain-firing until everyone is OOM, and the
+            // group would end up in over-extended combat with no resources.
+            if (_pullManaThrottled)
                 return false;
 
             GameLiving chainTarget = GetPullTarget();
@@ -927,10 +968,38 @@ namespace DOL.AI.Brain
             return true;
         }
 
-        // Sticky throttle for group regen. Once a caster drops below 20% mana
-        // the puller stops; pulling only resumes when every caster is at 80%+.
-        // Without hysteresis we'd flap on/off as healers tick between 19/21%.
+        // Sticky throttle for group regen. Once a caster drops below 30% mana
+        // the puller stops; pulling only resumes when every caster is at 80%+
+        // (per user spec). The hysteresis between the two values avoids
+        // flapping on regen ticks.
         private bool _pullManaThrottled;
+
+        // Locked-in pull target. Without this, every tick spent closing range
+        // would re-run GetPullTarget — and the scoring isn't fully stable
+        // (pack size estimate / distance can flip between similar candidates),
+        // so the puller would oscillate between mobs, turning left/right and
+        // never finishing the cast. Committed once at pull start, cleared on
+        // success/timeout/death.
+        private GameLiving _committedPullTarget;
+
+        private bool IsCommittedPullTargetValid()
+        {
+            if (_committedPullTarget == null)
+                return false;
+            if (!_committedPullTarget.IsAlive)
+                return false;
+            if (_committedPullTarget.ObjectState != GameObject.eObjectState.Active)
+                return false;
+            if (_committedPullTarget.CurrentRegion != Body.CurrentRegion)
+                return false;
+            // Stay in scan radius (with slight slack) so a mob that wandered
+            // out of practical range gets reconsidered instead of chased forever.
+            if (!Body.IsWithinRadius(_committedPullTarget, PULL_SCAN_RADIUS + 500))
+                return false;
+            if (!GameServer.ServerRules.IsAllowedToAttack(Body, _committedPullTarget, true))
+                return false;
+            return true;
+        }
 
         public bool CheckDelayPull()
         {
@@ -972,12 +1041,15 @@ namespace DOL.AI.Brain
                     return true;
             }
 
-            // Group regen gate. Tighter low-water mark (15%) and lower
-            // restart threshold (70%) so chain pulls can resume quickly once
-            // healers have ticked back up a bit. The hysteresis between the
-            // two values still avoids flapping.
+            // Group regen gate (per user spec): puller starts when every
+            // caster is at MANA_RESUME_PCT (80%) and stops the moment any
+            // caster drops below MANA_STOP_PCT (30%). The 50pp hysteresis
+            // prevents flap on regen ticks.
             if (Body.Group != null)
             {
+                const int MANA_STOP_PCT = 30;
+                const int MANA_RESUME_PCT = 80;
+
                 bool anyLow = false;
                 bool allHigh = true;
 
@@ -987,8 +1059,8 @@ namespace DOL.AI.Brain
                         continue;
 
                     int pct = gl.ManaPercent;
-                    if (pct < 15) anyLow = true;
-                    if (pct < 70) allHigh = false;
+                    if (pct < MANA_STOP_PCT) anyLow = true;
+                    if (pct < MANA_RESUME_PCT) allHigh = false;
                 }
 
                 if (anyLow)
@@ -1036,6 +1108,7 @@ namespace DOL.AI.Brain
             _manaThrottleSinceTick = 0;
             _chainPullCount = 0;
             _pullStartTick = 0;
+            _committedPullTarget = null;
 
             // Camp state is shared — clear the group's incoming-pull pointer
             // too so the rest of the camp stops chasing a phantom mob.
@@ -1260,6 +1333,7 @@ namespace DOL.AI.Brain
             {
                 LastTargetObject = Body.TargetObject;
                 IsPulling = false;
+                _committedPullTarget = null;
                 Body.StopAttack();
                 ClearAggroList();
 
