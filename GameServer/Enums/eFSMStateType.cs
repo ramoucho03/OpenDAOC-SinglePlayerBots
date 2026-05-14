@@ -13,6 +13,7 @@
         FOLLOW_THE_LEADER,
         LEADER,
         CAMP,
-        DUEL
+        DUEL,
+        CITY_IDLE
     }
 }

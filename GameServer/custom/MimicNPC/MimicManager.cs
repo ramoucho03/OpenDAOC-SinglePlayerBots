@@ -391,6 +391,7 @@ namespace DOL.GS.Scripts
             MimicBattlegrounds.Initialize();
             RegisterPlayerLifecycleHandlers();
             PvPFrontierManager.Initialize();
+            PvEPopulationManager.Initialize();
 
             return true;
         }

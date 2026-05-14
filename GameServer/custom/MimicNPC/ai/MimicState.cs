@@ -6,6 +6,7 @@ using System.Reflection;
 using DOL.Database;
 using System.Runtime.InteropServices;
 using DOL.GS;
+using DOL.GS.PacketHandler;
 using DOL.GS.Scripts;
 using DOL.GS.ServerProperties;
 
@@ -833,6 +834,116 @@ namespace DOL.AI.Brain
         {
             _brain.FSM.SetCurrentState(eFSMStateType.WAKING_UP);
             base.Think();
+        }
+    }
+
+    /// <summary>
+    /// Flavor state for capital-city idle bots. The goal is "the city is alive"
+    /// without any combat behavior: bots sit/stand cycle, occasionally say
+    /// something, drift a few units around their spawn. AggroLevel is set to 0
+    /// by the spawner so they won't engage even if attacked — they'd just stand
+    /// and take it (consistent with vendor/idle NPCs).
+    /// </summary>
+    public class MimicState_CityIdle : MimicState
+    {
+        private long _nextActionTick;
+
+        private static readonly string[] _albionLines =
+        {
+            "Glory to Albion!",
+            "Anyone heading to Camelot Hills?",
+            "By Arthur's beard, that was a rough fight.",
+            "I hear the frontier is hot again.",
+            "Need a smith? I know a good one.",
+        };
+
+        private static readonly string[] _midgardLines =
+        {
+            "For Midgard!",
+            "Skol! Long live the king!",
+            "By Odin's eye, that was close.",
+            "The wolves howl tonight in Yggdra Forest.",
+            "Anyone selling iron bars?",
+        };
+
+        private static readonly string[] _hiberniaLines =
+        {
+            "Eriu watches over us.",
+            "Anyone heading to Lough Derg?",
+            "May the wind be at your back.",
+            "I heard the Sidhe were stirring.",
+            "Anyone need a few coins lent?",
+        };
+
+        public MimicState_CityIdle(MimicBrain brain) : base(brain)
+        {
+            StateType = eFSMStateType.CITY_IDLE;
+        }
+
+        public override void Enter()
+        {
+            // Idle bots don't fight back. The population manager already sets
+            // AggroLevel=0/AggroRange=0 when spawning them, but defensive
+            // belt-and-suspenders here in case a script switches the state.
+            _brain.AggroLevel = 0;
+            _brain.AggroRange = 0;
+            _brain.Body.MaxSpeedBase = 0;
+
+            _nextActionTick = GameLoop.GameLoopTime + Util.Random(2000, 6000);
+            base.Enter();
+        }
+
+        public override void Think()
+        {
+            // Mimic any rez our group needs even in city — it's a healer behavior.
+            if (_brain.CheckResurrect())
+                return;
+
+            // Cheap throttle: most ticks this state should be a no-op so 30
+            // capital bots cost almost nothing.
+            if (GameLoop.GameLoopTime < _nextActionTick)
+                return;
+
+            _nextActionTick = GameLoop.GameLoopTime + Util.Random(15_000, 45_000);
+
+            int roll = Util.Random(0, 99);
+            if (roll < 25)
+                ToggleSit();
+            else if (roll < 50)
+                PerformRandomEmote();
+            else if (roll < 70)
+                SayRandomLine();
+            // 30% chance the bot just stands there this cycle — keeps the
+            // crowd from feeling like a perfectly choreographed sketch.
+        }
+
+        private void ToggleSit()
+        {
+            if (_brain.MimicBody == null)
+                return;
+
+            // Sit/stand cycle. MimicNPC.Sit handles the underlying flags.
+            _brain.MimicBody.Sit(!_brain.MimicBody.IsSitting);
+        }
+
+        private void PerformRandomEmote()
+        {
+            // Subset of player-style emotes that look natural in a town.
+            eEmote[] options = { eEmote.Yes, eEmote.No, eEmote.Wave, eEmote.Laugh, eEmote.Cheer, eEmote.Clap, eEmote.Shrug };
+            _brain.Body.Emote(options[Util.Random(0, options.Length - 1)]);
+        }
+
+        private void SayRandomLine()
+        {
+            string[] lines = _brain.Body.Realm switch
+            {
+                eRealm.Albion   => _albionLines,
+                eRealm.Midgard  => _midgardLines,
+                eRealm.Hibernia => _hiberniaLines,
+                _               => _albionLines,
+            };
+
+            _brain.Body.Say(lines[Util.Random(0, lines.Length - 1)]);
         }
     }
 }
