@@ -87,6 +87,7 @@ Mimic.Reply.IWillInterceptForYou:     Je vais intercepter pour toi.
 Mimic.Reply.IWillNoLongerIntercept:   Je n'intercepte plus pour toi.
 Mimic.Reply.ICannotInterceptForYou:   Je ne peux pas intercepter pour toi.
 Mimic.Reply.InventoryEmpty:           L'inventaire est vide.
+Mimic.Reply.BrainReset:               Cerveau reinitialise — je repars en WAKING_UP.
 Mimic.Reply.NoActiveAbilityEffects:   Aucun effet de capacite actif.
 Mimic.Reply.NoActiveSpellEffects:     Aucun effet de sort actif.
 Mimic.Reply.NothingEquippedInSlot:    Rien n'est equipe dans cet emplacement.

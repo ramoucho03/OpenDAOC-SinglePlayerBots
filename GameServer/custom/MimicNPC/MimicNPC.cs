@@ -388,6 +388,47 @@ namespace DOL.GS.Scripts
             return LanguageMgr.TryGetTranslation(out string t, lang, key) ? t : key;
         }
 
+        // Names of mimic-related commands we accept as whisper-routable. When the
+        // player clicks a bracket like `[mmenu create]` the client whispers that
+        // text to us, and we re-prefix it with `/` before running it as a real
+        // command. Keep this list in sync with [CmdAttribute("&xxx", ...)].
+        // Stored without leading `/` and lower-case for cheap comparison.
+        private static readonly HashSet<string> _routableMimicCommands = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "mmenu", "mhelp", "mlfg", "mclear",
+            "mcreate", "mgroup", "mspawner", "mbattle", "mbstats",
+            "msummon", "mfollow", "mattack", "mpull", "mpullfrom",
+            "mcamp", "mrole", "mheal", "mpvp", "mpc",
+            "mguard", "mprotect", "mintercept",
+            "mstrategy", "mmimicstats",
+            "pvpfrontier",
+        };
+
+        /// <summary>
+        /// If the whisper text looks like a mimic command keyword (e.g. "mmenu
+        /// create", "mlfg 3"), forward it to ScriptMgr.HandleCommand on the
+        /// caller's client, prefixed with `/`. Returns true if the whisper was
+        /// consumed as a command and no further menu processing should happen.
+        /// </summary>
+        private static bool TryRouteAsCommand(GamePlayer player, string str)
+        {
+            if (player?.Client == null || string.IsNullOrWhiteSpace(str))
+                return false;
+
+            // Allow either `cmd ...` or `/cmd ...` — the latter is for the rare
+            // client where bracketed `[/cmd]` actually does whisper through.
+            string trimmed = str[0] == '/' ? str[1..] : str;
+
+            int sp = trimmed.IndexOf(' ');
+            string head = sp < 0 ? trimmed : trimmed[..sp];
+
+            if (!_routableMimicCommands.Contains(head))
+                return false;
+
+            ScriptMgr.HandleCommand(player.Client, "/" + trimmed);
+            return true;
+        }
+
         #endregion Menu localization
 
         public override bool Interact(GamePlayer player)
@@ -483,16 +524,13 @@ namespace DOL.GS.Scripts
                 return false;
 
             // Routing for clickable popup brackets sent by /mmenu, /mlfg, etc.
-            // When a player clicks `[/cmd args]` in a popup with this mimic targeted,
-            // the client whispers the bracket contents to us. We forward the whisper
-            // straight into the command pipeline on the player's behalf so the click
-            // executes the command immediately.
-            if (!string.IsNullOrEmpty(str) && str.Length > 1 && str[0] == '/')
-            {
-                if (player.Client != null)
-                    ScriptMgr.HandleCommand(player.Client, str);
+            // The DAoC client intercepts `[/cmd]` brackets client-side and does NOT
+            // whisper them — so the bracket text we emit is the bare command name
+            // (e.g. `[mmenu create]`, `[mlfg 3]`). When the player clicks it, the
+            // client whispers the bracket contents to us and we run it as a slash
+            // command on the player's behalf.
+            if (TryRouteAsCommand(player, str))
                 return true;
-            }
 
             string lang = player.Client?.Account?.Language;
             string message = string.Empty;
@@ -526,10 +564,32 @@ namespace DOL.GS.Scripts
                 }
 
                 case "Brain":
-                MimicBrain newBrain = new MimicBrain();
-                newBrain.MimicBody = this;
-                SetOwnBrain(newBrain);
-                break;
+                {
+                    // Brain reset: rebuild the FSM/aggro state from scratch and put
+                    // the bot back into WAKING_UP. Preserve the player-configured
+                    // flags (healer/pvp/prevent-combat/strategies) so the reset is
+                    // a "stuck unlocker" and not a full config wipe.
+                    MimicBrain oldBrain = MimicBrain;
+                    bool wasHealer = oldBrain?.IsHealer ?? false;
+                    bool wasPvP = oldBrain?.PvPMode ?? false;
+                    bool wasPreventCombat = oldBrain?.PreventCombat ?? false;
+                    int oldAggroLevel = oldBrain?.AggroLevel ?? 100;
+                    int oldAggroRange = oldBrain?.AggroRange ?? 3600;
+
+                    MimicBrain newBrain = new MimicBrain();
+                    newBrain.MimicBody = this;
+                    newBrain.IsHealer = wasHealer;
+                    newBrain.PvPMode = wasPvP;
+                    newBrain.PreventCombat = wasPreventCombat;
+                    newBrain.AggroLevel = oldAggroLevel;
+                    newBrain.AggroRange = oldAggroRange;
+                    SetOwnBrain(newBrain);
+
+                    message = T(lang, "Mimic.Reply.BrainReset");
+                    if (string.IsNullOrEmpty(message) || message == "Mimic.Reply.BrainReset")
+                        message = "Brain reset — I'm back in WAKING_UP.";
+                    break;
+                }
 
                 case "State":
                 {

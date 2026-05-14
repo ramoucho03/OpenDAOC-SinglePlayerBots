@@ -1414,18 +1414,18 @@ namespace DOL.GS.Scripts
         {
             sb.AppendLine("=== MENU BOTS — choisis une categorie ===");
             sb.AppendLine();
-            sb.AppendLine("[/mmenu create]    Creation (groupes, lfg, clear, spawner)");
-            sb.AppendLine("[/mmenu orders]    Ordres (summon, follow, attack, pull)");
-            sb.AppendLine("[/mmenu camp]      Camp & rayon d'aggro");
-            sb.AppendLine("[/mmenu roles]     Roles (tank, heal, cc, guard, protect...)");
-            sb.AppendLine("[/mmenu modes]     PvP / PreventCombat");
-            sb.AppendLine("[/mmenu strat]     Strategies");
-            sb.AppendLine("[/mmenu bg]        Battlegrounds (Thidranki)");
-            sb.AppendLine("[/mmenu info]      Aide & stats");
+            sb.AppendLine("[mmenu create]    Creation (groupes, lfg, clear, spawner)");
+            sb.AppendLine("[mmenu orders]    Ordres (summon, follow, attack, pull)");
+            sb.AppendLine("[mmenu camp]      Camp & rayon d'aggro");
+            sb.AppendLine("[mmenu roles]     Roles (tank, heal, cc, guard, protect...)");
+            sb.AppendLine("[mmenu modes]     PvP / PreventCombat");
+            sb.AppendLine("[mmenu strat]     Strategies");
+            sb.AppendLine("[mmenu bg]        Battlegrounds (Thidranki)");
+            sb.AppendLine("[mmenu info]      Aide & stats");
             if (isAdmin)
-                sb.AppendLine("[/mmenu admin]     Admin (PvP frontier)");
+                sb.AppendLine("[mmenu admin]     Admin (PvP frontier)");
             sb.AppendLine();
-            sb.AppendLine("[/mhelp]           Aide textuelle detaillee");
+            sb.AppendLine("[mhelp]           Aide textuelle detaillee");
             sb.AppendLine();
             sb.AppendLine("Astuce : clic droit sur un mimic = menu interaction (roles, equipement, etat).");
         }
@@ -1434,116 +1434,116 @@ namespace DOL.GS.Scripts
         private static void BuildCreate(System.Text.StringBuilder sb)
         {
             sb.AppendLine("=== MENU > CREATION ===");
-            sb.AppendLine("[/mmenu]                 Retour au menu");
+            sb.AppendLine("[mmenu]                 Retour au menu");
             sb.AppendLine();
-            sb.AppendLine("[/mgroup alb]            Groupe Albion equilibre (8 mimics)");
-            sb.AppendLine("[/mgroup hib]            Groupe Hibernia");
-            sb.AppendLine("[/mgroup mid]            Groupe Midgard");
-            sb.AppendLine("[/mlfg]                  Liste cliquable des mimics LFG");
-            sb.AppendLine("[/mcreate <classe>]      Cree un mimic (ex: /mcreate armsman 50 inv)");
-            sb.AppendLine("[/mspawner <args>]       Spawn periodique de mimics");
-            sb.AppendLine("[/mclear]                Supprime TOUS tes mimics");
+            sb.AppendLine("[mgroup alb]            Groupe Albion equilibre (8 mimics)");
+            sb.AppendLine("[mgroup hib]            Groupe Hibernia");
+            sb.AppendLine("[mgroup mid]            Groupe Midgard");
+            sb.AppendLine("[mlfg]                  Liste cliquable des mimics LFG");
+            sb.AppendLine("[mcreate <classe>]      Cree un mimic (ex: /mcreate armsman 50 inv)");
+            sb.AppendLine("[mspawner <args>]       Spawn periodique de mimics");
+            sb.AppendLine("[mclear]                Supprime TOUS tes mimics");
         }
 
         private static void BuildOrders(System.Text.StringBuilder sb)
         {
             sb.AppendLine("=== MENU > ORDRES ===");
-            sb.AppendLine("[/mmenu]                 Retour au menu");
+            sb.AppendLine("[mmenu]                 Retour au menu");
             sb.AppendLine();
-            sb.AppendLine("[/msummon]               Teleporte tes mimics groupes a toi");
-            sb.AppendLine("[/mfollow]               Annule camp/pull, suit le leader");
-            sb.AppendLine("[/mattack]               Attaque ta cible avec tous les mimics");
-            sb.AppendLine("[/mpull]                 Camp ici + pull ta cible");
-            sb.AppendLine("[/mpullfrom here]        Definit le point de pull ici");
-            sb.AppendLine("[/mpullfrom remove]      Retire le point de pull");
+            sb.AppendLine("[msummon]               Teleporte tes mimics groupes a toi");
+            sb.AppendLine("[mfollow]               Annule camp/pull, suit le leader");
+            sb.AppendLine("[mattack]               Attaque ta cible avec tous les mimics");
+            sb.AppendLine("[mpull]                 Camp ici + pull ta cible");
+            sb.AppendLine("[mpullfrom here]        Definit le point de pull ici");
+            sb.AppendLine("[mpullfrom remove]      Retire le point de pull");
         }
 
         private static void BuildCamp(System.Text.StringBuilder sb)
         {
             sb.AppendLine("=== MENU > CAMP ===");
-            sb.AppendLine("[/mmenu]                 Retour au menu");
+            sb.AppendLine("[mmenu]                 Retour au menu");
             sb.AppendLine();
-            sb.AppendLine("[/mcamp set]             Camp a ton ground target (sinon ta position)");
-            sb.AppendLine("[/mcamp here]            Camp a ta position");
-            sb.AppendLine("[/mcamp remove]          Annule le camp");
+            sb.AppendLine("[mcamp set]             Camp a ton ground target (sinon ta position)");
+            sb.AppendLine("[mcamp here]            Camp a ta position");
+            sb.AppendLine("[mcamp remove]          Annule le camp");
             sb.AppendLine();
-            sb.AppendLine("[/mcamp aggrorange 550]  Rayon d'aggro (def 250 dungeon, 550 dehors)");
-            sb.AppendLine("[/mcamp aggrorange 1500] Aggro elargi");
+            sb.AppendLine("[mcamp aggrorange 550]  Rayon d'aggro (def 250 dungeon, 550 dehors)");
+            sb.AppendLine("[mcamp aggrorange 1500] Aggro elargi");
             sb.AppendLine();
-            sb.AppendLine("[/mcamp filter blue]     Pull a partir de blue con");
-            sb.AppendLine("[/mcamp filter yellow]   Pull a partir de yellow");
-            sb.AppendLine("[/mcamp filter orange]   Pull a partir de orange");
+            sb.AppendLine("[mcamp filter blue]     Pull a partir de blue con");
+            sb.AppendLine("[mcamp filter yellow]   Pull a partir de yellow");
+            sb.AppendLine("[mcamp filter orange]   Pull a partir de orange");
         }
 
         private static void BuildRoles(System.Text.StringBuilder sb)
         {
             sb.AppendLine("=== MENU > ROLES (cible un mimic d'abord) ===");
-            sb.AppendLine("[/mmenu]                 Retour au menu");
+            sb.AppendLine("[mmenu]                 Retour au menu");
             sb.AppendLine();
-            sb.AppendLine("[/mrole leader]          Designe leader");
-            sb.AppendLine("[/mrole tank]            Designe MainTank");
-            sb.AppendLine("[/mrole assist]          Designe MainAssist");
-            sb.AppendLine("[/mrole cc]              Designe MainCC");
-            sb.AppendLine("[/mrole puller]          Designe MainPuller");
-            sb.AppendLine("[/mheal]                 Bascule mode soigneur");
+            sb.AppendLine("[mrole leader]          Designe leader");
+            sb.AppendLine("[mrole tank]            Designe MainTank");
+            sb.AppendLine("[mrole assist]          Designe MainAssist");
+            sb.AppendLine("[mrole cc]              Designe MainCC");
+            sb.AppendLine("[mrole puller]          Designe MainPuller");
+            sb.AppendLine("[mheal]                 Bascule mode soigneur");
             sb.AppendLine();
-            sb.AppendLine("[/mguard <nom>]          Garde la cible");
-            sb.AppendLine("[/mprotect <nom>]        Protege la cible");
-            sb.AppendLine("[/mintercept <nom>]      Intercepte pour la cible");
+            sb.AppendLine("[mguard <nom>]          Garde la cible");
+            sb.AppendLine("[mprotect <nom>]        Protege la cible");
+            sb.AppendLine("[mintercept <nom>]      Intercepte pour la cible");
         }
 
         private static void BuildModes(System.Text.StringBuilder sb)
         {
             sb.AppendLine("=== MENU > MODES ===");
-            sb.AppendLine("[/mmenu]                 Retour au menu");
+            sb.AppendLine("[mmenu]                 Retour au menu");
             sb.AppendLine();
-            sb.AppendLine("[/mpvp true]             Active PvP (cible ou groupe)");
-            sb.AppendLine("[/mpvp false]            Desactive PvP");
-            sb.AppendLine("[/mpc true]              PreventCombat ON (le bot n'engagera plus)");
-            sb.AppendLine("[/mpc false]             PreventCombat OFF");
+            sb.AppendLine("[mpvp true]             Active PvP (cible ou groupe)");
+            sb.AppendLine("[mpvp false]            Desactive PvP");
+            sb.AppendLine("[mpc true]              PreventCombat ON (le bot n'engagera plus)");
+            sb.AppendLine("[mpc false]             PreventCombat OFF");
         }
 
         private static void BuildStrat(System.Text.StringBuilder sb)
         {
             sb.AppendLine("=== MENU > STRATEGIES ===");
-            sb.AppendLine("[/mmenu]                 Retour au menu");
+            sb.AppendLine("[mmenu]                 Retour au menu");
             sb.AppendLine();
-            sb.AppendLine("[/mstrategy list]        Liste strategies actives");
-            sb.AppendLine("[/mstrategy add <cle>]   Ajoute une strategie");
-            sb.AppendLine("[/mstrategy remove <cle>] Retire une strategie");
+            sb.AppendLine("[mstrategy list]        Liste strategies actives");
+            sb.AppendLine("[mstrategy add <cle>]   Ajoute une strategie");
+            sb.AppendLine("[mstrategy remove <cle>] Retire une strategie");
         }
 
         private static void BuildBg(System.Text.StringBuilder sb)
         {
             sb.AppendLine("=== MENU > BATTLEGROUNDS ===");
-            sb.AppendLine("[/mmenu]                 Retour au menu");
+            sb.AppendLine("[mmenu]                 Retour au menu");
             sb.AppendLine();
-            sb.AppendLine("[/mbattle thid start]    Demarre les spawns Thidranki");
-            sb.AppendLine("[/mbattle thid stop]     Arrete les spawns");
-            sb.AppendLine("[/mbattle thid clear]    Stop + supprime tous les bots");
+            sb.AppendLine("[mbattle thid start]    Demarre les spawns Thidranki");
+            sb.AppendLine("[mbattle thid stop]     Arrete les spawns");
+            sb.AppendLine("[mbattle thid clear]    Stop + supprime tous les bots");
             sb.AppendLine();
-            sb.AppendLine("[/mbstats]               Stats des battlegrounds");
+            sb.AppendLine("[mbstats]               Stats des battlegrounds");
         }
 
         private static void BuildInfo(System.Text.StringBuilder sb)
         {
             sb.AppendLine("=== MENU > INFO & AIDE ===");
-            sb.AppendLine("[/mmenu]                 Retour au menu");
+            sb.AppendLine("[mmenu]                 Retour au menu");
             sb.AppendLine();
-            sb.AppendLine("[/mhelp]                 Aide detaillee (catalogue complet)");
-            sb.AppendLine("[/mhelp mgroup]          Detail d'une commande");
-            sb.AppendLine("[/mbstats]               Stats des battlegrounds");
+            sb.AppendLine("[mhelp]                 Aide detaillee (catalogue complet)");
+            sb.AppendLine("[mhelp mgroup]          Detail d'une commande");
+            sb.AppendLine("[mbstats]               Stats des battlegrounds");
         }
 
         private static void BuildAdmin(System.Text.StringBuilder sb)
         {
             sb.AppendLine("=== MENU > ADMIN (PvP frontier) ===");
-            sb.AppendLine("[/mmenu]                 Retour au menu");
+            sb.AppendLine("[mmenu]                 Retour au menu");
             sb.AppendLine();
-            sb.AppendLine("[/pvpfrontier status]    Statut du systeme");
-            sb.AppendLine("[/pvpfrontier start]     Demarre le systeme");
-            sb.AppendLine("[/pvpfrontier stop]      Arrete le systeme");
-            sb.AppendLine("[/pvpfrontier clear]     Supprime tous les bots frontier");
+            sb.AppendLine("[pvpfrontier status]    Statut du systeme");
+            sb.AppendLine("[pvpfrontier start]     Demarre le systeme");
+            sb.AppendLine("[pvpfrontier stop]      Arrete le systeme");
+            sb.AppendLine("[pvpfrontier clear]     Supprime tous les bots frontier");
         }
     }
 

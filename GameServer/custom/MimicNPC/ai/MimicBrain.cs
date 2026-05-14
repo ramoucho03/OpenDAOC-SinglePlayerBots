@@ -2184,11 +2184,46 @@ namespace DOL.AI.Brain
                 if (spell.CastTime > 0)
                 {
                     if (spell.Target is eSpellTarget.ENEMY or eSpellTarget.AREA or eSpellTarget.CONE)
+                    {
+                        // Block pet summons when the bot is already at the pet cap.
+                        // Without this guard the bot keeps trying to summon, the
+                        // engine refuses ("too many controlled creatures"), and the
+                        // bot dead-locks on the same useless cast instead of nuking.
+                        if (IsAtPetCap(spell))
+                            return false;
                         return true;
+                    }
                 }
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Returns true if the spell is a pet-summon-in-combat (Theurgist/Animist
+        /// turret style) and the caster is already at the configured pet cap.
+        /// Permanent-pet summons (Cabalist commander, BD commander, etc.) are
+        /// handled by the engine's own one-pet limit and never returned here.
+        /// </summary>
+        protected bool IsAtPetCap(Spell spell)
+        {
+            if (spell == null)
+                return false;
+
+            switch (spell.SpellType)
+            {
+                case eSpellType.SummonTheurgistPet:
+                    return Body.PetCount >= DOL.GS.ServerProperties.Properties.THEURGIST_PET_CAP;
+                case eSpellType.SummonAnimistPet:
+                case eSpellType.SummonAnimistFnF:
+                case eSpellType.SummonAnimistFnFCustom:
+                case eSpellType.SummonAnimistAmbusher:
+                    // Animist turrets are area-capped by the engine; we just defer
+                    // to a generous heuristic to avoid stacking too many on one cast.
+                    return Body.PetCount >= 8;
+                default:
+                    return false;
+            }
         }
 
         /// <summary>
@@ -2210,6 +2245,16 @@ namespace DOL.AI.Brain
 
             switch (s.SpellType)
             {
+                // Pet summons that are the class's core combat tool. Theurgists
+                // and Animists fight by saturating the field with short-lived
+                // pets/turrets; spamming DDs while ignoring summons crippled
+                // them. Priority 0 ensures we cast them whenever the cap allows.
+                case eSpellType.SummonTheurgistPet:
+                case eSpellType.SummonAnimistPet:
+                case eSpellType.SummonAnimistFnF:
+                case eSpellType.SummonAnimistFnFCustom:
+                case eSpellType.SummonAnimistAmbusher:
+                    return 0;
                 case eSpellType.SpeedDecrease: return 0;
                 case eSpellType.Disease: return 1;
                 case eSpellType.StrengthDebuff:
