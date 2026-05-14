@@ -567,6 +567,7 @@ namespace DOL.GS.Scripts
                 "grpMid"       => "/mgroup mid",
                 "bgThid"       => "/mbattle thid start",
                 "bgStop"       => "/mbattle thid stop",
+                "bgClear"      => "/mbattle thid clear",
                 "clearAll"     => "/mclear",
                 "gSummon"      => "/msummon",
                 "gFollow"      => "/mfollow",
@@ -588,6 +589,32 @@ namespace DOL.GS.Scripts
                 "pcOff"        => "/mpc false",
                 "help"         => "/mhelp",
                 "bstats"       => "/mbstats",
+                // /mmenu navigation tokens — single-word so 1.127 treats them
+                // as clickable, mapped here to the matching /mmenu sub-view.
+                "mnu"          => "/mmenu",
+                "mnuCreate"    => "/mmenu create",
+                "mnuOrders"    => "/mmenu orders",
+                "mnuCamp"      => "/mmenu camp",
+                "mnuRoles"     => "/mmenu roles",
+                "mnuModes"     => "/mmenu modes",
+                "mnuStrat"     => "/mmenu strat",
+                "mnuBg"        => "/mmenu bg",
+                "mnuInfo"      => "/mmenu info",
+                "mnuAdmin"     => "/mmenu admin",
+                // Roles sub-view: assigning the currently targeted mimic.
+                "roleLead"     => "/mrole leader",
+                "roleTank"     => "/mrole tank",
+                "roleAssist"   => "/mrole assist",
+                "roleCC"       => "/mrole cc",
+                "rolePull"     => "/mrole puller",
+                "heal"         => "/mheal",
+                // Strategy sub-view.
+                "stratList"    => "/mstrategy list",
+                // PvP frontier admin sub-view (server filters on PrivLevel).
+                "pfStatus"     => "/pvpfrontier status",
+                "pfStart"      => "/pvpfrontier start",
+                "pfStop"       => "/pvpfrontier stop",
+                "pfClear"      => "/pvpfrontier clear",
                 _              => null,
             };
         }

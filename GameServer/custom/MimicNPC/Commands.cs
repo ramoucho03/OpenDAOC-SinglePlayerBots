@@ -119,21 +119,43 @@ namespace DOL.GS.Scripts
 
 
         /// <summary>
-        /// Sends a standalone popup window. Brackets containing a slash
-        /// command (e.g. `[/mlfg 5]`) are auto-typed into the chat input by
-        /// the DAoC client when clicked, then Enter executes them. This does
-        /// NOT require any NPC target — the client treats slash brackets as
-        /// command shortcuts, not as whispers.
+        /// Sends a popup window whose `[bracket]` links are clickable. On the
+        /// 1.127 client a popup is only click-routable when it is wrapped as
+        /// `<NpcName> says, "..."` — the client parses the NPC name out of the
+        /// prefix to know whom to /whisper when a bracket is clicked. That is
+        /// exactly what <see cref="GameNPC.SayTo"/> produces, so we delegate
+        /// to it whenever a context mimic is available (auto-targeting it for
+        /// safety). If no mimic can be resolved we fall back to a plain popup
+        /// — the text is still visible, just not clickable.
         /// </summary>
         public static void SendClickablePopup(GamePlayer player, MimicNPC contextMimic, string body)
         {
             if (player?.Out == null || string.IsNullOrEmpty(body))
                 return;
 
-            // contextMimic is kept on the signature for callers that already
-            // resolve it, but we intentionally do NOT retarget the player here:
-            // /mlfg and /mmenu are global slash commands, not NPC dialogs.
-            player.Out.SendMessage(body, eChatType.CT_System, eChatLoc.CL_PopupWindow);
+            if (contextMimic == null)
+            {
+                // Last-resort textual fallback. Brackets won't be clickable
+                // because the client has no NPC to whisper back to, but the
+                // player still gets the readable list of options.
+                player.Out.SendMessage(body, eChatType.CT_System, eChatLoc.CL_PopupWindow);
+                return;
+            }
+
+            // Ensure the client actually has this mimic targeted: even with the
+            // SayTo wrapping, some 1.127 builds also require a current target
+            // to enable the bracket-click → whisper translation.
+            if (player.TargetObject != contextMimic)
+            {
+                player.TargetObject = contextMimic;
+                player.Out.SendChangeTarget(contextMimic);
+            }
+
+            // SayTo() formats the text as `<MimicName> says, "<body>"` and
+            // sends it as CT_System + CL_PopupWindow — the same envelope used
+            // by trainers, djinns and the right-click NPC menu, which is the
+            // pattern the 1.127 client recognises as a clickable popup.
+            contextMimic.SayTo(player, body, announce: false);
         }
     }
 
@@ -733,11 +755,13 @@ namespace DOL.GS.Scripts
                 }
             }
 
-            // CT_Say + CL_PopupWindow — identical chat type/loc to the
-            // working right-click NPC popup. With `[/m N]` brackets the DAoC
-            // client renders each link highlighted; clicking auto-types
-            // `/m N` into the chat input, ready to send.
-            player.Out.SendMessage(message, eChatType.CT_Say, eChatLoc.CL_PopupWindow);
+            // Route the popup through a targeted mimic so the `[lfgN]` /
+            // `[lfgpN]` brackets are clickable (the 1.127 client only treats
+            // popup brackets as clickable links when the message is wrapped
+            // as `<NpcName> says, "..."`). MimicNPC.WhisperReceive already
+            // dispatches lfgN / lfgpN tokens back to /mlfg.
+            MimicNPC contextMimic = MimicPopupHelper.EnsureMimicTargeted(player);
+            MimicPopupHelper.SendClickablePopup(player, contextMimic, message);
         }
 
         // Cap the rendered list to stay under the 2048-byte popup packet limit.
@@ -746,8 +770,11 @@ namespace DOL.GS.Scripts
 
         private string BuildMessage(IReadOnlyList<MimicLFGManager.MimicLFGEntry> entries, int page, bool invalid = false)
         {
-            // Each entry is rendered as a clickable popup link:  "[mlfg N] Name Class Level".
-            // No leading slash — see MimicNPC.TryRouteAsCommand for the routing.
+            // Each entry is rendered as a clickable popup link: `[lfgN]`. The
+            // 1.127 client only treats popup brackets as clickable when the
+            // text is a single word (no slash, no space). MimicNPC.WhisperReceive
+            // detects `lfg<digits>` and `lfgp<digits>` tokens and routes them
+            // back to /mlfg <N> and /mlfg page <N>.
             System.Text.StringBuilder sb = new();
             sb.AppendLine("------- Mimics LFG -------");
 
@@ -771,7 +798,7 @@ namespace DOL.GS.Scripts
             int endIdx = Math.Min(startIdx + MAX_DISPLAYED, entries.Count);
 
             sb.AppendLine($"Page {page} / {totalPages}  —  {entries.Count} mimics au total.");
-            sb.AppendLine("Clique [/m N] pour recruter, ou tape la commande directement.");
+            sb.AppendLine("Clique [lfgN] pour recruter (ex: [lfg5]) ou tape /m N.");
             sb.AppendLine();
 
             for (int i = startIdx; i < endIdx; i++)
@@ -779,10 +806,10 @@ namespace DOL.GS.Scripts
                 var entry = entries[i];
                 string cls = Enum.GetName(typeof(eMimicClass), entry.MimicClass);
                 int displayIndex = i + 1; // 1-based, global across pages
-                // Slash-prefixed bracket. DAoC client auto-types the bracket
-                // content into the chat input on click; the slash makes the
-                // typed text a real command (Enter to execute).
-                sb.AppendLine($"  [/m {displayIndex}]  {entry.Name,-20} {cls,-14} lvl {entry.Level}");
+                // Single-word bracket. When clicked the 1.127 client sends a
+                // /whisper "lfg<N>" to the currently targeted mimic; the
+                // MimicNPC.WhisperReceive dispatcher then runs /mlfg <N>.
+                sb.AppendLine($"  [lfg{displayIndex}]  {entry.Name,-20} {cls,-14} lvl {entry.Level}");
             }
 
             if (totalPages > 1)
@@ -790,9 +817,9 @@ namespace DOL.GS.Scripts
                 sb.AppendLine();
                 System.Text.StringBuilder nav = new();
                 if (page > 1)
-                    nav.Append($"[/m page {page - 1}]  <- Precedent    ");
+                    nav.Append($"[lfgp{page - 1}]  <- Precedent    ");
                 if (page < totalPages)
-                    nav.Append($"[/m page {page + 1}]  Suivant ->");
+                    nav.Append($"[lfgp{page + 1}]  Suivant ->");
                 sb.AppendLine(nav.ToString());
             }
 
@@ -1412,9 +1439,13 @@ namespace DOL.GS.Scripts
     }
 
     /// <summary>
-    /// Quick-action menu for the mimic bot system. Every line is a clickable
-    /// `[/cmd args]` shortcut — DAoC popup windows type the bracket contents
-    /// into chat when clicked, so the command fires directly.
+    /// Quick-action menu for the mimic bot system. Brackets in the popup are
+    /// single-word whisper tokens (e.g. `[mnuCreate]`, `[grpAlb]`) — the DAoC
+    /// 1.127 client refuses to treat multi-word bracket text as clickable, so
+    /// every actionable line is one keyword. The popup is sent via a targeted
+    /// mimic's SayTo() so the client recognises the click as a whisper and
+    /// the mimic's WhisperReceive dispatches the keyword to the matching
+    /// slash command (see <see cref="MimicNPC.ResolveGlobalMenuKeyword"/>).
     ///
     /// The popup packet (0xAF) has a 2048-byte limit so the menu is split into
     /// a hub view + focused category sub-menus, each well under the limit.
@@ -1455,10 +1486,13 @@ namespace DOL.GS.Scripts
                     break;
             }
 
-            // Standalone popup window. Brackets like `[/mmenu create]` are
-            // auto-typed into the chat input by the DAoC client on click;
-            // Enter then runs the slash command. No NPC target required.
-            player.Out.SendMessage(sb.ToString(), eChatType.CT_System, eChatLoc.CL_PopupWindow);
+            // Route the popup through a targeted mimic. The helper wraps the
+            // text as `<MimicName> says, "..."` via SayTo() so the 1.127 client
+            // sees a real NPC dialog and treats the bracket text as clickable
+            // whisper links. Without that wrapping (or a current NPC target)
+            // the brackets are inert on this client.
+            MimicNPC contextMimic = MimicPopupHelper.EnsureMimicTargeted(player);
+            MimicPopupHelper.SendClickablePopup(player, contextMimic, sb.ToString());
         }
 
         // ----- Hub -----
@@ -1466,136 +1500,140 @@ namespace DOL.GS.Scripts
         {
             sb.AppendLine("=== MENU BOTS — choisis une categorie ===");
             sb.AppendLine();
-            sb.AppendLine("[mmenu create]    Creation (groupes, lfg, clear, spawner)");
-            sb.AppendLine("[mmenu orders]    Ordres (summon, follow, attack, pull)");
-            sb.AppendLine("[mmenu camp]      Camp & rayon d'aggro");
-            sb.AppendLine("[mmenu roles]     Roles (tank, heal, cc, guard, protect...)");
-            sb.AppendLine("[mmenu modes]     PvP / PreventCombat");
-            sb.AppendLine("[mmenu strat]     Strategies");
-            sb.AppendLine("[mmenu bg]        Battlegrounds (Thidranki)");
-            sb.AppendLine("[mmenu info]      Aide & stats");
+            sb.AppendLine("[mnuCreate]   Creation (groupes, lfg, clear, spawner)");
+            sb.AppendLine("[mnuOrders]   Ordres (summon, follow, attack, pull)");
+            sb.AppendLine("[mnuCamp]     Camp & rayon d'aggro");
+            sb.AppendLine("[mnuRoles]    Roles (tank, heal, cc, guard, protect...)");
+            sb.AppendLine("[mnuModes]    PvP / PreventCombat");
+            sb.AppendLine("[mnuStrat]    Strategies");
+            sb.AppendLine("[mnuBg]       Battlegrounds (Thidranki)");
+            sb.AppendLine("[mnuInfo]     Aide & stats");
             if (isAdmin)
-                sb.AppendLine("[mmenu admin]     Admin (PvP frontier)");
+                sb.AppendLine("[mnuAdmin]    Admin (PvP frontier)");
             sb.AppendLine();
-            sb.AppendLine("[mhelp]           Aide textuelle detaillee");
+            sb.AppendLine("[help]        Aide textuelle detaillee");
             sb.AppendLine();
             sb.AppendLine("Astuce : clic droit sur un mimic = menu interaction (roles, equipement, etat).");
         }
 
         // ----- Categories -----
+        // Each line is either a clickable single-word token (routed by
+        // MimicNPC.ResolveGlobalMenuKeyword to its full slash command) or a
+        // greyed-out template like `/mcreate <classe>` that the player must
+        // type by hand — multi-word brackets aren't clickable on 1.127.
         private static void BuildCreate(System.Text.StringBuilder sb)
         {
             sb.AppendLine("=== MENU > CREATION ===");
-            sb.AppendLine("[mmenu]                 Retour au menu");
+            sb.AppendLine("[mnu]                   Retour au menu");
             sb.AppendLine();
-            sb.AppendLine("[mgroup alb]            Groupe Albion equilibre (8 mimics)");
-            sb.AppendLine("[mgroup hib]            Groupe Hibernia");
-            sb.AppendLine("[mgroup mid]            Groupe Midgard");
-            sb.AppendLine("[mlfg]                  Liste cliquable des mimics LFG");
-            sb.AppendLine("[mcreate <classe>]      Cree un mimic (ex: /mcreate armsman 50 inv)");
-            sb.AppendLine("[mspawner <args>]       Spawn periodique de mimics");
-            sb.AppendLine("[mclear]                Supprime TOUS tes mimics");
+            sb.AppendLine("[grpAlb]                Groupe Albion equilibre (8 mimics)");
+            sb.AppendLine("[grpHib]                Groupe Hibernia");
+            sb.AppendLine("[grpMid]                Groupe Midgard");
+            sb.AppendLine("[lfg]                   Liste cliquable des mimics LFG");
+            sb.AppendLine("/mcreate <classe>       Cree un mimic (ex: /mcreate armsman 50 inv)");
+            sb.AppendLine("/mspawner <args>        Spawn periodique de mimics");
+            sb.AppendLine("[clearAll]              Supprime TOUS tes mimics");
         }
 
         private static void BuildOrders(System.Text.StringBuilder sb)
         {
             sb.AppendLine("=== MENU > ORDRES ===");
-            sb.AppendLine("[mmenu]                 Retour au menu");
+            sb.AppendLine("[mnu]                   Retour au menu");
             sb.AppendLine();
-            sb.AppendLine("[msummon]               Teleporte tes mimics groupes a toi");
-            sb.AppendLine("[mfollow]               Annule camp/pull, suit le leader");
-            sb.AppendLine("[mattack]               Attaque ta cible avec tous les mimics");
-            sb.AppendLine("[mpull]                 Camp ici + pull ta cible");
-            sb.AppendLine("[mpullfrom here]        Definit le point de pull ici");
-            sb.AppendLine("[mpullfrom remove]      Retire le point de pull");
+            sb.AppendLine("[gSummon]               Teleporte tes mimics groupes a toi");
+            sb.AppendLine("[gFollow]               Annule camp/pull, suit le leader");
+            sb.AppendLine("[gAttack]               Attaque ta cible avec tous les mimics");
+            sb.AppendLine("[gPull]                 Camp ici + pull ta cible");
+            sb.AppendLine("[gPullHere]             Definit le point de pull ici");
+            sb.AppendLine("[gPullClr]              Retire le point de pull");
         }
 
         private static void BuildCamp(System.Text.StringBuilder sb)
         {
             sb.AppendLine("=== MENU > CAMP ===");
-            sb.AppendLine("[mmenu]                 Retour au menu");
+            sb.AppendLine("[mnu]                   Retour au menu");
             sb.AppendLine();
-            sb.AppendLine("[mcamp set]             Camp a ton ground target (sinon ta position)");
-            sb.AppendLine("[mcamp here]            Camp a ta position");
-            sb.AppendLine("[mcamp remove]          Annule le camp");
+            sb.AppendLine("[campSet]               Camp a ton ground target (sinon ta position)");
+            sb.AppendLine("[campHere]              Camp a ta position");
+            sb.AppendLine("[campOff]               Annule le camp");
             sb.AppendLine();
-            sb.AppendLine("[mcamp aggrorange 550]  Rayon d'aggro (def 250 dungeon, 550 dehors)");
-            sb.AppendLine("[mcamp aggrorange 1500] Aggro elargi");
+            sb.AppendLine("[campAgg550]            Rayon d'aggro 550 (def 250 dungeon)");
+            sb.AppendLine("[campAgg1500]           Aggro elargi 1500");
             sb.AppendLine();
-            sb.AppendLine("[mcamp filter blue]     Pull a partir de blue con");
-            sb.AppendLine("[mcamp filter yellow]   Pull a partir de yellow");
-            sb.AppendLine("[mcamp filter orange]   Pull a partir de orange");
+            sb.AppendLine("[campBlue]              Pull a partir de blue con");
+            sb.AppendLine("[campYellow]            Pull a partir de yellow");
+            sb.AppendLine("[campOrange]            Pull a partir de orange");
         }
 
         private static void BuildRoles(System.Text.StringBuilder sb)
         {
             sb.AppendLine("=== MENU > ROLES (cible un mimic d'abord) ===");
-            sb.AppendLine("[mmenu]                 Retour au menu");
+            sb.AppendLine("[mnu]                   Retour au menu");
             sb.AppendLine();
-            sb.AppendLine("[mrole leader]          Designe leader");
-            sb.AppendLine("[mrole tank]            Designe MainTank");
-            sb.AppendLine("[mrole assist]          Designe MainAssist");
-            sb.AppendLine("[mrole cc]              Designe MainCC");
-            sb.AppendLine("[mrole puller]          Designe MainPuller");
-            sb.AppendLine("[mheal]                 Bascule mode soigneur");
+            sb.AppendLine("[roleLead]              Designe leader");
+            sb.AppendLine("[roleTank]              Designe MainTank");
+            sb.AppendLine("[roleAssist]            Designe MainAssist");
+            sb.AppendLine("[roleCC]                Designe MainCC");
+            sb.AppendLine("[rolePull]              Designe MainPuller");
+            sb.AppendLine("[heal]                  Bascule mode soigneur");
             sb.AppendLine();
-            sb.AppendLine("[mguard <nom>]          Garde la cible");
-            sb.AppendLine("[mprotect <nom>]        Protege la cible");
-            sb.AppendLine("[mintercept <nom>]      Intercepte pour la cible");
+            sb.AppendLine("/mguard <nom>           Garde la cible");
+            sb.AppendLine("/mprotect <nom>         Protege la cible");
+            sb.AppendLine("/mintercept <nom>       Intercepte pour la cible");
         }
 
         private static void BuildModes(System.Text.StringBuilder sb)
         {
             sb.AppendLine("=== MENU > MODES ===");
-            sb.AppendLine("[mmenu]                 Retour au menu");
+            sb.AppendLine("[mnu]                   Retour au menu");
             sb.AppendLine();
-            sb.AppendLine("[mpvp true]             Active PvP (cible ou groupe)");
-            sb.AppendLine("[mpvp false]            Desactive PvP");
-            sb.AppendLine("[mpc true]              PreventCombat ON (le bot n'engagera plus)");
-            sb.AppendLine("[mpc false]             PreventCombat OFF");
+            sb.AppendLine("[pvpOn]                 Active PvP (cible ou groupe)");
+            sb.AppendLine("[pvpOff]                Desactive PvP");
+            sb.AppendLine("[pcOn]                  PreventCombat ON (le bot n'engagera plus)");
+            sb.AppendLine("[pcOff]                 PreventCombat OFF");
         }
 
         private static void BuildStrat(System.Text.StringBuilder sb)
         {
             sb.AppendLine("=== MENU > STRATEGIES ===");
-            sb.AppendLine("[mmenu]                 Retour au menu");
+            sb.AppendLine("[mnu]                   Retour au menu");
             sb.AppendLine();
-            sb.AppendLine("[mstrategy list]        Liste strategies actives");
-            sb.AppendLine("[mstrategy add <cle>]   Ajoute une strategie");
-            sb.AppendLine("[mstrategy remove <cle>] Retire une strategie");
+            sb.AppendLine("[stratList]             Liste strategies actives");
+            sb.AppendLine("/mstrategy add <cle>    Ajoute une strategie");
+            sb.AppendLine("/mstrategy remove <cle> Retire une strategie");
         }
 
         private static void BuildBg(System.Text.StringBuilder sb)
         {
             sb.AppendLine("=== MENU > BATTLEGROUNDS ===");
-            sb.AppendLine("[mmenu]                 Retour au menu");
+            sb.AppendLine("[mnu]                   Retour au menu");
             sb.AppendLine();
-            sb.AppendLine("[mbattle thid start]    Demarre les spawns Thidranki");
-            sb.AppendLine("[mbattle thid stop]     Arrete les spawns");
-            sb.AppendLine("[mbattle thid clear]    Stop + supprime tous les bots");
+            sb.AppendLine("[bgThid]                Demarre les spawns Thidranki");
+            sb.AppendLine("[bgStop]                Arrete les spawns");
+            sb.AppendLine("[bgClear]               Stop + supprime tous les bots");
             sb.AppendLine();
-            sb.AppendLine("[mbstats]               Stats des battlegrounds");
+            sb.AppendLine("[bstats]                Stats des battlegrounds");
         }
 
         private static void BuildInfo(System.Text.StringBuilder sb)
         {
             sb.AppendLine("=== MENU > INFO & AIDE ===");
-            sb.AppendLine("[mmenu]                 Retour au menu");
+            sb.AppendLine("[mnu]                   Retour au menu");
             sb.AppendLine();
-            sb.AppendLine("[mhelp]                 Aide detaillee (catalogue complet)");
-            sb.AppendLine("[mhelp mgroup]          Detail d'une commande");
-            sb.AppendLine("[mbstats]               Stats des battlegrounds");
+            sb.AppendLine("[help]                  Aide detaillee (catalogue complet)");
+            sb.AppendLine("/mhelp <commande>       Detail d'une commande");
+            sb.AppendLine("[bstats]                Stats des battlegrounds");
         }
 
         private static void BuildAdmin(System.Text.StringBuilder sb)
         {
             sb.AppendLine("=== MENU > ADMIN (PvP frontier) ===");
-            sb.AppendLine("[mmenu]                 Retour au menu");
+            sb.AppendLine("[mnu]                   Retour au menu");
             sb.AppendLine();
-            sb.AppendLine("[pvpfrontier status]    Statut du systeme");
-            sb.AppendLine("[pvpfrontier start]     Demarre le systeme");
-            sb.AppendLine("[pvpfrontier stop]      Arrete le systeme");
-            sb.AppendLine("[pvpfrontier clear]     Supprime tous les bots frontier");
+            sb.AppendLine("[pfStatus]              Statut du systeme");
+            sb.AppendLine("[pfStart]               Demarre le systeme");
+            sb.AppendLine("[pfStop]                Arrete le systeme");
+            sb.AppendLine("[pfClear]               Supprime tous les bots frontier");
         }
     }
 
