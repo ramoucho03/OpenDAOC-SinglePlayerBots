@@ -613,12 +613,18 @@ namespace DOL.AI.Brain
 
         #region MainPuller
 
+        // Tracks how many mobs have been committed in the current pull chain.
+        // Resets to zero whenever we start a fresh pull cycle (no live target
+        // chasing us). Used to gate chain pulls against the group's budget.
+        private int _chainPullCount;
+
         public void CheckPuller()
         {
             if (IsPulling && Body.TargetObject != null && Body.TargetObject.ObjectState == GameObject.eObjectState.Active)
             {
                 if (CheckResetPuller())
                 {
+                    _chainPullCount++;
                     Body.ReturnToSpawnPoint(Body.MaxSpeed);
 
                     if (MimicBody.CharacterClass.ID != (int)eCharacterClass.Hunter &&
@@ -634,7 +640,18 @@ namespace DOL.AI.Brain
 
                     return;
                 }
+
+                // Still drawing the bow / waiting for aggro on current target —
+                // hold off chain pulling until the first arrow lands.
+                return;
             }
+
+            // Chain pull: previous arrow locked aggro and we're running back. If
+            // the group can absorb more mobs, fire another arrow at a nearby
+            // hostile before we reach camp. This is how an experienced scout
+            // farms — one shot per mob, not one mob per pull cycle.
+            if (TryChainPull())
+                return;
 
             if (!Body.InCombat)
             {
@@ -645,10 +662,52 @@ namespace DOL.AI.Brain
                 }
                 else
                 {
+                    _chainPullCount = 0;
                     GameLiving pullTarget = GetPullTarget();
                     PerformPull(pullTarget);
                 }
             }
+        }
+
+        /// <summary>
+        /// Fire a second/third/etc. arrow while running back from the first pull,
+        /// up to the group's pull budget. Archer-only — caster pull spells have
+        /// cast time + mana cost and don't chain cleanly. Returns true if a
+        /// chain shot was initiated this tick.
+        /// </summary>
+        private bool TryChainPull()
+        {
+            if (_chainPullCount == 0)
+                return false; // no chain in progress
+
+            if (_chainPullCount >= GetMaxPullCount())
+                return false; // budget reached
+
+            if (Body.IsAttacking || Body.IsCasting)
+                return false;
+
+            // Chain pull is archer-only. A caster's pull spell takes 2-3s of
+            // cast and stops the run-back; not worth it for chaining.
+            if (Body.Inventory.GetItem(eInventorySlot.DistanceWeapon) == null)
+                return false;
+
+            GameLiving chainTarget = GetPullTarget();
+            if (chainTarget == null)
+                return false;
+
+            // Only chain-shoot mobs we can hit from where we are right now.
+            // If the candidate is out of bow range, skip — we'd otherwise abort
+            // the spawn run to chase it, which defeats the chain.
+            int bowRange = Body.attackComponent?.AttackRange ?? 1700;
+            if (!Body.IsWithinRadius(chainTarget, bowRange))
+                return false;
+
+            Body.SwitchWeapon(eActiveWeaponSlot.Distance);
+            Body.TargetObject = chainTarget;
+            Body.StopFollowing();
+            Body.StartAttack(chainTarget);
+            IsPulling = true;
+            return true;
         }
 
         // Sticky throttle for group regen. Once a caster drops below 20% mana
@@ -716,6 +775,7 @@ namespace DOL.AI.Brain
             LastTargetObject = null;
             IsPulling = false;
             _pullManaThrottled = false;
+            _chainPullCount = 0;
         }
 
         // Maximum distance the puller will scan for a pull target. Independent
@@ -2215,6 +2275,131 @@ namespace DOL.AI.Brain
             Defensive,
             CrowdControl
         }
+
+        #region Resurrect
+
+        /// <summary>
+        /// Locates the bot's Resurrect spell, regardless of which spell list
+        /// the engine sorted it into. Rez is classified as misc but some
+        /// builds end up putting it in Spells directly.
+        /// </summary>
+        private Spell FindResurrectSpell()
+        {
+            if (MimicBody == null)
+                return null;
+
+            if (MimicBody.MiscSpells != null)
+            {
+                foreach (Spell s in MimicBody.MiscSpells)
+                    if (s != null && s.SpellType == eSpellType.Resurrect)
+                        return s;
+            }
+
+            if (MimicBody.InstantMiscSpells != null)
+            {
+                foreach (Spell s in MimicBody.InstantMiscSpells)
+                    if (s != null && s.SpellType == eSpellType.Resurrect)
+                        return s;
+            }
+
+            if (Body.Spells != null)
+            {
+                foreach (Spell s in Body.Spells)
+                    if (s != null && s.SpellType == eSpellType.Resurrect)
+                        return s;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// True if any other group member is currently casting a Resurrect
+        /// spell on this dead member. Prevents two rezzers in the same group
+        /// from wasting both casts on the same corpse.
+        /// </summary>
+        public bool IsBeingRezzedByGroup(GameLiving deadMember)
+        {
+            if (deadMember == null || Body.Group == null)
+                return false;
+
+            foreach (GameLiving gm in Body.Group.GetMembersInTheGroup())
+            {
+                if (gm == null || gm == Body || !gm.IsAlive || !gm.IsCasting)
+                    continue;
+
+                Spell active = gm.castingComponent?.SpellHandler?.Spell;
+                if (active != null
+                    && active.SpellType == eSpellType.Resurrect
+                    && gm.TargetObject == deadMember)
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// If the bot has a Resurrect spell and there's a dead group member in
+        /// range, start casting rez on them. Runs regardless of combat state —
+        /// an experienced healer drops everything to rez. Returns true when a
+        /// rez was started (or is currently in progress) so the caller can
+        /// short-circuit its normal action loop.
+        /// </summary>
+        public bool CheckResurrect()
+        {
+            Spell rezSpell = FindResurrectSpell();
+            if (rezSpell == null)
+                return false;
+
+            if (Body.IsStunned || Body.IsMezzed || Body.IsSilenced)
+                return false;
+
+            // Already mid-cast on rez — let it land.
+            if (Body.IsCasting
+                && Body.castingComponent?.SpellHandler?.Spell?.SpellType == eSpellType.Resurrect)
+                return true;
+
+            if (Body.Mana < MimicBody.PowerCost(rezSpell))
+                return false;
+
+            if (rezSpell.HasRecastDelay && Body.GetSkillDisabledDuration(rezSpell) > 0)
+                return false;
+
+            if (Body.IsBeingInterrupted && !rezSpell.Uninterruptible)
+                return false;
+
+            if (Body.Group == null)
+                return false;
+
+            GameLiving target = null;
+            foreach (GameLiving gm in Body.Group.GetMembersInTheGroup())
+            {
+                if (gm == null || gm == Body || gm.IsAlive)
+                    continue;
+                if (!Body.IsWithinRadius(gm, rezSpell.Range))
+                    continue;
+                if (IsBeingRezzedByGroup(gm))
+                    continue;
+
+                target = gm;
+                break;
+            }
+
+            if (target == null)
+                return false;
+
+            // Rez wins priority over whatever the bot was doing. Stop any
+            // current cast or melee swing so the rez can start cleanly.
+            if (Body.IsCasting)
+                Body.StopCurrentSpellcast();
+            if (Body.IsAttacking)
+                Body.StopAttack();
+
+            Body.TargetObject = target;
+            return Body.CastSpell(rezSpell, MimicBody.GetSpellLineForSpell(rezSpell));
+        }
+
+        #endregion Resurrect
+
 
         /// <summary>
         /// Checks if any spells need casting
@@ -3725,15 +3910,24 @@ namespace DOL.AI.Brain
 
                 case eSpellType.Resurrect:
                 {
+                    // Previously: assigned to Body.TargetObject instead of the
+                    // out parameter, so CanCastDefensiveSpell saw target == null
+                    // and skipped the cast. Rez had never actually fired through
+                    // this path. Caller (CheckDefensiveSpells) handles the
+                    // TargetObject swap itself.
                     if (Body.Group != null)
                     {
                         foreach (GameLiving groupMember in Body.Group.GetMembersInTheGroup())
                         {
-                            if (!groupMember.IsAlive)
-                            {
-                                Body.TargetObject = groupMember;
-                                break;
-                            }
+                            if (groupMember == null || groupMember == Body || groupMember.IsAlive)
+                                continue;
+                            if (!Body.IsWithinRadius(groupMember, spell.Range))
+                                continue;
+                            if (IsBeingRezzedByGroup(groupMember))
+                                continue;
+
+                            target = groupMember;
+                            break;
                         }
                     }
 

@@ -212,6 +212,12 @@ namespace DOL.AI.Brain
         public override void Think()
         {
             _brain.AlreadyCheckedHeals = false;
+
+            // Rez first — a group member just died on the leader's run and
+            // we're still in follow mode. Land the rez before catching up.
+            if (_brain.CheckResurrect())
+                return;
+
             if (_brain.CheckHeals())
                 return;
 
@@ -379,6 +385,12 @@ namespace DOL.AI.Brain
                     return;
                 }
             }
+
+            // Rez beats everything else when a group member is down — even in
+            // the middle of combat. An experienced healer/druid drops their
+            // current swing/cast to start a rez; the brain mirrors that.
+            if (_brain.CheckResurrect())
+                return;
 
             if (_brain.IsMainCC)
                 _brain.CheckMainCC();
@@ -562,6 +574,12 @@ namespace DOL.AI.Brain
         public override void Think()
         {
             _brain.AlreadyCheckedHeals = false;
+
+            // Rez first — covers the camp scenario where a member died on the
+            // last pull and the group is now sitting back down to regen.
+            if (_brain.CheckResurrect())
+                return;
+
             if (_brain.CheckHeals())
                 return;
 
