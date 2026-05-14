@@ -805,10 +805,13 @@ namespace DOL.AI.Brain
         }
 
         /// <summary>
-        /// Fire a second/third/etc. arrow while running back from the first pull,
-        /// up to the group's pull budget. Archer-only — caster pull spells have
-        /// cast time + mana cost and don't chain cleanly. Returns true if a
-        /// chain shot was initiated this tick.
+        /// Fire a chain pull on the next candidate while running back from the
+        /// previous one, up to the group's pull budget. Class-agnostic:
+        ///   - Archer / thrown (DistanceWeapon equipped): release another shot
+        ///   - Caster (instant harmful spell): cast in motion, no run-back stall
+        ///   - Caster (short cast-time pull spell ≤ 1500ms): stand & cast, then resume
+        ///   - Pure melee with no ranged tag: skipped (can't chain physically)
+        /// Returns true if a chain pull was initiated this tick.
         /// </summary>
         private bool TryChainPull()
         {
@@ -821,31 +824,66 @@ namespace DOL.AI.Brain
             if (Body.IsAttacking || Body.IsCasting)
                 return false;
 
-            // Chain pull is archer-only. A caster's pull spell takes 2-3s of
-            // cast and stops the run-back; not worth it for chaining.
-            if (Body.Inventory.GetItem(eInventorySlot.DistanceWeapon) == null)
-                return false;
-
             GameLiving chainTarget = GetPullTarget();
             if (chainTarget == null)
                 return false;
 
-            // Only chain-shoot mobs we can hit from where we are right now.
-            // If the candidate is out of bow range, skip — we'd otherwise abort
-            // the spawn run to chase it, which defeats the chain.
-            int bowRange = Body.attackComponent?.AttackRange ?? 1700;
-            if (!Body.IsWithinRadius(chainTarget, bowRange))
+            bool hasBow = Body.Inventory?.GetItem(eInventorySlot.DistanceWeapon) != null;
+
+            // --- Archer / thrown path: bow chain.
+            if (hasBow)
+            {
+                int bowRange = Body.attackComponent?.AttackRange ?? 1700;
+                if (!Body.IsWithinRadius(chainTarget, bowRange))
+                    return false;
+
+                Body.SwitchWeapon(eActiveWeaponSlot.Distance);
+                Body.TargetObject = chainTarget;
+                Body.StopFollowing();
+                Body.StartAttack(chainTarget);
+                IsPulling = true;
+                _pullStartTick = GameLoop.GameLoopTime;
+                MimicGroup mgChain = Body.Group?.MimicGroup;
+                if (mgChain != null)
+                    mgChain.IncomingPullTarget = chainTarget;
+                return true;
+            }
+
+            // --- Caster path: chain via harmful spell.
+            // Need a spellbook & at least one harmful spell available.
+            if (MimicBody == null
+                || (!MimicBody.CanCastInstantHarmfulSpells && !MimicBody.CanCastHarmfulSpells))
                 return false;
 
-            Body.SwitchWeapon(eActiveWeaponSlot.Distance);
+            Spell chainSpell = SelectPullSpell();
+            if (chainSpell == null)
+                return false;
+
+            // Must be in cast range of the chain target — never abort the
+            // run-back to chase a chain candidate.
+            if (!Body.IsWithinRadius(chainTarget, chainSpell.Range))
+                return false;
+
+            // Non-instant spells halt the run-back. Only accept ones that
+            // finish quickly (≤ 1500ms cast time) so we lose at most one tick
+            // of run-back; otherwise skip chain and keep moving.
+            if (!chainSpell.IsInstantCast && chainSpell.CastTime > 1500)
+                return false;
+
             Body.TargetObject = chainTarget;
             Body.StopFollowing();
-            Body.StartAttack(chainTarget);
+            Body.TurnTo(chainTarget);
+
+            if (chainSpell.IsInstantCast)
+                Body.CastSpell(chainSpell, MimicBody.GetSpellLineForSpell(chainSpell));
+            else
+                CheckOffensiveSpells(chainSpell);
+
             IsPulling = true;
             _pullStartTick = GameLoop.GameLoopTime;
-            MimicGroup mgChain = Body.Group?.MimicGroup;
-            if (mgChain != null)
-                mgChain.IncomingPullTarget = chainTarget;
+            MimicGroup mgCaster = Body.Group?.MimicGroup;
+            if (mgCaster != null)
+                mgCaster.IncomingPullTarget = chainTarget;
             return true;
         }
 
@@ -894,7 +932,10 @@ namespace DOL.AI.Brain
                     return true;
             }
 
-            // Group regen gate.
+            // Group regen gate. Tighter low-water mark (15%) and lower
+            // restart threshold (70%) so chain pulls can resume quickly once
+            // healers have ticked back up a bit. The hysteresis between the
+            // two values still avoids flapping.
             if (Body.Group != null)
             {
                 bool anyLow = false;
@@ -906,8 +947,8 @@ namespace DOL.AI.Brain
                         continue;
 
                     int pct = gl.ManaPercent;
-                    if (pct < 20) anyLow = true;
-                    if (pct < 80) allHigh = false;
+                    if (pct < 15) anyLow = true;
+                    if (pct < 70) allHigh = false;
                 }
 
                 if (anyLow)
@@ -976,7 +1017,8 @@ namespace DOL.AI.Brain
         /// How many mobs the group can realistically chew through at once.
         /// 1 by default; each CC-capable mimic in the group adds slots so a
         /// well-formed group with CC + tank can grab a small pack on purpose
-        /// instead of bouncing 3 trash mobs one at a time.
+        /// instead of bouncing 3 trash mobs one at a time. With multiple
+        /// healers we tolerate one extra add to sustain bigger chains.
         /// </summary>
         private int GetMaxPullCount()
         {
@@ -990,15 +1032,34 @@ namespace DOL.AI.Brain
                 return 1;
 
             int ccCount = 0;
+            int healerCount = 0;
+            int aliveMembers = 0;
             foreach (GameLiving gm in Body.Group.GetMembersInTheGroup())
             {
-                if (gm is MimicNPC m && m.CanCastCrowdControlSpells)
-                    ccCount++;
+                if (gm == null || !gm.IsAlive)
+                    continue;
+                aliveMembers++;
+
+                if (gm is MimicNPC m)
+                {
+                    if (m.CanCastCrowdControlSpells)
+                        ccCount++;
+                    if (m.MimicBrain != null && m.MimicBrain.IsHealer)
+                        healerCount++;
+                }
             }
 
-            // Each CC bot can lock one add. Cap at 4 so we don't try to drag a
-            // whole camp; cap respects HP/mana budgets observed in playtest.
-            return Math.Clamp(1 + ccCount, 1, 4);
+            // 1 base + 1 per CC + 1 bonus for 2+ healers (sustain) +
+            // 1 bonus for a full 6+ member group (more raw DPS = bigger pack).
+            int budget = 1 + ccCount;
+            if (healerCount >= 2)
+                budget++;
+            if (aliveMembers >= 6)
+                budget++;
+
+            // Cap at 5 — playtests show larger pulls regularly outpace heals
+            // regardless of CC count, especially when mob density is high.
+            return Math.Clamp(budget, 1, 5);
         }
 
         /// <summary>

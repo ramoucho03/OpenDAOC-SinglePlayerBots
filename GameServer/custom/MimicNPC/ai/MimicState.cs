@@ -588,19 +588,7 @@ namespace DOL.AI.Brain
             _brain.Body.SpawnPoint.Y += _campOffsetY;
 
             prevAggroRange = _brain.AggroRange;
-            _brain.AggroRange = _brain.Body.CurrentRegion.IsDungeon ? 250 : 550;
-
-            // Tanks scan further than the rest of the camp so they spot incoming
-            // mobs first and start the intercept run while DPS/healers are still
-            // sitting.
-            if (_brain.IsMainTank)
-                _brain.AggroRange += _brain.Body.CurrentRegion.IsDungeon ? 100 : 250;
-
-            // Pullers need a wider local scan to notice the chain candidates as
-            // they walk back from a successful shot; without this they wait at
-            // the slot for the next CheckPuller tick before re-engaging.
-            if (_brain.IsMainPuller)
-                _brain.AggroRange = Math.Max(_brain.AggroRange, 900);
+            _brain.AggroRange = ComputeGroupAggroRange();
 
             if (AggroRange != 0)
                 _brain.AggroRange = AggroRange;
@@ -958,8 +946,17 @@ namespace DOL.AI.Brain
                         mg.SetCampPhase(MimicGroup.eCampPhase.Combat);
                         break;
                     }
-                    // Give a 2s grace period for post-combat loot/buff swaps.
-                    if (now - mg.CampPhaseSinceTick > 2000)
+                    // Healthy group → skip the long PostCombat dwell and jump
+                    // straight to Ready so the puller can chain a new pack
+                    // before the previous mob's body even fades. Otherwise we
+                    // keep the original 2s buffer for loot/buff windows.
+                    if (IsGroupReady(mg))
+                    {
+                        mg.SetCampPhase(MimicGroup.eCampPhase.Ready);
+                        break;
+                    }
+                    int grace = AnyGroupMemberHasAggro() ? 2000 : 750;
+                    if (now - mg.CampPhaseSinceTick > grace)
                         mg.SetCampPhase(MimicGroup.eCampPhase.Regen);
                     break;
             }
@@ -997,9 +994,12 @@ namespace DOL.AI.Brain
         /// </summary>
         private bool IsGroupReady(MimicGroup mg)
         {
-            const int READY_HP_PCT = 90;
-            const int READY_MANA_PCT = 85;
-            const int READY_END_PCT = 70;
+            // Thresholds tuned for chain-friendly pacing: 85% HP / 80% mana /
+            // 60% endurance lets a healthy group resume pulling within seconds
+            // of combat ending instead of waiting on the tail-end of regen.
+            const int READY_HP_PCT = 85;
+            const int READY_MANA_PCT = 80;
+            const int READY_END_PCT = 60;
 
             if (_brain.Body.Group == null)
                 return true;
@@ -1016,6 +1016,89 @@ namespace DOL.AI.Brain
                     return false;
             }
             return true;
+        }
+
+        /// <summary>
+        /// Computes the camp aggro-scan range for this bot, scaled by the
+        /// group's composition and role. A stronger group sees further; a
+        /// tank/puller scans even further than the camp baseline so the
+        /// formation reacts to incoming mobs before they cross the line.
+        ///
+        /// Inputs that grow the zone:
+        ///   - Indoor vs outdoor baseline (dungeon = tighter, outdoor = wider)
+        ///   - Each alive group member (+30 each, capped at 8 members)
+        ///   - A living main tank (+100, anchors melee)
+        ///   - A living healer (+100, sustains intercept fights)
+        ///   - A living main CC (+100, can lock incoming pulls early)
+        /// Role-side bonuses (additive to the group base):
+        ///   - Main tank: +250 outdoor / +100 dungeon  (intercept eyes)
+        ///   - Main puller: forced to ≥ 1000 outdoor / 600 dungeon (chain scan)
+        ///   - Main CC: +200 (line-of-sight pre-mez window)
+        /// Returns the resulting aggro range; the user-overridable
+        /// <see cref="AggroRange"/> still takes precedence in Enter().
+        /// </summary>
+        private int ComputeGroupAggroRange()
+        {
+            bool dungeon = _brain.Body.CurrentRegion.IsDungeon;
+
+            int range = dungeon ? 250 : 550;
+
+            MimicGroup mg = _brain.Body.Group?.MimicGroup;
+            int aliveMembers = 0;
+            bool tankAlive = false, healerAlive = false, ccAlive = false;
+            if (_brain.Body.Group != null)
+            {
+                foreach (GameLiving gl in _brain.Body.Group.GetMembersInTheGroup())
+                {
+                    if (gl == null || !gl.IsAlive)
+                        continue;
+                    aliveMembers++;
+                    if (mg != null && gl == mg.MainTank)
+                        tankAlive = true;
+                    if (mg != null && gl == mg.MainCC)
+                        ccAlive = true;
+                    if (gl is MimicNPC m && m.MimicBrain != null && m.MimicBrain.IsHealer)
+                        healerAlive = true;
+                }
+            }
+
+            range += Math.Min(aliveMembers, 8) * 30;
+            if (tankAlive)   range += 100;
+            if (healerAlive) range += 100;
+            if (ccAlive)     range += 100;
+
+            // Role-side bonuses.
+            if (_brain.IsMainTank)
+                range += dungeon ? 100 : 250;
+            if (_brain.IsMainCC)
+                range += 200;
+            // Puller's scan reaches as far as the tool it pulls with — there's
+            // no point seeing closer than we can actually shoot/cast at. We
+            // pick the wider of the two: bow attack range (when a distance
+            // weapon is equipped) or the cached pull spell range. Default to
+            // 2000 if neither is resolvable yet (first Enter before spells
+            // sorted). Indoors we cap a little tighter because LoS is short.
+            if (_brain.IsMainPuller)
+            {
+                int pullReach = 2000;
+
+                if (_brain.Body.Inventory?.GetItem(eInventorySlot.DistanceWeapon) != null)
+                {
+                    int bow = _brain.Body.attackComponent?.AttackRange ?? 0;
+                    if (bow > pullReach) pullReach = bow;
+                }
+
+                Spell ps = _brain.SelectPullSpell();
+                if (ps != null && ps.Range > pullReach)
+                    pullReach = ps.Range;
+
+                int pullerFloor = dungeon ? Math.Min(pullReach, 1500) : pullReach;
+                range = Math.Max(range, pullerFloor);
+            }
+
+            // Safety clamp — keep the zone within the brain's max aggro radius
+            // so we never scan beyond what the bot can actually engage.
+            return Math.Clamp(range, 250, MimicBrain.MAX_AGGRO_DISTANCE);
         }
 
         /// <summary>
