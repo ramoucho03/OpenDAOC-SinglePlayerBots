@@ -69,6 +69,7 @@ namespace DOL.GS.PacketHandler
             void LoadPacketHandlers()
             {
                 string version = "v168";
+                List<PacketHandlerAttribute> attributes;
 
                 lock (_loadPacketHandlersLock)
                 {
@@ -104,9 +105,19 @@ namespace DOL.GS.PacketHandler
 
                         _cachedPacketHandlerSearchResults.Add(version, _packetHandlers.Clone() as IPacketHandler[]);
                     }
+
+                    // Read preprocessor cache under the same lock so we always see a consistent view
+                    // even if a parallel load is happening for a different version.
+                    _cachedPreprocessorSearchResults.TryGetValue(version, out attributes);
                 }
 
-                _cachedPreprocessorSearchResults.TryGetValue(version, out List<PacketHandlerAttribute> attributes);
+                if (attributes == null)
+                {
+                    if (log.IsWarnEnabled)
+                        log.Warn($"No preprocessors registered for {version}");
+
+                    return;
+                }
 
                 if (log.IsInfoEnabled)
                     log.Info($"Loaded {attributes.Count} preprocessors from cache for {version}");
