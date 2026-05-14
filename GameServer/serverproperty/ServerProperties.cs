@@ -169,7 +169,7 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// Server Language
 		/// </summary>
-		[ServerProperty("system", "server_language", "Language of your server. It can be EN, FR or DE.", "EN")]
+		[ServerProperty("system", "server_language", "Language of your server. It can be EN, FR or DE.", "FR")]
 		public static string SERV_LANGUAGE;
 
 		/// <summary>

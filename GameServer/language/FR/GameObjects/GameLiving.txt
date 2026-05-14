@@ -11,3 +11,20 @@ GameLiving.Pronoun.Male.Subjective:			il
 GameLiving.Pronoun.Female.Objective:		sa
 GameLiving.Pronoun.Female.Possessive:		sa
 GameLiving.Pronoun.Female.Subjective:		elle
+
+## Attack Data
+GameLiving.Attack.Block:					{0} vous attaque, mais vous bloquez le coup!
+GameLiving.AttackData.Fumbled:			{0} rate son attaque!
+GameLiving.AttackData.Misses:			{0} attaque votre {1} et rate son coup!
+GameLiving.AttackData.Blocked:			{0} attaque votre {1}, mais le coup est bloqué!
+GameLiving.AttackData.Parried:			{0} attaque votre {1}, mais le coup est paré!
+GameLiving.AttackData.CriticallyHitsForDamage:	{0} touche votre {1} de manière critique pour {2} points de dommages supplémentaires.
+GameLiving.AttackData.Evaded:			{0} attaque votre {1}, mais le coup est esquivé!
+GameLiving.AttackData.HitsForDamage:		{0} touche votre {1} pour {2}{3} points de dommages.
+GameLiving.AttackData.YourCriticallyHits:	Votre {0} touche {1} de manière critique pour {2} points de dommages supplémentaires!
+GameLiving.AttackData.YourHits:			Votre {0} {1} {2} et touche pour {3}{4} points de dommages!
+GameLiving.AttackData.AttackType.Attacks:	attaque
+GameLiving.AttackData.AttackType.Shoots:	tire sur
+GameLiving.AttackData.GainEndurancePoints:	Vous récupérez {0} points d'endurance.
+GameLiving.AttackData.GainPowerPoints:		Vous récupérez {0} points de mana.
+GameLiving.AttackData.InvisibleToYou:		{0} est invisible pour vous!

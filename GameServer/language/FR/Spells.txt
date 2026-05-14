@@ -1,6 +1,12 @@
 ﻿GamePlayer.CastSpell.MustWaitBeforeCast:	Vous devez attendre {0} secondes pour lancer un sort!
 SpellHandler.DelveInfo.Sec:	sec
 SpellHandler.CasterMove:	Vous bougez et intérromper votre sort!
+SpellHandler.CastSpell.Msg.YouBeginCasting:	Vous commencez à incanter un sort de {0}!
+SpellHandler.CastSpell.Msg.YouCastSpell:	Vous lancez un sort de {0}!
+SpellHandler.CastSpell.Msg.PetBeginsCasting:	{0} commence à incanter un sort de {1}!
+SpellHandler.CastSpell.Msg.PetCastSpell:	{0} lance un sort de {1}!
+SpellHandler.CastSpell.Msg.LivingCastsSpell:	{0} lance un sort!
+SpellHandler.CancelPulsingSpell:	Vous arrêtez de jouer votre chant.
 
 # DelveInfo
 DelveInfo.CastingTime:					Temps d'Incantation: {0}
@@ -23,6 +29,17 @@ DelveInfo.DamageType:					Type de Dégats: {0}
 # DamageSpeedDecrease
 DamageSpeedDecrease.DelveInfo.Decrease:			Ralentissement de vitesse: {0}%
 DamageSpeedDecrease.DelveInfo.Function:			Fonction: Ralentissement de Vitesse + Dommage
+
+# Bladeturn / Bodyguard / Brittle Guard
+GameLiving.CalculateEnemyAttackResult.BlowAbsorbed:		Le coup est absorbé par une barrière magique!
+GameLiving.CalculateEnemyAttackResult.BlowPenetrated:		Le coup traverse la barrière magique!
+GameLiving.CalculateEnemyAttackResult.StrikeAbsorbed:		Votre coup est absorbé par une barrière magique!
+GameLiving.CalculateEnemyAttackResult.YouAttempt:		Vous tentez d'attaquer {0}, mais {1} est protégé par {2}!
+GameLiving.CalculateEnemyAttackResult.YouHaveProtected:	Vous avez protégé {0} de l'attaque de {1}!
+GameLiving.CalculateEnemyAttackResult.YourPetAttempts:	Votre familier tente d'attaquer {0}, mais {1} est protégé par {2}!
+GameLiving.CalculateEnemyAttackResult.YouWereProtected:	Vous avez été protégé par {0} contre l'attaque de {1}!
+GameLiving.CalculateEnemyAttackResult.BlowIntercepted:		Le coup est intercepté par une garde fragile!
+GameLiving.CalculateEnemyAttackResult.StrikeIntercepted:	Votre coup est intercepté par une garde fragile!
 
 # ResistDebuff
 ResistDebuff.DelveInfo.Decrease:			Abaisse la résistance {0}: {1}

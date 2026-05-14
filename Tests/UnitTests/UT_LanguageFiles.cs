@@ -12,6 +12,51 @@ namespace DOL.Language.Tests
     public class UT_LanguageFiles
     {
         private static readonly string[] CriticalLanguages = ["EN", "FR"];
+        private static readonly string[] FrenchCombatAndConsoleKeys =
+        [
+            "DetailDisplayHandler.HandlePacket.YouHit",
+            "GameLiving.Attack.Block",
+            "GameLiving.AttackData.AttackType.Attacks",
+            "GameLiving.AttackData.AttackType.Shoots",
+            "GameLiving.AttackData.Blocked",
+            "GameLiving.AttackData.BlocksYou",
+            "GameLiving.AttackData.CriticallyHitsForDamage",
+            "GameLiving.AttackData.Evaded",
+            "GameLiving.AttackData.Fumbled",
+            "GameLiving.AttackData.GainEndurancePoints",
+            "GameLiving.AttackData.GainPowerPoints",
+            "GameLiving.AttackData.HitsForDamage",
+            "GameLiving.AttackData.InvisibleToYou",
+            "GameLiving.AttackData.Misses",
+            "GameLiving.AttackData.Parried",
+            "GameLiving.AttackData.StepsInFront",
+            "GameLiving.AttackData.YouBlock",
+            "GameLiving.AttackData.YourCriticallyHits",
+            "GameLiving.AttackData.YourHits",
+            "GameLiving.AttackData.YouStepInFront",
+            "GameLiving.CalculateEnemyAttackResult.BlowAbsorbed",
+            "GameLiving.CalculateEnemyAttackResult.BlowIntercepted",
+            "GameLiving.CalculateEnemyAttackResult.BlowPenetrated",
+            "GameLiving.CalculateEnemyAttackResult.StrikeAbsorbed",
+            "GameLiving.CalculateEnemyAttackResult.StrikeIntercepted",
+            "GameLiving.CalculateEnemyAttackResult.YouAttempt",
+            "GameLiving.CalculateEnemyAttackResult.YouHaveProtected",
+            "GameLiving.CalculateEnemyAttackResult.YourPetAttempts",
+            "GameLiving.CalculateEnemyAttackResult.YouWereProtected",
+            "GameLiving.CheckWeaponMagicalEffect.Protected",
+            "GameLiving.StartWeaponMagicalEffect.NotPowerful",
+            "GameLiving.TryBlock.Blocking",
+            "GameLiving.TryBlock.Engage",
+            "GamePlayer.Attack.InterruptedCrafting",
+            "SpellHandler.CancelEffect",
+            "SpellHandler.CancelPulsingSpell",
+            "SpellHandler.CastSpell.Msg.LivingCastsSpell",
+            "SpellHandler.CastSpell.Msg.PetBeginsCasting",
+            "SpellHandler.CastSpell.Msg.PetCastSpell",
+            "SpellHandler.CastSpell.Msg.YouBeginCasting",
+            "SpellHandler.CastSpell.Msg.YouCastSpell",
+        ];
+
         private static readonly UTF8Encoding StrictUtf8 = new(false, true);
         private static readonly Regex PlaceholderRegex = new(@"\{([0-9]+)(?:[^}]*)\}", RegexOptions.Compiled);
 
@@ -78,6 +123,17 @@ namespace DOL.Language.Tests
             }
 
             Assert.That(mismatches, Is.Empty, string.Join(Environment.NewLine, mismatches));
+        }
+
+        [Test]
+        public void FrenchCombatAndConsoleTranslations_ShouldExist()
+        {
+            Dictionary<string, TranslationEntry> french = ReadFirstEntriesByKey("FR");
+            List<string> missing = FrenchCombatAndConsoleKeys
+                .Where(key => !french.ContainsKey(key))
+                .ToList();
+
+            Assert.That(missing, Is.Empty, string.Join(Environment.NewLine, missing));
         }
 
         private static IEnumerable<string> EnumerateCriticalLanguageFiles()

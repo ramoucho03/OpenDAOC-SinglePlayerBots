@@ -216,8 +216,15 @@ namespace DOL.GS.Scripts
         private int m_poisonPercent;
         private int m_percentCurrent;
 
-        static readonly public int HealThreshold = Properties.NPC_HEAL_THRESHOLD;
-        static readonly public int EmergencyThreshold = HealThreshold / 2;
+        // Heal thresholds — more aggressive than the generic NPC defaults so mimic
+        // healers stay proactive. Default 85 / 50 (vs the global NPC_HEAL_THRESHOLD
+        // of 75 / 37). Tunable via ServerProperty mimic_heal_threshold.
+        public static int HealThreshold = MimicConfig.MIMIC_HEAL_THRESHOLD > 0
+            ? MimicConfig.MIMIC_HEAL_THRESHOLD
+            : 85;
+        public static int EmergencyThreshold = MimicConfig.MIMIC_EMERGENCY_THRESHOLD > 0
+            ? MimicConfig.MIMIC_EMERGENCY_THRESHOLD
+            : 50;
 
         private long nextCheckTime = 0;
         const long checkTimeOffset = 51; // Think() can be called slightly before interval

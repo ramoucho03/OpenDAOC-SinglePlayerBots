@@ -2572,7 +2572,41 @@ namespace DOL.AI.Brain
                 }
 
                 #endregion
- 
+
+                #region Proactive Tank HoT
+                // Keep the MainTank topped with a HoT/regen whenever the group
+                // is engaged, even if they're at full HP. The MimicGroup tracker
+                // (AlreadyCastingHoT) prevents two healers from spamming the same
+                // HoT every tick, and CheckHealSpell handles the recast delay.
+                if (spellToCast == null
+                    && IsHealer
+                    && mGroup != null
+                    && mGroup.MainTank != null
+                    && mGroup.MainTank.IsAlive
+                    && mGroup.MainTank.InCombat
+                    && !mGroup.AlreadyCastingHoT)
+                {
+                    GameLiving tank = mGroup.MainTank;
+
+                    // Only refresh when the HoT effect isn't already running on the tank.
+                    bool tankHasHoT = tank.effectListComponent.ContainsEffectForEffectType(eEffect.HealOverTime);
+
+                    if (!tankHasHoT)
+                    {
+                        if (CanCastInstantHot())
+                        {
+                            spellToCast = MimicBody.HealOverTimeInstant;
+                            spellTarget = tank;
+                        }
+                        else if (!MimicBody.IsCasting && CanCastHot())
+                        {
+                            spellToCast = MimicBody.HealOverTime;
+                            spellTarget = tank;
+                        }
+                    }
+                }
+                #endregion
+
                 #region Cure Mess/Disease/Poison
 
                 if (spellToCast == null)

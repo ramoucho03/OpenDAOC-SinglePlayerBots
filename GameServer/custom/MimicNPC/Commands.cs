@@ -382,13 +382,19 @@ namespace DOL.GS.Scripts
     {
         public void OnCommand(GameClient client, string[] args)
         {
-            if (client.Player.TargetObject is MimicNPC mimic)
+            if (client?.Player == null)
+                return;
+
+            if (client.Player.TargetObject is not MimicNPC mimic)
             {
-                if (mimic.Group == null)
-                    mimic.Whisper(client.Player, "Je dois être dans un groupe.");
-                else
-                    mimic.Group.MimicGroup.SetHealer(mimic);
+                client.Player.Out.SendMessage("Vous devez cibler un mimic soigneur.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                return;
             }
+
+            if (mimic.Group == null)
+                mimic.Whisper(client.Player, "Je dois être dans un groupe.");
+            else
+                mimic.Group.MimicGroup.SetHealer(mimic);
         }
     }
 
@@ -590,20 +596,35 @@ namespace DOL.GS.Scripts
 
         private string BuildMessage(IReadOnlyList<MimicLFGManager.MimicLFGEntry> entries, bool invalid = false)
         {
-            string message = "--------------------------------\n";
+            // Each entry is rendered as a clickable popup link:  "[/mlfg N] Name Class Level".
+            // DAoC popup brackets type their content into chat — so clicking the
+            // bracketed text re-invokes /mlfg with the index, recruiting that bot.
+            System.Text.StringBuilder sb = new();
+            sb.AppendLine("------- Mimics LFG -------");
+            sb.AppendLine("Clique sur un [/mlfg N] pour recruter ce mimic.");
+            sb.AppendLine();
 
             if (invalid)
-                message += "Index invalide ou groupe complet.\n";
-            else if (entries.Any())
             {
-                int index = 1;
-                foreach (var entry in entries)
-                    message += index++.ToString() + ". " + entry.Name + " " + Enum.GetName(typeof(eMimicClass), entry.MimicClass) + " " + entry.Level + "\n";
+                sb.AppendLine("Index invalide ou groupe complet.");
+                return sb.ToString();
             }
-            else
-                message += "Aucun mimic disponible.\n";
 
-            return message;
+            if (!entries.Any())
+            {
+                sb.AppendLine("Aucun mimic disponible.");
+                return sb.ToString();
+            }
+
+            int index = 1;
+            foreach (var entry in entries)
+            {
+                string cls = Enum.GetName(typeof(eMimicClass), entry.MimicClass);
+                sb.AppendLine($"[/mlfg {index}]  {entry.Name,-20} {cls,-14} lvl {entry.Level}");
+                index++;
+            }
+
+            return sb.ToString();
         }
     }
 
@@ -1038,7 +1059,7 @@ namespace DOL.GS.Scripts
                     else
                     {
                         if (ourEffect)
-                            target.Group.SendMessageToGroupMembers("Je ne protège plus " + targetGroupMember.Name + ".", eChatType.CT_Group, eChatLoc.CL_ChatWindow);
+                            target.Group.SendMessageToGroupMembers(target, "Je ne protège plus " + targetGroupMember.Name + ".", eChatType.CT_Group, eChatLoc.CL_ChatWindow);
                         else
                             target.Group.SendMessageToGroupMembers(target, targetGroupMember.Name + " est déjà protégé.", eChatType.CT_Group, eChatLoc.CL_ChatWindow);
                     }
@@ -1219,6 +1240,109 @@ namespace DOL.GS.Scripts
     }
 
     /// <summary>
+    /// Quick-action menu for the mimic bot system. Every line is a clickable
+    /// `[/cmd args]` shortcut — DAoC popup windows type the bracket contents
+    /// into chat when clicked, so the command fires directly.
+    /// </summary>
+    [CmdAttribute(
+        "&mmenu",
+        ePrivLevel.Player,
+        "/mmenu - Ouvre un menu cliquable avec toutes les actions du module bots.")]
+    public class MimicMenuCommandHandler : AbstractCommandHandler, ICommandHandler
+    {
+        public void OnCommand(GameClient client, string[] args)
+        {
+            GamePlayer player = client.Player;
+            if (player == null) return;
+
+            System.Text.StringBuilder sb = new();
+            sb.AppendLine("=== MENU BOTS — clique pour executer ===");
+            sb.AppendLine("Astuce : les arguments entre <...> doivent etre tapes manuellement.");
+            sb.AppendLine();
+
+            sb.AppendLine("--- CREATION ---");
+            sb.AppendLine("[/mgroup alb]      Groupe Albion equilibre (8 mimics, ton niveau)");
+            sb.AppendLine("[/mgroup hib]      Groupe Hibernia");
+            sb.AppendLine("[/mgroup mid]      Groupe Midgard");
+            sb.AppendLine("[/mlfg]            Liste cliquable des mimics LFG");
+            sb.AppendLine("[/mcreate <classe>] Cree un mimic (ex: /mcreate armsman 50 inv)");
+            sb.AppendLine("[/mclear]          Supprime TOUS tes mimics");
+            sb.AppendLine();
+
+            sb.AppendLine("--- ORDRES ---");
+            sb.AppendLine("[/msummon]         Teleporte tes mimics groupes a toi");
+            sb.AppendLine("[/mfollow]         Annule camp/pull, suit tout le monde");
+            sb.AppendLine("[/mattack]         Attaque ta cible avec tous les mimics");
+            sb.AppendLine("[/mpull]           Camp ici + pull la cible courante");
+            sb.AppendLine("[/mpullfrom here]  Definit le point de pull ici");
+            sb.AppendLine("[/mpullfrom remove] Retire le point de pull");
+            sb.AppendLine();
+
+            sb.AppendLine("--- CAMP ---");
+            sb.AppendLine("[/mcamp set]              Camp a ton ground target (sinon ta position)");
+            sb.AppendLine("[/mcamp here]             Camp a ta position");
+            sb.AppendLine("[/mcamp remove]           Annule le camp, le groupe re-suit le leader");
+            sb.AppendLine("[/mcamp aggrorange 550]   Rayon d'aggro du camp (def 250 dungeon / 550 dehors)");
+            sb.AppendLine("[/mcamp aggrorange 1500]  Aggro elargi");
+            sb.AppendLine("[/mcamp filter yellow]    Le puller ne pull qu'a partir de yellow con");
+            sb.AppendLine("[/mcamp filter orange]    Pull a partir de orange");
+            sb.AppendLine("[/mcamp filter blue]      Pull aussi le faible (blue+)");
+            sb.AppendLine();
+
+            sb.AppendLine("--- ROLES (cible un mimic d'abord) ---");
+            sb.AppendLine("[/mrole leader]    Designe leader");
+            sb.AppendLine("[/mrole tank]      Designe MainTank");
+            sb.AppendLine("[/mrole assist]    Designe MainAssist");
+            sb.AppendLine("[/mrole cc]        Designe MainCC");
+            sb.AppendLine("[/mrole puller]    Designe MainPuller");
+            sb.AppendLine("[/mheal]           Bascule mode soigneur");
+            sb.AppendLine("[/mguard <nom>]    Garde la cible");
+            sb.AppendLine("[/mprotect <nom>]  Protege la cible");
+            sb.AppendLine("[/mintercept <nom>] Intercepte pour la cible");
+            sb.AppendLine();
+
+            sb.AppendLine("--- MODES ---");
+            sb.AppendLine("[/mpvp true]       Active PvP (cible ou groupe)");
+            sb.AppendLine("[/mpvp false]      Desactive PvP");
+            sb.AppendLine("[/mpc true]        PreventCombat ON (le bot n'engagera plus)");
+            sb.AppendLine("[/mpc false]       PreventCombat OFF");
+            sb.AppendLine();
+
+            sb.AppendLine("--- STRATEGIES ---");
+            sb.AppendLine("[/mstrategy list]  Liste strategies actives");
+            sb.AppendLine("[/mstrategy add <cle>]    Ajoute une strategie");
+            sb.AppendLine("[/mstrategy remove <cle>] Retire une strategie");
+            sb.AppendLine();
+
+            sb.AppendLine("--- BATTLEGROUNDS ---");
+            sb.AppendLine("[/mbattle thid start]  Demarre les spawns Thidranki");
+            sb.AppendLine("[/mbattle thid stop]   Arrete les spawns");
+            sb.AppendLine("[/mbattle thid clear]  Stop + supprime tous les bots");
+            sb.AppendLine();
+
+            sb.AppendLine("--- INFO ---");
+            sb.AppendLine("[/mhelp]               Aide detaillee (liste complete)");
+            sb.AppendLine("[/mhelp <cmd>]         Detail d'une commande");
+            sb.AppendLine("[/mbstats]             Stats des battlegrounds");
+            sb.AppendLine();
+
+            sb.AppendLine("Astuce : clic droit sur un mimic = menu interaction (roles, equipement, etat).");
+
+            if (client.Account.PrivLevel >= (uint)ePrivLevel.Admin)
+            {
+                sb.AppendLine();
+                sb.AppendLine("--- ADMIN ---");
+                sb.AppendLine("[/pvpfrontier status]  Statut du systeme PvP frontier");
+                sb.AppendLine("[/pvpfrontier start]   Demarre le systeme");
+                sb.AppendLine("[/pvpfrontier stop]    Arrete le systeme");
+                sb.AppendLine("[/pvpfrontier clear]   Supprime tous les bots frontier");
+            }
+
+            player.Out.SendMessage(sb.ToString(), eChatType.CT_System, eChatLoc.CL_PopupWindow);
+        }
+    }
+
+    /// <summary>
     /// Master help command. Lists every Mimic / PvP-frontier command grouped
     /// by category, with usage and one-line description. `/mhelp <name>` shows
     /// a single command's full help.
@@ -1297,6 +1421,14 @@ namespace DOL.GS.Scripts
             new Entry("/pvpfrontier", "PvP Frontier (admin)",
                 "Manage l'IA frontiere autonome (auto-start au boot).",
                 "/pvpfrontier start | stop | status | clear"),
+
+            // --- Aide ---
+            new Entry("/mmenu", "Aide",
+                "Ouvre un menu cliquable avec toutes les actions courantes.",
+                "/mmenu"),
+            new Entry("/mhelp", "Aide",
+                "Affiche cette aide (catalogue complet).",
+                "/mhelp [commande]"),
         };
 
         public void OnCommand(GameClient client, string[] args)

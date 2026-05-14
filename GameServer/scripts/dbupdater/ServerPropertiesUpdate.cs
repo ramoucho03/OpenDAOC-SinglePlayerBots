@@ -35,6 +35,7 @@ namespace DOL.GS.DatabaseUpdate
         public void Update()
         {
             RemoveACLKUNLS();
+            SetDefaultServerLanguageToFrench();
         }
 
         #region RemoveACLKUNLS
@@ -69,5 +70,25 @@ namespace DOL.GS.DatabaseUpdate
             log.Info("ServerProperty table update complete!");
         }
         #endregion RemoveACLKUNLS
+
+        private void SetDefaultServerLanguageToFrench()
+        {
+            var properties = GameServer.Database.SelectAllObjects<DbServerProperty>();
+
+            foreach (DbServerProperty property in properties)
+            {
+                if (property.Key != "server_language" || property.DefaultValue != "EN")
+                    continue;
+
+                property.DefaultValue = "FR";
+
+                if (property.Value == "EN")
+                    property.Value = "FR";
+
+                GameServer.Database.SaveObject(property);
+                log.Info("ServerProperty server_language default updated from EN to FR.");
+                break;
+            }
+        }
     }
 }

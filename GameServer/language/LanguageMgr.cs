@@ -15,6 +15,7 @@ namespace DOL.Language
         private static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
         private const string TRANSLATION_ID_EMPTY = "No translation ID could be found for this message.";
+        private const string CORE_FALLBACK_LANGUAGE = "EN";
 
         private static LanguageMgr _soleInstance = new();
         protected string _langPathImpl = string.Empty;
@@ -57,26 +58,34 @@ namespace DOL.Language
             if (string.IsNullOrEmpty(language))
                 language = DefaultLanguage;
 
-            LanguageDataObject result = GetLanguageDataObject(language, translationId, LanguageDataObject.eTranslationIdentifier.eSystem);
-
-            if (result is DbLanguageSystem dbResult && !string.IsNullOrEmpty(dbResult.Text))
-            {
-                translationObject = dbResult;
+            if (TryGetRawTranslationFromLanguage(out translationObject, language, translationId))
                 return true;
-            }
 
             if (!string.Equals(language, DefaultLanguage, StringComparison.OrdinalIgnoreCase))
             {
-                result = GetLanguageDataObject(DefaultLanguage, translationId, LanguageDataObject.eTranslationIdentifier.eSystem);
-
-                if (result is DbLanguageSystem fallbackResult && !string.IsNullOrEmpty(fallbackResult.Text))
-                {
-                    translationObject = fallbackResult;
+                if (TryGetRawTranslationFromLanguage(out translationObject, DefaultLanguage, translationId))
                     return true;
-                }
             }
 
+            if (!string.Equals(language, CORE_FALLBACK_LANGUAGE, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(DefaultLanguage, CORE_FALLBACK_LANGUAGE, StringComparison.OrdinalIgnoreCase)
+                && TryGetRawTranslationFromLanguage(out translationObject, CORE_FALLBACK_LANGUAGE, translationId))
+                return true;
+
             return false;
+        }
+
+        private static bool TryGetRawTranslationFromLanguage(out DbLanguageSystem translationObject, string language, string translationId)
+        {
+            translationObject = null;
+
+            LanguageDataObject result = GetLanguageDataObject(language, translationId, LanguageDataObject.eTranslationIdentifier.eSystem);
+
+            if (result is not DbLanguageSystem dbResult || string.IsNullOrEmpty(dbResult.Text))
+                return false;
+
+            translationObject = dbResult;
+            return true;
         }
 
         public static bool Init()
@@ -432,7 +441,7 @@ namespace DOL.Language
             if (obj == null)
                 return false;
 
-            if (string.IsNullOrEmpty(language) || language == DefaultLanguage)
+            if (string.IsNullOrEmpty(language) || string.Equals(language, Properties.DB_LANGUAGE, StringComparison.OrdinalIgnoreCase))
                 return false;
 
             translation = GetLanguageDataObject(language, obj.TranslationId, obj.TranslationIdentifier);

@@ -2149,8 +2149,16 @@ namespace DOL.GS.Scripts
             return true;
         }
 
+        // Set by Delete() so the GroupEvent.MemberDisbanded handler in
+        // MimicManager can tell "this bot was kicked from the group by the
+        // player" (false) from "this bot is being deleted, and Delete is
+        // about to trigger MemberDisbanded as a side-effect of RemoveMember" (true).
+        // Without this guard the disband handler would re-enter Delete and recurse.
+        internal bool _beingDeleted;
+
         public override void Delete()
         {
+            _beingDeleted = true;
             Group?.RemoveMember(this);
             MimicManager.UnregisterOwned(this);
             base.Delete();
@@ -6417,8 +6425,8 @@ namespace DOL.GS.Scripts
         // The bot stays in the group during that window. If no rez arrives in time,
         // the corpse is removed (Delete) and the bot leaves the group.
 
-        private const int REZ_WAIT_MS = 60_000;          // Window when a rezzer IS available in the group.
-        private const int REZ_WAIT_NO_HEALER_MS = 5_000; // Quick release window when no group member can rez.
+        private const int REZ_WAIT_MS = 60_000;            // Window when a rezzer IS available in the group.
+        private const int REZ_WAIT_NO_HEALER_MS = 15_000;  // Auto-release window when no group member can rez.
 
         private ECSGameTimer _rezWaitTimer;
         private bool _inRezWait;
@@ -6511,11 +6519,72 @@ namespace DOL.GS.Scripts
             _inRezWait = false;
             _rezWaitTimer = null;
 
-            // Release: now actually leave the group and remove from world.
+            // Try to "release" the bot: teleport it back alive to its owner
+            // (or the group's leader) at reduced vitals — mimics a /release.
+            // If the owner is offline or unreachable, fall back to Delete.
+            GamePlayer owner = FindLiveOwnerOrLeader();
+
+            if (owner != null && owner.IsAlive && owner.CurrentRegionID > 0)
+            {
+                ReviveAtOwner(owner);
+                return 0;
+            }
+
+            // No-one to release to → standard cleanup.
             Group?.RemoveMember(this);
             Delete();
-
             return 0;
+        }
+
+        /// <summary>
+        /// Locates the live player owner of this bot, or, failing that, the
+        /// group's live living leader (which might be another player). Returns
+        /// null if neither is in a viable state.
+        /// </summary>
+        private GamePlayer FindLiveOwnerOrLeader()
+        {
+            if (!string.IsNullOrEmpty(OwnerAccount))
+            {
+                foreach (GameClient c in ClientService.Instance.GetClients())
+                {
+                    if (c?.Account != null
+                        && string.Equals(c.Account.Name, OwnerAccount, StringComparison.Ordinal)
+                        && c.Player != null
+                        && c.Player.IsAlive)
+                        return c.Player;
+                }
+            }
+
+            if (Group?.LivingLeader is GamePlayer leader && leader.IsAlive)
+                return leader;
+
+            return null;
+        }
+
+        /// <summary>
+        /// "Release and return" path. The bot revives at reduced vitals (50%)
+        /// next to the owner, regen restarts, and the FSM is reset so the bot
+        /// resumes follow / aggro normally. Stays in the group, so the player
+        /// doesn't have to re-invite or recreate it.
+        /// </summary>
+        private void ReviveAtOwner(GamePlayer owner)
+        {
+            // Half health/mana/endurance as a soft penalty for not getting rezzed.
+            Health = Math.Max(1, MaxHealth / 2);
+            Mana = MaxMana / 2;
+            Endurance = MaxEndurance / 2;
+
+            MoveTo(owner.CurrentRegionID, owner.X, owner.Y, owner.Z, owner.Heading);
+
+            StartHealthRegeneration();
+            StartPowerRegeneration();
+            StartEnduranceRegeneration();
+
+            MimicBrain?.FSM.SetCurrentState(eFSMStateType.WAKING_UP);
+
+            owner.Out.SendMessage(
+                $"{GetName(0, true)} returns to your side after releasing.",
+                eChatType.CT_System, eChatLoc.CL_SystemWindow);
         }
 
         public override void ProcessDeath(GameObject killer)

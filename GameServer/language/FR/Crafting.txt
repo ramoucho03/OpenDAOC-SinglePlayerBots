@@ -17,6 +17,7 @@ Crafting.CheckTool.PlaningTool:            Outil de rabotage
 Crafting.CheckTool.SewingKit:            Kit de couture
 Crafting.CheckTool.SmithsHammer:         Marteau de forgeron
 Crafting.CheckTool.SpellcraftKit:         Kit d'arcanisme
+GamePlayer.Attack.InterruptedCrafting:	Vous interrompez votre artisanat.
 Crafting.GainCraftingSkillPoints.RaiseAlchemy:		Vous devez voir votre entraîneur pour augmenter votre niveau en Alchimie!
 Crafting.GainCraftingSkillPoints.RaiseArmorcraft:   Vous devez voir votre entraîneur pour augmenter votre niveau en Armurerie!
 Crafting.GainCraftingSkillPoints.RaiseFletching:   Vous devez voir votre entraîneur pour augmenter votre niveau en Empennage!

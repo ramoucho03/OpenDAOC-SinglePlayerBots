@@ -1629,9 +1629,9 @@ namespace DOL.GS
 								string attackTypeMsg;
 
 								if (ad.AttackType is eAttackType.Ranged)
-									attackTypeMsg = "shoots";
+									attackTypeMsg = LanguageMgr.GetTranslation(player.Client.Account.Language, "GameLiving.AttackData.AttackType.Shoots");
 								else
-									attackTypeMsg = "attacks";
+									attackTypeMsg = LanguageMgr.GetTranslation(player.Client.Account.Language, "GameLiving.AttackData.AttackType.Attacks");
 
 								if (ad.AttackResult is eAttackResult.HitStyle)
 								{

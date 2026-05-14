@@ -674,6 +674,36 @@ namespace DOL.GS.Scripts
         {
             GameEventMgr.AddHandler(GamePlayerEvent.Quit, OnPlayerDisconnected);
             GameEventMgr.AddHandler(GamePlayerEvent.Linkdeath, OnPlayerDisconnected);
+            GameEventMgr.AddHandler(GroupEvent.MemberDisbanded, OnGroupMemberDisbanded);
+        }
+
+        /// <summary>
+        /// When a player kicks a mimic from their group (or leaves the group
+        /// themself, leaving the bots alone), the bot is deleted cleanly.
+        /// We only act on player-owned bots (OwnerAccount set) so auto-spawned
+        /// frontier/battleground bots aren't affected.
+        ///
+        /// The MimicNPC._beingDeleted flag prevents re-entry when MimicNPC.Delete
+        /// itself calls Group.RemoveMember (which triggers this same event).
+        /// </summary>
+        private static void OnGroupMemberDisbanded(DOLEvent e, object sender, EventArgs args)
+        {
+            if (args is not MemberDisbandedEventArgs disbandArgs)
+                return;
+
+            if (disbandArgs.Member is not MimicNPC mimic)
+                return;
+
+            if (mimic._beingDeleted)
+                return; // already on its way out, don't double-delete
+
+            if (string.IsNullOrEmpty(mimic.OwnerAccount))
+                return; // auto-spawned bot (frontier / battleground), not owned by a player
+
+            if (log.IsInfoEnabled)
+                log.Info($"Mimic {mimic.Name} left group → deleting (owner={mimic.OwnerAccount})");
+
+            mimic.Delete();
         }
 
         #endregion Ownership tracking

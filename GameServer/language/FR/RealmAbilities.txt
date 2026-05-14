@@ -1,4 +1,6 @@
 ﻿# REALMABILITIES
+GameLiving.CheckWeaponMagicalEffect.Protected:	Votre cible est protégée contre votre poison par un effet magique.
+
 # /RAPropertyEnhancer
 RAPropertyEnhancer.DelveInfo.Info1:		Niveau {0}: Valeur: {1}{2}
 

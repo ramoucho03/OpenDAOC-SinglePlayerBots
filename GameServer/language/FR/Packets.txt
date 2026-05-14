@@ -5,8 +5,8 @@ DetailDisplayHandler.GetShortItemInfo.NoSell:		 Ne peut être vendu.
 DetailDisplayHandler.GetShortItemInfo.NoTrade:		 Ne peut être échangé.
 DetailDisplayHandler.HandlePacket.Any:			Tous
 DetailDisplayHandler.HandlePacket.Back:			(Dos)
-DetailDisplayHandler.HandlePacket.BonusLevel:		Bonus Level: {0}
-DetailDisplayHandler.HandlePacket.CannotDestroyed:	Cannot be destroyed.
+DetailDisplayHandler.HandlePacket.BonusLevel:		Niveau bonus: {0}
+DetailDisplayHandler.HandlePacket.CannotDestroyed:	Ne peut pas être détruit.
 DetailDisplayHandler.HandlePacket.CannotDropped:	Ne peut être jeté ou mis au coffre.
 DetailDisplayHandler.HandlePacket.CannotSold:		Ne peut être vendu.
 DetailDisplayHandler.HandlePacket.CannotTraded:		Ne peut être échangé.
@@ -46,7 +46,7 @@ DetailDisplayHandler.HandlePacket.Or:			 ou {0}
 DetailDisplayHandler.HandlePacket.Positional:		Positionnel
 DetailDisplayHandler.HandlePacket.Side:			(côté)
 DetailDisplayHandler.HandlePacket.TargetBlocks:		La cible bloque
-DetailDisplayHandler.HandlePacket.TargetEffect:		Target Effect : 
+DetailDisplayHandler.HandlePacket.TargetEffect:		Effet sur la cible :
 DetailDisplayHandler.HandlePacket.TargetEvades:		La cible esquive
 DetailDisplayHandler.HandlePacket.TargetFumbles:	La cible rate lamentablement
 DetailDisplayHandler.HandlePacket.TargetHits:		La cible touche
@@ -69,7 +69,7 @@ DetailDisplayHandler.HandlePacket.YouHit:		Vous touchez
 DetailDisplayHandler.HandlePacket.YouMiss:		Vous ratez
 DetailDisplayHandler.HandlePacket.YouParry:		Vous parez
 DetailDisplayHandler.WriteBonusLine.Points:		 pts
-DetailDisplayHandler.WriteBonusLine.PowerPool:		% of power pool.
+DetailDisplayHandler.WriteBonusLine.PowerPool:		% de réserve de mana.
 DetailDisplayHandler.WriteClassicArmorInfos.Absorption:	- {0}% Absorption
 DetailDisplayHandler.WriteClassicArmorInfos.ArmorMod:	Modificateur d'armure:
 DetailDisplayHandler.WriteClassicArmorInfos.BaseFactor:	- {0} Armure de base
@@ -106,7 +106,7 @@ DetailDisplayHandler.WriteHorseInfo.RvRZzones:		Ne peut être invoqué en zone R
 DetailDisplayHandler.WriteHorseInfo.Speed1:		(+35% vitesse)
 DetailDisplayHandler.WriteHorseInfo.Speed2:		(+45% vitesse)
 DetailDisplayHandler.WriteHorseInfo.Summon:		Cliquez sur cette icône dans votre barre de lancement pour invoquer (ou renvoyer) votre monture.
-DetailDisplayHandler.WriteMagicalBonuses.ChargedMagic:	Charged Magic Ability:
+DetailDisplayHandler.WriteMagicalBonuses.ChargedMagic:	Capacité magique à charges:
 DetailDisplayHandler.WriteMagicalBonuses.Charges:	- {0} Charges
 DetailDisplayHandler.WriteMagicalBonuses.FocusBonus:	Bonus au focus:
 DetailDisplayHandler.WriteMagicalBonuses.Level:		- {0} Niveau

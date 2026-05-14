@@ -74,14 +74,21 @@ Skill.Ability.QuickCast.CannotUseDead:	Vous ne pouvez pas lancer une 'Incantatio
 Skill.Ability.QuickCast.CannotUseInMeleeCombat:	Vous ne pouvez pas lancer une 'Incantation Rapide' en étant en combat.
 Skill.Ability.QuickCast.CannotUseChangeTick:	Vous devez attendre {0} secondes supplémentaires pour utiliser votre 'Incantation Rapide'!
 
+GameLiving.TryBlock.Blocking:	Vous vous concentrez pour bloquer le coup!
+GameLiving.TryBlock.Engage:	{0} a été attaqué récemment et vous ne pouvez pas l'engager.
+
 Skill.Ability.Guard.CancelTargetNull:	Vous ne gardez plus personne.
 Skill.Ability.Guard.CannotUse.GuardTargetIsGuardSource:	Vous ne pouvez pas vous garder vous-même!
 Skill.Ability.Guard.CannotUse.NotInGroup:	Vous ne pouvez pas garder quelqu'un ne faisant pas partie de votre groupe!
 Skill.Ability.Guard.CannotUse.GuardTargetAlreadyGuarded:	{0} garde déjà {1}!
+GameLiving.AttackData.BlocksYou:	{0} vous bloque contre l'attaque de {1}!
+GameLiving.AttackData.YouBlock:	Vous bloquez l'attaque de {0} contre {1}!
 
 Skill.Ability.Intercept.CannotUse.InterceptTargetAlreadyInterceptedEffect:	{0} intercepte déjà les attaques pour {1}.
 Skill.Ability.Intercept.CannotUse.NotInGroup:	Vous ne pouvez pas intercepter des attaques pour un joueur hors de votre groupe!
 Skill.Ability.Intercept.CancelTargetNull:	Vous n'interceptez plus les attaques pour personne.
+GameLiving.AttackData.YouStepInFront:	Vous vous interposez devant {0} et recevez le coup!
+GameLiving.AttackData.StepsInFront:	{0} s'interpose devant vous et reçoit le coup!
 
 Skill.Ability.Protect.CannotUse.ProtectTargetAlreadyProtectEffect:	{0} protège déjà {1}!
 Skill.Ability.Protect.CannotUse.NotInGroup:	Vous ne pouvez pas protéger quelqu'un ne faisant pas partie de votre groupe!

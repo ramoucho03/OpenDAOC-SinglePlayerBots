@@ -1,4 +1,6 @@
-﻿namespace DOL.GS.Scripts
+﻿using DOL.GS.ServerProperties;
+
+namespace DOL.GS.Scripts
 {
     public static class MimicConfig
     {
@@ -12,5 +14,16 @@
         // and the existing FSM keeps full control of bot behaviour. Active
         // par défaut sur ce fork : nouvelles stratégies disponibles via /mstrategy.
         public static bool USE_STRATEGY_SYSTEM = true;
+
+        // Heal thresholds specifically for mimic groups. Bumped above the
+        // generic NPC default (75/37) so healers stay proactive. 0 = use
+        // the hard-coded fallback inside MimicGroup.
+        [ServerProperty("npc", "mimic_heal_threshold",
+            "Heal % threshold below which mimic healers prioritise healing (default 85, vs npc_heal_threshold=75).", 85)]
+        public static int MIMIC_HEAL_THRESHOLD;
+
+        [ServerProperty("npc", "mimic_emergency_threshold",
+            "Emergency heal % threshold for mimic healers (default 50, vs the generic 37).", 50)]
+        public static int MIMIC_EMERGENCY_THRESHOLD;
     }
 }
