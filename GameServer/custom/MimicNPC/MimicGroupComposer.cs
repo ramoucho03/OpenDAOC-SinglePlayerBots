@@ -152,6 +152,13 @@ namespace DOL.GS.Scripts
         /// Cheaper than re-running the whole AutoAssignRoles pass and used by
         /// /mcamp to make sure a camp session has a usable puller/tank/CC
         /// even when the player skipped /mgroup.
+        ///
+        /// IMPORTANT: the MimicGroup constructor pre-fills every role with
+        /// the group leader (the player in mixed groups). A player satisfies
+        /// CanPull/IsAlive too, so a naive "only override when null" check
+        /// would leave every camp role on the player and no bot would run
+        /// puller/tank/CC logic. We therefore actively prefer a mimic over
+        /// the player for camp roles whenever a suitable mimic is available.
         /// </summary>
         public static void EnsureCampRoles(Group group)
         {
@@ -166,44 +173,49 @@ namespace DOL.GS.Scripts
             if (mimics.Count == 0)
                 return;
 
-            // Puller: any bot that CanPull (distance weapon or harmful spell).
-            // Prefer an archer if one exists — archers chain-pull cleanly.
-            if (mg.MainPuller == null || !MimicGroup.CanPull(mg.MainPuller))
+            // Puller: prefer a mimic archer, then any mimic that can pull. The
+            // current MainPuller is only kept if it is ALREADY a mimic that
+            // can pull — a player holder is replaced when a bot can do it.
+            bool currentPullerIsMimic = mg.MainPuller is MimicNPC pullerMimic
+                                        && pullerMimic.IsAlive
+                                        && MimicGroup.CanPull(pullerMimic);
+            if (!currentPullerIsMimic)
             {
                 MimicNPC archer = mimics.FirstOrDefault(m =>
                     m.IsAlive
                     && m.Inventory?.GetItem(eInventorySlot.DistanceWeapon) != null);
                 MimicNPC anyPull = archer ?? mimics.FirstOrDefault(m => m.IsAlive && MimicGroup.CanPull(m));
                 if (anyPull != null)
-                    mg.SetMainPuller(anyPull);
+                    ForceSetMainPuller(mg, anyPull);
             }
 
-            // Tank: best-effort.
-            if (mg.MainTank == null || !mg.MainTank.IsAlive)
+            // Tank: prefer a mimic tank class, then any living mimic. Replace
+            // the player even if alive — the player isn't actually running the
+            // tank FSM logic.
+            bool currentTankIsMimic = mg.MainTank is MimicNPC tankMimic && tankMimic.IsAlive;
+            if (!currentTankIsMimic)
             {
-                MimicNPC tank = mimics.FirstOrDefault(m => m.IsAlive && IsTankClass(m));
+                MimicNPC tank = mimics.FirstOrDefault(m => m.IsAlive && IsTankClass(m))
+                                ?? mimics.FirstOrDefault(m => m.IsAlive);
                 if (tank != null)
                     mg.SetMainTank(tank);
-                else if (mg.MainLeader != null && mg.MainLeader.IsAlive)
-                    mg.SetMainTank(mg.MainLeader);
             }
 
-            // CC: best-effort.
-            if (mg.MainCC == null || !mg.MainCC.IsAlive)
+            // CC: only assign if a mimic CC class is actually present —
+            // there's no point parking the role on a non-CC.
+            bool currentCCIsMimic = mg.MainCC is MimicNPC ccMimic && ccMimic.IsAlive && IsCCClass(ccMimic);
+            if (!currentCCIsMimic)
             {
                 MimicNPC cc = mimics.FirstOrDefault(m => m.IsAlive && IsCCClass(m));
                 if (cc != null)
                     mg.SetMainCC(cc);
             }
 
-            // Main assist defaults to the tank so DPS focuses correctly.
-            if (mg.MainAssist == null || !mg.MainAssist.IsAlive)
-            {
-                if (mg.MainTank != null && mg.MainTank.IsAlive)
-                    mg.SetMainAssist(mg.MainTank);
-            }
+            // Main assist always follows the tank so DPS focuses correctly.
+            if (mg.MainTank != null && mg.MainTank.IsAlive && mg.MainAssist != mg.MainTank)
+                mg.SetMainAssist(mg.MainTank);
 
-            // Make sure a healer-flagged member exists in mixed groups.
+            // Make sure a healer-flagged mimic exists in mixed groups.
             bool anyHealer = mimics.Any(m => m.MimicBrain != null && m.MimicBrain.IsHealer);
             if (!anyHealer)
             {
@@ -211,6 +223,24 @@ namespace DOL.GS.Scripts
                 if (healer?.MimicBrain != null)
                     healer.MimicBrain.IsHealer = true;
             }
+        }
+
+        // SetMainPuller toggles when the same living is passed in twice in a
+        // row — fine for the /mpuller command, problematic when EnsureCampRoles
+        // tries to install a puller and the toggle-from-player path lands back
+        // on the leader. This helper bypasses the toggle so an explicit
+        // "make this bot the puller" actually sticks.
+        private static void ForceSetMainPuller(MimicGroup mg, MimicNPC puller)
+        {
+            if (mg == null || puller == null || !MimicGroup.CanPull(puller))
+                return;
+            if (mg.MainPuller == puller)
+                return;
+            mg.SetMainPuller(puller);
+            // If the toggle path was hit (because MainPuller happened to equal
+            // puller before we checked... it can't, but defensive), call again.
+            if (mg.MainPuller != puller)
+                mg.SetMainPuller(puller);
         }
     }
 }

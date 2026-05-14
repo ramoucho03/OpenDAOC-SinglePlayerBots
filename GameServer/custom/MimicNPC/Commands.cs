@@ -700,58 +700,36 @@ namespace DOL.GS.Scripts
                 {
                     MimicLFGManager.MimicLFGEntry entry = entries[index];
 
-                    int baseChance = 90;
-
-                    if (MimicConfig.LFG_LEVEL_BIAS)
+                    // Mimics never refuse the invitation. The previous Util.Chance
+                    // gate and RefusedGroup sticky-state would silently consume the
+                    // /m click and leave the player confused; recruitment now always
+                    // proceeds as long as the group has room.
+                    if (player.Group == null)
                     {
-                        int biasAmount = 5;
-                        int levelDifference = player.Level - entry.Level;
-
-                        if (Math.Abs(levelDifference) > 1)
-                            baseChance += levelDifference * biasAmount;
-
-                        baseChance = Math.Clamp(baseChance, 5, 95);
+                        Group group = new Group(player);
+                        GroupMgr.AddGroup(group);
+                        group.AddMember(player);
                     }
 
-                    if (Util.Chance(baseChance) && !entry.RefusedGroup)
+                    if (player.Group.GetMembersInTheGroup().Count < ServerProperties.Properties.GROUP_MAX_MEMBER)
                     {
-                        if (player.Group == null)
-                        {
-                            Group group = new Group(player);
-                            GroupMgr.AddGroup(group);
-                            group.AddMember(player);
-                        }
+                        MimicNPC mimic = MimicManager.GetMimic(entry.MimicClass, entry.Level, entry.Name, entry.Gender);
+                        MimicManager.AddMimicToWorld(mimic, new Point3D(player.X, player.Y, player.Z), player.CurrentRegionID);
+                        MimicManager.RegisterOwned(player, mimic);
 
-                        if (player.Group.GetMembersInTheGroup().Count < ServerProperties.Properties.GROUP_MAX_MEMBER)
-                        {
-                            MimicNPC mimic = MimicManager.GetMimic(entry.MimicClass, entry.Level, entry.Name, entry.Gender);
-                            MimicManager.AddMimicToWorld(mimic, new Point3D(player.X, player.Y, player.Z), player.CurrentRegionID);
-                            MimicManager.RegisterOwned(player, mimic);
+                        player.Group.AddMember(mimic);
 
-                            player.Group.AddMember(mimic);
+                        MimicLFGManager.Remove(player.Realm, entry);
 
-                            MimicLFGManager.Remove(player.Realm, entry);
+                        // Send a refreshed list with new indexes to avoid using wrong indexes while leaving the dialogue open
+                        entries = MimicLFGManager.GetLFG(player.Realm, player.Level);
 
-                            // Send a refreshed list with new indexes to avoid using wrong indexes while leaving the dialogue open
-                            entries = MimicLFGManager.GetLFG(player.Realm, player.Level);
-
-                            // Stay on the same page after recruit so the player can keep picking from the same view.
-                            page = Math.Max(1, (index / MAX_DISPLAYED) + 1);
-                            message = BuildMessage(entries, page);
-                        }
-                        else
-                            message = BuildMessage(entries, page, true);
+                        // Stay on the same page after recruit so the player can keep picking from the same view.
+                        page = Math.Max(1, (index / MAX_DISPLAYED) + 1);
+                        message = BuildMessage(entries, page);
                     }
                     else
-                    {
-                        if (entry.RefusedGroup)
-                            player.Out.SendMessage(entry.Name + " vous envoie : \"Désolé, j'ai déjà refusé.\"", eChatType.CT_Send, eChatLoc.CL_SystemWindow);
-                        else
-                            player.Out.SendMessage(entry.Name + " vous envoie : \"Non merci, je cherche un autre groupe !\"", eChatType.CT_Send, eChatLoc.CL_SystemWindow);
-
-                        entry.RefusedGroup = true;
-                        return;
-                    }
+                        message = BuildMessage(entries, page, true);
                 }
             }
 
@@ -765,8 +743,9 @@ namespace DOL.GS.Scripts
         }
 
         // Cap the rendered list to stay under the 2048-byte popup packet limit.
-        // Each line is ~45 chars, header/footer ~180, so ~30 entries is safe.
-        private const int MAX_DISPLAYED = 30;
+        // Each line is ~45 chars and header/footer ~180; 40 entries leaves a
+        // small safety margin for slightly longer class names.
+        private const int MAX_DISPLAYED = 40;
 
         private string BuildMessage(IReadOnlyList<MimicLFGManager.MimicLFGEntry> entries, int page, bool invalid = false)
         {

@@ -55,13 +55,35 @@ namespace DOL.AI.Brain
             GamePlayer playerLeader = leader as GamePlayer;
             if (playerLeader == null && body.Group != null)
             {
-                foreach (GameLiving gl in body.Group.GetMembersInTheGroup())
+                // Cache lookup: searching the group for a player every tick
+                // (Group.GetMembersInTheGroup takes a lock and allocates a
+                // pooled list copy) was a measurable overhead with 8+ bots.
+                // Re-resolve every 2 seconds, or sooner if the cached player
+                // is no longer eligible (left group, died, changed region).
+                long now = GameLoop.GameLoopTime;
+                GamePlayer cached = brain.CachedPlayerLeader;
+                bool cacheValid = cached != null
+                    && cached.IsAlive
+                    && cached.Group == body.Group
+                    && cached.CurrentRegion == body.CurrentRegion
+                    && now < brain.CachedPlayerLeaderExpireTick;
+
+                if (cacheValid)
                 {
-                    if (gl is GamePlayer p)
+                    playerLeader = cached;
+                }
+                else
+                {
+                    foreach (GameLiving gl in body.Group.GetMembersInTheGroup())
                     {
-                        playerLeader = p;
-                        break;
+                        if (gl is GamePlayer p)
+                        {
+                            playerLeader = p;
+                            break;
+                        }
                     }
+                    brain.CachedPlayerLeader = playerLeader;
+                    brain.CachedPlayerLeaderExpireTick = now + 2000;
                 }
             }
 
@@ -535,6 +557,13 @@ namespace DOL.AI.Brain
         private const int WATCHDOG_RETRY_MS = 5_000;
         private long _nextWatchdogTick;
 
+        // Per-bot throttle on the campfire presence check. With 8 bots in
+        // camp, an unthrottled check meant 8×8 = 64 group iterations every
+        // tick to ask "is there a fire?". The fire's lifetime is far longer
+        // than this throttle so we only check ~once per 2s per bot, and
+        // even less frequently when a fire IS detected (cache it).
+        private long _nextCampFireCheckTick;
+
         public MimicState_Camp(MimicBrain brain) : base(brain)
         {
             StateType = eFSMStateType.CAMP;
@@ -625,9 +654,11 @@ namespace DOL.AI.Brain
             MimicGroup mg = _brain.Body.Group?.MimicGroup;
 
             // Drive phase transitions from a single bot — by convention the
-            // puller (it owns the pull lifecycle). If no puller is set we let
-            // the group leader do it so the phase never stalls.
-            if (_brain.IsMainPuller || (mg != null && mg.MainPuller == null && _brain.IsMainLeader))
+            // puller (it owns the pull lifecycle). Fall back to the lowest-
+            // ObjectID living bot when the puller role is held by a non-mimic
+            // (e.g. the player, which is the MimicGroup constructor default)
+            // so the phase machine never stalls in player-led mixed groups.
+            if (ShouldDriveCampPhase(mg))
                 DriveCampPhase(mg);
 
             // Aggro check FIRST — never let the "wait while returning to slot"
@@ -675,7 +706,17 @@ namespace DOL.AI.Brain
                         _brain.MimicBody.Sit(_brain.CheckStats(75));
                 }
 
-                EnsureGroupHasCampFire(_brain);
+                // Throttle the campfire check to ~once per 2 seconds. Calling
+                // EnsureGroupHasCampFire on every tick walks the group looking
+                // for an active fire — wasteful when the fire's lifetime is
+                // tens of seconds. With 8 bots this drops 8 group walks/tick to
+                // effectively zero between checks.
+                long now = GameLoop.GameLoopTime;
+                if (now >= _nextCampFireCheckTick)
+                {
+                    _nextCampFireCheckTick = now + 2000;
+                    EnsureGroupHasCampFire(_brain);
+                }
             }
 
             base.Think();
@@ -767,6 +808,53 @@ namespace DOL.AI.Brain
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Picks exactly one bot per group to run <see cref="DriveCampPhase"/>
+        /// each tick so the phase machine doesn't race with itself across N
+        /// bots. Order of preference:
+        ///   1. The MainPuller — owns the pull lifecycle, natural driver.
+        ///   2. The MainLeader — when the puller role isn't held by a mimic.
+        ///   3. Lowest ObjectID mimic in the group — last-resort tiebreaker
+        ///      so player-led groups with no mimic puller (the constructor
+        ///      default assigns roles to the player) still get a driver.
+        /// </summary>
+        private bool ShouldDriveCampPhase(MimicGroup mg)
+        {
+            if (mg == null)
+                return false;
+
+            // Case 1: this bot is the puller.
+            if (_brain.IsMainPuller)
+                return true;
+
+            bool pullerIsMimic = mg.MainPuller is MimicNPC;
+
+            // Case 2: this bot is the leader, AND no mimic puller exists.
+            if (!pullerIsMimic && _brain.IsMainLeader)
+                return true;
+
+            // Case 3: neither a mimic puller nor a mimic leader exists.
+            // Pick a single deterministic driver — the lowest ObjectID mimic
+            // alive in the group — so the same bot runs the FSM each tick
+            // and the phase doesn't flap.
+            bool leaderIsMimic = mg.MainLeader is MimicNPC;
+            if (pullerIsMimic || leaderIsMimic)
+                return false;
+
+            Group g = _brain.Body.Group;
+            if (g == null)
+                return false;
+
+            MimicNPC chosen = null;
+            foreach (GameLiving gl in g.GetMembersInTheGroup())
+            {
+                if (gl is MimicNPC m && m.IsAlive
+                    && (chosen == null || m.ObjectID < chosen.ObjectID))
+                    chosen = m;
+            }
+            return chosen == _brain.Body;
         }
 
         /// <summary>

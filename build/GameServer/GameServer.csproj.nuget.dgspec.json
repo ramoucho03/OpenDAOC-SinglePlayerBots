@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\GameServer\\GameServer.csproj": {}
+    "c:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\GameServer\\GameServer.csproj": {}
   },
   "projects": {
-    "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreBase\\CoreBase.csproj": {
+    "c:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreBase\\CoreBase.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreBase\\CoreBase.csproj",
+        "projectUniqueName": "c:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreBase\\CoreBase.csproj",
         "projectName": "CoreBase",
-        "projectPath": "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreBase\\CoreBase.csproj",
+        "projectPath": "c:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreBase\\CoreBase.csproj",
         "packagesPath": "C:\\Users\\Olivier\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreBase\\..\\build\\CoreBase\\\\",
+        "outputPath": "c:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreBase\\..\\build\\CoreBase\\\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -383,8 +383,8 @@
           "net10.0": {
             "targetAlias": "net10.0",
             "projectReferences": {
-              "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreBase\\CoreBase.csproj": {
-                "projectPath": "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreBase\\CoreBase.csproj"
+              "c:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreBase\\CoreBase.csproj": {
+                "projectPath": "c:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreBase\\CoreBase.csproj"
               }
             }
           }
@@ -708,14 +708,14 @@
         }
       }
     },
-    "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\GameServer\\GameServer.csproj": {
+    "c:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\GameServer\\GameServer.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\GameServer\\GameServer.csproj",
+        "projectUniqueName": "c:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\GameServer\\GameServer.csproj",
         "projectName": "GameServer",
-        "projectPath": "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\GameServer\\GameServer.csproj",
+        "projectPath": "c:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\GameServer\\GameServer.csproj",
         "packagesPath": "C:\\Users\\Olivier\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\GameServer\\..\\build\\GameServer\\\\",
+        "outputPath": "c:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\GameServer\\..\\build\\GameServer\\\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -737,8 +737,8 @@
           "net10.0": {
             "targetAlias": "net10.0",
             "projectReferences": {
-              "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreBase\\CoreBase.csproj": {
-                "projectPath": "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreBase\\CoreBase.csproj"
+              "c:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreBase\\CoreBase.csproj": {
+                "projectPath": "c:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreBase\\CoreBase.csproj"
               },
               "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreDatabase\\CoreDatabase.csproj": {
                 "projectPath": "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreDatabase\\CoreDatabase.csproj"

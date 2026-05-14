@@ -26,6 +26,7 @@ namespace DOL.GS.Scripts
         Infiltrator = 9,
         Mercenary = 11,
         Minstrel = 4,
+        Necromancer = 12,
         Paladin = 1,
         Reaver = 19,
         Scout = 3,
@@ -33,6 +34,8 @@ namespace DOL.GS.Scripts
         Theurgist = 5,
         Wizard = 7,
 
+        Animist = 55,
+        Bainshee = 39,
         Bard = 48,
         Blademaster = 43,
         Champion = 45,
@@ -57,6 +60,7 @@ namespace DOL.GS.Scripts
         Skald = 24,
         Spiritmaster = 27,
         Thane = 21,
+        Valkyrie = 34,
         Warrior = 22
     }
 
@@ -64,6 +68,8 @@ namespace DOL.GS.Scripts
     {
         None = -1,
 
+        Animist,
+        Bainshee,
         Bard,
         Blademaster,
         Champion,
@@ -93,6 +99,7 @@ namespace DOL.GS.Scripts
         Skald,
         Spiritmaster,
         Thane,
+        Valkyrie,
         Warrior
     }
 

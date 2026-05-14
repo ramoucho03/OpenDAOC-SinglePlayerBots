@@ -74,6 +74,14 @@ namespace DOL.AI.Brain
         // Used for AmbientBehaviour "Seeing" - maintains a list of GamePlayer in range
         public List<GamePlayer> PlayersSeen = new();
 
+        // Cached "human player in this bot's group" used by MirrorLeaderSprint.
+        // Resolved by iterating Group.GetMembersInTheGroup() — expensive enough
+        // (lock + pooled-list copy) that we don't want to do it on every Think
+        // tick for every bot. Refreshed on a short interval and invalidated
+        // when the cached player leaves the region/dies.
+        internal GamePlayer CachedPlayerLeader;
+        internal long CachedPlayerLeaderExpireTick;
+
         /// <summary>
         /// Constructs a new MimicBrain
         /// </summary>
@@ -1300,16 +1308,31 @@ namespace DOL.AI.Brain
             if (Body.IsCasting || CheckSpells(eCheckSpellType.Defensive) || MimicBody.Sit(CheckStats(75)))
                 return true;
 
-            if (Body.Group != null && Body.Group.GetMembersInTheGroup().Any(groupMember =>
-                groupMember.IsCasting ||
-                groupMember.IsSitting ||
-                (groupMember is MimicNPC mimic &&
-                !mimic.InCombat &&
-                (mimic.MimicBrain.CheckStats(75) ||
-                (mimic.MimicBrain.FSM.GetCurrentState() == mimic.MimicBrain.FSM.GetState(eFSMStateType.FOLLOW_THE_LEADER) &&
-                !Body.IsWithinRadius(mimic, 1000))))))
+            // Manual scan instead of `.Any(lambda)` — the lambda captured `this`
+            // and `Body` (closure allocation per call), and CheckDelayRoam runs
+            // on every Roaming tick of the group leader.
+            if (Body.Group != null)
             {
-                return true;
+                foreach (GameLiving groupMember in Body.Group.GetMembersInTheGroup())
+                {
+                    if (groupMember == null)
+                        continue;
+
+                    if (groupMember.IsCasting || groupMember.IsSitting)
+                        return true;
+
+                    if (groupMember is MimicNPC mimic && !mimic.InCombat)
+                    {
+                        MimicBrain mb = mimic.MimicBrain;
+                        if (mb == null)
+                            continue;
+                        if (mb.CheckStats(75))
+                            return true;
+                        if (mb.FSM.GetCurrentState() == mb.FSM.GetState(eFSMStateType.FOLLOW_THE_LEADER)
+                            && !Body.IsWithinRadius(mimic, 1000))
+                            return true;
+                    }
+                }
             }
 
             return false;
@@ -1779,15 +1802,36 @@ namespace DOL.AI.Brain
             return max;
         }
 
+        // Reusable comparer for OrderedAggroList sort. Stored as a static
+        // delegate so the sort doesn't capture/alloc a closure each call.
+        private static readonly Comparison<OrderedAggroListElement> _aggroDescByAmount =
+            static (a, b) => b.AggroAmount.CompareTo(a.AggroAmount);
+
         public List<OrderedAggroListElement> GetOrderedAggroList()
         {
             // Potentially slow, so we cache the result.
             lock (_orderedAggroListLock)
             {
                 if (OrderedAggroList.Count == 0)
-                    OrderedAggroList = AggroList.OrderByDescending(x => x.Value.Effective).Select(x => new OrderedAggroListElement(x.Key, x.Value.Effective)).ToList();
+                {
+                    // Build the ordered list manually instead of going through
+                    // .OrderByDescending().Select().ToList() — that chain allocated
+                    // three intermediates (enumerator, projection, output list).
+                    // We sort the existing storage in-place using a static
+                    // comparison delegate (no closure capture).
+                    int aggroCount = AggroList.Count;
+                    if (OrderedAggroList.Capacity < aggroCount)
+                        OrderedAggroList.Capacity = aggroCount;
+                    foreach (var pair in AggroList)
+                        OrderedAggroList.Add(new OrderedAggroListElement(pair.Key, pair.Value.Effective));
+                    OrderedAggroList.Sort(_aggroDescByAmount);
+                }
 
-                return OrderedAggroList.ToList();
+                // Defensive copy — callers iterate without the lock. Pre-size
+                // the result to skip the List growth path.
+                List<OrderedAggroListElement> copy = new(OrderedAggroList.Count);
+                copy.AddRange(OrderedAggroList);
+                return copy;
             }
         }
 
