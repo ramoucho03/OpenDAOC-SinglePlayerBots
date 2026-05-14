@@ -28,7 +28,7 @@ namespace DOL.GS.Spells
 			if (GameServer.ServerRules.IsAllowedToAttack(selectedTarget, Caster, true) == false)
 			{
 				//This spell doesn't work on pets or monsters
-				if (selectedTarget is GameNPC && selectedTarget is not MimicNPC)
+				if (selectedTarget is GameNPC targetNpc && !targetNpc.IsMimic)
 				{
 					MessageToCaster("This spell may not be cast on pets!", eChatType.CT_SpellResisted);
 					return false;

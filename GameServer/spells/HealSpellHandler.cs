@@ -198,7 +198,7 @@ namespace DOL.GS.Spells
 
             foreach (GameLiving attacker in target.attackComponent.AttackerTracker.Attackers)
             {
-                if (attacker is GameNPC npc && attacker is not MimicNPC)
+                if (attacker is GameNPC npc && !npc.IsMimic)
                 {
                     AttackData ad = new()
                     {

@@ -512,7 +512,7 @@ namespace DOL.GS.Styles
 		/// <returns>true if correct weapon active</returns>
 		protected static bool CheckWeaponType(Style style, GameLiving living, DbInventoryItem weapon)
 		{
-			if (living is GameNPC && living is not MimicNPC)
+			if (living is GameNPC livingNpc && !livingNpc.IsMimic)
 				return true;
 
 			if (living is not IGamePlayer player)
@@ -581,7 +581,7 @@ namespace DOL.GS.Styles
 				return null;
 
 			// Scale the proc here, since it cannot be scaled on initialization.
-			if (caster is GameNPC npc && caster is not MimicNPC)
+			if (caster is GameNPC npc && !npc.IsMimic)
 				npc.GetScaledSpell(spell);
 
 			return ScriptMgr.CreateSpellHandler(caster, spell, SkillBase.GetSpellLine(GlobalSpellsLines.Combat_Styles_Effect));

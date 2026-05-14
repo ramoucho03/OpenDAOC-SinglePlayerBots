@@ -53,7 +53,7 @@ namespace DOL.GS.ServerRules
 				if (attacker is IGamePlayer player && player.IsDuelPartner(defender))
 					return true;
 
-				if (npcAttacker != null && npcAttacker is not MimicNPC)
+				if (npcAttacker != null && !npcAttacker.IsMimic)
 				{
 					// Allow confused NPCs to attack realm mates.
 					// Pets can't attack their owner however, since attacker == defender.

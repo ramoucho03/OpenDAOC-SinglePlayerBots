@@ -452,7 +452,7 @@ namespace DOL.GS.ServerRules
                     return true;
 
                 // Mobs can attack mobs only if they both have a faction or if any is confused.
-                if (npcAttacker is not MimicNPC && npcDefender is not MimicNPC)
+                if (!npcAttacker.IsMimic && !npcDefender.IsMimic)
                     if ((npcDefender.Faction == null || npcAttacker.Faction == null) && !npcDefender.IsConfused && !npcAttacker.IsConfused)
                     return false;
             }
@@ -1028,7 +1028,7 @@ namespace DOL.GS.ServerRules
 
         public virtual void OnNpcKilled(GameNPC killedNpc, GameObject killer)
         {
-            if (killedNpc is MimicNPC)
+            if (killedNpc.IsMimic)
                 return;
 
             GameNPC.RewardEligibility rewardEligibility = killedNpc.RewardStatus;

@@ -35,7 +35,7 @@ namespace DOL.GS.PropertyCalc
 	{
 		public override int CalcValue(GameLiving living, eProperty property)
 		{
-			if (living is GameNPC && living is not MimicNPC)
+			if (living is GameNPC livingNpc && !livingNpc.IsMimic)
 			{
 				// NPC buffs effects are halved compared to debuffs, so it takes 2% debuff to mitigate 1% buff
 				// See PropertyChangingSpell.ApplyNpcEffect() for details.

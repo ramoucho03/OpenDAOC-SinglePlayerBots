@@ -2653,6 +2653,8 @@ namespace DOL.GS.Scripts
             set => m_targetInView = value;
         }
 
+        public override bool IsMimic => true;
+
         public override int TargetInViewAlwaysTrueMinRange => (TargetObject is GamePlayer targetPlayer && targetPlayer.IsMoving) ? 100 : 64;
 
         private Dictionary<RandomDeckEvent, RandomDeck> _randomDecks = new();

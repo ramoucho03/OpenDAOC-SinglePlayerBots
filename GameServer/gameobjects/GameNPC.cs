@@ -178,7 +178,7 @@ namespace DOL.GS
 			set
 			{
 				base.Level = value;
-                if (this is not MimicNPC)
+                if (!IsMimic)
                     SetStats();
 
 				if (m_health > MaxHealth)
@@ -704,6 +704,13 @@ namespace DOL.GS
 		/// visible to at least one player
 		/// </summary>
 		public virtual bool IsVisibleToPlayers => GameLoop.GameLoopTime - m_lastVisibleToPlayerTick < VISIBLE_TO_PLAYER_SPAN;
+
+		/// <summary>
+		/// True if this NPC is a bot (MimicNPC or future bot subclass) that should be
+		/// treated as a player by combat/spell/loot rules. Avoids scattering
+		/// `is GameNPC && is not MimicNPC` checks across the engine.
+		/// </summary>
+		public virtual bool IsMimic => false;
 
         /// <summary>
         /// Gets or sets the spawnposition of this npc
@@ -2783,7 +2790,7 @@ namespace DOL.GS
 			{
 				base.Health = value;
 
-                if (this is not MimicNPC)
+                if (!IsMimic)
                 {
                     // Slow NPCs down when they are hurt.
                     if (CurrentSpeed > MaxSpeed)
@@ -2855,7 +2862,7 @@ namespace DOL.GS
 			if (killer is GameNPC pet && pet.Brain is IControlledBrain petBrain)
 				killer = (GameObject)petBrain.GetIPlayerOwner();
 
-			if (killer != null && this is not MimicNPC)
+			if (killer != null && !IsMimic)
 			{
 				Message.SystemToArea(this, $"{GetName(0, true)} dies!", eChatType.CT_OthersDeath, killer);
 
