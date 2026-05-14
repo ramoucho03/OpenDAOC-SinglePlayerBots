@@ -2086,9 +2086,15 @@ namespace DOL.AI.Brain
 
                 if (PvPMode)
                 {
-                    if (Body.TargetObject is GameLiving livingTarget && CanAggroTarget(livingTarget)
-                        && !livingTarget.IsCrowdControlled)
-                        ccTarget = livingTarget;
+                    // In PvP an experienced CCer locks down healers and casters first
+                    // — those are the highest-impact targets and their cast times mean
+                    // a mez lands cleanly. Fall back to the current target if no high-
+                    // value enemy is in range.
+                    ccTarget = PickPvpCcTarget() ?? (Body.TargetObject is GameLiving livingTarget
+                        && CanAggroTarget(livingTarget)
+                        && !livingTarget.IsCrowdControlled
+                            ? livingTarget
+                            : null);
                 }
                 else if (MimicBody.CanCastCrowdControlSpells)
                     ccTarget = MimicBody.Group?.MimicGroup.CCTargets[Util.Random(MimicBody.Group.MimicGroup.CCTargets.Count - 1)] as GameLiving;
@@ -2105,7 +2111,16 @@ namespace DOL.AI.Brain
 
                     if (spellsToCast.Count > 0)
                     {
-                        Spell spell = spellsToCast[Util.Random(spellsToCast.Count - 1)];
+                        // Prefer an AoE mez/stun when at least MIN_AOE_CLUSTER_HOSTILES
+                        // non-mezzed hostiles are inside its radius around ccTarget.
+                        // CountAoeHostiles vetoes (returns -1) if a mezzed mob is in
+                        // the splash, so we won't re-mez and break our own CC.
+                        Spell spell = spellsToCast.FirstOrDefault(
+                            s => s.Radius > 0 && CountAoeHostiles(s, ccTarget) >= MIN_AOE_CLUSTER_HOSTILES);
+
+                        if (spell == null)
+                            spell = spellsToCast[Util.Random(spellsToCast.Count - 1)];
+
                         casted = Body.CastSpell(spell, MimicBody.GetSpellLineForSpell(spell));
 
                         if (casted)
@@ -2264,19 +2279,64 @@ namespace DOL.AI.Brain
 
                 if (spellsToCast.Count > 0)
                 {
-                    // Priority sort: debuff-first, then nuke. Lower score = higher priority.
-                    // Inside the same priority bracket we keep insertion order so
-                    // class-specific tuning by spell-list order still matters.
+                    // Pre-score AoE clustering once per candidate so the comparator
+                    // below doesn't re-iterate the aggro list. A spell with a
+                    // CC'd mob in its splash returns -1 from CountAoeHostiles
+                    // and is treated as non-clustered.
+                    GameLiving castTarget = Body.TargetObject as GameLiving;
+                    HashSet<Spell> clusteredAoe = null;
+
+                    if (castTarget != null)
+                    {
+                        foreach (Spell s in spellsToCast)
+                        {
+                            if (!IsClusterBeneficialAoe(s))
+                                continue;
+
+                            int hostiles = CountAoeHostiles(s, castTarget);
+
+                            if (hostiles >= MIN_AOE_CLUSTER_HOSTILES)
+                            {
+                                clusteredAoe ??= new HashSet<Spell>();
+                                clusteredAoe.Add(s);
+                            }
+                        }
+                    }
+
+                    bool HasCluster(Spell s) => clusteredAoe != null && clusteredAoe.Contains(s);
+
+                    // Priority sort: clustered AoE wins, then debuff-first, then nuke.
+                    // Lower score = higher priority. AoE without a cluster takes a
+                    // +2 score penalty so its higher base damage doesn't win against
+                    // a single-target nuke when only one mob is being hit — solo AoE
+                    // is a DPS loss and burns mana for nothing. Inside the same priority
+                    // bracket we keep insertion order so class-specific tuning by
+                    // spell-list order still matters.
+                    int SortScore(Spell s)
+                    {
+                        int score = ScoreOffensivePriority(s);
+
+                        if (s.Radius > 0 && !HasCluster(s))
+                            score += 2;
+
+                        return score;
+                    }
+
                     spellsToCast = spellsToCast
-                        .OrderBy(s => ScoreOffensivePriority(s))
+                        .OrderByDescending(HasCluster)
+                        .ThenBy(SortScore)
                         .ThenByDescending(s => s.Damage)
                         .ToList();
 
                     // Top of the priority list is normally the best pick. Add a small
                     // amount of variety (10% chance to pick second-best) so groups
                     // of mimics don't all cast the exact same spell on the same tick.
+                    // We only swap when the two candidates share clustering tier —
+                    // otherwise the variety could drop a clustered AoE for a
+                    // single-target nuke and undo the AoE preference.
                     Spell spellToCast = spellsToCast[0];
-                    if (spellsToCast.Count > 1 && Util.Chance(10))
+                    if (spellsToCast.Count > 1 && Util.Chance(10)
+                        && HasCluster(spellsToCast[0]) == HasCluster(spellsToCast[1]))
                         spellToCast = spellsToCast[1];
 
                     if (spellToCast.Uninterruptible || !Body.IsBeingInterrupted)
@@ -2395,6 +2455,169 @@ namespace DOL.AI.Brain
                 case eSpellType.DirectDamage: return 7;
                 default: return 10;
             }
+        }
+
+        // Below this hostile count an AoE damage spell is not worth the cast:
+        // single-target spells almost always out-DPS a 1-target AoE because of
+        // the variance/level penalty AoE damage takes per cap.
+        private const int MIN_AOE_CLUSTER_HOSTILES = 2;
+
+        // AoE spell types that scale with the number of mobs in the radius.
+        // CC AoE (mez/stun) and debuff AoE are intentionally excluded — those
+        // are routed through the dedicated CC path and would otherwise stomp
+        // existing CC the group manages via [[MimicGroup.CCTargets]].
+        private static bool IsClusterBeneficialAoe(Spell s)
+        {
+            if (s == null || s.Radius <= 0)
+                return false;
+
+            switch (s.SpellType)
+            {
+                case eSpellType.DirectDamage:
+                case eSpellType.DirectDamageWithDebuff:
+                case eSpellType.DamageOverTime:
+                case eSpellType.DamageSpeedDecrease:
+                case eSpellType.Lifedrain:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>
+        /// PvP CC target priority: prefer enemy healers, then casters, then the
+        /// rest. Excludes already-CC'd targets, dead targets, anyone outside the
+        /// best CC spell's range, and the group's current focus (so we don't
+        /// mez whatever the assist is killing). Returns null when no good
+        /// candidate exists — caller falls back to TargetObject.
+        /// </summary>
+        private GameLiving PickPvpCcTarget()
+        {
+            if (!MimicBody.CanCastCrowdControlSpells)
+                return null;
+
+            int bestRange = 0;
+            foreach (Spell s in MimicBody.CrowdControlSpells)
+            {
+                if (s != null && s.Range > bestRange)
+                    bestRange = s.Range;
+            }
+
+            if (bestRange <= 0)
+                return null;
+
+            GameLiving focus = Body.Group?.MimicGroup?.MainAssist?.TargetObject as GameLiving;
+
+            int Tier(GameLiving gl)
+            {
+                if (gl is not IGamePlayer ig)
+                    return 3;
+                switch ((eCharacterClass)ig.CharacterClass.ID)
+                {
+                    // Healers — highest priority. Mezzing a healer cripples the
+                    // enemy group's sustain and gives our DPS a clean kill window.
+                    case eCharacterClass.Cleric:
+                    case eCharacterClass.Druid:
+                    case eCharacterClass.Healer:
+                    case eCharacterClass.Bard:
+                    case eCharacterClass.Friar:
+                    case eCharacterClass.Shaman:
+                    case eCharacterClass.Warden:
+                        return 0;
+                    default:
+                        // Pure casters next: their cast times mean a mez lands and
+                        // they are usually the second-most-painful loss.
+                        return ig.CharacterClass.ClassType == eClassType.ListCaster ? 1 : 2;
+                }
+            }
+
+            GameLiving best = null;
+            int bestTier = int.MaxValue;
+            int bestDist = int.MaxValue;
+
+            foreach (GamePlayer player in Body.GetPlayersInRadius((ushort)bestRange))
+            {
+                if (player == null || !player.IsAlive)
+                    continue;
+                if (!CanAggroTarget(player))
+                    continue;
+                if (player.IsCrowdControlled || player.IsStealthed)
+                    continue;
+                if (player == focus)
+                    continue;
+
+                int tier = Tier(player);
+                int dist = Body.GetDistanceTo(player);
+
+                if (tier < bestTier || (tier == bestTier && dist < bestDist))
+                {
+                    best = player;
+                    bestTier = tier;
+                    bestDist = dist;
+                }
+            }
+
+            // Mimic bots (enemy bots running this same brain) — also IGamePlayer.
+            foreach (GameNPC npc in Body.GetNPCsInRadius((ushort)bestRange))
+            {
+                if (npc is not MimicNPC mimic || !mimic.IsAlive)
+                    continue;
+                if (!CanAggroTarget(mimic))
+                    continue;
+                if (mimic.IsCrowdControlled)
+                    continue;
+                if (mimic == focus)
+                    continue;
+
+                int tier = Tier(mimic);
+                int dist = Body.GetDistanceTo(mimic);
+
+                if (tier < bestTier || (tier == bestTier && dist < bestDist))
+                {
+                    best = mimic;
+                    bestTier = tier;
+                    bestDist = dist;
+                }
+            }
+
+            return best;
+        }
+
+        /// <summary>
+        /// Counts hostiles (from this brain's aggro list) caught inside the AoE
+        /// footprint. Epicenter is the caster for PBAoE, otherwise the primary
+        /// target. CC'd mobs tracked by the group are excluded so we don't break
+        /// our own mez with the splash.
+        /// </summary>
+        private int CountAoeHostiles(Spell spell, GameLiving primaryTarget)
+        {
+            if (spell == null || spell.Radius <= 0 || primaryTarget == null)
+                return 0;
+
+            bool isPBAoE = spell.IsPBAoE;
+            int radius = spell.Radius;
+            var ccTargets = Body.Group?.MimicGroup?.CCTargets;
+
+            int count = 0;
+            foreach (var kv in AggroList)
+            {
+                GameLiving hostile = kv.Key;
+
+                if (hostile == null || !hostile.IsAlive || hostile.ObjectState != GameObject.eObjectState.Active)
+                    continue;
+
+                if (ccTargets != null && ccTargets.Contains(hostile))
+                    return -1; // splash would break our own CC; veto this AoE
+
+                bool inRange = isPBAoE
+                    ? Body.IsWithinRadius(hostile, radius)
+                    : primaryTarget.IsWithinRadius(hostile, radius);
+
+                if (inRange)
+                    count++;
+            }
+
+            return count;
         }
 
         /// <summary>
@@ -3461,6 +3684,35 @@ namespace DOL.AI.Brain
                 if (spell.SpellType == eSpellType.CombatSpeedBuff)
                 {
                     if (Body.TargetObject != null && !Body.IsWithinRadius(Body.TargetObject, Body.MeleeAttackRange))
+                        break;
+                }
+
+                // Ablative absorbs the next incoming hits — only worth burning
+                // mana on when we're actually about to take damage (in combat
+                // with HP starting to drop, or PvP).
+                if (spell.SpellType == eSpellType.AblativeArmor)
+                {
+                    if (!Body.InCombat && !PvPMode)
+                        break;
+                    if (Body.HealthPercent >= 95 && !PvPMode)
+                        break;
+                }
+
+                // CombatHeal is a one-shot instant heal: LivingHasEffect always
+                // returns false so without a gate we'd burn it on full HP.
+                if (spell.SpellType == eSpellType.CombatHeal)
+                {
+                    if (!Body.InCombat)
+                        break;
+                    if (Body.HealthPercent >= 80)
+                        break;
+                }
+
+                // Bladeturn is a single-charge absorb. Don't cast it out of
+                // combat — the charge ticks down via interruptions/movement.
+                if (spell.SpellType == eSpellType.Bladeturn)
+                {
+                    if (!Body.InCombat && !PvPMode)
                         break;
                 }
 

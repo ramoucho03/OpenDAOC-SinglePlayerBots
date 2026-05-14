@@ -566,26 +566,42 @@ namespace DOL.AI.Brain
             if (_brain.IsMainCC)
                 _brain.CheckMainCC();
 
+            // Engage on leader-initiated combat. Without this the camp sits idle
+            // until a mob actually lands a hit on a group member (OnAttackedByEnemy
+            // is the only other trigger that reaches us at camp because the camp
+            // AggroRange is only 250/550). That made bots look broken — they only
+            // moved after the puller/leader had already taken damage.
+            //
+            // Skipped for the puller (still bringing the mob in) and healers (they
+            // engage reactively via aggro propagation, not by chasing the leader).
             if (!_brain.IsPulling && !_brain.IsHealer)
             {
-                GameLiving _leader = _brain.MimicBody.Group?.MimicGroup.MainLeader;
-                GameLiving leaderTarget = _leader?.TargetObject as GameLiving;
+                // The group leader is the player in mixed groups, a bot in pure
+                // bot groups. LivingLeader is authoritative; MimicGroup.MainLeader
+                // is a separate role and may be null.
+                GameLiving leader = _brain.Body.Group?.LivingLeader;
+                GameLiving leaderTarget = leader?.TargetObject as GameLiving;
 
-                // TODO: Add toggle for attacking what we cast or go into attack mode toward or fold into puller. It's detrimental for now in camp mode.
+                bool leaderEngaging = leader != null
+                    && leader != _brain.Body
+                    && ((leader.IsCasting && leader.castingComponent?.SpellHandler?.Spell?.IsHarmful == true)
+                        || leader.IsAttacking);
 
-                //if ((_leader != null 
-                //        && ((_leader.IsCasting && _leader.castingComponent.SpellHandler.Spell.IsHarmful) || _leader.IsAttacking)
-                //        && _brain.CanAggroTarget(leaderTarget))
-                //    || _brain.CheckProximityAggro(_brain.AggroRange))
-                //{
-                //    _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
-                //    if (leaderTarget != null)
-                //        _brain.AddToAggroList(leaderTarget, 1);
+                // Cap engagement range so the camp doesn't break formation for a
+                // mob the leader pulled three rooms over.
+                const int LEADER_ENGAGE_RANGE = 2500;
 
-                //    _brain.AttackMostWanted();
-
-                //    return;
-                //}
+                if (leaderEngaging
+                    && leaderTarget != null
+                    && leaderTarget.IsAlive
+                    && _brain.CanAggroTarget(leaderTarget)
+                    && _brain.Body.IsWithinRadius(leaderTarget, LEADER_ENGAGE_RANGE))
+                {
+                    _brain.AddToAggroList(leaderTarget, 1);
+                    _brain.Body.StopMoving();
+                    _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
+                    return;
+                }
             }
 
             if (_brain.CheckProximityAggro(_brain.AggroRange))
