@@ -651,47 +651,128 @@ namespace DOL.AI.Brain
             }
         }
 
+        // Sticky throttle for group regen. Once a caster drops below 20% mana
+        // the puller stops; pulling only resumes when every caster is at 80%+.
+        // Without hysteresis we'd flap on/off as healers tick between 19/21%.
+        private bool _pullManaThrottled;
+
         public bool CheckDelayPull()
         {
             if (LastTargetObject != null && LastTargetObject.ObjectState == GameObject.eObjectState.Active)
                 return true;
 
-            if (CheckSpells(eCheckSpellType.Defensive) || MimicBody.Sit(CheckStats(75)))
+            // The puller itself still tries to top up first — but only its own
+            // spells/sit, not "any group member is sitting" which used to brick
+            // the puller for the entire group regen cycle.
+            if (CheckSpells(eCheckSpellType.Defensive))
                 return true;
 
-            if (Body.Group != null &&
-                Body.Group.GetMembersInTheGroup().Any(groupMember => groupMember.IsCasting || groupMember.IsSitting))
-                return true;
+            // Group regen gate.
+            if (Body.Group != null)
+            {
+                bool anyLow = false;
+                bool allHigh = true;
+
+                foreach (GameLiving gl in Body.Group.GetMembersInTheGroup())
+                {
+                    // Only care about real casters/healers — pure melee don't
+                    // need mana, their endurance is recovered out-of-combat anyway.
+                    if (gl.MaxMana <= 0)
+                        continue;
+
+                    int pct = gl.ManaPercent;
+                    if (pct < 20) anyLow = true;
+                    if (pct < 80) allHigh = false;
+                }
+
+                if (anyLow)
+                    _pullManaThrottled = true;
+                else if (allHigh)
+                    _pullManaThrottled = false;
+
+                if (_pullManaThrottled)
+                    return true;
+            }
 
             return false;
         }
 
+        // Maximum distance the puller will scan for a pull target. Independent
+        // of the camp's aggro range — pulling reaches further than passive aggro.
+        private const int PULL_SCAN_RADIUS = 3600;
+
         public GameLiving GetPullTarget()
         {
-            if (!Body.IsAttacking && !Body.IsCasting && !Body.IsSitting)
+            if (Body.IsAttacking || Body.IsCasting || Body.IsSitting)
+                return null;
+
+            if (Body.Group == null || Body.Group.MimicGroup == null)
+                return null;
+
+            // Honour the group's chosen CC pull target list when present.
+            if (Body.Group.MimicGroup.CCTargets.Count > 0)
+                return Body.Group.MimicGroup.CCTargets[Util.Random(Body.Group.MimicGroup.CCTargets.Count - 1)];
+
+            int conFilter = Body.Group.MimicGroup.ConLevelFilter;
+            Point2D pullFrom = Body.Group.MimicGroup.PullFromPoint;
+            Point3D camp = Body.Group.MimicGroup.CampPoint;
+
+            // Scan every NPC in range directly. The previous version relied on
+            // AggroList being pre-populated by CheckProximityAggro, but that
+            // method respects aggro level + LoS + various PvE filters that
+            // gate pulling unpredictably. The puller should pick a target the
+            // group CAN engage, not one the bot would have auto-aggroed.
+            GameLiving best = null;
+            int bestScore = int.MaxValue;
+
+            foreach (GameNPC npc in Body.GetNPCsInRadius(PULL_SCAN_RADIUS))
             {
-                if (Body.Group.MimicGroup.CCTargets.Count > 0)
-                    return Body.Group.MimicGroup.CCTargets[Util.Random(Body.Group.MimicGroup.CCTargets.Count - 1)];
+                if (npc == null || !npc.IsAlive || npc.ObjectState != GameObject.eObjectState.Active)
+                    continue;
 
-                CheckProximityAggro(3600);
+                // Filter out our own group members and other mimics in the same realm.
+                if (npc is MimicNPC otherBot && otherBot.Group == Body.Group)
+                    continue;
 
-                if (AggroList.Count > 0)
+                if (npc is GameTaxi or GameTrainingDummy)
+                    continue;
+
+                // Must be attackable per server rules. This auto-accepts neutral
+                // and hostile NPCs, and excludes pets/trainers/etc. the bot
+                // shouldn't target.
+                if (!GameServer.ServerRules.IsAllowedToAttack(Body, npc, true))
+                    continue;
+
+                // Apply the group's con filter (default −2 = grey+ is allowed).
+                if (Body.GetConLevel(npc) < conFilter)
+                    continue;
+
+                // Skip grey con under any setup — pointless XP/loot.
+                if (Body.IsObjectGreyCon(npc))
+                    continue;
+
+                // Skip mobs already aggroed on someone else — we'd be stealing.
+                if (npc.Brain is StandardMobBrain mb && mb.HasAggro)
+                    continue;
+
+                // Score = distance to the pull-from point if set, otherwise the camp
+                // point, otherwise the bot itself. Closer = better.
+                int score;
+                if (pullFrom != null)
+                    score = npc.GetDistance(pullFrom);
+                else if (camp != null)
+                    score = npc.GetDistance(new Point2D(camp.X, camp.Y));
+                else
+                    score = Body.GetDistanceTo(npc);
+
+                if (score < bestScore)
                 {
-                    GameLiving closestTarget;
-
-                    if (Body.Group.MimicGroup.PullFromPoint != null)
-                        closestTarget = AggroList.Where(pair => Body.GetConLevel(pair.Key) >= Body.Group.MimicGroup.ConLevelFilter).
-                                                   OrderBy(pair => pair.Key.GetDistance(Body.Group.MimicGroup.PullFromPoint)).
-                                                   ThenBy(pair => Body.GetDistanceTo(pair.Key)).First().Key;
-                    else
-                        closestTarget = AggroList.Where(pair => Body.GetConLevel(pair.Key) > Body.Group.MimicGroup.ConLevelFilter).
-                                                   OrderBy(pair => Body.GetDistanceTo(pair.Key)).First().Key;
-
-                    return closestTarget;
+                    bestScore = score;
+                    best = npc;
                 }
             }
 
-            return null;
+            return best;
         }
 
         private bool CheckResetPuller()
@@ -1764,22 +1845,31 @@ namespace DOL.AI.Brain
         }
 
         /// <summary>
-        /// True if the given target is actively attacking the tank: either the
-        /// target's current TargetObject IS the tank, or the mob has aggro and
-        /// the tank is the highest-threat entry. Used by the DPS hold-fire rule
-        /// so non-tanks wait for proper engagement before piling on.
+        /// True if the tank has clearly committed to this target: it has the
+        /// target focused, is attacking it, is in melee range of it, or the
+        /// target's aggro list already names the tank. The old version only
+        /// checked the aggro-list path, which forced DPS to idle for several
+        /// ticks waiting for the tank's first hit to register.
         /// </summary>
         private static bool TargetHasAggroOnTank(GameLiving target, GameLiving tank)
         {
             if (target == null || tank == null)
                 return false;
 
+            // Tank already focused / attacking the target — engage.
+            if (tank.TargetObject == target && (tank.IsAttacking || tank.IsCasting))
+                return true;
+
+            // Mob looking back at the tank — engage.
             if (target.TargetObject == tank)
+                return true;
+
+            // Tank is within melee swing range and moving in — close enough.
+            if (tank.IsWithinRadius(target, 250) && tank.TargetObject == target)
                 return true;
 
             if (target is GameNPC npc && npc.Brain is StandardMobBrain mb && mb.HasAggro)
             {
-                // Scan the public ordered aggro list for the tank entry.
                 var ordered = mb.GetOrderedAggroList();
                 if (ordered != null)
                 {

@@ -76,12 +76,12 @@ namespace DOL.AI.Brain
 
             if (leaderSprinting)
             {
-                // Keep the bot topped up while mirroring. The Sprint effect ends
-                // itself at Endurance <= 5, so without this the bot drops out of
-                // sprint after ~5 seconds of continuous following. Refilling on
-                // every think tick is cheap and lets the bot match the player
-                // for as long as the player wants to run.
-                if (body.Endurance < body.MaxEndurance)
+                // Refill endurance ONLY when the bot is about to drop out of
+                // sprint (Sprint effect ends at Endurance <= 5). Refilling on
+                // every Think tick flooded the player with Group.UpdateMember
+                // packets (one per endurance-percent change × N bots × 2 Hz)
+                // which visually corrupted the player's own endurance bar.
+                if (body.Endurance < 25)
                     body.Endurance = body.MaxEndurance;
 
                 if (!botSprinting)
@@ -579,19 +579,43 @@ namespace DOL.AI.Brain
                 if (!_brain.CheckSpells(MimicBrain.eCheckSpellType.Defensive))
                     _brain.MimicBody.Sit(_brain.CheckStats(75));
 
-                // Low-mana regen break: drop a campfire visual while we sit and
-                // refill mana in /mcamp set mode. Removed automatically when
-                // mana is topped up or we leave the camp state (see Exit()).
-                if (_brain.MimicBody != null && _brain.MimicBody.MaxMana > 0)
-                {
-                    if (_brain.MimicBody.ManaPercent < 30 && _brain.MimicBody.IsSitting)
-                        _brain.MimicBody.DeployCampFire();
-                    else if (_brain.MimicBody.ManaPercent >= 80)
-                        _brain.MimicBody.RemoveCampFire();
-                }
+                // Group-level "keep the fire alive" rule: every bot in the camp
+                // checks whether at least one group member still owns an active
+                // campfire. If none, the first bot that gets here this tick
+                // deploys one — and if its fire is destroyed/despawned, the
+                // next tick re-deploys. This guarantees ≥1 fire during camp
+                // regardless of bot deaths/respawns.
+                EnsureGroupHasCampFire(_brain);
             }
 
             base.Think();
+        }
+
+        /// <summary>
+        /// Looks through the group's mimic members and ensures at least one of
+        /// them owns an active GameStaticItem campfire. If the existing fire
+        /// has been removed (object despawned, owner died), the caller deploys
+        /// a fresh one. Cheap enough to run every Think tick.
+        /// </summary>
+        private static void EnsureGroupHasCampFire(MimicBrain brain)
+        {
+            MimicNPC body = brain?.MimicBody;
+            if (body == null || body.Group == null)
+                return;
+
+            // Already a fire alive somewhere in the group → nothing to do.
+            foreach (GameLiving gl in body.Group.GetMembersInTheGroup())
+            {
+                if (gl is MimicNPC m && m.HasActiveCampFire)
+                    return;
+            }
+
+            // Only sitting bots near the camp deploy — avoids fire spawning
+            // mid-run if a member is still pathing in to camp.
+            if (!body.IsSitting)
+                return;
+
+            body.DeployCampFire();
         }
     }
 

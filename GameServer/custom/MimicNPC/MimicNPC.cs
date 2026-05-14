@@ -2322,12 +2322,20 @@ namespace DOL.GS.Scripts
         private const ushort CAMPFIRE_MODEL = 2965; // "small fire" model
 
         /// <summary>
+        /// True when this bot currently owns an active campfire object.
+        /// Used by group-level "keep the fire alive" logic in MimicState_Camp
+        /// so only one bot needs to deploy a fire per camp.
+        /// </summary>
+        public bool HasActiveCampFire =>
+            _campFire != null && _campFire.ObjectState == eObjectState.Active;
+
+        /// <summary>
         /// Spawns a small camp-fire static item at the bot's current location
         /// so regen breaks look intentional during /mcamp set sessions. Idempotent.
         /// </summary>
         public void DeployCampFire()
         {
-            if (_campFire != null && _campFire.ObjectState == eObjectState.Active)
+            if (HasActiveCampFire)
                 return;
 
             GameStaticItem fire = new()
