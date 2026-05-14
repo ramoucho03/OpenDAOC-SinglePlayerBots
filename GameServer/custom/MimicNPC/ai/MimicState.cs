@@ -533,7 +533,9 @@ namespace DOL.AI.Brain
             if (!_brain.Body.IsWithinRadius(_brain.Body.SpawnPoint, 60))
                 _brain.Body.ReturnToSpawnPoint(_brain.Body.MaxSpeed);
 
-            _brain.IsPulling = false;
+            // Clear stale puller state — LastTargetObject, sticky mana throttle,
+            // pulling flag — so a returning puller can immediately re-engage.
+            _brain.ResetPullerState();
             _brain.PvPMode = false;
 
             base.Enter();

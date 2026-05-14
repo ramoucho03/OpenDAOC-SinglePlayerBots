@@ -2346,8 +2346,9 @@ namespace DOL.GS.Scripts
         private GameStaticItem _campFire;
         private ECSGameTimer _campFireRegenTimer;
         // Range, period and amount of the mana/health/endurance bump that the
-        // fire ticks on nearby allies. Numbers are intentionally modest — the
-        // fire is a downtime helper, not a combat aura.
+        // Modest regen pulse matching the spirit of the official "Comforting
+        // Flames" tinderbox spell (id 14800): out-of-combat only, small but
+        // continuous mana/health/end top-up over the fire's lifetime.
         private const int CAMPFIRE_REGEN_RANGE = 350;
         private const int CAMPFIRE_REGEN_INTERVAL_MS = 3000;
         private const int CAMPFIRE_MANA_PER_TICK = 6;
@@ -2387,9 +2388,12 @@ namespace DOL.GS.Scripts
             int fy = origin?.Y ?? Y;
             int fz = origin?.Z ?? Z;
 
+            // Lifted from the official Tinderbox item template (id b6997a94...
+            // in the OpenDAOC database). Same name + model the live "Comforting
+            // Flames" spell spawns when a tinderbox is used.
             GameStaticItem fire = new()
             {
-                Name = "Camp Fire",
+                Name = "campfire",
                 Model = model,
                 CurrentRegionID = CurrentRegionID,
                 X = fx,

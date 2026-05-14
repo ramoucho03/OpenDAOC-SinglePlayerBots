@@ -733,10 +733,11 @@ namespace DOL.GS.Scripts
                 }
             }
 
-            // Standalone popup window with `[/mlfg N]` brackets — the DAoC
-            // client auto-types the bracket content into the chat input on
-            // click. No mimic targeting needed.
-            player.Out.SendMessage(message, eChatType.CT_System, eChatLoc.CL_PopupWindow);
+            // CT_Say + CL_PopupWindow — identical chat type/loc to the
+            // working right-click NPC popup. With `[/m N]` brackets the DAoC
+            // client renders each link highlighted; clicking auto-types
+            // `/m N` into the chat input, ready to send.
+            player.Out.SendMessage(message, eChatType.CT_Say, eChatLoc.CL_PopupWindow);
         }
 
         // Cap the rendered list to stay under the 2048-byte popup packet limit.
@@ -770,7 +771,7 @@ namespace DOL.GS.Scripts
             int endIdx = Math.Min(startIdx + MAX_DISPLAYED, entries.Count);
 
             sb.AppendLine($"Page {page} / {totalPages}  —  {entries.Count} mimics au total.");
-            sb.AppendLine("Recrute en tapant /m <numero> (ex: /m 5). Pour changer de page : /m page 2");
+            sb.AppendLine("Clique [/m N] pour recruter, ou tape la commande directement.");
             sb.AppendLine();
 
             for (int i = startIdx; i < endIdx; i++)
@@ -778,7 +779,10 @@ namespace DOL.GS.Scripts
                 var entry = entries[i];
                 string cls = Enum.GetName(typeof(eMimicClass), entry.MimicClass);
                 int displayIndex = i + 1; // 1-based, global across pages
-                sb.AppendLine($"  {displayIndex,3}.  /m {displayIndex,-3}  {entry.Name,-20} {cls,-14} lvl {entry.Level}");
+                // Slash-prefixed bracket. DAoC client auto-types the bracket
+                // content into the chat input on click; the slash makes the
+                // typed text a real command (Enter to execute).
+                sb.AppendLine($"  [/m {displayIndex}]  {entry.Name,-20} {cls,-14} lvl {entry.Level}");
             }
 
             if (totalPages > 1)
@@ -786,9 +790,9 @@ namespace DOL.GS.Scripts
                 sb.AppendLine();
                 System.Text.StringBuilder nav = new();
                 if (page > 1)
-                    nav.Append($"Precedent : /m page {page - 1}    ");
+                    nav.Append($"[/m page {page - 1}]  <- Precedent    ");
                 if (page < totalPages)
-                    nav.Append($"Suivant : /m page {page + 1}");
+                    nav.Append($"[/m page {page + 1}]  Suivant ->");
                 sb.AppendLine(nav.ToString());
             }
 

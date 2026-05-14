@@ -658,8 +658,19 @@ namespace DOL.AI.Brain
 
         public bool CheckDelayPull()
         {
-            if (LastTargetObject != null && LastTargetObject.ObjectState == GameObject.eObjectState.Active)
+            // Old pull target — only block if it's still ALIVE. Previously we
+            // checked ObjectState alone, which stayed Active even for corpses
+            // long enough to permanently brick the puller after one fight.
+            if (LastTargetObject is GameLiving lt
+                && lt.IsAlive
+                && lt.ObjectState == GameObject.eObjectState.Active)
                 return true;
+
+            // Clear stale pointer so the next tick doesn't keep evaluating it.
+            if (LastTargetObject != null
+                && (LastTargetObject.ObjectState != GameObject.eObjectState.Active
+                    || (LastTargetObject is GameLiving dead && !dead.IsAlive)))
+                LastTargetObject = null;
 
             // The puller itself still tries to top up first — but only its own
             // spells/sit, not "any group member is sitting" which used to brick
@@ -675,8 +686,6 @@ namespace DOL.AI.Brain
 
                 foreach (GameLiving gl in Body.Group.GetMembersInTheGroup())
                 {
-                    // Only care about real casters/healers — pure melee don't
-                    // need mana, their endurance is recovered out-of-combat anyway.
                     if (gl.MaxMana <= 0)
                         continue;
 
@@ -695,6 +704,18 @@ namespace DOL.AI.Brain
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Resets the puller's transient state. Called when the bot (re-)enters
+        /// the CAMP state so a stale LastTargetObject or sticky mana throttle
+        /// from a previous session doesn't permanently block pulling.
+        /// </summary>
+        public void ResetPullerState()
+        {
+            LastTargetObject = null;
+            IsPulling = false;
+            _pullManaThrottled = false;
         }
 
         // Maximum distance the puller will scan for a pull target. Independent
