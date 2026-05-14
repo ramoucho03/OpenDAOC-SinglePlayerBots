@@ -7,6 +7,7 @@ using DOL.GS.PacketHandler;
 using DOL.GS.RealmAbilities;
 using DOL.GS.Scripts;
 using DOL.GS.Scripts.AI.Strategies;
+using DOL.GS.Scripts.AI.Strategies.Builtin;
 using DOL.GS.ServerProperties;
 using DOL.GS.SkillHandler;
 using DOL.GS.Spells;
@@ -147,8 +148,29 @@ namespace DOL.AI.Brain
                     return null;
 
                 _strategyManager = new BotStrategyManager(MimicBody, this);
+                EnableDefaultStrategies(_strategyManager);
                 return _strategyManager;
             }
+        }
+
+        /// <summary>
+        /// Turns on the baseline strategy bundle every mimic should be running:
+        /// survival (sit/stand auto), awareness (self callouts + banter),
+        /// assist (focus the assist target), support (announce mezz/crit/CC)
+        /// and camp (group-dynamics layer for /mcamp). Each strategy is
+        /// individually toggleable later via /mstrategy if the player wants
+        /// to silence one bot.
+        /// </summary>
+        private static void EnableDefaultStrategies(BotStrategyManager mgr)
+        {
+            if (mgr == null)
+                return;
+
+            mgr.Enable(SurvivalStrategy.Key);
+            mgr.Enable(AwarenessStrategy.Key);
+            mgr.Enable(AssistStrategy.Key);
+            mgr.Enable(SupportStrategy.Key);
+            mgr.Enable(CampStrategy.Key);
         }
 
         public override void Think()
@@ -1095,7 +1117,14 @@ namespace DOL.AI.Brain
 
         public GameLiving GetPullTarget()
         {
-            if (Body.IsAttacking || Body.IsCasting || Body.IsSitting)
+            // Always stand the puller up before scanning — the legacy "if
+            // sitting, return null" silently blocked the entire pull cycle the
+            // moment the bot sat down between two pulls. With the auto-stand
+            // here we just take the cost of the next cast/shot.
+            if (Body.IsSitting)
+                MimicBody?.Sit(false);
+
+            if (Body.IsAttacking || Body.IsCasting)
                 return null;
 
             if (Body.Group == null || Body.Group.MimicGroup == null)
@@ -1105,20 +1134,44 @@ namespace DOL.AI.Brain
             if (Body.Group.MimicGroup.CCTargets.Count > 0)
                 return Body.Group.MimicGroup.CCTargets[Util.Random(Body.Group.MimicGroup.CCTargets.Count - 1)];
 
+            // Tiered scan: strict first (con/grey/no-add filtering), then a
+            // progressively looser fallback so a dense camp or low-con zone
+            // never leaves the puller with nothing to do.
+            for (int tier = 0; tier < 3; tier++)
+            {
+                GameLiving picked = ScanPullCandidates(tier);
+                if (picked != null)
+                    return picked;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// One scan pass over candidates with the supplied strictness tier:
+        ///   0 — strict: con filter, no grey, no already-aggroed, pack budget
+        ///   1 — relaxed: allow grey con + accept slightly oversized packs
+        ///   2 — desperate: any attackable hostile in range, pack-size irrelevant
+        /// Returns the best-scored target for the tier or null.
+        /// </summary>
+        private GameLiving ScanPullCandidates(int tier)
+        {
             int conFilter = Body.Group.MimicGroup.ConLevelFilter;
             Point2D pullFrom = Body.Group.MimicGroup.PullFromPoint;
             Point3D camp = Body.Group.MimicGroup.CampPoint;
 
-            // Composition-aware pull cap. With CC + tank we can grab a pack;
-            // without, we want isolated mobs.
             int maxPull = GetMaxPullCount();
             bool wantPack = maxPull > 1;
+            int packAllowed = tier switch
+            {
+                0 => maxPull,
+                1 => maxPull + 1,
+                _ => int.MaxValue,
+            };
+            bool allowGrey = tier >= 1;
+            bool allowAggroed = tier >= 2;
+            bool applyConFilter = tier < 2;
 
-            // Scan every NPC in range directly. The previous version relied on
-            // AggroList being pre-populated by CheckProximityAggro, but that
-            // method respects aggro level + LoS + various PvE filters that
-            // gate pulling unpredictably. The puller should pick a target the
-            // group CAN engage, not one the bot would have auto-aggroed.
             GameLiving best = null;
             int bestScore = int.MaxValue;
 
@@ -1127,40 +1180,28 @@ namespace DOL.AI.Brain
                 if (npc == null || !npc.IsAlive || npc.ObjectState != GameObject.eObjectState.Active)
                     continue;
 
-                // Filter out our own group members and other mimics in the same realm.
                 if (npc is MimicNPC otherBot && otherBot.Group == Body.Group)
                     continue;
 
                 if (npc is GameTaxi or GameTrainingDummy)
                     continue;
 
-                // Must be attackable per server rules. This auto-accepts neutral
-                // and hostile NPCs, and excludes pets/trainers/etc. the bot
-                // shouldn't target.
                 if (!GameServer.ServerRules.IsAllowedToAttack(Body, npc, true))
                     continue;
 
-                // Apply the group's con filter (default −2 = grey+ is allowed).
-                if (Body.GetConLevel(npc) < conFilter)
+                if (applyConFilter && Body.GetConLevel(npc) < conFilter)
                     continue;
 
-                // Skip grey con under any setup — pointless XP/loot.
-                if (Body.IsObjectGreyCon(npc))
+                if (!allowGrey && Body.IsObjectGreyCon(npc))
                     continue;
 
-                // Skip mobs already aggroed on someone else — we'd be stealing.
-                if (npc.Brain is StandardMobBrain mb && mb.HasAggro)
+                if (!allowAggroed && npc.Brain is StandardMobBrain mb && mb.HasAggro)
                     continue;
 
                 int pack = EstimatePackSize(npc);
-
-                // Hard cap: never pull a pack larger than the group can chew.
-                // pack neighbors + the target itself.
-                if (pack + 1 > maxPull)
+                if (pack + 1 > packAllowed)
                     continue;
 
-                // Base score = distance to the pull-from point if set, otherwise
-                // the camp point, otherwise the bot itself. Closer = better.
                 int score;
                 if (pullFrom != null)
                     score = npc.GetDistance(pullFrom);
@@ -1169,22 +1210,21 @@ namespace DOL.AI.Brain
                 else
                     score = Body.GetDistanceTo(npc);
 
-                // Composition-aware bias:
-                //   - With CC + tank, we'd rather pull a pack that matches our
-                //     slot budget. A penalty per missing slot keeps efficiency up
-                //     (pulling 1 mob when we could pull 3 is a slow XP rate).
-                //   - Without CC, single mobs are MUCH safer; add a sharp
-                //     penalty per neighbor so loners always win.
                 if (wantPack)
                 {
-                    int idealPack = maxPull - 1;          // neighbors we want
+                    int idealPack = maxPull - 1;
                     int packMiss = Math.Abs(pack - idealPack);
-                    score += packMiss * 300;              // small distance-equivalent
+                    score += packMiss * 300;
                 }
                 else
                 {
-                    score += pack * 2000;                 // strong loner preference
+                    score += pack * 2000;
                 }
+
+                // Fallback tiers pay a flat penalty so a strict-tier hit on a
+                // later scan tick still wins against a desperate-tier hit
+                // from this tick.
+                score += tier * 500;
 
                 if (score < bestScore)
                 {

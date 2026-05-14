@@ -167,17 +167,18 @@ namespace DOL.GS.Scripts
             // Puller: prefer a mimic archer, then any mimic that can pull. The
             // current MainPuller is only kept if it is ALREADY a mimic that
             // can pull — a player holder is replaced when a bot can do it.
+            //
+            // Important: we ALWAYS install a mimic, even when no bot has a
+            // bow or harmful spell. A pure-melee group still needs a puller
+            // so CheckPuller runs — the brain handles a "body pull" fallback
+            // (run to target, hit once, return) for melee-only bots.
             bool currentPullerIsMimic = mg.MainPuller is MimicNPC pullerMimic
-                                        && pullerMimic.IsAlive
-                                        && MimicGroup.CanPull(pullerMimic);
+                                        && pullerMimic.IsAlive;
             if (!currentPullerIsMimic)
             {
-                MimicNPC archer = mimics.FirstOrDefault(m =>
-                    m.IsAlive
-                    && m.Inventory?.GetItem(eInventorySlot.DistanceWeapon) != null);
-                MimicNPC anyPull = archer ?? mimics.FirstOrDefault(m => m.IsAlive && MimicGroup.CanPull(m));
-                if (anyPull != null)
-                    ForceSetMainPuller(mg, anyPull);
+                MimicNPC chosen = PickBestPuller(mimics);
+                if (chosen != null)
+                    ForceSetMainPuller(mg, chosen);
             }
 
             // Tank: prefer a mimic tank class, then any living mimic. Replace
@@ -216,22 +217,94 @@ namespace DOL.GS.Scripts
             }
         }
 
-        // SetMainPuller toggles when the same living is passed in twice in a
-        // row — fine for the /mpuller command, problematic when EnsureCampRoles
-        // tries to install a puller and the toggle-from-player path lands back
-        // on the leader. This helper bypasses the toggle so an explicit
-        // "make this bot the puller" actually sticks.
+        /// <summary>
+        /// Installs <paramref name="puller"/> as the camp's MainPuller. With
+        /// the new non-toggling <see cref="MimicGroup.SetMainPuller"/> this is
+        /// a thin wrapper, but it also covers the body-pull fallback path
+        /// where the chosen bot doesn't pass <see cref="MimicGroup.CanPull"/>
+        /// (no bow + no harmful spell). In that case we bypass the CanPull
+        /// gate and write the field directly via reflection-free means.
+        /// </summary>
         private static void ForceSetMainPuller(MimicGroup mg, MimicNPC puller)
         {
-            if (mg == null || puller == null || !MimicGroup.CanPull(puller))
+            if (mg == null || puller == null)
                 return;
             if (mg.MainPuller == puller)
                 return;
-            mg.SetMainPuller(puller);
-            // If the toggle path was hit (because MainPuller happened to equal
-            // puller before we checked... it can't, but defensive), call again.
-            if (mg.MainPuller != puller)
+
+            if (MimicGroup.CanPull(puller))
+            {
                 mg.SetMainPuller(puller);
+                return;
+            }
+
+            // Body-pull fallback: bot has neither ranged weapon nor harmful
+            // spell. SetMainPuller would refuse, but the brain's PerformPull
+            // already supports a melee body-pull. Use the explicit setter
+            // override so the role still sticks.
+            mg.ForceSetMainPullerForBodyPull(puller);
+        }
+
+        /// <summary>
+        /// Scores every alive mimic for puller suitability and returns the
+        /// best candidate. The hierarchy matches what a human picks:
+        ///   100  + level — has DistanceWeapon (bow / crossbow / thrown)
+        ///    70  + level — caster with a real pull spell (snare/dot/debuff,
+        ///                  long range, short cast)
+        ///    50  + level — anyone with harmful spells (instant cast pref)
+        ///    20  + level — body-pull fallback (pure melee, no ranged tool)
+        /// A higher level breaks ties so the strongest available pulls.
+        /// </summary>
+        public static MimicNPC PickBestPuller(List<MimicNPC> mimics)
+        {
+            if (mimics == null || mimics.Count == 0)
+                return null;
+
+            MimicNPC best = null;
+            int bestScore = int.MinValue;
+
+            foreach (MimicNPC m in mimics)
+            {
+                if (m == null || !m.IsAlive)
+                    continue;
+
+                int score = ScorePullerCandidate(m);
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    best = m;
+                }
+            }
+
+            return best;
+        }
+
+        private static int ScorePullerCandidate(MimicNPC m)
+        {
+            bool hasBow = m.Inventory?.GetItem(eInventorySlot.DistanceWeapon) != null;
+            bool hasHarmful = m.CanCastHarmfulSpells || m.CanCastInstantHarmfulSpells;
+
+            int score;
+            if (hasBow)
+                score = 100;
+            else if (hasHarmful && m.MimicBrain != null && m.MimicBrain.SelectPullSpell() != null)
+                score = 70;
+            else if (hasHarmful)
+                score = 50;
+            else
+                score = 20; // body-pull eligible — never null so a group always has one
+
+            // Tank classes are the worst body-pull candidates (they're needed
+            // at camp to soak the incoming mob). Penalise unless they're the
+            // only option.
+            if (IsTankClass(m))
+                score -= 15;
+
+            // Higher level wins ties — more pull range, better aim, harder to
+            // miss the shot.
+            score += m.Level;
+
+            return score;
         }
     }
 }

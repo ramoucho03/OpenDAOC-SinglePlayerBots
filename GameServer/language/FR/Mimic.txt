@@ -167,3 +167,33 @@ Mimic.Chat.Banter.3:                  Quelqu'un connait un bon camp dans le coin
 Mimic.Chat.Banter.4:                  On devrait chasser plus gros.
 Mimic.Chat.Banter.5:                  Ne me fais pas trop attendre.
 Mimic.Chat.Banter.6:                  J'ai besoin d'experience moi.
+
+# Camp prêt (phase Ready, group à plein)
+Mimic.Chat.CampReady.1:               Camp pret, on peut pull.
+Mimic.Chat.CampReady.2:               Reposez-vous, je guette.
+Mimic.Chat.CampReady.3:               Pleine forme, prochaine cible ?
+
+# Adds detectés sur le pull entrant
+Mimic.Chat.IncomingAdds.1:            Attention, des adds avec le pull !
+Mimic.Chat.IncomingAdds.2:            Le mob amene des copains !
+Mimic.Chat.IncomingAdds.3:            Pack incoming, preparez le CC !
+
+# Lancement d'une resurrection
+Mimic.Chat.Rezzing.1:                 Je rez, couvrez-moi.
+Mimic.Chat.Rezzing.2:                 Resurrection en cours, ne me ciblez pas.
+Mimic.Chat.Rezzing.3:                 Je remonte le mort, restez attentifs.
+
+# Retraite (groupe submerge)
+Mimic.Chat.Retreat.1:                 Trop d'aggro, RETRAITE !
+Mimic.Chat.Retreat.2:                 On se replie au camp, vite !
+Mimic.Chat.Retreat.3:                 Pull foire, repli ! Repli !
+
+# Assist train — leader/assist appelle la focus
+Mimic.Chat.AssistCall.1:               Tous sur ma cible !
+Mimic.Chat.AssistCall.2:               Burn cette cible !
+Mimic.Chat.AssistCall.3:               Focus, on tape la meme chose.
+
+# Chain pull continue
+Mimic.Chat.ChainPull.1:                Encore un ! Tenez-vous prets.
+Mimic.Chat.ChainPull.2:                Chain pull lance.
+Mimic.Chat.ChainPull.3:                Je relance un pull, restez en place.

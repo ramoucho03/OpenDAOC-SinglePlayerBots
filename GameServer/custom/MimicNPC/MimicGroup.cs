@@ -210,23 +210,57 @@ namespace DOL.GS.Scripts
             return false;
         }
 
+        /// <summary>
+        /// Assigns <paramref name="living"/> as the group's puller. Idempotent
+        /// — re-assigning the current puller is a no-op (no toggle, no clear).
+        /// Use <see cref="ClearMainPuller"/> to explicitly remove the role.
+        /// Returns false if the candidate can't pull at all.
+        /// </summary>
         public bool SetMainPuller(GameLiving living)
         {
             if (!CanPull(living))
                 return false;
 
             if (MainPuller == living)
+                return true; // already set — don't toggle, don't spam chat
+
+            MainPuller = living;
+            SayToGroup(living, "Mimic.Group.PullerSet");
+            return true;
+        }
+
+        /// <summary>
+        /// Bypasses <see cref="CanPull"/> to install a body-pull puller —
+        /// i.e. a pure-melee bot with no bow and no harmful spells. The
+        /// brain's PerformPull handles the melee body-pull fallback so the
+        /// role is still useful: run to target, hit, run back. Announces
+        /// the change once like a normal Set.
+        /// </summary>
+        public void ForceSetMainPullerForBodyPull(GameLiving living)
+        {
+            if (living == null || MainPuller == living)
+                return;
+
+            MainPuller = living;
+            SayToGroup(living, "Mimic.Group.PullerSet");
+        }
+
+        /// <summary>
+        /// Clears the puller role explicitly. Falls back to the group leader
+        /// so the role is never left "null" (legacy code paths assume non-null
+        /// MainPuller). Announces the change once.
+        /// </summary>
+        public void ClearMainPuller()
+        {
+            if (MainPuller == null || MainPuller == MainLeader)
             {
                 MainPuller = MainLeader;
-                SayToGroup(living, "Mimic.Group.PullerUnset");
-            }
-            else
-            {
-                MainPuller = living;
-                SayToGroup(living, "Mimic.Group.PullerSet");
+                return;
             }
 
-            return true;
+            GameLiving previous = MainPuller;
+            MainPuller = MainLeader;
+            SayToGroup(previous, "Mimic.Group.PullerUnset");
         }
 
         public bool SetHealer(GameLiving living)

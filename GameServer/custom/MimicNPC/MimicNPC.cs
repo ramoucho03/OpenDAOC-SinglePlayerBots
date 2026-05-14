@@ -772,7 +772,15 @@ namespace DOL.GS.Scripts
                 break;
 
                 case "Leader": Group?.MimicGroup.SetLeader(this); break;
-                case "MainPuller": Group?.MimicGroup.SetMainPuller(this); break;
+                case "MainPuller":
+                    if (Group?.MimicGroup is { } mgPullerToggle)
+                    {
+                        if (mgPullerToggle.MainPuller == this)
+                            mgPullerToggle.ClearMainPuller();
+                        else
+                            mgPullerToggle.SetMainPuller(this);
+                    }
+                    break;
                 case "MainCC": Group?.MimicGroup.SetMainCC(this); break;
                 case "MainTank": Group?.MimicGroup.SetMainTank(this); break;
                 case "MainAssist": Group?.MimicGroup.SetMainAssist(this); break;

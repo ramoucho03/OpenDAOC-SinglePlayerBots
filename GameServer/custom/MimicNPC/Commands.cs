@@ -848,7 +848,17 @@ namespace DOL.GS.Scripts
                     case "tank": success = player.Group.MimicGroup.SetMainTank(target); break;
                     case "assist": success = player.Group.MimicGroup.SetMainAssist(target); break;
                     case "cc": success = player.Group.MimicGroup.SetMainCC(target); break;
-                    case "puller": success = player.Group.MimicGroup.SetMainPuller(target); break;
+                    case "puller":
+                        // Explicit toggle UX: same target twice clears the role,
+                        // a new target installs it. Mirrors the chat-menu behaviour.
+                        if (player.Group.MimicGroup.MainPuller == target)
+                        {
+                            player.Group.MimicGroup.ClearMainPuller();
+                            success = true;
+                        }
+                        else
+                            success = player.Group.MimicGroup.SetMainPuller(target);
+                        break;
                 }
 
                 if (!success)

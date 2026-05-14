@@ -166,3 +166,33 @@ Mimic.Chat.Banter.3:                  Anyone seen a good camp nearby?
 Mimic.Chat.Banter.4:                  We should look for tougher prey.
 Mimic.Chat.Banter.5:                  Don't keep me waiting too long.
 Mimic.Chat.Banter.6:                  I could use the experience.
+
+# Camp ready (Ready phase, group topped up)
+Mimic.Chat.CampReady.1:               Camp's ready, we can pull.
+Mimic.Chat.CampReady.2:               Rest up, I'll watch.
+Mimic.Chat.CampReady.3:               Full bars, next target?
+
+# Adds spotted on the incoming pull
+Mimic.Chat.IncomingAdds.1:            Heads up, adds with the pull!
+Mimic.Chat.IncomingAdds.2:            The mob brought friends!
+Mimic.Chat.IncomingAdds.3:            Pack incoming, ready your CC!
+
+# Casting a resurrection
+Mimic.Chat.Rezzing.1:                 Rezzing now, cover me.
+Mimic.Chat.Rezzing.2:                 Resurrection in progress, don't target me.
+Mimic.Chat.Rezzing.3:                 Bringing them back, stay alert.
+
+# Retreat call (group overwhelmed)
+Mimic.Chat.Retreat.1:                 Too much aggro, RETREAT!
+Mimic.Chat.Retreat.2:                 Fall back to camp, now!
+Mimic.Chat.Retreat.3:                 Pull's a wipe, fall back!
+
+# Assist train — leader/assist calls the focus
+Mimic.Chat.AssistCall.1:               Everyone on my target!
+Mimic.Chat.AssistCall.2:               Burn this one down!
+Mimic.Chat.AssistCall.3:               Focus fire, same mob.
+
+# Chain pull continues
+Mimic.Chat.ChainPull.1:                Another one incoming!
+Mimic.Chat.ChainPull.2:                Chain pull rolling.
+Mimic.Chat.ChainPull.3:                Pulling again, hold position.

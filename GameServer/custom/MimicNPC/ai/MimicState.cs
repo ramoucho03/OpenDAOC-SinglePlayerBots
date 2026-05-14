@@ -564,6 +564,20 @@ namespace DOL.AI.Brain
         // even less frequently when a fire IS detected (cache it).
         private long _nextCampFireCheckTick;
 
+        // Throttle for the adaptive aggro-range refresh (Think-time). We
+        // re-pick the per-phase range every 2s instead of every tick — the
+        // group composition can't realistically change faster than that.
+        private long _nextAggroRecomputeTick;
+
+        // Throttle for the tank's intercept "step forward" during the Pulling
+        // phase. The MaintainTankCampSupport call is already 1Hz; we piggy-
+        // back on its cadence to also issue intercept-positioning.
+        private long _nextTankInterceptTick;
+
+        // Last intercept point the tank was moved to, so we don't spam WalkTo
+        // every cycle for a position the bot has already reached.
+        private Point3D _lastInterceptPoint;
+
         public MimicState_Camp(MimicBrain brain) : base(brain)
         {
             StateType = eFSMStateType.CAMP;
@@ -649,6 +663,12 @@ namespace DOL.AI.Brain
             if (ShouldDriveCampPhase(mg))
                 DriveCampPhase(mg);
 
+            // Phase-aware tunings (cheap, runs every tick on data we already
+            // have): refresh the camp aggro zone so it shrinks during regen,
+            // and let the healer lock onto the tank while combat is brewing.
+            RefreshAdaptiveAggroRange(mg);
+            MaintainHealerFocus(mg);
+
             // Aggro check FIRST — never let the "wait while returning to slot"
             // shortcut skip the only line that lets the camp respond to a mob
             // that just walked into our range. Previously this lived BELOW the
@@ -682,6 +702,11 @@ namespace DOL.AI.Brain
                 _nextTankSupportTick = GameLoop.GameLoopTime + 1000;
                 _brain.MaintainTankCampSupport();
             }
+
+            // Proactive tank intercept: during the Pulling phase, step the tank
+            // forward toward the incoming mob's path so it picks up aggro
+            // first instead of waiting for the mob to walk into camp.
+            MaintainTankIntercept(mg);
 
             if (!_brain.Body.IsMoving && !_brain.Body.InCombat)
             {
@@ -1168,6 +1193,159 @@ namespace DOL.AI.Brain
                 _campOffsetX = (int)(fx * (forward + 40));
                 _campOffsetY = (int)(fy * (forward + 40));
             }
+        }
+
+        /// <summary>
+        /// Re-runs <see cref="ComputeGroupAggroRange"/> at most every 2s so the
+        /// camp's reaction zone follows the live group state — shrinks while
+        /// the group is regening (we don't want a tired group dragging extra
+        /// mobs in), grows once Ready/Combat/etc. The user override
+        /// <see cref="AggroRange"/> still wins when set.
+        /// </summary>
+        private void RefreshAdaptiveAggroRange(MimicGroup mg)
+        {
+            long now = GameLoop.GameLoopTime;
+            if (now < _nextAggroRecomputeTick)
+                return;
+            _nextAggroRecomputeTick = now + 2000;
+
+            // Explicit user override — leave it alone.
+            if (AggroRange != 0)
+            {
+                _brain.AggroRange = AggroRange;
+                return;
+            }
+
+            int target = ComputeGroupAggroRange();
+
+            // Phase modifier: while regening, reduce the zone so bots don't
+            // stand up over a stray wandering mob; ramp it back as soon as
+            // we're combat-ready.
+            if (mg != null)
+            {
+                switch (mg.CampPhase)
+                {
+                    case MimicGroup.eCampPhase.Regen:
+                        target = (int)(target * 0.6);
+                        break;
+                    case MimicGroup.eCampPhase.PostCombat:
+                        target = (int)(target * 0.8);
+                        break;
+                }
+            }
+
+            _brain.AggroRange = Math.Max(target, 200);
+        }
+
+        /// <summary>
+        /// Steers the main tank a couple body-lengths forward along the pull
+        /// axis when the puller has a mob in flight (camp phase = Pulling).
+        /// Cuts the time between "mob enters camp" and "tank has aggro" by
+        /// closing some of the distance early. Throttled to 1Hz and idempotent
+        /// against the same intercept point so it doesn't fight the camp's
+        /// own slot positioning logic.
+        /// </summary>
+        private void MaintainTankIntercept(MimicGroup mg)
+        {
+            if (!_brain.IsMainTank || _brain.IsPulling)
+                return;
+            if (mg == null || mg.CampPhase != MimicGroup.eCampPhase.Pulling)
+                return;
+            if (mg.IncomingPullTarget is not GameLiving incoming || !incoming.IsAlive)
+                return;
+            if (_brain.Body.InCombat || _brain.HasAggro)
+                return;
+
+            long now = GameLoop.GameLoopTime;
+            if (now < _nextTankInterceptTick)
+                return;
+            _nextTankInterceptTick = now + 1000;
+
+            Point3D camp = mg.CampPoint;
+            if (camp == null)
+                return;
+
+            // Direction: camp → puller (or pull-from point). Tank steps that
+            // way by ~200 units, but never past the puller itself — we don't
+            // want the tank racing the puller into the mob.
+            double dx, dy;
+            GameLiving puller = mg.MainPuller;
+            if (puller != null && puller.IsAlive)
+            {
+                dx = puller.X - camp.X;
+                dy = puller.Y - camp.Y;
+            }
+            else if (mg.PullFromPoint != null)
+            {
+                dx = mg.PullFromPoint.X - camp.X;
+                dy = mg.PullFromPoint.Y - camp.Y;
+            }
+            else
+            {
+                dx = incoming.X - camp.X;
+                dy = incoming.Y - camp.Y;
+            }
+
+            double len = Math.Sqrt(dx * dx + dy * dy);
+            if (len < 50)
+                return; // axis too short to bother
+
+            const int INTERCEPT_STEP = 220;
+            int ix = camp.X + (int)(dx / len * INTERCEPT_STEP);
+            int iy = camp.Y + (int)(dy / len * INTERCEPT_STEP);
+
+            // Skip if we already moved here on a prior cycle — re-issuing the
+            // same WalkTo would just thrash the movement component.
+            if (_lastInterceptPoint != null
+                && Math.Abs(_lastInterceptPoint.X - ix) < 50
+                && Math.Abs(_lastInterceptPoint.Y - iy) < 50
+                && _brain.Body.IsWithinRadius(_lastInterceptPoint, 80))
+                return;
+
+            Point3D dest = new(ix, iy, camp.Z);
+            _lastInterceptPoint = dest;
+            _brain.Body.StopFollowing();
+            _brain.MimicBody?.Sit(false);
+            _brain.Body.WalkTo(dest, _brain.Body.MaxSpeed);
+        }
+
+        /// <summary>
+        /// Healer pre-target lock: during Engaging/Combat phases, make sure
+        /// the healer's current target is the main tank (or the most-injured
+        /// member). This way the healer's heal hotkey / spell picker finds a
+        /// valid friendly target instantly when the first hit lands, instead
+        /// of wasting the first cast cycle searching.
+        /// </summary>
+        private void MaintainHealerFocus(MimicGroup mg)
+        {
+            if (mg == null || !_brain.IsHealer)
+                return;
+
+            // Only lock during the windows where a heal is imminent — outside
+            // of those the heal logic itself drives target selection.
+            if (mg.CampPhase != MimicGroup.eCampPhase.Engaging
+                && mg.CampPhase != MimicGroup.eCampPhase.Combat
+                && mg.CampPhase != MimicGroup.eCampPhase.Pulling)
+                return;
+
+            GameLiving focus = mg.MainTank;
+            if (focus == null || !focus.IsAlive)
+                focus = mg.MemberToHeal;
+            if (focus == null || focus == _brain.Body || !focus.IsAlive)
+                return;
+
+            // Don't override a hostile target the healer is actively dealing
+            // with (e.g. interrupting a caster mob) — only set when the
+            // current target is null, dead, or a non-group hostile we have
+            // no reason to be targeting from a heal seat.
+            GameObject cur = _brain.Body.TargetObject;
+            if (cur == focus)
+                return;
+            if (cur is GameLiving curLiving && curLiving.IsAlive
+                && _brain.Body.Group != null && _brain.Body.Group.IsInTheGroup(curLiving))
+                return;
+
+            _brain.Body.TargetObject = focus;
         }
 
         /// <summary>
