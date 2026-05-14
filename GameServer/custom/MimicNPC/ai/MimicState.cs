@@ -1057,13 +1057,15 @@ namespace DOL.AI.Brain
         /// <summary>
         /// "Stay in Ready" gate — relaxed thresholds vs IsGroupReady so a
         /// healthy group doesn't flap back to Regen on every regen tick.
-        /// Only fall back when a member is actually hurt enough to need a
-        /// real rest window (≥15 pp below the entry thresholds).
+        /// Mana threshold matches the puller's MANA_STOP_PCT (30%) — once a
+        /// caster drops there, the puller's CheckDelayPull will throttle and
+        /// the camp drops to Regen for a real rest window. This gives the
+        /// "pull above 80% / stop below 30%" behaviour end-to-end.
         /// </summary>
         private bool IsGroupStillFresh(MimicGroup mg)
         {
             const int FRESH_HP_PCT = 70;
-            const int FRESH_MANA_PCT = 60;
+            const int FRESH_MANA_PCT = 30;
             const int FRESH_END_PCT = 35;
 
             if (_brain.Body.Group == null)
