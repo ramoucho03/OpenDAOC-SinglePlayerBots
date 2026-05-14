@@ -521,6 +521,14 @@ namespace DOL.AI.Brain
             prevAggroRange = _brain.AggroRange;
             _brain.AggroRange = _brain.Body.CurrentRegion.IsDungeon ? 250 : 550;
 
+            // Tanks scan further than the rest of the camp so they spot incoming
+            // mobs first and start the intercept run while DPS/healers are still
+            // sitting. When the tank engages, OnAttackedByEnemy propagates the
+            // aggro through the group within one tick, so the rest catches up
+            // without staying alone at camp for long.
+            if (_brain.IsMainTank)
+                _brain.AggroRange += _brain.Body.CurrentRegion.IsDungeon ? 100 : 250;
+
             if (AggroRange != 0)
                 _brain.AggroRange = AggroRange;
 

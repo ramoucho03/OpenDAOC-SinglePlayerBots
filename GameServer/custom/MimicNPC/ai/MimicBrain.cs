@@ -722,6 +722,71 @@ namespace DOL.AI.Brain
         // of the camp's aggro range — pulling reaches further than passive aggro.
         private const int PULL_SCAN_RADIUS = 3600;
 
+        // Approximate BAF radius — used to estimate how many friends a candidate
+        // mob will drag along when pulled. The real BAF radius is dynamic, but
+        // 500 is a good lower bound for scoring.
+        private const int PULL_PACK_RADIUS = 500;
+
+        /// <summary>
+        /// How many mobs the group can realistically chew through at once.
+        /// 1 by default; each CC-capable mimic in the group adds slots so a
+        /// well-formed group with CC + tank can grab a small pack on purpose
+        /// instead of bouncing 3 trash mobs one at a time.
+        /// </summary>
+        private int GetMaxPullCount()
+        {
+            MimicGroup mg = Body.Group?.MimicGroup;
+
+            if (mg == null)
+                return 1;
+
+            // No tank — can't safely chain. Force single-pull.
+            if (mg.MainTank == null || !mg.MainTank.IsAlive)
+                return 1;
+
+            int ccCount = 0;
+            foreach (GameLiving gm in Body.Group.GetMembersInTheGroup())
+            {
+                if (gm is MimicNPC m && m.CanCastCrowdControlSpells)
+                    ccCount++;
+            }
+
+            // Each CC bot can lock one add. Cap at 4 so we don't try to drag a
+            // whole camp; cap respects HP/mana budgets observed in playtest.
+            return Math.Clamp(1 + ccCount, 1, 4);
+        }
+
+        /// <summary>
+        /// Count of nearby hostile mobs around the candidate — proxy for how
+        /// many adds BAF will pull along when the candidate is attacked.
+        /// Cheap heuristic: same-realm hostile NPCs within PULL_PACK_RADIUS.
+        /// </summary>
+        private int EstimatePackSize(GameNPC candidate)
+        {
+            if (candidate == null)
+                return 0;
+
+            int count = 0;
+            foreach (GameNPC neighbor in candidate.GetNPCsInRadius(PULL_PACK_RADIUS))
+            {
+                if (neighbor == candidate)
+                    continue;
+                if (neighbor == null || !neighbor.IsAlive)
+                    continue;
+                if (neighbor is GameTaxi or GameTrainingDummy)
+                    continue;
+                if (neighbor is MimicNPC)
+                    continue;
+                if (neighbor.Brain is StandardMobBrain mb && mb.HasAggro)
+                    continue;
+                if (!GameServer.ServerRules.IsAllowedToAttack(Body, neighbor, true))
+                    continue;
+                count++;
+            }
+
+            return count;
+        }
+
         public GameLiving GetPullTarget()
         {
             if (Body.IsAttacking || Body.IsCasting || Body.IsSitting)
@@ -737,6 +802,11 @@ namespace DOL.AI.Brain
             int conFilter = Body.Group.MimicGroup.ConLevelFilter;
             Point2D pullFrom = Body.Group.MimicGroup.PullFromPoint;
             Point3D camp = Body.Group.MimicGroup.CampPoint;
+
+            // Composition-aware pull cap. With CC + tank we can grab a pack;
+            // without, we want isolated mobs.
+            int maxPull = GetMaxPullCount();
+            bool wantPack = maxPull > 1;
 
             // Scan every NPC in range directly. The previous version relied on
             // AggroList being pre-populated by CheckProximityAggro, but that
@@ -776,8 +846,15 @@ namespace DOL.AI.Brain
                 if (npc.Brain is StandardMobBrain mb && mb.HasAggro)
                     continue;
 
-                // Score = distance to the pull-from point if set, otherwise the camp
-                // point, otherwise the bot itself. Closer = better.
+                int pack = EstimatePackSize(npc);
+
+                // Hard cap: never pull a pack larger than the group can chew.
+                // pack neighbors + the target itself.
+                if (pack + 1 > maxPull)
+                    continue;
+
+                // Base score = distance to the pull-from point if set, otherwise
+                // the camp point, otherwise the bot itself. Closer = better.
                 int score;
                 if (pullFrom != null)
                     score = npc.GetDistance(pullFrom);
@@ -785,6 +862,23 @@ namespace DOL.AI.Brain
                     score = npc.GetDistance(new Point2D(camp.X, camp.Y));
                 else
                     score = Body.GetDistanceTo(npc);
+
+                // Composition-aware bias:
+                //   - With CC + tank, we'd rather pull a pack that matches our
+                //     slot budget. A penalty per missing slot keeps efficiency up
+                //     (pulling 1 mob when we could pull 3 is a slow XP rate).
+                //   - Without CC, single mobs are MUCH safer; add a sharp
+                //     penalty per neighbor so loners always win.
+                if (wantPack)
+                {
+                    int idealPack = maxPull - 1;          // neighbors we want
+                    int packMiss = Math.Abs(pack - idealPack);
+                    score += packMiss * 300;              // small distance-equivalent
+                }
+                else
+                {
+                    score += pack * 2000;                 // strong loner preference
+                }
 
                 if (score < bestScore)
                 {
@@ -1059,27 +1153,85 @@ namespace DOL.AI.Brain
 
         #region MainTank
 
+        // Vulnerability tier used to decide which group member the tank should
+        // peel for. Lower = more important to protect.
+        private static int VulnerabilityTier(GameLiving gl)
+        {
+            if (gl is not IGamePlayer ig)
+                return 3;
+
+            switch ((eCharacterClass)ig.CharacterClass.ID)
+            {
+                // Pure healers — peel for them first.
+                case eCharacterClass.Cleric:
+                case eCharacterClass.Druid:
+                case eCharacterClass.Healer:
+                    return 0;
+                // Hybrid healers / casters with healing kits.
+                case eCharacterClass.Bard:
+                case eCharacterClass.Shaman:
+                case eCharacterClass.Friar:
+                case eCharacterClass.Warden:
+                    return 1;
+                default:
+                    // Pure casters next, then everyone else.
+                    return ig.CharacterClass.ClassType == eClassType.ListCaster ? 1 : 2;
+            }
+        }
+
         public bool CheckMainTankTarget()
         {
-            if (!IsMainTank)
+            if (!IsMainTank || AggroList.Count == 0)
                 return false;
 
-            GameLiving target = null;
-            List<GameLiving> listOfTargets = null;
+            // Peel pass: among hostiles not mezzed/rooted, prefer one whose
+            // *target* is the most vulnerable group member. Tiebreak by proximity
+            // so the tank closes the gap fastest on the most imminent threat.
+            // This replaces the previous random pick which sometimes left a
+            // healer being beaten on while the tank chased a peripheral add.
+            GameLiving peelBest = null;
+            int peelTier = int.MaxValue;
+            int peelDist = int.MaxValue;
 
-            if (AggroList.Count > 0)
+            // Fallback: a mob actively on the tank itself. Keeps the tank
+            // engaged even when nothing is peelable (everything is on us).
+            GameLiving fallbackOnTank = null;
+            int fallbackOnTankDist = int.MaxValue;
+
+            foreach (var kv in AggroList)
             {
-                listOfTargets = (AggroList.Keys.Where(key => key.TargetObject is GameLiving livingTarget && livingTarget != Body &&
-                                                             !livingTarget.IsMezzed && !livingTarget.IsRooted).ToList());
+                GameLiving mob = kv.Key;
+
+                if (mob == null || !mob.IsAlive || mob.ObjectState != GameObject.eObjectState.Active)
+                    continue;
+                if (mob.IsMezzed || mob.IsRooted)
+                    continue;
+
+                int dist = Body.GetDistanceTo(mob);
+
+                if (mob.TargetObject is GameLiving mobTarget && mobTarget != Body)
+                {
+                    int tier = VulnerabilityTier(mobTarget);
+
+                    if (tier < peelTier || (tier == peelTier && dist < peelDist))
+                    {
+                        peelBest = mob;
+                        peelTier = tier;
+                        peelDist = dist;
+                    }
+                }
+                else if (mob.TargetObject == Body && dist < fallbackOnTankDist)
+                {
+                    fallbackOnTank = mob;
+                    fallbackOnTankDist = dist;
+                }
             }
 
-            if (listOfTargets != null && listOfTargets.Count > 0)
-                target = listOfTargets[Util.Random(listOfTargets.Count - 1)];
+            GameLiving target = peelBest ?? fallbackOnTank;
 
             if (target != null)
             {
                 Body.TargetObject = target;
-
                 return true;
             }
 
