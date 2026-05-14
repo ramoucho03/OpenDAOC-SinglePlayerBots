@@ -98,7 +98,7 @@ namespace DOL.GS.Scripts
         {
             get
             {
-                lock (_configs)
+                lock (_configsLock)
                 {
                     int total = 0;
                     foreach (var cfg in _configs.Values)
@@ -128,7 +128,7 @@ namespace DOL.GS.Scripts
         {
             ushort region = (ushort)PvPFrontierProperties.PVP_FRONTIER_REGION;
 
-            lock (_configs)
+            lock (_configsLock)
             {
                 _configs.Clear();
 
@@ -208,7 +208,7 @@ namespace DOL.GS.Scripts
         {
             int removed = 0;
 
-            lock (_configs)
+            lock (_configsLock)
             {
                 foreach (var cfg in _configs.Values)
                 {
@@ -236,34 +236,37 @@ namespace DOL.GS.Scripts
             {
                 int target = PvPFrontierProperties.PVP_FRONTIER_POPULATION_PER_REALM;
 
-                foreach (var kv in _configs)
+                lock (_configsLock)
                 {
-                    RealmConfig cfg = kv.Value;
-
-                    // Step every group; prune disbanded ones.
-                    for (int i = cfg.Groups.Count - 1; i >= 0; i--)
+                    foreach (var kv in _configs)
                     {
-                        PvPFrontierGroup grp = cfg.Groups[i];
-                        grp.Tick();
+                        RealmConfig cfg = kv.Value;
 
-                        if (grp.IsDisbanded)
-                            cfg.Groups.RemoveAt(i);
-                    }
+                        // Step every group; prune disbanded ones.
+                        for (int i = cfg.Groups.Count - 1; i >= 0; i--)
+                        {
+                            PvPFrontierGroup grp = cfg.Groups[i];
+                            grp.Tick();
 
-                    // Spawn enough new groups to reach the realm's target population.
-                    int alive = 0;
-                    foreach (var g in cfg.Groups)
-                        alive += g.AliveMemberCount;
+                            if (grp.IsDisbanded)
+                                cfg.Groups.RemoveAt(i);
+                        }
 
-                    int missing = target - alive;
+                        // Spawn enough new groups to reach the realm's target population.
+                        int alive = 0;
+                        foreach (var g in cfg.Groups)
+                            alive += g.AliveMemberCount;
 
-                    // Spawn one group per tick (avoid burst). Groups are 4-8 mimics.
-                    if (missing > 0)
-                    {
-                        int groupSize = Math.Clamp(missing, 4, 8);
-                        PvPFrontierGroup newGroup = PvPFrontierGroup.Spawn(cfg, groupSize);
-                        if (newGroup != null)
-                            cfg.Groups.Add(newGroup);
+                        int missing = target - alive;
+
+                        // Spawn one group per tick (avoid burst). Groups are 4-8 mimics.
+                        if (missing > 0)
+                        {
+                            int groupSize = Math.Clamp(missing, 4, 8);
+                            PvPFrontierGroup newGroup = PvPFrontierGroup.Spawn(cfg, groupSize);
+                            if (newGroup != null)
+                                cfg.Groups.Add(newGroup);
+                        }
                     }
                 }
             }
@@ -285,7 +288,7 @@ namespace DOL.GS.Scripts
             sb.AppendLine();
             sb.AppendLine($"{"Realm",-9} {"groups",6} {"logical",7} {"hydrated",8} {"npcs",5}");
 
-            lock (_configs)
+            lock (_configsLock)
             {
                 foreach (var cfg in _configs.Values)
                 {

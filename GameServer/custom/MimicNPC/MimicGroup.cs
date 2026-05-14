@@ -1,5 +1,6 @@
 ﻿using DOL.GS.PacketHandler;
 using DOL.GS.ServerProperties;
+using DOL.GS.Spells;
 using DOL.Language;
 using System.Collections.Generic;
 using System.Linq;
@@ -139,7 +140,7 @@ namespace DOL.GS.Scripts
 
         public GameObject CurrentTarget
         {
-            get { return MainAssist.TargetObject; }
+            get { return MainAssist?.TargetObject; }
         }
 
         public MimicGroup(GameLiving leader) 
@@ -369,6 +370,12 @@ namespace DOL.GS.Scripts
         /// <param name="checker">Healer checking group status</param>
         public void CheckGroupHealth(MimicNPC checker)
         {
+            // The checker may have been kicked from the group between the
+            // last Think tick and the heal scan; bail rather than NRE on
+            // the foreach below.
+            if (checker?.Group == null)
+                return;
+
             if (nextCheckTime < GameLoop.GameLoopTime)
             {
                 nextCheckTime = GameLoop.GameLoopTime + checker.Brain.ThinkInterval - checkTimeOffset;
@@ -421,7 +428,7 @@ namespace DOL.GS.Scripts
                             MemberToHeal = groupMember;
                         }
 
-                        if (groupMember.IsMezzed && groupMember != null)
+                        if (groupMember.IsMezzed)
                             MemberToCureMezz = groupMember;
 
                         if (groupMember.IsDiseased)
@@ -444,15 +451,25 @@ namespace DOL.GS.Scripts
                             }
                         }
 
+                        // Race-safety: IsCasting can be true while CurrentSpellHandler
+                        // (or its Spell) has just been nulled out by another thread —
+                        // snapshot the reference and validate before reading SpellType.
                         if (groupMember.IsCasting)
-                            switch (groupMember.CurrentSpellHandler.Spell.SpellType)
+                        {
+                            ISpellHandler handler = groupMember.CurrentSpellHandler;
+
+                            if (handler?.Spell != null)
                             {
-                                case eSpellType.HealOverTime: AlreadyCastingHoT = true; break;
-                                case eSpellType.HealthRegenBuff: AlreadyCastingRegen = true; break;
-                                case eSpellType.CureMezz: AlreadyCastingCureMezz = true; break;
-                                case eSpellType.CureDisease: AlreadyCastingCureDisease = true; break;
-                                case eSpellType.CurePoison: AlreadyCastingCurePoison = true; break;
+                                switch (handler.Spell.SpellType)
+                                {
+                                    case eSpellType.HealOverTime: AlreadyCastingHoT = true; break;
+                                    case eSpellType.HealthRegenBuff: AlreadyCastingRegen = true; break;
+                                    case eSpellType.CureMezz: AlreadyCastingCureMezz = true; break;
+                                    case eSpellType.CureDisease: AlreadyCastingCureDisease = true; break;
+                                    case eSpellType.CurePoison: AlreadyCastingCurePoison = true; break;
+                                }
                             }
+                        }
                     }
                 }
 

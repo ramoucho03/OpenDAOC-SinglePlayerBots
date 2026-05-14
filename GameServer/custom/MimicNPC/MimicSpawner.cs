@@ -9,7 +9,7 @@ namespace DOL.GS.Scripts
 {
     public class MimicSpawner : GameNPC
     {
-        public bool IsRunning { get { return _timer.IsAlive; } }
+        public bool IsRunning { get { return _timer != null && _timer.IsAlive; } }
         public List<MimicNPC> Mimics { get { return _mimics; } }
         public int SpawnCount { get { return _spawnCount; } }
         public bool SpawnAndStop { get; set; }
@@ -115,7 +115,7 @@ namespace DOL.GS.Scripts
                 {
                     MimicNPC mimic = CreateMimic();
 
-                    if (spawningGroupSize > 0 && group != null)
+                    if (mimic != null && spawningGroupSize > 0 && group != null)
                     {
                         group.AddMember(mimic);
                         spawningGroupSize--;
@@ -148,6 +148,16 @@ namespace DOL.GS.Scripts
             if (currentGroupSize > 1)
             {
                 MimicNPC mimic = CreateMimic();
+
+                if (mimic == null)
+                {
+                    // Couldn't seed the group; fall back to solo spawn so the
+                    // tick still produces a bot instead of throwing.
+                    group = null;
+                    spawningGroupSize = 0;
+                    return 1;
+                }
+
                 group = new Group(mimic);
                 group.AddMember(mimic);
 
@@ -164,10 +174,24 @@ namespace DOL.GS.Scripts
 
             Point3D spawnPoint = new Point3D(_position.X + randomX, _position.Y + randomY, _position.Z);
             eMimicClass mimicClass = MimicManager.GetRandomMimicClass(_realm);
+
+            if (mimicClass == eMimicClass.None)
+                return null;
+
             MimicNPC mimicNPC = MimicManager.GetMimic(mimicClass, (byte)Util.Random(_levelMin, _levelMax));
 
-            MimicManager.AddMimicToWorld(mimicNPC, spawnPoint, _region);
-            _mimics.Add(mimicNPC);
+            if (mimicNPC == null)
+                return null;
+
+            if (!MimicManager.AddMimicToWorld(mimicNPC, spawnPoint, _region))
+                return null;
+
+            // SpawnMimics runs on the task pool; serialize the list write so
+            // we don't race with Remove(). _mimics already has its own lock
+            // contract — extend it to writes from this path too.
+            lock (_mimics)
+                _mimics.Add(mimicNPC);
+
             mimicNPC.MimicSpawner = this;
 
             if (SpawnAndStop)
@@ -212,7 +236,11 @@ namespace DOL.GS.Scripts
 
         public override bool IsVisibleTo(GameObject checkObject)
         {
-            if (checkObject is GamePlayer player && player.Client.Account.PrivLevel == 1)
+            // Spawner is a debug / GM-only marker; hide from regular players.
+            // Guard against partially-initialized clients (Account can be null
+            // briefly during connect/disconnect transitions).
+            if (checkObject is GamePlayer player &&
+                (player.Client?.Account?.PrivLevel ?? 1) == 1)
                 return false;
 
             return base.IsVisibleTo(checkObject);
@@ -225,7 +253,7 @@ namespace DOL.GS.Scripts
 
             player.Out.SendMessage(
                 "---------------------------------------\n" +
-                "Running: " + _timer.IsAlive + "\n" +
+                "Running: " + IsRunning + "\n" +
                 "Spawns: " + _mimics.Count + "/" + _spawnCountMax + "\n\n" +
                 "[Toggle]\n\n" +
                 //"[List]\n\n" +
@@ -250,7 +278,11 @@ namespace DOL.GS.Scripts
             {
                 case "Toggle":
                 {
-                    if (_timer.IsAlive)
+                    if (_timer == null)
+                    {
+                        message = "Spawner has been deleted.";
+                    }
+                    else if (_timer.IsAlive)
                     {
                         _timer.Stop();
                         message = "Spawner is no longer running.";
@@ -270,7 +302,7 @@ namespace DOL.GS.Scripts
                     {
                         MimicSpawning.MimicSpawners.Remove(this);
 
-                        if (_timer.IsAlive)
+                        if (_timer != null && _timer.IsAlive)
                             _timer.Stop();
 
                         _timer = null;
@@ -304,13 +336,13 @@ namespace DOL.GS.Scripts
 
         public void Stop()
         {
-            if (_timer.IsAlive)
+            if (_timer != null && _timer.IsAlive)
                 _timer.Stop();
         }
 
         public void Start()
         {
-            if (!_timer.IsAlive)
+            if (_timer != null && !_timer.IsAlive)
                 _timer.Start();
         }
     }

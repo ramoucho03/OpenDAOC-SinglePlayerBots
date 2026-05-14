@@ -222,7 +222,13 @@ namespace DOL.GS.Scripts
                 }
 
                 MimicNPC mimic = MimicManager.GetMimic(mclass, level, spec: mimicSpec);
-                MimicManager.AddMimicToWorld(mimic, position, player.CurrentRegionID);
+
+                if (mimic == null || !MimicManager.AddMimicToWorld(mimic, position, player.CurrentRegionID))
+                {
+                    player.Out.SendMessage("Impossible de créer le mimic.", eChatType.CT_Say, eChatLoc.CL_ChatWindow);
+                    return;
+                }
+
                 MimicManager.RegisterOwned(player, mimic);
 
                 if (invite && GameServer.ServerRules.IsSameRealm(player, mimic, true))
@@ -714,7 +720,13 @@ namespace DOL.GS.Scripts
                     if (player.Group.GetMembersInTheGroup().Count < ServerProperties.Properties.GROUP_MAX_MEMBER)
                     {
                         MimicNPC mimic = MimicManager.GetMimic(entry.MimicClass, entry.Level, entry.Name, entry.Gender);
-                        MimicManager.AddMimicToWorld(mimic, new Point3D(player.X, player.Y, player.Z), player.CurrentRegionID);
+
+                        if (mimic == null || !MimicManager.AddMimicToWorld(mimic, new Point3D(player.X, player.Y, player.Z), player.CurrentRegionID))
+                        {
+                            player.Out.SendMessage("Le mimic n'a pas pu rejoindre votre groupe.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                            return;
+                        }
+
                         MimicManager.RegisterOwned(player, mimic);
 
                         player.Group.AddMember(mimic);

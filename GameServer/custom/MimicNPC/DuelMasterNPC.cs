@@ -5,7 +5,6 @@ namespace DOL.GS.Scripts
     public class DuelMasterNPC : GameNPC
     {
         private ECSGameTimer m_duelControlTimer;
-        private int m_duelInterval;
         private bool m_isDuelRunning;
 
         private Point3D m_spawnPositionOne;
@@ -52,12 +51,19 @@ namespace DOL.GS.Scripts
                     else
                     {
                         MimicNPC mimic = MimicManager.GetMimic(MimicManager.GetRandomMimicClass(player.Realm), player.Level);
+
+                        if (mimic == null)
+                        {
+                            player.Out.SendMessage("Failed to spawn duel opponent.", eChatType.CT_System, eChatLoc.CL_PopupWindow);
+                            break;
+                        }
+
                         int xPos = X + Util.Random(-500, 500);
                         int yPos = Y + Util.Random(-500, 500);
                         int zPos = Z;
 
                         MimicManager.AddMimicToWorld(mimic, new Point3D(xPos, yPos, zPos), CurrentRegionID);
-                        mimic.Duel.Start();
+                        mimic.Duel?.Start();
                     }
                     break;
                 }
@@ -81,12 +87,24 @@ namespace DOL.GS.Scripts
                         m_mimicOne = MimicManager.GetMimic(MimicManager.GetRandomMeleeClass(), 50);
                         m_mimicTwo = MimicManager.GetMimic(MimicManager.GetRandomMeleeClass(), 50);
 
+                        if (m_mimicOne == null || m_mimicTwo == null)
+                        {
+                            player.Out.SendMessage("Failed to spawn duel mimics.", eChatType.CT_System, eChatLoc.CL_PopupWindow);
+                            m_mimicOne?.Delete();
+                            m_mimicTwo?.Delete();
+                            m_mimicOne = null;
+                            m_mimicTwo = null;
+                            break;
+                        }
+
                         MimicManager.AddMimicToWorld(m_mimicOne, m_spawnPositionOne, CurrentRegionID);
                         MimicManager.AddMimicToWorld(m_mimicTwo, m_spawnPositionTwo, CurrentRegionID);
 
                         m_mimicOne.MimicBrain.FSM.SetCurrentState(eFSMStateType.DUEL);
                         m_mimicTwo.MimicBrain.FSM.SetCurrentState(eFSMStateType.DUEL);
 
+                        // If a previous Watch left a stale timer alive, stop it first.
+                        m_duelControlTimer?.Stop();
                         m_duelControlTimer = new ECSGameTimer(this, new ECSGameTimer.ECSTimerCallback(StartDuelTimerCallback), 5000);
                     }
 
@@ -99,8 +117,13 @@ namespace DOL.GS.Scripts
 
         private int StartDuelTimerCallback(ECSGameTimer timer)
         {
-            if (!m_isDuelRunning && m_mimicOne != null && m_mimicOne.IsDuelReady
-                                 && m_mimicTwo != null && m_mimicTwo.IsDuelReady)
+            // Either mimic missing (e.g. previously deleted by GM, region unloaded)
+            // means the duel can't continue; stop the timer to avoid a tight loop
+            // of NullReferenceExceptions.
+            if (m_mimicOne == null || m_mimicTwo == null)
+                return 0;
+
+            if (!m_isDuelRunning && m_mimicOne.IsDuelReady && m_mimicTwo.IsDuelReady)
             {
                 m_isDuelRunning = true;
 
@@ -119,15 +142,10 @@ namespace DOL.GS.Scripts
 
                 GameDuel duel = new(m_mimicOne, m_mimicTwo);
                 duel.Start();
-
-                //m_mimicOne.MimicBrain.FSM.SetCurrentState(eFSMStateType.WAKING_UP);
-                //m_mimicTwo.MimicBrain.FSM.SetCurrentState(eFSMStateType.WAKING_UP);
             }
 
-            if (!(m_mimicOne.ObjectState == eObjectState.Active) || !(m_mimicTwo.ObjectState == eObjectState.Active))
-            {
+            if (m_mimicOne.ObjectState != eObjectState.Active || m_mimicTwo.ObjectState != eObjectState.Active)
                 ProgressDuel();
-            }
 
             return 5000;
         }
@@ -136,7 +154,21 @@ namespace DOL.GS.Scripts
         {
             m_isDuelRunning = false;
 
-            m_mimicOne = m_mimicOne.ObjectState == eObjectState.Active ? m_mimicOne : m_mimicTwo;
+            // Pick the survivor as fighter one; if both are dead/missing the
+            // arena is empty so we can't recover — bail out and let the timer
+            // re-fire to retry once GMs reset the NPC.
+            MimicNPC survivor = (m_mimicOne != null && m_mimicOne.ObjectState == eObjectState.Active)
+                ? m_mimicOne
+                : (m_mimicTwo != null && m_mimicTwo.ObjectState == eObjectState.Active ? m_mimicTwo : null);
+
+            if (survivor == null)
+            {
+                m_mimicOne = null;
+                m_mimicTwo = null;
+                return;
+            }
+
+            m_mimicOne = survivor;
             m_mimicOne.Health = m_mimicOne.MaxHealth;
             m_mimicOne.Mana = m_mimicOne.MaxMana;
             m_mimicOne.Endurance = m_mimicOne.MaxEndurance;
@@ -147,12 +179,14 @@ namespace DOL.GS.Scripts
             m_mimicOne.MoveTo(CurrentRegionID, m_spawnPositionOne.X, m_spawnPositionOne.Y, m_spawnPositionOne.Z, 0);
 
             m_mimicTwo = MimicManager.GetMimic(MimicManager.GetRandomMeleeClass(), 50);
+
+            if (m_mimicTwo == null)
+                return;
+
             MimicManager.AddMimicToWorld(m_mimicTwo, m_spawnPositionTwo, CurrentRegionID);
 
             m_mimicOne.MimicBrain.FSM.SetCurrentState(eFSMStateType.DUEL);
             m_mimicTwo.MimicBrain.FSM.SetCurrentState(eFSMStateType.DUEL);
-
-            //m_duelControlTimer = new ECSGameTimer(this, new ECSGameTimer.ECSTimerCallback(StartDuelTimerCallback), 5000);
         }
 
         public DuelMasterNPC()
@@ -216,11 +250,20 @@ namespace DOL.GS.Scripts
             if (!base.RemoveFromWorld())
                 return false;
 
+            // Stop the duel control loop so it doesn't keep ticking against
+            // a removed NPC and re-spawn mimics indefinitely.
+            m_duelControlTimer?.Stop();
+            m_duelControlTimer = null;
+
             if (m_mimicOne != null)
                 m_mimicOne.Delete();
 
             if (m_mimicTwo != null)
                 m_mimicTwo.Delete();
+
+            m_mimicOne = null;
+            m_mimicTwo = null;
+            m_isDuelRunning = false;
 
             return true;
         }

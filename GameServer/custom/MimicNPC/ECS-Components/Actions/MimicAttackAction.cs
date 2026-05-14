@@ -212,7 +212,11 @@ namespace DOL.GS
 
         public void HandleLosCheckResponse(GamePlayer player, LosCheckResponse response, ushort targetId)
         {
-            _losCheckTarget = _mimicOwner.CurrentRegion.GetObject(targetId);
+            // The LOS callback is async — by the time it arrives the mimic
+            // may have moved out of region or been deleted. Treat that as
+            // "no LOS" so the next tick re-checks instead of throwing.
+            Region region = _mimicOwner.CurrentRegion;
+            _losCheckTarget = region?.GetObject(targetId);
 
             if (_losCheckTarget == null || _losCheckTarget != _target)
                 _hasLos = false;
@@ -285,6 +289,12 @@ namespace DOL.GS
             {
                 // We normally rely on `AttackActon.CleanUp()` to stop this timer.
                 if (!_mimicOwner.attackComponent.AttackState || _mimicOwner.ObjectState is not eObjectState.Active)
+                    return 0;
+
+                // Owner of the LOS check (player or pet's player) may have
+                // disconnected since the timer was scheduled — bail rather
+                // than NRE.
+                if (_losChecker?.Out == null)
                     return 0;
 
                 _losChecker.Out.SendLosCheckRequest(_mimicOwner, _target, _attackAction);
