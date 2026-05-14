@@ -41,7 +41,6 @@ namespace DOL.GS.Scripts
             MimicNPC chosen = null;
             int bestDistSq = int.MaxValue;
 
-            // Prefer mimics owned by this player (account-scoped).
             string accountName = player.Client?.Account?.Name;
             if (!string.IsNullOrEmpty(accountName))
             {
@@ -64,7 +63,6 @@ namespace DOL.GS.Scripts
                 }
             }
 
-            // Fall back to any grouped mimic if no owned one is in range.
             if (chosen == null && player.Group != null)
             {
                 foreach (GameLiving gl in player.Group.GetMembersInTheGroup())
@@ -73,6 +71,30 @@ namespace DOL.GS.Scripts
                         && m.IsAlive
                         && m.ObjectState == GameObject.eObjectState.Active
                         && m.CurrentRegionID == player.CurrentRegionID)
+                    {
+                        int dx = m.X - player.X;
+                        int dy = m.Y - player.Y;
+                        int d2 = dx * dx + dy * dy;
+                        if (d2 < bestDistSq)
+                        {
+                            bestDistSq = d2;
+                            chosen = m;
+                        }
+                    }
+                }
+            }
+
+            // Last-resort: any MimicNPC in the player's visible radius. /mlfg
+            // is meant to work even before the player owns any mimic, so we
+            // grab a nearby one (LFG pool, frontier bot, etc.) just to give
+            // the client an NPC to /whisper to when brackets are clicked.
+            if (chosen == null)
+            {
+                foreach (GameNPC npc in player.GetNPCsInRadius(WorldMgr.VISIBILITY_DISTANCE))
+                {
+                    if (npc is MimicNPC m
+                        && m.IsAlive
+                        && m.ObjectState == GameObject.eObjectState.Active)
                     {
                         int dx = m.X - player.X;
                         int dy = m.Y - player.Y;
@@ -95,6 +117,7 @@ namespace DOL.GS.Scripts
             return chosen;
         }
 
+
         /// <summary>
         /// Sends a popup window with the menu body. Brackets containing a
         /// slash command (e.g. `[/mlfg 5]`) are auto-typed into the chat
@@ -107,16 +130,22 @@ namespace DOL.GS.Scripts
             if (player?.Out == null || string.IsNullOrEmpty(body))
                 return;
 
-            // If we have a mimic, also target it. Some DAoC clients require an
-            // NPC target to route bracket clicks as /whisper-to-target, which
-            // MimicNPC.WhisperReceive then forwards to ScriptMgr.HandleCommand.
+            // Target a mimic so bracket clicks (which become /say or
+            // /whisper-to-targeted-NPC on the client) have somewhere to route.
+            // MimicNPC.WhisperReceive then forwards `/cmd` whispers to the
+            // command pipeline. If no mimic is available we still send the
+            // popup as a textual reference.
             if (contextMimic != null && player.TargetObject != contextMimic)
             {
                 player.TargetObject = contextMimic;
                 player.Out.SendChangeTarget(contextMimic);
             }
 
-            player.Out.SendMessage(body, eChatType.CT_System, eChatLoc.CL_PopupWindow);
+            // CT_Say + CL_PopupWindow = same format as the right-click menu
+            // (MimicNPC.Interact). On a 1.127 client this is the ONLY chat
+            // combination where bracket text inside a popup is treated as a
+            // clickable /say-to-target link. CT_System brackets are inert.
+            player.Out.SendMessage(body, eChatType.CT_Say, eChatLoc.CL_PopupWindow);
         }
     }
 
@@ -752,7 +781,8 @@ namespace DOL.GS.Scripts
             int startIdx = (page - 1) * MAX_DISPLAYED;       // 0-based start
             int endIdx = Math.Min(startIdx + MAX_DISPLAYED, entries.Count);
 
-            sb.AppendLine($"Page {page} / {totalPages}  —  {entries.Count} mimics au total. Clique sur un lien pour recruter.");
+            sb.AppendLine($"Page {page} / {totalPages}  —  {entries.Count} mimics au total.");
+            sb.AppendLine("Clique sur un lien pour le taper, puis Entree pour recruter.");
             sb.AppendLine();
 
             for (int i = startIdx; i < endIdx; i++)
