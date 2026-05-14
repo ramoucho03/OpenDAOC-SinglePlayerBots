@@ -79,6 +79,7 @@ namespace DOL.GS.Scripts
         public List<Spell> BoltSpells { get; set; } = null;
 
         public MimicSpec MimicSpec = new MimicSpec();
+        public MimicCombatProfile CombatProfile { get; private set; }
         public int Kills;
 
         /// <summary>
@@ -108,6 +109,7 @@ namespace DOL.GS.Scripts
             MaxSpeedBase = PLAYER_BASE_SPEED;
 
             MimicSpec = MimicSpec.GetSpec(cClass, spec);
+            CombatProfile = MimicCombatProfileRegistry.Get(cClass, MimicSpec?.SpecType ?? spec);
             SetCharacterClass((int)cClass);
             SetRaceAndName();
             SetBrain(cClass);

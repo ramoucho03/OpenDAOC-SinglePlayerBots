@@ -15,9 +15,12 @@ namespace DOL.GS.Scripts
             _envenomSpellIDs = new List<int>();
         }
 
+        private bool UsesAssassinProfile => MimicBody?.CombatProfile?.HasRole(eMimicCombatRole.Assassin) == true;
+
         public override void OnLeaderAggro()
         {
-            Body.Stealth(true);
+            if (UsesAssassinProfile)
+                Body.Stealth(true);
         }
 
         public override void OnRefreshSpecDependantSkills()
@@ -29,12 +32,15 @@ namespace DOL.GS.Scripts
         {
             if (type == eCheckSpellType.Defensive)
             {
-                if (Body.Group == null || Body.Group.MimicGroup.CampPoint != null && !MimicBody.MimicBrain.IsMainPuller)
-                    Body.Stealth(true);
-                else
-                    Body.Stealth(false);
+                if (UsesAssassinProfile)
+                {
+                    if (Body.Group == null || Body.Group.MimicGroup.CampPoint != null && !MimicBody.MimicBrain.IsMainPuller)
+                        Body.Stealth(true);
+                    else
+                        Body.Stealth(false);
 
-                PoisonWeapons();
+                    PoisonWeapons();
+                }
 
                 return false;
             }
@@ -44,7 +50,7 @@ namespace DOL.GS.Scripts
 
         protected override bool CheckInstantOffensiveSpells(Spell spell)
         {
-            if (Body.IsStealthed)
+            if (UsesAssassinProfile && Body.IsStealthed)
                 return false;
 
             return base.CheckInstantOffensiveSpells(spell);

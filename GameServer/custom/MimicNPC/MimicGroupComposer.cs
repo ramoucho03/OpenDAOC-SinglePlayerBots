@@ -123,28 +123,19 @@ namespace DOL.GS.Scripts
         public static bool IsTankClass(MimicNPC m)
         {
             if (m == null) return false;
-            return (eMimicClass)m.CharacterClass.ID is
-                eMimicClass.Armsman or eMimicClass.Paladin or eMimicClass.Mercenary or
-                eMimicClass.Hero or eMimicClass.Champion or eMimicClass.Blademaster or
-                eMimicClass.Warrior or eMimicClass.Thane or eMimicClass.Berserker;
+            return m.CombatProfile?.HasRole(eMimicCombatRole.Tank) == true;
         }
 
         public static bool IsHealerClass(MimicNPC m)
         {
             if (m == null) return false;
-            return (eMimicClass)m.CharacterClass.ID is
-                eMimicClass.Cleric or eMimicClass.Friar or
-                eMimicClass.Druid or eMimicClass.Bard or eMimicClass.Warden or
-                eMimicClass.Healer or eMimicClass.Shaman;
+            return m.CombatProfile?.HasRole(eMimicCombatRole.Healer) == true;
         }
 
         public static bool IsCCClass(MimicNPC m)
         {
             if (m == null) return false;
-            return (eMimicClass)m.CharacterClass.ID is
-                eMimicClass.Sorcerer or eMimicClass.Minstrel or
-                eMimicClass.Bard or eMimicClass.Enchanter or eMimicClass.Mentalist or
-                eMimicClass.Runemaster or eMimicClass.Spiritmaster;
+            return m.CombatProfile?.HasRole(eMimicCombatRole.CrowdControl) == true;
         }
 
         /// <summary>

@@ -63,7 +63,18 @@ namespace DOL.GS
                     return s;
             }
 
-            // 4. Positional openers. Back > Side > Front. On the first swing
+            // 4. Shield control for assigned tanks. If Slam or another shield
+            // style is available, it is usually stronger than a generic weapon
+            // swing because it peels or stuns the target.
+            if (mimic.MimicBrain.IsMainTank && mimic.StylesShield != null && mimic.StylesShield.Count > 0)
+            {
+                Style s = GetBestStyle(mimic.StylesShield, lastAttackData, mimic);
+
+                if (s != null)
+                    return s;
+            }
+
+            // 5. Positional openers. Back > Side > Front. On the first swing
             //    (especially fresh out of stealth) we want the highest-damage
             //    style; later swings can use any usable one to keep DPS steady.
             if (mimic.StylesBack != null && mimic.StylesBack.Count > 0)
@@ -94,7 +105,7 @@ namespace DOL.GS
                     return s;
             }
 
-            // 5. Anytime styles. Score by DamageValue so the strongest is chosen
+            // 6. Anytime styles. Score by DamageValue so the strongest is chosen
             //    when we have the endurance for it, falling back to weaker ones.
             if (mimic.StylesAnytime != null && mimic.StylesAnytime.Count > 0)
             {

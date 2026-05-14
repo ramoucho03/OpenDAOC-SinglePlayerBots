@@ -1498,26 +1498,21 @@ namespace DOL.AI.Brain
         // peel for. Lower = more important to protect.
         private static int VulnerabilityTier(GameLiving gl)
         {
-            if (gl is not IGamePlayer ig)
+            MimicCombatProfile profile = MimicCombatProfileRegistry.GetForLiving(gl);
+            if (profile == null)
                 return 3;
 
-            switch ((eCharacterClass)ig.CharacterClass.ID)
-            {
-                // Pure healers — peel for them first.
-                case eCharacterClass.Cleric:
-                case eCharacterClass.Druid:
-                case eCharacterClass.Healer:
-                    return 0;
-                // Hybrid healers / casters with healing kits.
-                case eCharacterClass.Bard:
-                case eCharacterClass.Shaman:
-                case eCharacterClass.Friar:
-                case eCharacterClass.Warden:
-                    return 1;
-                default:
-                    // Pure casters next, then everyone else.
-                    return ig.CharacterClass.ClassType == eClassType.ListCaster ? 1 : 2;
-            }
+            if (profile.HasRole(eMimicCombatRole.Healer))
+                return 0;
+
+            if (profile.HasRole(eMimicCombatRole.CrowdControl)
+                || profile.HasRole(eMimicCombatRole.CasterDps)
+                || profile.HasRole(eMimicCombatRole.PetCaster)
+                || profile.HasRole(eMimicCombatRole.Support))
+                return 1;
+
+            return profile.HasRole(eMimicCombatRole.Tank) ? 3 : 2;
+
         }
 
         public bool CheckMainTankTarget()
@@ -2400,6 +2395,13 @@ namespace DOL.AI.Brain
         {
             MimicGroup mg = Body.Group?.MimicGroup;
 
+            if (PvPMode)
+            {
+                GameLiving pvpTarget = SelectProfileTargetFromAggroList(eMimicCombatMode.PvP);
+                if (pvpTarget != null)
+                    return pvpTarget;
+            }
+
             if (mg != null
                 && mg.MainAssist != null
                 && mg.MainAssist != Body
@@ -2412,32 +2414,126 @@ namespace DOL.AI.Brain
                     && assistTarget.ObjectState == GameObject.eObjectState.Active
                     && CanAggroTarget(assistTarget))
                 {
-                    // DPS hold-fire: if the tank exists and hasn't established aggro
-                    // on this target yet, wait. The bot is already targeting via the
-                    // aggro list (we kept it), but returning null here suppresses the
-                    // next attack/cast in AttackMostWanted. This prevents casters from
-                    // pulling aggro before the tank has the mob.
-                    if (mg.MainTank != null
-                        && mg.MainTank != Body
-                        && mg.MainTank.IsAlive
-                        && !TargetHasAggroOnTank(assistTarget, mg.MainTank))
+                    if (!ShouldAvoidCrowdControlledTarget(assistTarget, eMimicCombatMode.PvE, true))
                     {
-                        // Still record interest so we'll engage as soon as tank locks in.
+                        // DPS hold-fire: if the tank exists and hasn't established aggro
+                        // on this target yet, wait. The bot is already targeting via the
+                        // aggro list (we kept it), but returning null here suppresses the
+                        // next attack/cast in AttackMostWanted. This prevents casters from
+                        // pulling aggro before the tank has the mob.
+                        if (mg.MainTank != null
+                            && mg.MainTank != Body
+                            && mg.MainTank.IsAlive
+                            && !TargetHasAggroOnTank(assistTarget, mg.MainTank))
+                        {
+                            // Still record interest so we'll engage as soon as tank locks in.
+                            if (!AggroList.ContainsKey(assistTarget))
+                                AddToAggroList(assistTarget, 1);
+
+                            return null;
+                        }
+
+                        // Keep the target in our aggro list so threat tracking stays consistent.
                         if (!AggroList.ContainsKey(assistTarget))
                             AddToAggroList(assistTarget, 1);
 
-                        return null;
+                        return assistTarget;
                     }
-
-                    // Keep the target in our aggro list so threat tracking stays consistent.
-                    if (!AggroList.ContainsKey(assistTarget))
-                        AddToAggroList(assistTarget, 1);
-
-                    return assistTarget;
                 }
             }
 
-            return CleanUpAggroListAndGetHighestModifiedThreat();
+            GameLiving profileTarget = SelectProfileTargetFromAggroList(eMimicCombatMode.PvE);
+            if (profileTarget != null)
+                return profileTarget;
+
+            GameLiving fallback = CleanUpAggroListAndGetHighestModifiedThreat();
+            if (ShouldAvoidCrowdControlledTarget(fallback, eMimicCombatMode.PvE, false))
+                return null;
+
+            return fallback;
+        }
+
+        private GameLiving SelectProfileTargetFromAggroList(eMimicCombatMode mode)
+        {
+            MimicCombatProfile profile = MimicBody?.CombatProfile;
+            if (profile == null || AggroList.Count == 0)
+                return null;
+
+            GameLiving focus = Body.Group?.MimicGroup?.MainAssist?.TargetObject as GameLiving;
+            GameLiving best = null;
+            int bestScore = int.MaxValue;
+
+            foreach (var pair in AggroList)
+            {
+                GameLiving candidate = pair.Key;
+
+                if (candidate == null
+                    || !candidate.IsAlive
+                    || candidate.ObjectState != GameObject.eObjectState.Active)
+                    continue;
+
+                if (ShouldBeRemovedFromAggroList(candidate) || ShouldBeIgnoredFromAggroList(candidate))
+                    continue;
+
+                if (!CanAggroTarget(candidate))
+                    continue;
+
+                bool isFocus = candidate == focus;
+                if (ShouldAvoidCrowdControlledTarget(candidate, mode, isFocus))
+                    continue;
+
+                bool attackingSelf = candidate.TargetObject == Body;
+                bool attackingProtected = IsAttackingProtectedMember(candidate);
+                bool lowHealth = candidate.HealthPercent <= 35;
+                MimicCombatProfile targetProfile = MimicCombatProfileRegistry.GetForLiving(candidate);
+
+                int score = profile.ScoreTarget(
+                    targetProfile,
+                    mode,
+                    isFocus,
+                    attackingSelf,
+                    attackingProtected,
+                    lowHealth,
+                    candidate.IsCrowdControlled,
+                    Body.GetDistanceTo(candidate));
+
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    best = candidate;
+                }
+            }
+
+            return best;
+        }
+
+        private bool IsAttackingProtectedMember(GameLiving hostile)
+        {
+            if (hostile?.TargetObject is not GameLiving target || target == Body)
+                return false;
+
+            if (Body.Group == null || !Body.Group.IsInTheGroup(target))
+                return false;
+
+            return VulnerabilityTier(target) <= 1;
+        }
+
+        private bool ShouldAvoidCrowdControlledTarget(GameLiving target, eMimicCombatMode mode, bool isFocusTarget)
+        {
+            if (target == null || !target.IsCrowdControlled)
+                return false;
+
+            if (IsMainCC)
+                return false;
+
+            MimicGroup mg = Body.Group?.MimicGroup;
+            if (isFocusTarget && mg?.MainTank != null && TargetHasAggroOnTank(target, mg.MainTank))
+                return false;
+
+            if (IsMainTank && target.TargetObject == Body)
+                return false;
+
+            return true;
         }
 
         /// <summary>
@@ -2775,6 +2871,7 @@ namespace DOL.AI.Brain
 
             bool casted = false;
             List<Spell> spellsToCast = new();
+            MimicCombatProfile combatProfile = MimicBody?.CombatProfile;
 
             // Healers should heal whether in combat or out of it.
             if (CheckHeals())
@@ -2815,11 +2912,23 @@ namespace DOL.AI.Brain
                         // non-mezzed hostiles are inside its radius around ccTarget.
                         // CountAoeHostiles vetoes (returns -1) if a mezzed mob is in
                         // the splash, so we won't re-mez and break our own CC.
-                        Spell spell = spellsToCast.FirstOrDefault(
-                            s => s.Radius > 0 && CountAoeHostiles(s, ccTarget) >= MIN_AOE_CLUSTER_HOSTILES);
+                        Spell spell = spellsToCast.FirstOrDefault(s =>
+                        {
+                            if (s.Radius <= 0)
+                                return false;
+
+                            int hostiles = CountAoeHostiles(s, ccTarget);
+                            return combatProfile?.ShouldUseAoe(hostiles, hostiles < 0, true) == true;
+                        });
 
                         if (spell == null)
-                            spell = spellsToCast[Util.Random(spellsToCast.Count - 1)];
+                        {
+                            List<Spell> singleTargetCrowdControl = spellsToCast.Where(s => s.Radius <= 0).ToList();
+                            if (singleTargetCrowdControl.Count == 0)
+                                return false;
+
+                            spell = singleTargetCrowdControl[Util.Random(singleTargetCrowdControl.Count - 1)];
+                        }
 
                         casted = Body.CastSpell(spell, MimicBody.GetSpellLineForSpell(spell));
 
@@ -2855,6 +2964,9 @@ namespace DOL.AI.Brain
             }
             else if (!casted && type == eCheckSpellType.Offensive)
             {
+                if (IsHealer && combatProfile?.HasRole(eMimicCombatRole.Healer) == true)
+                    return false;
+
                 // ----------------------------------------------------------------
                 // Generic mana throttle.
                 // Below 20% mana, all caster archetypes stop nuking entirely so the
@@ -2863,14 +2975,9 @@ namespace DOL.AI.Brain
                 // The previous hard-coded Cleric-only check is now subsumed by this
                 // generic rule.
                 // ----------------------------------------------------------------
-                if (MimicBody.CharacterClass.ClassType == eClassType.ListCaster
-                    || MimicBody.CharacterClass.ID == (int)eCharacterClass.Cleric
-                    || MimicBody.CharacterClass.ID == (int)eCharacterClass.Friar
-                    || MimicBody.CharacterClass.ID == (int)eCharacterClass.Druid
-                    || MimicBody.CharacterClass.ID == (int)eCharacterClass.Bard
-                    || MimicBody.CharacterClass.ID == (int)eCharacterClass.Warden
-                    || MimicBody.CharacterClass.ID == (int)eCharacterClass.Healer
-                    || MimicBody.CharacterClass.ID == (int)eCharacterClass.Shaman)
+                if (combatProfile?.PrefersCasting == true
+                    || combatProfile?.HasRole(eMimicCombatRole.Healer) == true
+                    || combatProfile?.HasRole(eMimicCombatRole.Support) == true)
                 {
                     if (Body.ManaPercent < 20)
                         return false;
@@ -2904,7 +3011,9 @@ namespace DOL.AI.Brain
 
                 // TODO: This makes Thane and Valewalker use melee when in range rather than cast in all situations.
                 //        but still use instants. Need to include other exceptions like maybe low health or endurance.
-                if ((MimicBody.CanUsePositionalStyles || MimicBody.CanUseAnytimeStyles) && (Body.IsWithinRadius(Body.TargetObject, 550) || Body.ManaPercent <= 10))
+                if (combatProfile?.PrefersMelee == true
+                    && (MimicBody.CanUsePositionalStyles || MimicBody.CanUseAnytimeStyles)
+                    && (Body.IsWithinRadius(Body.TargetObject, 550) || Body.ManaPercent <= 10))
                     return false;
 
                 if (MimicBody.CanCastCrowdControlSpells)
@@ -2962,6 +3071,11 @@ namespace DOL.AI.Brain
                             if (!CanCastOffensiveSpell(spell))
                                 continue;
 
+                            if (spell.Radius > 0
+                                && combatProfile != null
+                                && !combatProfile.ShouldUseAoe(combatProfile.DamageAoeMinTargets, false, false))
+                                continue;
+
                             // Skip debuffs / DoTs already applied on the target. We
                             // would just refresh-stomp our own effect for no gain.
                             if (liveTarget != null && spell.Duration > 0 && LivingHasEffect(liveTarget, spell))
@@ -2995,7 +3109,7 @@ namespace DOL.AI.Brain
 
                             int hostiles = CountAoeHostiles(s, castTarget);
 
-                            if (hostiles >= MIN_AOE_CLUSTER_HOSTILES)
+                            if (combatProfile?.ShouldUseAoe(hostiles, hostiles < 0, false) == true)
                             {
                                 clusteredAoe ??= new HashSet<Spell>();
                                 clusteredAoe.Add(s);
@@ -3207,32 +3321,12 @@ namespace DOL.AI.Brain
                 return null;
 
             GameLiving focus = Body.Group?.MimicGroup?.MainAssist?.TargetObject as GameLiving;
-
-            int Tier(GameLiving gl)
-            {
-                if (gl is not IGamePlayer ig)
-                    return 3;
-                switch ((eCharacterClass)ig.CharacterClass.ID)
-                {
-                    // Healers — highest priority. Mezzing a healer cripples the
-                    // enemy group's sustain and gives our DPS a clean kill window.
-                    case eCharacterClass.Cleric:
-                    case eCharacterClass.Druid:
-                    case eCharacterClass.Healer:
-                    case eCharacterClass.Bard:
-                    case eCharacterClass.Friar:
-                    case eCharacterClass.Shaman:
-                    case eCharacterClass.Warden:
-                        return 0;
-                    default:
-                        // Pure casters next: their cast times mean a mez lands and
-                        // they are usually the second-most-painful loss.
-                        return ig.CharacterClass.ClassType == eClassType.ListCaster ? 1 : 2;
-                }
-            }
+            MimicCombatProfile ccProfile = MimicBody.CombatProfile;
+            if (ccProfile == null)
+                return null;
 
             GameLiving best = null;
-            int bestTier = int.MaxValue;
+            int bestScore = int.MaxValue;
             int bestDist = int.MaxValue;
 
             foreach (GamePlayer player in Body.GetPlayersInRadius((ushort)bestRange))
@@ -3246,13 +3340,21 @@ namespace DOL.AI.Brain
                 if (player == focus)
                     continue;
 
-                int tier = Tier(player);
                 int dist = Body.GetDistanceTo(player);
+                int score = ccProfile.ScoreTarget(
+                    MimicCombatProfileRegistry.GetForLiving(player),
+                    eMimicCombatMode.PvP,
+                    player == focus,
+                    player.TargetObject == Body,
+                    IsAttackingProtectedMember(player),
+                    player.HealthPercent <= 35,
+                    player.IsCrowdControlled,
+                    dist);
 
-                if (tier < bestTier || (tier == bestTier && dist < bestDist))
+                if (score < bestScore || (score == bestScore && dist < bestDist))
                 {
                     best = player;
-                    bestTier = tier;
+                    bestScore = score;
                     bestDist = dist;
                 }
             }
@@ -3269,13 +3371,21 @@ namespace DOL.AI.Brain
                 if (mimic == focus)
                     continue;
 
-                int tier = Tier(mimic);
                 int dist = Body.GetDistanceTo(mimic);
+                int score = ccProfile.ScoreTarget(
+                    MimicCombatProfileRegistry.GetForLiving(mimic),
+                    eMimicCombatMode.PvP,
+                    mimic == focus,
+                    mimic.TargetObject == Body,
+                    IsAttackingProtectedMember(mimic),
+                    mimic.HealthPercent <= 35,
+                    mimic.IsCrowdControlled,
+                    dist);
 
-                if (tier < bestTier || (tier == bestTier && dist < bestDist))
+                if (score < bestScore || (score == bestScore && dist < bestDist))
                 {
                     best = mimic;
-                    bestTier = tier;
+                    bestScore = score;
                     bestDist = dist;
                 }
             }
@@ -4476,8 +4586,19 @@ namespace DOL.AI.Brain
                 case eSpellType.Mez:
                 case eSpellType.Mesmerize:
 
+                if (Body.TargetObject is not GameLiving instantTarget)
+                    break;
+
                 if (spell.IsPBAoE && !Body.IsWithinRadius(Body.TargetObject, spell.Radius))
                     break;
+
+                if (spell.Radius > 0)
+                {
+                    int hostiles = CountAoeHostiles(spell, instantTarget);
+                    bool crowdControlSpell = spell.SpellType is eSpellType.Stun or eSpellType.Mez or eSpellType.Mesmerize;
+                    if (MimicBody?.CombatProfile?.ShouldUseAoe(hostiles, hostiles < 0, crowdControlSpell) != true)
+                        break;
+                }
 
                 // Try to limit the debuffs cast to save mana and time spent doing so.
                 if (MimicBody.CharacterClass.ClassType == eClassType.ListCaster)
@@ -4486,7 +4607,7 @@ namespace DOL.AI.Brain
                         break;
                 }
 
-                if (!LivingHasEffect((GameLiving)Body.TargetObject, spell) && Body.IsWithinRadius(Body.TargetObject, spell.Range))
+                if (!LivingHasEffect(instantTarget, spell) && Body.IsWithinRadius(Body.TargetObject, spell.Range))
                     castSpell = true;
 
                 break;

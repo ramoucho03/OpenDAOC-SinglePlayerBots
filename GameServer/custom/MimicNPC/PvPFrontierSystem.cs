@@ -460,20 +460,14 @@ namespace DOL.GS.Scripts
         // Classify a class by enum so we never have to instantiate a MimicNPC
         // just to ask "is it a tank?". Mirrors MimicGroupComposer.Is*Class which
         // takes a MimicNPC instance.
-        private static bool IsTankClassEnum(eMimicClass c) => c is
-            eMimicClass.Armsman or eMimicClass.Paladin or eMimicClass.Mercenary or
-            eMimicClass.Hero or eMimicClass.Champion or eMimicClass.Blademaster or
-            eMimicClass.Warrior or eMimicClass.Thane or eMimicClass.Berserker;
+        private static bool IsTankClassEnum(eMimicClass c) =>
+            MimicCombatProfileRegistry.HasRole(c, eMimicCombatRole.Tank);
 
-        private static bool IsHealerClassEnum(eMimicClass c) => c is
-            eMimicClass.Cleric or eMimicClass.Friar or
-            eMimicClass.Druid or eMimicClass.Bard or eMimicClass.Warden or
-            eMimicClass.Healer or eMimicClass.Shaman;
+        private static bool IsHealerClassEnum(eMimicClass c) =>
+            MimicCombatProfileRegistry.HasRole(c, eMimicCombatRole.Healer);
 
-        private static bool IsCCClassEnum(eMimicClass c) => c is
-            eMimicClass.Sorcerer or eMimicClass.Minstrel or
-            eMimicClass.Bard or eMimicClass.Enchanter or eMimicClass.Mentalist or
-            eMimicClass.Runemaster or eMimicClass.Spiritmaster;
+        private static bool IsCCClassEnum(eMimicClass c) =>
+            MimicCombatProfileRegistry.HasRole(c, eMimicCombatRole.CrowdControl);
 
         public int DisbandAndDelete()
         {

@@ -11,10 +11,14 @@ namespace DOL.GS.Scripts
         public ArcherBrain()
         { }
 
+        private bool UsesArcherProfile => MimicBody?.CombatProfile?.HasRole(eMimicCombatRole.Archer) == true;
+
         public override void OnLeaderAggro()
         {
             Body.Stealth(true);
-            TryArmCriticalShotFromStealth();
+
+            if (UsesArcherProfile)
+                TryArmCriticalShotFromStealth();
         }
 
         public override void OnEnterAggro()
@@ -22,7 +26,9 @@ namespace DOL.GS.Scripts
             // First arrow of the engagement: prime Critical Shot if we are
             // stealthed and the ability is off cooldown. The next ranged
             // attack will fire as a critical shot for massive opener damage.
-            TryArmCriticalShotFromStealth();
+            if (UsesArcherProfile)
+                TryArmCriticalShotFromStealth();
+
             base.OnEnterAggro();
         }
 
@@ -49,7 +55,7 @@ namespace DOL.GS.Scripts
 
         protected override bool CheckInstantOffensiveSpells(Spell spell)
         {
-            if (Body.IsStealthed)
+            if (UsesArcherProfile && Body.IsStealthed)
                 return false;
 
             return base.CheckInstantOffensiveSpells(spell);

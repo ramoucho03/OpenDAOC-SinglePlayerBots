@@ -743,9 +743,17 @@ namespace DOL.GS.Scripts
         }
 
         // Cap the rendered list to stay under the 2048-byte popup packet limit.
-        // Each line is ~45 chars and header/footer ~180; 40 entries leaves a
-        // small safety margin for slightly longer class names.
+        // The previous 30-entry × 54-char layout left a lot of headroom; the
+        // tightened layout below (truncated Name+Class columns, "L{lvl}"
+        // instead of "lvl {lvl}") fits 40 entries with margin for the longest
+        // class names (Spiritmaster, Necromancer, …).
         private const int MAX_DISPLAYED = 40;
+
+        // Truncation widths chosen so the worst-case line fits ~42 chars:
+        //   2sp + "[lfg40]"(7) + 2sp + Name(12) + 1sp + Class(11) + 1sp + "L50"(3) + CRLF(2)
+        //   = 41 chars, ×40 = 1640 + header/nav ~200 = ~1840 bytes.
+        private const int LFG_NAME_WIDTH = 12;
+        private const int LFG_CLASS_WIDTH = 11;
 
         private string BuildMessage(IReadOnlyList<MimicLFGManager.MimicLFGEntry> entries, int page, bool invalid = false)
         {
@@ -776,19 +784,27 @@ namespace DOL.GS.Scripts
             int startIdx = (page - 1) * MAX_DISPLAYED;       // 0-based start
             int endIdx = Math.Min(startIdx + MAX_DISPLAYED, entries.Count);
 
-            sb.AppendLine($"Page {page} / {totalPages}  —  {entries.Count} mimics au total.");
-            sb.AppendLine("Clique [lfgN] pour recruter (ex: [lfg5]) ou tape /m N.");
+            sb.AppendLine($"Page {page}/{totalPages} - {entries.Count} mimics.");
+            sb.AppendLine("Clique [lfgN] ou tape /m N.");
             sb.AppendLine();
 
             for (int i = startIdx; i < endIdx; i++)
             {
                 var entry = entries[i];
-                string cls = Enum.GetName(typeof(eMimicClass), entry.MimicClass);
+                string cls = Enum.GetName(typeof(eMimicClass), entry.MimicClass) ?? "?";
+                if (cls.Length > LFG_CLASS_WIDTH)
+                    cls = cls.Substring(0, LFG_CLASS_WIDTH);
+                string name = entry.Name ?? "?";
+                if (name.Length > LFG_NAME_WIDTH)
+                    name = name.Substring(0, LFG_NAME_WIDTH);
                 int displayIndex = i + 1; // 1-based, global across pages
                 // Single-word bracket. When clicked the 1.127 client sends a
                 // /whisper "lfg<N>" to the currently targeted mimic; the
                 // MimicNPC.WhisperReceive dispatcher then runs /mlfg <N>.
-                sb.AppendLine($"  [lfg{displayIndex}]  {entry.Name,-20} {cls,-14} lvl {entry.Level}");
+                sb.Append("  [lfg").Append(displayIndex).Append("]  ")
+                  .Append(name.PadRight(LFG_NAME_WIDTH)).Append(' ')
+                  .Append(cls.PadRight(LFG_CLASS_WIDTH)).Append(" L")
+                  .Append(entry.Level).Append('\n');
             }
 
             if (totalPages > 1)
@@ -796,9 +812,9 @@ namespace DOL.GS.Scripts
                 sb.AppendLine();
                 System.Text.StringBuilder nav = new();
                 if (page > 1)
-                    nav.Append($"[lfgp{page - 1}]  <- Precedent    ");
+                    nav.Append($"[lfgp{page - 1}] <-  ");
                 if (page < totalPages)
-                    nav.Append($"[lfgp{page + 1}]  Suivant ->");
+                    nav.Append($"[lfgp{page + 1}] ->");
                 sb.AppendLine(nav.ToString());
             }
 
