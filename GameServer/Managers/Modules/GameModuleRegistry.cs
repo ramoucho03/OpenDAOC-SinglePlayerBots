@@ -253,8 +253,9 @@ namespace DOL.GS.Modules
 
             if (ordered.Count != modules.Count)
             {
+                List<IGameModule> orderedSnapshot = ordered;
                 IEnumerable<string> cycleNames = modules
-                    .Where(m => !ordered.Contains(m))
+                    .Where(m => !orderedSnapshot.Contains(m))
                     .Select(m => m.Name);
                 error = $"dependency cycle involving: {string.Join(", ", cycleNames)}";
                 return false;
