@@ -783,10 +783,10 @@ namespace DOL.GS.Scripts
                                                                        DB.Column("Object_Type").IsEqualTo((int)weapType).And(
                                                                        DB.Column("Realm").IsEqualTo((int)player.Realm)).And(
                                                                        DB.Column("IsPickable").IsEqualTo(1)))));
+            List<DbItemTemplate> itemsToKeep = new List<DbItemTemplate>();
+
             if (itemList.Count != 0)
             {
-                List<DbItemTemplate> itemsToKeep = new List<DbItemTemplate>();
-
                 foreach (DbItemTemplate item in itemList)
                 {
                     bool shouldAddItem = false;
@@ -817,10 +817,32 @@ namespace DOL.GS.Scripts
                 {
                     DbItemTemplate itemTemplate = itemsToKeep[Util.Random(itemsToKeep.Count - 1)];
                     AddItem(player, itemTemplate, hand);
+                    return;
                 }
             }
-            else
-                log.Info("No melee weapon found for " + player.Name);
+
+            // ROG fallback: no DB-templated weapon matched the realm + class
+            // + level window. Without this the bot would spawn unarmed and
+            // CheckPuller / AttackAction would silently no-op forever. Roll
+            // a Generated Unique item in the right slot so the bot at least
+            // has SOMETHING to swing. Log a warn so operators notice their
+            // weapon table needs filling.
+            if (log.IsWarnEnabled)
+                log.Warn($"No melee weapon found in DB for {player.Name} ({weapType}/{hand} L{player.Level}/{player.Realm}); generating ROG fallback");
+
+            eInventorySlot fallbackSlot = hand switch
+            {
+                eHand.twoHand => eInventorySlot.TwoHandWeapon,
+                eHand.leftHand => eInventorySlot.LeftHandWeapon,
+                _ => eInventorySlot.RightHandWeapon,
+            };
+            SetWeaponROG((GameLiving)player,
+                player.Realm,
+                (eCharacterClass)player.CharacterClass.ID,
+                (byte)player.Level,
+                weapType,
+                fallbackSlot,
+                (eDamageType)(byte)damageType);
         }
 
         public static void SetRangedWeapon(IGamePlayer player, eObjectType weapType)
@@ -843,8 +865,20 @@ namespace DOL.GS.Scripts
 
                 return;
             }
-            else
-                log.Info("No Ranged weapon found for " + player.Name);
+
+            // ROG fallback for ranged: archer bots (Scout / Ranger / Hunter)
+            // without a bow simply can't pull, which kills the whole camp
+            // pipeline. Same Generated Unique fallback path as melee above.
+            if (log.IsWarnEnabled)
+                log.Warn($"No ranged weapon found in DB for {player.Name} ({weapType} L{player.Level}/{player.Realm}); generating ROG fallback");
+
+            SetWeaponROG((GameLiving)player,
+                player.Realm,
+                (eCharacterClass)player.CharacterClass.ID,
+                (byte)player.Level,
+                weapType,
+                eInventorySlot.DistanceWeapon,
+                eDamageType.Slash);
         }
 
         public static void SetShield(IGamePlayer player, int shieldSize)

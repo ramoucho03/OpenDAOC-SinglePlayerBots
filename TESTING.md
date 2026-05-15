@@ -149,9 +149,10 @@ Set a bot as MainLeader explicitly (`/mrole leader`), then engage a pack.
 ## 10. Strategy live-toggle
 
 - [ ] `/mstrategy list` on a bot prints all active strategies.
-- [ ] `/mstrategy disable awareness` — that bot stops the self-callouts (low HP / low mana lines).
-- [ ] `/mstrategy enable awareness` — they come back.
-- [ ] `/mstrategy disable healer` on a bot Cleric — it stops casting heals but doesn't crash (FSM legacy CheckHeals takes over from the next FSM Think onward).
+- [ ] `/mstrategy remove awareness` — that bot stops the self-callouts (low HP / low mana lines).
+- [ ] `/mstrategy add awareness` — they come back.
+- [ ] `/mstrategy remove healer` on a bot Cleric — it stops casting heals but doesn't crash (FSM legacy CheckHeals takes over from the next FSM Think onward).
+- [ ] `/mstrategy clear` — strips every active strategy on the targeted bot (or every grouped bot if no target).
 
 ---
 

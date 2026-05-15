@@ -131,7 +131,7 @@ Bots are **MimicNPC** instances: they have a player class, real specs, a real in
 |---|---|
 | `/mpvp <true\|false>` | When true, bot ignores mobs until you're attacked |
 | `/mpc <true\|false> [group]` | Force a bot (or group) into passive / non-aggro mode |
-| `/mstrategy list\|enable\|disable <key>` | Live-toggle strategy modules on a targeted bot |
+| `/mstrategy list\|add\|remove\|clear <key>` | Live-toggle strategy modules on a targeted bot |
 
 ### Battlegrounds
 
@@ -190,7 +190,7 @@ bot_ai_v2_caster_dps_classes
 bot_ai_v2_cc_classes
 ```
 
-Live-toggle strategies with `/mstrategy list`, `/mstrategy enable healer`, `/mstrategy disable awareness`. The trigger / action / strategy contracts live under [`GameServer/custom/MimicNPC/ai/Strategies/`](GameServer/custom/MimicNPC/ai/Strategies/). Third parties register strategies via `BotStrategyRegistry.Register`.
+Live-toggle strategies with `/mstrategy list`, `/mstrategy add healer`, `/mstrategy remove awareness`, `/mstrategy clear`. The trigger / action / strategy contracts live under [`GameServer/custom/MimicNPC/ai/Strategies/`](GameServer/custom/MimicNPC/ai/Strategies/). Third parties register strategies via `BotStrategyRegistry.Register`.
 
 ## Sprint and follow
 
@@ -417,7 +417,7 @@ Les bots sont des `MimicNPC` : ils ont une classe joueur, des vraies specs, un i
 |---|---|
 | `/mpvp <true\|false>` | Si true, le bot ignore les mobs jusqu'à ce qu'on t'attaque |
 | `/mpc <true\|false> [group]` | Force le bot (ou groupe) en mode passif / non-aggro |
-| `/mstrategy list\|enable\|disable <clé>` | Toggle live des stratégies sur le bot ciblé |
+| `/mstrategy list\|add\|remove\|clear <clé>` | Toggle live des stratégies sur le bot ciblé |
 
 ### Battlegrounds
 
@@ -476,7 +476,7 @@ bot_ai_v2_caster_dps_classes
 bot_ai_v2_cc_classes
 ```
 
-Toggle live avec `/mstrategy list`, `/mstrategy enable healer`, `/mstrategy disable awareness`. Les contrats trigger/action/strategy vivent sous [`GameServer/custom/MimicNPC/ai/Strategies/`](GameServer/custom/MimicNPC/ai/Strategies/). Les modules tiers s'enregistrent via `BotStrategyRegistry.Register`.
+Toggle live avec `/mstrategy list`, `/mstrategy add healer`, `/mstrategy remove awareness`, `/mstrategy clear`. Les contrats trigger/action/strategy vivent sous [`GameServer/custom/MimicNPC/ai/Strategies/`](GameServer/custom/MimicNPC/ai/Strategies/). Les modules tiers s'enregistrent via `BotStrategyRegistry.Register`.
 
 ## Sprint et follow
 
