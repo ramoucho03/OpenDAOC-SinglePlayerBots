@@ -73,19 +73,35 @@ namespace DOL.GS.Economy
         public static bool ECONOMY_VERBOSE_LOG;
 
         // ---- Bot-buys-from-player: gives the solo player an actual market to sell into.
-        // Bots periodically scan player consignment listings and buy any priced within
-        // a fair band of the market value. Player decides the price; bots filter out
-        // overpriced items, but pay the player's full asking price when within band.
-        [ServerProperty("economy", "economy_bot_buys_from_players", "If true, bots periodically purchase fairly-priced player consignment listings.", true)]
+        // Time-to-sale is a continuous function of how the player priced the item against
+        // the deterministic market value, so cheap items move fast, fair items move within
+        // hours-to-days, and overpriced items linger or never sell. See EconomyPricing.
+        [ServerProperty("economy", "economy_bot_buys_from_players", "If true, bots periodically purchase player consignment listings using the dynamic price/time curve.", true)]
         public static bool ECONOMY_BOT_BUYS_FROM_PLAYERS;
 
-        [ServerProperty("economy", "economy_max_overprice_percent", "Maximum percent of the computed market value a player listing can have to be eligible for bot purchase. 130 = up to 30% above market.", 130)]
-        public static int ECONOMY_MAX_OVERPRICE_PERCENT;
+        [ServerProperty("economy", "economy_fair_price_base_hours", "Mean hours to sale when a listing is priced exactly at market value. Lower = faster economy.", 12)]
+        public static int ECONOMY_FAIR_PRICE_BASE_HOURS;
 
-        [ServerProperty("economy", "economy_player_purchase_chance_per_hour_percent", "Per-hour percent chance each eligible player listing is bought by a bot. 50 = a fairly-priced item has ~50%/hour of being sold.", 50)]
-        public static int ECONOMY_PLAYER_PURCHASE_CHANCE_PER_HOUR_PERCENT;
+        [ServerProperty("economy", "economy_price_elasticity_x100", "Price-elasticity exponent x100. 450 means T_sale = base * ratio^4.5. Higher = steeper penalty for overpricing.", 450)]
+        public static int ECONOMY_PRICE_ELASTICITY_X100;
+
+        [ServerProperty("economy", "economy_hard_max_overprice_percent", "Hard ceiling: listings priced above this percent of market value are never bought. 300 = up to 3x market.", 300)]
+        public static int ECONOMY_HARD_MAX_OVERPRICE_PERCENT;
 
         [ServerProperty("economy", "economy_player_purchase_max_per_tick", "Hard cap on bot purchases of player listings per tick, to prevent burst gold faucets.", 5)]
         public static int ECONOMY_PLAYER_PURCHASE_MAX_PER_TICK;
+
+        [ServerProperty("economy", "economy_player_listings_cache_seconds", "TTL of the cached player-listings scan, used by the bot purchase loop to avoid scanning the entire market every tick.", 300)]
+        public static int ECONOMY_PLAYER_LISTINGS_CACHE_SECONDS;
+
+        // ---- Persistence: store bot listings to DB so a server restart loads them from
+        // the existing MarketCache instead of regenerating ~10k items. Mutations are
+        // batched and flushed asynchronously, so the DB sees a few rows of churn per
+        // minute instead of per-rotation thrash.
+        [ServerProperty("economy", "economy_persist", "If true, persist bot listings to the Inventory table so they survive server restarts.", true)]
+        public static bool ECONOMY_PERSIST;
+
+        [ServerProperty("economy", "economy_db_flush_seconds", "Period between batched DB flushes for bot listings (seconds).", 30)]
+        public static int ECONOMY_DB_FLUSH_SECONDS;
     }
 }

@@ -27,6 +27,12 @@ namespace DOL.GS.Economy
         private readonly List<int> _occupied = new(SLOT_COUNT);
         private int _nextFreeHint;
 
+        // Pending DB mutations, flushed asynchronously in batches by EconomyManager.
+        // Cancel-out: an item added then popped before the next flush is removed from
+        // _pendingAdds instead of being added to _pendingDeletes, so the DB never sees it.
+        private readonly List<DbInventoryItem> _pendingAdds = new();
+        private readonly List<DbInventoryItem> _pendingDeletes = new();
+
         private readonly string _ownerId;
         private readonly int _houseNumber;
         private readonly eRealm _realm;
@@ -102,7 +108,43 @@ namespace DOL.GS.Economy
                 _nextFreeHint = idx + 1;
 
                 // Inside the lock: MarketCache must agree with _items at all times.
-                return MarketCache.AddItem(item);
+                if (!MarketCache.AddItem(item))
+                {
+                    _items[idx] = null;
+                    _occupied.RemoveAt(_occupied.Count - 1);
+                    return false;
+                }
+
+                if (EconomyConfig.ECONOMY_PERSIST)
+                    _pendingAdds.Add(item);
+
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// Re-attach an item already loaded from the DB into this merchant's slot map.
+        /// Used at startup when the MarketCache already contains our persisted listings.
+        /// The item is NOT enqueued for save and is NOT re-added to MarketCache (it's
+        /// already there). Returns false on slot conflict (which would mean DB corruption).
+        /// </summary>
+        public bool AttachExistingListing(DbInventoryItem item)
+        {
+            if (item == null) return false;
+            int idx = item.SlotPosition - FirstDbSlot;
+            if ((uint) idx >= SLOT_COUNT)
+                return false;
+
+            lock (_itemsLock)
+            {
+                if (_items[idx] != null)
+                    return false;
+                _items[idx] = item;
+                _occupied.Add(idx);
+                // Reset to 0: subsequent TryAddListing will find the lowest free slot via
+                // its wrap-around scan. Cheaper than incrementally tracking on reload.
+                _nextFreeHint = 0;
+                return true;
             }
         }
 
@@ -131,7 +173,10 @@ namespace DOL.GS.Economy
                     _nextFreeHint = idx;
 
                 if (item != null)
+                {
                     MarketCache.RemoveItem(item);
+                    EnqueueDeleteLocked(item);
+                }
 
                 return item;
             }
@@ -151,12 +196,54 @@ namespace DOL.GS.Economy
                     DbInventoryItem item = _items[idx];
                     _items[idx] = null;
                     if (item != null)
+                    {
                         MarketCache.RemoveItem(item);
+                        EnqueueDeleteLocked(item);
+                    }
                 }
                 _occupied.Clear();
                 _nextFreeHint = 0;
                 return n;
             }
+        }
+
+        /// <summary>
+        /// Drains the pending DB mutations under the lock, returns them for batched flush.
+        /// Returns (null, null) when there's nothing to do, so the manager can skip cheap.
+        /// </summary>
+        public (List<DbInventoryItem> adds, List<DbInventoryItem> deletes) DrainPending()
+        {
+            lock (_itemsLock)
+            {
+                if (_pendingAdds.Count == 0 && _pendingDeletes.Count == 0)
+                    return (null, null);
+                List<DbInventoryItem> a = _pendingAdds.Count > 0 ? new List<DbInventoryItem>(_pendingAdds) : null;
+                List<DbInventoryItem> d = _pendingDeletes.Count > 0 ? new List<DbInventoryItem>(_pendingDeletes) : null;
+                _pendingAdds.Clear();
+                _pendingDeletes.Clear();
+                return (a, d);
+            }
+        }
+
+        // Cancel-out: if the item was added since the last flush (not yet in DB), drop the
+        // pending-add. Otherwise enqueue for batched DELETE.
+        private void EnqueueDeleteLocked(DbInventoryItem item)
+        {
+            if (!EconomyConfig.ECONOMY_PERSIST)
+                return;
+            // Object identity comparison via reference equals - fast and correct because
+            // DbInventoryItem does not override Equals/GetHashCode.
+            for (int i = _pendingAdds.Count - 1; i >= 0; i--)
+            {
+                if (ReferenceEquals(_pendingAdds[i], item))
+                {
+                    _pendingAdds.RemoveAt(i);
+                    return;
+                }
+            }
+            if (item.IsPersisted)
+                _pendingDeletes.Add(item);
+            // If !IsPersisted and not in _pendingAdds, the row never reached the DB.
         }
 
         // ---- IGameInventoryObject overrides (called from the buy / move pipeline) ----
@@ -219,8 +306,9 @@ namespace DOL.GS.Economy
             return state?.ProcessMoveItem(player, this, fromClientSlot, toClientSlot, count) ?? false;
         }
 
-        // Called when a player buys the item. The base class would also clear OwnerLot/SellPrice
-        // and remove from MarketCache - we do the same but on our array, atomically.
+        // Called when a player buys the item. The player inventory pipeline takes
+        // ownership of the row and will update/insert via SaveIntoDatabase, so we must
+        // NOT enqueue a delete here - that would race the player's update.
         public override bool OnRemoveItem(GamePlayer player, DbInventoryItem item, int previousSlot)
         {
             int idx = previousSlot - FirstDbSlot;
@@ -242,6 +330,16 @@ namespace DOL.GS.Economy
                         if (idx < _nextFreeHint)
                             _nextFreeHint = idx;
                         MarketCache.RemoveItem(item);
+                        // If still in our pending-adds (never flushed), drop it. The player
+                        // inventory save will AddObject it under the player's OwnerID.
+                        for (int i = _pendingAdds.Count - 1; i >= 0; i--)
+                        {
+                            if (ReferenceEquals(_pendingAdds[i], item))
+                            {
+                                _pendingAdds.RemoveAt(i);
+                                break;
+                            }
+                        }
                     }
                 }
             }

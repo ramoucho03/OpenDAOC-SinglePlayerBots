@@ -96,6 +96,47 @@ namespace DOL.GS.Economy
             return basePrice * qualityFactor * levelFactor * magicalFactor;
         }
 
+        /// <summary>
+        /// Computes the expected time-to-sale (in seconds) for a player listing given its
+        /// asking price vs the deterministic market value. The model is:
+        ///     ratio = listed_price / (fair_value * count)
+        ///     T_sale = base_hours * ratio^elasticity * 3600
+        /// At ratio = 1 (priced at market) T_sale = base_hours, default 12h.
+        /// At ratio = 0.5 T_sale plummets to ~30 min; at ratio = 1.5 it stretches to ~70h;
+        /// at ratio = 2 it stretches to ~12 days; above the hard ceiling we return -1 to
+        /// signal "never bought".
+        /// </summary>
+        public static double ComputeExpectedSaleSeconds(DbItemTemplate template, long listedPrice, int count)
+        {
+            if (template == null || listedPrice <= 0 || count <= 0)
+                return -1.0;
+
+            long fairUnit = ComputeFairValue(template);
+            if (fairUnit <= 0)
+                return -1.0;
+
+            long fairTotal = fairUnit * count;
+            double ratio = (double) listedPrice / fairTotal;
+
+            int hardCeilPct = Math.Max(100, EconomyConfig.ECONOMY_HARD_MAX_OVERPRICE_PERCENT);
+            if (ratio * 100.0 > hardCeilPct)
+                return -1.0;
+
+            double baseSeconds = Math.Max(60, EconomyConfig.ECONOMY_FAIR_PRICE_BASE_HOURS) * 3600.0;
+            double elasticity = Math.Max(50, EconomyConfig.ECONOMY_PRICE_ELASTICITY_X100) / 100.0;
+
+            // Clamp ratio to avoid log(0) / arithmetic underflow when an item is essentially free.
+            double clampedRatio = Math.Max(0.01, ratio);
+            double seconds = baseSeconds * Math.Pow(clampedRatio, elasticity);
+
+            // Cap at one year to keep the per-tick probability math finite. Anything beyond
+            // is effectively "never" anyway.
+            const double ONE_YEAR_SECONDS = 365.0 * 24.0 * 3600.0;
+            if (seconds > ONE_YEAR_SECONDS)
+                seconds = ONE_YEAR_SECONDS;
+            return seconds;
+        }
+
         private static int CountMagicalBonuses(DbItemTemplate t)
         {
             int n = 0;

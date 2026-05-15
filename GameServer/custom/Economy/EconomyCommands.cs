@@ -39,7 +39,8 @@ namespace DOL.GS.Economy
                     int marketTotal = MarketCache.ItemCount;
                     int playerListings = System.Math.Max(0, marketTotal - total);
                     player.Out.SendMessage($"Economy: market cache total = {marketTotal} (bots={total}, players={playerListings})", eChatType.CT_System, eChatLoc.CL_SystemWindow);
-                    player.Out.SendMessage($"Economy: bot-buys-from-players={EconomyConfig.ECONOMY_BOT_BUYS_FROM_PLAYERS}, max overprice={EconomyConfig.ECONOMY_MAX_OVERPRICE_PERCENT}%", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    player.Out.SendMessage($"Economy: bot-buys-from-players={EconomyConfig.ECONOMY_BOT_BUYS_FROM_PLAYERS}, fair-time={EconomyConfig.ECONOMY_FAIR_PRICE_BASE_HOURS}h, hard-ceiling={EconomyConfig.ECONOMY_HARD_MAX_OVERPRICE_PERCENT}%", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    player.Out.SendMessage($"Economy: persist={EconomyConfig.ECONOMY_PERSIST}, flush={EconomyConfig.ECONOMY_DB_FLUSH_SECONDS}s", eChatType.CT_System, eChatLoc.CL_SystemWindow);
                     player.Out.SendMessage($"Economy: {merchants.Count} virtual sellers across realms.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
                     foreach (var m in merchants)
                         player.Out.SendMessage($"  {m.Name} (lot {m.HouseNumber}, {m.SellerRealm}): {m.ItemCount}/{GameConsignmentMerchant.CONSIGNMENT_SIZE}", eChatType.CT_System, eChatLoc.CL_SystemWindow);

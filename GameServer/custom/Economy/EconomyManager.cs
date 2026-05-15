@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -50,8 +51,16 @@ namespace DOL.GS.Economy
 
         private static CancellationTokenSource _cts;
         private static Task _worker;
+        private static Task _flusher;
         private static volatile bool _initialized;
         private static volatile bool _suspended;
+
+        // Cached snapshot of non-bot listings, refreshed every
+        // ECONOMY_PLAYER_LISTINGS_CACHE_SECONDS. Lets PlayerPurchaseTick reuse the same
+        // scan across many ticks instead of walking the whole MarketCache each minute.
+        private static DbInventoryItem[] _playerListingsCache = Array.Empty<DbInventoryItem>();
+        private static long _playerListingsCacheUtcSec;
+        private static readonly object _playerListingsCacheLock = new();
 
         public static bool IsInitialized => _initialized;
         public static bool IsSuspended => _suspended;
@@ -125,39 +134,94 @@ namespace DOL.GS.Economy
 
                 SpawnMerchants();
 
+                int reattached = 0;
+                if (EconomyConfig.ECONOMY_PERSIST)
+                    reattached = ReloadFromCache();
+
                 _cts = new CancellationTokenSource();
                 _worker = Task.Run(() => WorkerLoop(_cts.Token));
+                if (EconomyConfig.ECONOMY_PERSIST)
+                    _flusher = Task.Run(() => FlushLoop(_cts.Token));
                 _initialized = true;
+
+                if (reattached > 0 && log.IsInfoEnabled)
+                    log.Info($"Economy: re-attached {reattached} persisted listings from MarketCache.");
             }
 
             if (log.IsInfoEnabled)
-                log.Info($"Economy: initialized. Sellers={_merchants.Length}, target stock={EconomyConfig.ECONOMY_TARGET_STOCK}, tick={EconomyConfig.ECONOMY_TICK_SECONDS}s, turnover={EconomyConfig.ECONOMY_TURNOVER_PERCENT_PER_HOUR}%/h.");
+                log.Info($"Economy: initialized. Sellers={_merchants.Length}, target stock={EconomyConfig.ECONOMY_TARGET_STOCK}, tick={EconomyConfig.ECONOMY_TICK_SECONDS}s, turnover={EconomyConfig.ECONOMY_TURNOVER_PERCENT_PER_HOUR}%/h, persist={EconomyConfig.ECONOMY_PERSIST}.");
+        }
+
+        /// <summary>
+        /// Scans MarketCache for items previously written by us (OwnerID prefix) and
+        /// re-attaches them to the matching virtual merchant. Orphans (lot has no matching
+        /// merchant) are deleted on the spot. Returns the number of items re-attached.
+        /// </summary>
+        private static int ReloadFromCache()
+        {
+            var orphans = new List<DbInventoryItem>();
+            int attached = 0;
+
+            foreach (DbInventoryItem item in MarketCache.SearchItems(default))
+            {
+                if (item?.OwnerID == null)
+                    continue;
+                if (!item.OwnerID.StartsWith(OWNER_PREFIX, StringComparison.Ordinal))
+                    continue;
+
+                if (!_byLot.TryGetValue(item.OwnerLot, out var merchant) ||
+                    !merchant.AttachExistingListing(item))
+                {
+                    orphans.Add(item);
+                    continue;
+                }
+                attached++;
+            }
+
+            if (orphans.Count > 0)
+            {
+                foreach (var item in orphans)
+                    MarketCache.RemoveItem(item);
+                try { GameServer.Database.DeleteObject(orphans); }
+                catch (Exception ex) { log.Error("Economy: failed to delete orphan listings.", ex); }
+                if (log.IsInfoEnabled)
+                    log.Info($"Economy: pruned {orphans.Count} orphan listings (lot/slot mismatch).");
+            }
+
+            return attached;
         }
 
         public static void Shutdown()
         {
             CancellationTokenSource cts;
-            Task worker;
+            Task worker, flusher;
 
             lock (_initLock)
             {
                 cts = _cts;
                 worker = _worker;
+                flusher = _flusher;
                 _cts = null;
                 _worker = null;
+                _flusher = null;
                 _initialized = false;
             }
 
             try
             {
                 cts?.Cancel();
-                worker?.Wait(TimeSpan.FromSeconds(5));
+                Task.WaitAll(new[] { worker, flusher }.Where(t => t != null).ToArray(), TimeSpan.FromSeconds(5));
             }
             catch { /* ignore on shutdown */ }
-            finally
+
+            // Final flush so pending changes are persisted before process exit.
+            if (EconomyConfig.ECONOMY_PERSIST)
             {
-                cts?.Dispose();
+                try { DoFlush(); }
+                catch (Exception ex) { log.Error("Economy: final flush failed.", ex); }
             }
+
+            cts?.Dispose();
         }
 
         public static void Suspend(bool suspended) => _suspended = suspended;
@@ -406,63 +470,108 @@ namespace DOL.GS.Economy
             finally { _generationGate.Release(); }
         }
 
+        // ---------- batched DB flush ----------
+
+        private static async Task FlushLoop(CancellationToken token)
+        {
+            try
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    int sec = Math.Max(5, EconomyConfig.ECONOMY_DB_FLUSH_SECONDS);
+                    try { await Task.Delay(TimeSpan.FromSeconds(sec), token).ConfigureAwait(false); }
+                    catch (OperationCanceledException) { return; }
+
+                    try { DoFlush(); }
+                    catch (Exception ex) { log.Error("Economy: flush tick failed.", ex); }
+                }
+            }
+            catch (Exception ex) { log.Error("Economy: flush loop crashed.", ex); }
+        }
+
+        private static void DoFlush()
+        {
+            var snapshot = _merchants;
+            List<DbInventoryItem> allAdds = null;
+            List<DbInventoryItem> allDels = null;
+
+            for (int i = 0; i < snapshot.Length; i++)
+            {
+                var (a, d) = snapshot[i].DrainPending();
+                if (a != null)
+                {
+                    allAdds ??= new List<DbInventoryItem>(a.Count);
+                    allAdds.AddRange(a);
+                }
+                if (d != null)
+                {
+                    allDels ??= new List<DbInventoryItem>(d.Count);
+                    allDels.AddRange(d);
+                }
+            }
+
+            if (allAdds != null && allAdds.Count > 0)
+            {
+                try { GameServer.Database.AddObject(allAdds); }
+                catch (Exception ex) { log.Error($"Economy: batched AddObject failed for {allAdds.Count} listings.", ex); }
+            }
+
+            if (allDels != null && allDels.Count > 0)
+            {
+                try { GameServer.Database.DeleteObject(allDels); }
+                catch (Exception ex) { log.Error($"Economy: batched DeleteObject failed for {allDels.Count} listings.", ex); }
+            }
+
+            if (EconomyConfig.ECONOMY_VERBOSE_LOG && log.IsDebugEnabled && (allAdds != null || allDels != null))
+                log.Debug($"Economy flush: +{allAdds?.Count ?? 0} / -{allDels?.Count ?? 0}");
+        }
+
         // ---------- bot purchases from player listings ----------
 
         /// <summary>
-        /// Scans player consignment listings (non-bot) and probabilistically buys any
-        /// priced within ECONOMY_MAX_OVERPRICE_PERCENT of the deterministic market value.
-        /// Players post on their housing CM, bots buy at the player's asking price, money
-        /// is credited to the CM's gold/BP balance via the existing ConsignmentState path.
+        /// Scans the cached player consignment listings and probabilistically buys each.
+        /// Per-listing probability is derived from the expected time-to-sale curve in
+        /// EconomyPricing.ComputeExpectedSaleSeconds, so cheap items move in minutes, fair
+        /// items in hours-to-days, overpriced items linger or never sell.
         /// </summary>
         private static void PlayerPurchaseTick(int tickSec)
         {
-            int chancePctPerHour = Math.Clamp(EconomyConfig.ECONOMY_PLAYER_PURCHASE_CHANCE_PER_HOUR_PERCENT, 0, 100);
-            if (chancePctPerHour <= 0)
+            DbInventoryItem[] listings = GetPlayerListingsCached();
+            if (listings.Length == 0)
                 return;
 
-            // Per-listing roll: probability that this listing is bought this tick.
-            // chance_per_tick = chance_per_hour * (tick_sec / 3600). Computed in basis points
-            // so we can roll a single integer compare.
-            int chanceBpPerTick = (int) ((long) chancePctPerHour * tickSec * 100L / 3600L);
-            if (chanceBpPerTick <= 0)
-                return;
-
-            int maxOverpricePct = Math.Max(50, EconomyConfig.ECONOMY_MAX_OVERPRICE_PERCENT);
             int hardCap = Math.Max(1, EconomyConfig.ECONOMY_PLAYER_PURCHASE_MAX_PER_TICK);
-
             int boughtThisTick = 0;
             int evaluated = 0;
 
-            foreach (DbInventoryItem item in MarketCache.SearchItems(default))
+            for (int i = 0; i < listings.Length; i++)
             {
                 if (boughtThisTick >= hardCap)
                     break;
-                if (item == null)
+
+                DbInventoryItem item = listings[i];
+                if (item == null || item.SellPrice <= 0)
                     continue;
 
-                string owner = item.OwnerID;
-                // Skip our own bot listings.
-                if (string.IsNullOrEmpty(owner) || owner.StartsWith(OWNER_PREFIX, StringComparison.Ordinal))
-                    continue;
-                if (item.SellPrice <= 0)
-                    continue;
-
-                evaluated++;
-
-                // Fair-price gate: ignore listings priced more than max-overprice above
-                // computed market value (per unit × count). This is the anti-cheat rail.
                 DbItemTemplate template = item.Template;
                 if (template == null)
                     continue;
 
-                long fairUnit = EconomyPricing.ComputeFairValue(template);
-                long fairTotal = fairUnit * Math.Max(1, item.Count);
-                long ceiling = fairTotal * maxOverpricePct / 100L;
-                if (item.SellPrice > ceiling)
+                double expectedSec = EconomyPricing.ComputeExpectedSaleSeconds(template, item.SellPrice, Math.Max(1, item.Count));
+                if (expectedSec <= 0)
+                    continue; // beyond the hard ceiling - never bought
+
+                evaluated++;
+
+                // Exponential-arrival: p(this tick) = 1 - exp(-tickSec / expectedSec).
+                // For very short expectedSec the prob saturates near 1 (cheap items sell
+                // almost instantly); for very long expectedSec it's near 0.
+                double pTick = 1.0 - Math.Exp(-tickSec / expectedSec);
+                if (pTick <= 0)
                     continue;
 
-                // Per-listing roll.
-                if (Util.Random(0, 9999) >= chanceBpPerTick)
+                // Single random draw per listing.
+                if (Util.RandomDouble() >= pTick)
                     continue;
 
                 if (TryBotBuyFromPlayer(item))
@@ -470,7 +579,41 @@ namespace DOL.GS.Economy
             }
 
             if (EconomyConfig.ECONOMY_VERBOSE_LOG && log.IsDebugEnabled && evaluated > 0)
-                log.Debug($"Economy: player-purchase tick scanned {evaluated} listings, bought {boughtThisTick}.");
+                log.Debug($"Economy: player-purchase tick evaluated {evaluated} listings, bought {boughtThisTick}.");
+        }
+
+        /// <summary>
+        /// Returns a cached snapshot of non-bot listings. Refreshed every
+        /// ECONOMY_PLAYER_LISTINGS_CACHE_SECONDS. This avoids walking the full MarketCache
+        /// every tick (which would allocate a fresh list of all ~10k items).
+        /// </summary>
+        private static DbInventoryItem[] GetPlayerListingsCached()
+        {
+            int ttl = Math.Max(30, EconomyConfig.ECONOMY_PLAYER_LISTINGS_CACHE_SECONDS);
+            long nowSec = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+            lock (_playerListingsCacheLock)
+            {
+                if (nowSec - _playerListingsCacheUtcSec < ttl && _playerListingsCache.Length > 0)
+                    return _playerListingsCache;
+            }
+
+            var collected = new List<DbInventoryItem>();
+            foreach (DbInventoryItem item in MarketCache.SearchItems(default))
+            {
+                if (item?.OwnerID == null) continue;
+                if (item.OwnerID.StartsWith(OWNER_PREFIX, StringComparison.Ordinal)) continue;
+                if (item.SellPrice <= 0) continue;
+                collected.Add(item);
+            }
+            var snapshot = collected.ToArray();
+
+            lock (_playerListingsCacheLock)
+            {
+                _playerListingsCache = snapshot;
+                _playerListingsCacheUtcSec = nowSec;
+            }
+            return snapshot;
         }
 
         /// <summary>
