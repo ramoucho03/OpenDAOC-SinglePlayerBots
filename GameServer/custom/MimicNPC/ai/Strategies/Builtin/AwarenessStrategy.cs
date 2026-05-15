@@ -101,6 +101,23 @@ namespace DOL.GS.Scripts.AI.Strategies.Builtin
                 cooldownMs: 30_000,
                 exclusive: false);
 
+            // Chain-pull announcement: fires when the puller stacks a
+            // second mob on the same cycle (ChainPullCount > 0). Wires
+            // the existing Mimic.Chat.ChainPull.* translations into a
+            // real binding — they used to ship in the language files
+            // but no strategy ever called them. Shorter cooldown than
+            // the first-pull callout because chain pulls happen back
+            // to back and we want the group to brace each time.
+            yield return new BotTriggerActionBinding(
+                new IsChainPullingTrigger(),
+                new LocalizedGroupSayAction("say-chain-pulling",
+                    "Mimic.Chat.ChainPull.1",
+                    "Mimic.Chat.ChainPull.2",
+                    "Mimic.Chat.ChainPull.3"),
+                priority: 60,
+                cooldownMs: 12_000,
+                exclusive: false);
+
             // Tank engage callout — fires when the main tank takes a hit and
             // settles into combat. Cooldown matches a typical fight length.
             yield return new BotTriggerActionBinding(

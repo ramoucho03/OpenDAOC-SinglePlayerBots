@@ -77,6 +77,7 @@ Mimic.Button.Help:                    Help
 # Replies / status
 Mimic.Reply.IDoNotHaveThatAbility:    I do not have that ability.
 Mimic.Reply.MustBeInSameGroup:        We must be in the same group.
+Mimic.Reply.BrainReset:               Brain reset — I'm back in WAKING_UP.
 Mimic.Reply.IWillGuardYou:            I will guard you.
 Mimic.Reply.IWillNoLongerGuard:       I will no longer guard you.
 Mimic.Reply.ICannotGuardYou:          I cannot guard you.

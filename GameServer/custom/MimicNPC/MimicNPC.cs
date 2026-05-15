@@ -1203,9 +1203,24 @@ namespace DOL.GS.Scripts
 
             GamePlayer player = source as GamePlayer;
 
-            // TODO: Add group checks when done testing
-            //if ((Group == null || Group != null && !Group.IsInTheGroup(source)) && player.Client.Account.PrivLevel == 1)
-            //    return false;
+            // Only accept items from a player who is currently in the bot's
+            // group. Without this check anyone could drop items on a bot's
+            // tile — and a subsequent /mclear from the owner would silently
+            // delete the corpse and its inventory, losing the gear. The
+            // privilege bypass is kept for GMs so they can hand-feed gear
+            // during testing.
+            if (player == null
+                || player.Client?.Account?.PrivLevel > 1)
+            {
+                // GM (or unknown caller): accept as before, drop straight
+                // into the auto-equip branch below.
+            }
+            else if (Group == null || !Group.IsInTheGroup(source))
+            {
+                player?.Out.SendMessage($"{GetName(0, true)} won't accept items from outside the group.",
+                    eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                return false;
+            }
 
             bool equipItem = false;
 

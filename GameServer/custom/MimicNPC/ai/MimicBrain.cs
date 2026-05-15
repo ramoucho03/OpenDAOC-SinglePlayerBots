@@ -752,6 +752,15 @@ namespace DOL.AI.Brain
         // chasing us). Used to gate chain pulls against the group's budget.
         private int _chainPullCount;
 
+        /// <summary>
+        /// Number of additional shots fired in the current chain-pull cycle
+        /// (0 means we are NOT chain-pulling; >0 means the puller has
+        /// already locked one mob this cycle and is now stacking another).
+        /// Read by IsChainPullingTrigger so the puller can call out
+        /// "Another one incoming!" as soon as the second arrow flies.
+        /// </summary>
+        public int ChainPullCount => _chainPullCount;
+
         // Time (GameLoopTime ms) the current pull shot was fired. Used as a
         // watchdog so a pull that never resolves doesn't permanently brick
         // the puller (e.g. LoS lost mid-flight, mob despawned, path blocked).

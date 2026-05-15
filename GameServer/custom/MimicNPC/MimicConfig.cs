@@ -1,10 +1,18 @@
 using System;
+using System.Collections.Generic;
+using System.Reflection;
 using DOL.GS.ServerProperties;
+using DOL.Logging;
 
 namespace DOL.GS.Scripts
 {
     public static class MimicConfig
     {
+        private static readonly Logger _log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
+        // Operator typo log de-dup: a misspelled CSV entry is read on every
+        // bot spawn, but we only want to whine about it once per server run.
+        private static readonly HashSet<string> _warnedInvalidTokens = new(StringComparer.OrdinalIgnoreCase);
+
         public static readonly bool LFG_CLASS_BIAS = true;     // Not implemented
         public static readonly bool LFG_LEVEL_BIAS = true;     // Should bots take level difference into account when trying to group
         public static readonly bool WEAPON_ROG = false;        // Not implemented
@@ -129,6 +137,19 @@ namespace DOL.GS.Scripts
 
                 if (trimmed.Length == 0)
                     continue;
+
+                // Warn-once on tokens that don't parse as any known
+                // eCharacterClass name. Without this, an operator who
+                // types a typo (e.g. "Cleric,Frair,Druid") would never
+                // know why their bot Friar doesn't get the healer
+                // strategy — the matcher just silently skips the bad
+                // entry on every spawn.
+                if (!Enum.TryParse<eCharacterClass>(trimmed, ignoreCase: true, out _))
+                {
+                    if (_log.IsWarnEnabled && _warnedInvalidTokens.Add(trimmed))
+                        _log.Warn($"MimicConfig: CSV token \"{trimmed}\" is not a known eCharacterClass name — check your bot_ai_v2_* server properties.");
+                    continue;
+                }
 
                 if (string.Equals(trimmed, current, StringComparison.OrdinalIgnoreCase))
                     return true;
