@@ -34,6 +34,14 @@ RUN cat *.sql > combined.sql
 WORKDIR /build
 COPY . .
 
+# CoreServer.csproj declares <Content Include="config/serverconfig.xml"> with
+# CopyToOutputDirectory=Always, so the build fails MSB3030 if that file isn't
+# present. .dockerignore deliberately excludes the host's serverconfig.xml
+# (it holds local DB credentials / secrets), so we materialise a fresh copy
+# from the checked-in example before building. Container-time configuration
+# is layered on top by entrypoint.sh, which substitutes env-driven values.
+RUN cp CoreServer/config/serverconfig.example.xml CoreServer/config/serverconfig.xml
+
 # Build the solution — restore happens implicitly. We tried splitting into
 # `restore` + `build --no-restore`, but SDK 10.0.300 fails to locate the
 # generated project.assets.json under the BaseIntermediateOutputPath=..\build\<Project>\
