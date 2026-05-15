@@ -1,119 +1,220 @@
-Note: Now requires the latest OpenDAoC Database https://github.com/OpenDAoC/OpenDAoC-Database or running the commands found in https://github.com/OpenDAoC/OpenDAoC-Database/commit/c6153398bf65faa61b665b6b4cae68b5fa8c0862 for AF buffs to work correctly.
+# OpenDAOC — Single-Player Bots
 
-This fork focuses on having bots that are treated as players as far as having player classes, give and take damage as players do, have player abilities, player specs, and can be grouped with for PvE or in RvR. RvR currently only includes Thidranki as far as automated spawning and grouping. As this is still being tested, some commands are available to players that normally shouldn't be.
+A heavily-modified fork of [OpenDAoC-Core](https://github.com/OpenDAoC/OpenDAoC-Core) focused on making **Dark Age of Camelot playable solo or in small groups by having AI-driven companions (MimicNPCs) behave as real players** — same classes, same specs, same combat math, same group rewards.
 
-Everything is currently very command based. Bracketed commands are required, parenthesis commands are optional.
+If you came here looking for the upstream OpenDAoC server, go to the [OpenDAoC project](https://github.com/OpenDAoC). This fork has diverged significantly: the bot system is a first-class subsystem, an optional module system has been added, large parts of the engine have been refactored to treat bots polymorphically, and the strategy/action/trigger framework is being grown into a full utility-AI brain inspired by [mod-playerbots](https://github.com/mod-playerbots/mod-playerbots).
 
-/mlfg (Index) - Shows a list of available bots. It is currently based on the level of the player calling it. Multiple players being able to call is yet to be implemented.
-   - Index - Attempts to add the bot of the index given to your group. They may decline if they are higher level than the player.
+---
 
-/mcamp [Set/Remove/Aggrorange/Filter]
-   - Set - Sets the spot the group will wait at and return to after battle based on your ground target. They aggro anything around this point.
-   - Remove - Returns the group to follow the leader. They will attack anything the leader is attacking or casting towards.
-   - Aggrorange [1-6000] - Sets the range the group will attack anything around their camp point. Default is 250 in dungeons, 550 outside of them. They will aggro through walls in dungeons. Visibility range is 6000.
-   - Filter [green/blue/yellow/orange/red/purple] - Sets the minimum con level the puller will pull.
+## What this fork adds on top of OpenDAoC
 
-/mrole [leader/puller/tank/cc/assist]
-   - Leader - Not implemented. The group member everyone follows.
-   - Assist - Not implemented. Will provide a target everyone should focus on.
-   - Puller - Only avaible for classes that can use a bow/crossbow currentely. The puller will run pull mobs to the point set with /mcamp set.
-   - Tank - Will only use taunt styles and defensive styles. Ensures every mob is attacking themselves.
-   - CC - Will attempt to CC any adds from the puller.
+| Subsystem | Upstream | This fork |
+|---|---|---|
+| Bot system | none | `MimicNPC` — full player-class bots with FSM brain (`MimicBrain`) and group roles (`MimicGroup`) |
+| Bot AI | n/a | Strategy / Action / Trigger framework + per-class **Bot AI v2** role strategies |
+| Engine bot coupling | n/a | Polymorphic `GameNPC.IsMimic` virtual, no `is MimicNPC` scattered across spells/styles/calculators |
+| Extension points | hard-coded init in `GameServer.Start` | `IGameModule` registry with dependency-ordered init, side-by-side with legacy init |
+| Stability fixes | upstream | several concurrency fixes on `EffectService`, `GameClient`, `PacketProcessor` |
+| Battlegrounds | manual | automated Thidranki spawning (`/mbattle`) |
+| Crafting / housing / quests | upstream | unchanged |
 
-/mguard [target name] - If the mimic is in your group and has the Guard ability they will guard the target given. Mimics can also be told to guard the player in the right-click interact menu.
+A French-language deep-dive of the codebase, including where to go to change combat / spells / rewards / group rules, lives in [`CODEBASE_GUIDE.md`](CODEBASE_GUIDE.md).
 
-/msummon - Summons your group to you. Used to summon your group if you zone into a dungeon or teleport somewhere.
+---
 
-/mpvp [true/false] - Sets PvPMode for mimics. PvPMode bots ignore mobs unless you are attacked. When false, bots will immediately attack mobs when you cast or go into attack mode with one targeted.
-	- With a target: Sets PvPMode for target mimic.
-	- With no target: Sets PvPMode for any grouped mimics.	
+## Quick start (Docker)
 
-For PvE: 
+The shipped `docker-compose.yml` builds the server directly from this repository and starts a MariaDB beside it.
 
-   Use the command "/mlfg" to see a list of potential groupmembers. It's currently very single-player focused, so the list and level of bots will be based on the first person to call it until some time passes. Integration for more players will be implemented eventually. They might not join if they are higher level than you.
+```bash
+# clone, then:
+docker compose up -d --build
+```
 
-   By default, anyone in your group will follow you and attack or begin casting if you enter attack mode or begin casting on an valid target. This means you can go into attack mode with a target in order to make your group attack your target, useful if you're a healer or caster without debuffs to pull with.
-   
-   The bots can have roles set that are only considered in PvE. Currently they are MainTank, MainCC, MainPuller. The roles are set with the /mrole command or via right-click interaction and only apply when a camp point is set with the /mcamp set command. Without a /mcamp set or removed via /mccamp remove, bots will only attack targets you go into attack mode against or cast a spell at. Basically:
+Ports: TCP `10300` (game), UDP `10400` (game).
 
-   "/mcamp set" to set a point with a ground target and the grouped bots will stay at this point and attack anything in a small range, adjustable with the /mcamp aggrorange command. Any bot set to the "puller" role will seek a target to pull into the camp. Currently limited to classes that can use a bow/crossbow. They will wait for everyone to finish "sitting", which is shown by the "Drink" emote. When they are ready, they will perform the "LetsGo" emote. Anyone set to the CC role with the appropriate spells will root or mez adds. The bot set with the tank role will focus on taunts to make them targeted provided the target isn't CC'd. This all works outside dungeons provided the puller isn't set. A puller in dungeons isn't tested. They will likely pull and run through walls.
+The compose file ships with sensible .NET 10 runtime tuning for high-allocation game-loop workloads (`gcServer=1`, `gcConcurrent=1`, tiered PGO, pre-warmed thread pool). Edit `docker-compose.yml` to point at your own image registry or to switch back to the upstream `ghcr.io/opendaoc/opendaoc-core` image.
 
-For RvR:
+Database schema: the Dockerfile clones [`OpenDAoC-Database`](https://github.com/OpenDAoC/OpenDAoC-Database) and concatenates the SQL files into a single bootstrap script. For AF buffs to work you need the latest schema — apply [this commit](https://github.com/OpenDAoC/OpenDAoC-Database/commit/c6153398bf65faa61b665b6b4cae68b5fa8c0862) if you're upgrading manually.
 
-   All roles are not considered. If you summon or group with any bots, they will follow and aggro enemies if you are attacked, and group members will attack if you do or cast against enemies. 
-   
-   Battlegrounds:
-   
-   Only Thidranki is implemented.
-   
-   /mbattle [Region] [Start/Stop/Clear]
-   
-   - Region - "thid" is the only working region command.
-   - Start - Begins spawning all realms.
-   - Stop - Stops all spawning of realms.
-   - Clear - Stops all spawning of realms and kills and removes all npcs.
-   
+---
 
-Commands for testing:
+## Quick start (local build)
 
-/m [Classname] (Level) - Summons a single bot. Defaults to callers level if level is omitted.
-   - Classname - summons a mimic with a level equal to the caller.
-   - Level - The level of the bot.
+Requires .NET 10 SDK.
 
-/mgroup (Realm) (Amount) (Level) - Summons a group of bots. With no arguments, all arguments will be the caller's realm, 8 bots, and the level of the caller.
-- Realm - The realm of the bots.
-- Amount - The amount in the group.
-- Level - The level of all bots in the group.
+```bash
+# one-time: copy the example server config
+cp CoreServer/config/serverconfig.example.xml CoreServer/config/serverconfig.xml
 
-/mpc [true/false] - Sets PreventCombat setting. Will make a bot passive and not aggro or attack.
-	- With a target: Sets PreventCombat for Mimic. If the Mimic is in a group, the whole group will be set.
-	- With no target: Sets PreventCombat for any grouped Mimics.
+# build everything
+dotnet build DOLLinux.sln -c Release
 
-There are also commands from interacting with MimicNPCs. They are mostly for testing with the exception of
-[Group] - [Leader] - [MainPuller] - [MainCC] - [MainTank] - [MainAssist]. These set their respective roles or attempt to group with the bot.
- 
-Do not click [Weapon] [Helm] [Torso] [Legs] [Arms] [Hands] [Boots] [Jewelry]
-if you don't need to, these simply place the items equipped into your inventory. You can't put them back at the moment.
+# run the tests
+dotnet test DOLLinux.sln -c Release --no-build
 
-# OpenDAoC
-[![Build and Release](https://github.com/OpenDAoC/OpenDAoC-Core/actions/workflows/build-and-release.yml/badge.svg)](https://github.com/OpenDAoC/OpenDAoC-Core/actions/workflows/build-and-release.yml)
+# run the server
+dotnet build/CoreServer/Release/lib/CoreServer.dll
+```
 
-## About
+---
 
-OpenDAoC is an emulator for Dark Age of Camelot (DAoC) servers, originally a fork of the [DOLSharp](https://github.com/Dawn-of-Light/DOLSharp) project.
+## Playing with bots
 
-Now completely rewritten with ECS architecture, OpenDAoC ensures performance and scalability for many players, providing a robust platform for creating and managing DAoC servers.
+Bots are **MimicNPC** instances: they have a player class, real specs, a real inventory, and they cast / fight / heal using the same code paths as a real player. They implement `IGamePlayer` so they're treated as players by group rules, rewards and most spells.
 
-While the project focuses on recreating the DAoC 1.65 experience, it can be adapted for any patch level.
+### Most-used commands
 
-## Documentation
+| Command | What it does |
+|---|---|
+| `/mcreate <class> [level] [spec] [inv]` | Spawn a single bot |
+| `/mgroup [realm] [count] [level] [preventCombat]` | Spawn a full group |
+| `/mlfg [index]` | List nearby bots looking for a group; pick one to invite |
+| `/msummon` | Teleport your bot group to you (zone changes, ports) |
+| `/mfollow` | Cancel camp/pull, return to follow-the-leader |
+| `/mattack` | Force your bot group to attack your current target |
+| `/mclear` | Despawn every bot you created |
 
-The easiest way to get started with OpenDAoC is to use Docker. Check out the `docker-compose.yml` file in the repository root for an example setup.
+### Group roles
 
-For detailed instructions and additional setup options, refer to the full [OpenDAoC Documentation](https://www.opendaoc.com/docs/).
+| Command | Role |
+|---|---|
+| `/mrole leader\|tank\|assist\|cc\|puller` | Assign a tactical role to the targeted bot |
+| `/mguard <name>` | Stand-guard the named target (requires Guard ability) |
+| `/mintercept` | Assign intercept to current target |
+| `/mprotect` | Assign protect to current target |
+| `/mheal` | Toggle the healer flag on the targeted bot |
 
-## Releases
+### PvE camping
 
-Releases for OpenDAoC are available at [OpenDAoC Releases](https://github.com/OpenDAoC/OpenDAoC-Core/releases).
+| Command | What it does |
+|---|---|
+| `/mcamp set` | Use ground target as a camp anchor; bots wait and aggro mobs in range |
+| `/mcamp remove` | Clear the camp; bots go back to follow mode |
+| `/mcamp aggrorange <1-6000>` | Tune the aggro radius (default 250 in dungeons, 550 outside) |
+| `/mcamp filter <green\|blue\|yellow\|orange\|red\|purple>` | Min con the puller pulls |
+| `/mpull` | Set camp + pull current target |
+| `/mpullfrom set\|remove` | Optional secondary point bots pull from |
 
-OpenDAoC is also available as a Docker image, which can be pulled from the following registries:
+### Bot behaviour toggles
 
-- [GitHub Container Registry](https://ghcr.io/opendaoc/opendaoc-core) (recommended): `ghcr.io/opendaoc/opendaoc-core/opendaoc:latest`
-- [Docker Hub](https://hub.docker.com/repository/docker/claitz/opendaoc/): `claitz/opendaoc:latest`
+| Command | What it does |
+|---|---|
+| `/mpvp <true\|false>` | When true, bot ignores mobs until you're attacked |
+| `/mpc <true\|false> [group]` | Force a bot (or group) into passive / non-aggro mode |
+| `/mstrategy list\|enable\|disable <key>` | Live-toggle strategy modules on a targeted bot |
 
-For detailed instructions and additional setup options, refer to the documentation.
+### Battlegrounds
 
-## Companion Repositories
+| Command | What it does |
+|---|---|
+| `/mbattle thid <start\|stop\|clear>` | Auto-spawn three realms in Thidranki (only BG implemented) |
+| `/mbstats thid` | BG occupancy snapshot |
 
-Several companion repositories are part of the [OpenDAoC project](https://github.com/OpenDAoC).
+### Help
 
-Some of the main repositories include:
+`/mhelp` (alias `/mimichelp`) prints the live command list with descriptions.
 
-- [OpenDAoC Database v1.65](https://github.com/OpenDAoC/OpenDAoC-Database)
-- [Account Manager](https://github.com/OpenDAoC/opendaoc-accountmanager)
-- [Client Launcher](https://github.com/OpenDAoC/OpenDAoC-Launcher)
+---
+
+## Bot AI v2 — strategy framework
+
+This is the area that is actively converging towards mod-playerbots-style decision making.
+
+A bot has two parallel brains:
+
+1. **FSM (legacy)** — `MimicBrain` + `MimicState` with explicit transitions (`WAKING_UP`, `AGGRO`, `CAMP`, `FOLLOW_THE_LEADER`, …). Still owns the full combat / heal / spell selection logic.
+2. **Strategy framework (additive)** — `BotStrategyManager` ticks before the FSM each tick and runs a set of `IBotStrategy` modules. Each strategy contributes `(IBotTrigger, IBotAction, priority, cooldown, exclusive)` bindings. The manager evaluates them top-down once per tick and lets the highest-priority binding whose trigger fires execute its action.
+
+### Built-in meta strategies (enabled on every bot by default)
+
+| Key | Purpose |
+|---|---|
+| `survival` | Sit to recover, stand on engage |
+| `awareness` | Self callouts, idle banter |
+| `assist` | Focus the group's main assist target |
+| `support` | Announce mezz / criticals / CC targets in group chat |
+| `camp` | Glue layer for `/mcamp` |
+
+### Bot AI v2 role strategies (opt-in per class)
+
+Enabled at bot creation when the class matches the CSV in the `bot_ai_v2_classes` server property.
+
+| Key | Default classes | What it owns |
+|---|---|---|
+| `healer` | Cleric, Friar, Druid, Healer, Shaman | Drives `CheckHeals` on any group heal need (critical / low / mezzed); exclusive binding so heals beat chatter |
+
+Tank / melee-DPS / ranged-DPS / caster-DPS / CC strategies are in flight (Phase B).
+
+You can flip strategies live on a targeted bot with:
+
+```
+/mstrategy list
+/mstrategy enable healer
+/mstrategy disable awareness
+```
+
+The trigger / action / strategy contracts live under [`GameServer/custom/MimicNPC/ai/Strategies/`](GameServer/custom/MimicNPC/ai/Strategies/). Anyone can plug in a third-party strategy by registering it with `BotStrategyRegistry.Register`.
+
+---
+
+## Game-server module system
+
+For features that aren't bot-specific, an optional `IGameModule` registry is wired into `GameServer.Start`:
+
+```csharp
+[GameModule]
+public sealed class MyFeatureModule : IGameModule
+{
+    public string Name => nameof(MyFeatureModule);
+    public IEnumerable<Type> DependsOn => new[] { typeof(SomeOtherModule) };
+
+    public bool Init(IGameServerContext ctx) { /* … */ return true; }
+    public void Shutdown() { /* … */ }
+}
+```
+
+Modules are discovered by reflection across the GameServer assembly and every compiled script assembly, sorted topologically (Kahn's algorithm + cycle detection), and initialised in order. Failures are isolated — a buggy module logs and is skipped instead of bringing the server down.
+
+Module entry point: [`GameServer/Managers/Modules/`](GameServer/Managers/Modules/). The reference implementation `SampleLoggingModule` ships disabled (`Enabled = false`) so a stock server has zero behaviour change.
+
+---
+
+## Repository layout
+
+```
+CoreBase/         networking, config, logging, FTP, MPK primitives
+CoreDatabase/    historical mini-ORM, MySQL/SQLite handlers
+CoreServer/      executable / Windows service / startup actions
+GameServer/      the game itself (~2600 files)
+  ECS-Services/  game-loop services (Npc, Attack, Casting, Effect, Movement, …)
+  ECS-Components/ per-entity components driven by those services
+  ai/            brains and FSM scaffolding for standard mobs
+  custom/MimicNPC/ the bot subsystem (this is where most fork-specific work lives)
+  Managers/Modules/ the IGameModule extension point
+  packets/       client packet handlers and server packet libraries by protocol version
+  serverrules/   PvE / PvP / RvR rule sets
+  spells/ styles/ propertycalc/  combat math
+Tests/           NUnit tests (utility-level)
+Pathing/         pathfinding native bindings
+```
+
+For navigation tips and a full picture of where to go to change a specific behaviour, see [`CODEBASE_GUIDE.md`](CODEBASE_GUIDE.md) (français).
+
+---
+
+## Status / disclaimers
+
+- This fork is **experimental** and command-driven. Several powerful bot commands are accessible at `ePrivLevel.Player` for testing — review `Commands.cs` before opening a public server.
+- Combat math is upstream OpenDAoC's; the bot system layers on top without changing damage formulas (with documented exceptions in `propertycalc/` for mimic-specific stat handling).
+- The 1.65 patch level is the primary target, but the codebase compiles and runs other ranges.
 
 ## License
 
-OpenDAoC is licensed under the [GNU General Public License (GPL)](https://choosealicense.com/licenses/gpl-3.0/) v3 to serve the DAoC community and promote open-source development.  
-See the [LICENSE](LICENSE) file for more details.
+GPL v3 — see [LICENSE](LICENSE). Inherited from OpenDAoC, itself inherited from [DOLSharp](https://github.com/Dawn-of-Light/DOLSharp).
+
+## Credits
+
+- [DOLSharp](https://github.com/Dawn-of-Light/DOLSharp) — the original Dawn of Light emulator
+- [OpenDAoC-Core](https://github.com/OpenDAoC/OpenDAoC-Core) — ECS rewrite this fork is based on
+- [mod-playerbots](https://github.com/mod-playerbots/mod-playerbots) — design inspiration for the Bot AI v2 strategy layer
