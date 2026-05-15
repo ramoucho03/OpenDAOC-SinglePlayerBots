@@ -3653,6 +3653,14 @@ namespace DOL.AI.Brain
             if (spell == null || spell.Radius <= 0 || primaryTarget == null)
                 return 0;
 
+            // Veto AoE on epic / boss-class targets. AoE on a boss splits aggro
+            // (a fresh hostile entering range gets flagged for the same dispatcher
+            // tick) and wastes mana on a single high-HP enemy that single-target
+            // nukes burn down faster. The -1 sentinel is the same one the CC
+            // veto below uses, so the existing ShouldUseAoe path picks it up.
+            if (primaryTarget is IGameEpicNpc)
+                return -1;
+
             bool isPBAoE = spell.IsPBAoE;
             int radius = spell.Radius;
             var ccTargets = Body.Group?.MimicGroup?.CCTargets;

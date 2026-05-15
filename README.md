@@ -278,10 +278,10 @@ Each role is enabled at bot creation when the bot's class appears in the matchin
 |---|---:|---:|---|---|
 | `healer` | 100 / 95 / 92 / 90 / 85 | 200–1500 ms | `CheckHeals` split into 5 priority bindings: critical / mezz / poison / disease / low | Cleric, Friar, Heretic, Druid, Bard, Warden, Mentalist, Healer, Shaman |
 | `cc` | 85 | 750 ms | `CheckSpells(CrowdControl)` when the group has tracked CC targets | Sorcerer, Minstrel, Theurgist, Enchanter, Bard, Mentalist, Animist, Druid, Runemaster, Spiritmaster, Warlock, Healer, Vampiir |
-| `caster_dps` | 75 | 600 ms | `CheckSpells(Offensive)` (nuke rotation) while engaged | Wizard, Theurgist, Cabalist, Sorcerer, Necromancer, Heretic, Eldritch, Enchanter, Mentalist, Animist, Bainshee, Valewalker, Runemaster, Spiritmaster, Bonedancer, Warlock, Thane |
+| `caster_dps` | 75 | 300 ms | `CheckSpells(Offensive)` (nuke rotation) while engaged. Cooldown halved from the original 600 ms so instant-cast nukes chain at the brain tick rate (500 ms in combat) instead of being throttled. | Wizard, Theurgist, Cabalist, Sorcerer, Necromancer, Heretic, Eldritch, Enchanter, Mentalist, Animist, Bainshee, Valewalker, Runemaster, Spiritmaster, Bonedancer, Warlock, Thane |
 | `tank` | 70 / 65 | 500 ms / 12 s | Defensive spell/style cycle while engaged + lost-aggro callout when the target switches to another group member | Armsman, Paladin, Reaver, Hero, Warden, Champion, Warrior, Thane |
-| `melee_dps` | 60 | 1000 ms | `CheckSpells(Offensive)` for melee-class procs / hybrid spells | Infiltrator, Mercenary, Minstrel, Blademaster, Nightshade, Vampiir, Valewalker, Berserker, Savage, Shadowblade, Skald, Valkyrie, MaulerAlb, MaulerMid, MaulerHib |
-| `ranged_dps` | 60 | 1000 ms | `CheckSpells(Offensive)` for archer procs while engaged | Scout, Ranger, Hunter |
+| `melee_dps` | 60 | 500 ms | `CheckSpells(Offensive)` for melee-class procs / hybrid spells. Halved from 1000 ms so a Reaver lifetap or Valewalker proc fires the moment it's available, no extra throttle on top of the spell cooldowns. | Infiltrator, Mercenary, Minstrel, Blademaster, Nightshade, Vampiir, Valewalker, Berserker, Savage, Shadowblade, Skald, Valkyrie, MaulerAlb, MaulerMid, MaulerHib |
+| `ranged_dps` | 60 | 500 ms | `CheckSpells(Offensive)` for archer procs while engaged. Same halved cadence as melee_dps. | Scout, Ranger, Hunter |
 
 Note on hybrids: chain-armor "tanks" (Warden, Thane, Reaver) are not strict plate tanks but are kept in `tank` because they hold the iconic peel/guard role in 1.65 group play. Warden, Mentalist and Heretic carry real heal spec lines (Regrowth, Mana, Rejuvenation) and therefore appear in `healer` alongside the obvious cleric/druid/healer trio.
 
@@ -321,6 +321,23 @@ What's special in this fork is **endurance bookkeeping for grouped bots**. Live 
 - No permanent buffs are applied: these values only influence this single regen tick. The bot's stat sheet is untouched, the leader's potion isn't consumed twice, and a non-buffed bot still drains normally and eventually falls behind — exactly like a real groupmate.
 
 The previous behaviour was a brute-force `if (body.Endurance < 25) body.Endurance = body.MaxEndurance` inside `MirrorLeaderSprint`. It kept bots sprinting forever but flickered the player's group-endurance UI (the refill spammed `Group.UpdateMember` packets at ~2 Hz). That hack is gone now.
+
+---
+
+## DPS targeting and AoE
+
+Bots try to play their DPS like a focused human groupmate, not like a stock NPC.
+
+- **Single-target focus on epic / boss mobs.** `MimicBrain.CountAoeHostiles` returns the same `-1` veto sentinel it uses for "an AoE would break our own CC" when the primary target is `IGameEpicNpc`. The dispatcher's `ShouldUseAoe` picks that up and refuses cluster spells; the bot falls through to its single-target nuke rotation. AoE on a boss splits aggro, wastes mana on one fat HP bar, and is generally a DPS loss vs. a pure single-target burn.
+- **AoE only when the cluster is worth it.** `MimicCombatProfile.DamageAoeMinTargets = 2` — at least two hostiles in radius before a damage AoE is considered. Single-target nukes get a `+0` priority score, AoE without a cluster takes a `+2` penalty so its higher base damage doesn't outvote a single nuke when only one mob is in range.
+- **Focus fire propagates through the main assist.** Every DPS bot picks the assist's current target via `BotTargetDiffersFromAssistTrigger`. Switch happens within 1.5 s of the assist swapping mob (cooldown of the binding) — fast enough to feel coordinated, slow enough to not interrupt mid-style.
+- **Cadence.** DPS bindings are tuned to chain casts at the brain tick rate (500 ms in combat, dropping to 1500 ms / 4000 ms / 8000 ms when no players are nearby). `caster_dps` re-arms every 300 ms, `melee_dps` and `ranged_dps` every 500 ms, all aligned with the combat-mode tick so an instant-cast proc fires the same tick the trigger condition becomes true.
+- **Priority order inside a single CheckSpells.** `ScoreOffensivePriority` keeps the classic DAoC pick order: pet summons → snares → disease → stat debuffs → DoTs → DD-debuff hybrids → bolts → lifedrains → pure DDs. Lower score wins. Inside the same priority bracket the in-place `Sort` from commit `dcf3f8b` keeps insertion order so per-class spell-list tuning still matters.
+
+When the operator wants to push the bot AI further (hard-target priority, finish-low-HP-first, RvR caster focus), the next levers are:
+- broaden `IsHighValueTarget` beyond `IGameEpicNpc` (e.g. `MaxHealth > X`, named flag),
+- weight `MimicCombatProfile.ScoreTarget` so a boss / named gets a strong negative score before MainAssist fallback,
+- branch `caster_dps` from a single binding into per-rotation bindings so each rotation phase has its own cooldown.
 
 ---
 
@@ -400,6 +417,7 @@ The Bot AI v2 layer is being grown in phases. Each phase ships behind the per-cl
 | E | shipped | Cross-bot coordination — DPS bots actively switch off their current target when the main assist switches mob (`BotTargetDiffersFromAssistTrigger`); tanks publicly call lost aggro when their mob hits another group member (`TankLostAggroTrigger`) |
 | Rez | shipped | Bots die like players: rez-able corpse window (60 s with rezzer / 15 s without), healers actively cast Resurrect on dead bots AND dead players in the group, "release to bind" semantics on timeout (leave group + despawn — configurable via `bot_rez_timeout_behavior`). See [Death and resurrection](#death-and-resurrection). |
 | Sprint | shipped | Bots in follow inherit their human leader's Endurance Regen Potion + Long Wind RA at the tick level — leader running infinite-sprint kit ⇒ bots stay topped up; un-buffed leader ⇒ bots drain realistically and fall behind. Replaces the previous endurance-refill hack which flickered the player's group UI. See [Sprint and follow](#sprint-and-follow). |
+| DPS | shipped | Boss / `IGameEpicNpc` targets veto AoE (no aggro split, no mana waste — single-target burn is faster on a fat HP bar). DPS strategy cooldowns halved (`caster_dps` 600→300 ms, `melee_dps`/`ranged_dps` 1000→500 ms) so casts and procs chain at the combat-mode brain tick (500 ms) instead of being throttled. See [DPS targeting and AoE](#dps-targeting-and-aoe). |
 | F | planned | CC distribution (claim-and-cast so two bots don't mez the same add), kick rotation on enemy casters, travel / quest / gather autonomy à la mod-playerbots |
 
 Class roles in the role CSVs were validated against multiple DAoC 1.65 sources (darkageofcamelot.com Class Library, Camelot Herald wiki, ZAM Allakhazam, Uthgard / Disorder / Phoenix / Eden community guides) — see commit `bd02702` for the full audit and the corrections that were applied.

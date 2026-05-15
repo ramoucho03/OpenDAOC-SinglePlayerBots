@@ -13,8 +13,10 @@ namespace DOL.GS.Scripts.AI.Strategies.Builtin
     /// Pure melee classes don't have an offensive spell rotation, but
     /// they do get hybrid procs, lifetap returns, and a few self-buff
     /// triggers routed through CheckSpells(Offensive). The dispatcher
-    /// short-circuits when nothing applies, so a one-second cooldown
-    /// keeps this cheap.
+    /// short-circuits when nothing applies, so a 500 ms cooldown
+    /// (matching the combat-mode brain tick) keeps the binding ready
+    /// to fire as soon as a proc condition becomes valid, without
+    /// causing extra work when the bot has nothing castable.
     ///
     /// Focus-target propagation is already owned by AssistStrategy
     /// (priority 50 there); this strategy only handles the spell side.
@@ -32,7 +34,7 @@ namespace DOL.GS.Scripts.AI.Strategies.Builtin
                 new InCombatTrigger(true),
                 new DelegateCheckSpellsAction(MimicBrain.eCheckSpellType.Offensive, "melee-offensive-cycle"),
                 priority: 60,
-                cooldownMs: 1000,
+                cooldownMs: 500,
                 exclusive: false);
         }
     }

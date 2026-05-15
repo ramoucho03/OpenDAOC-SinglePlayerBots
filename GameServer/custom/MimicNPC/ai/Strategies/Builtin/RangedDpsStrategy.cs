@@ -13,8 +13,9 @@ namespace DOL.GS.Scripts.AI.Strategies.Builtin
     /// FSM/AttackComponent — the strategy layer doesn't try to second-guess
     /// the ranged-engagement state machine, it only owns the spell side.
     ///
-    /// Same priority/cooldown as MeleeDpsStrategy: archers and melee DPS
-    /// are functionally equivalent from CheckSpells' point of view.
+    /// Same priority/cooldown as MeleeDpsStrategy (500 ms, matching the
+    /// combat-mode brain tick): archers and melee DPS are functionally
+    /// equivalent from CheckSpells' point of view.
     /// </summary>
     public sealed class RangedDpsStrategy : IBotStrategy
     {
@@ -29,7 +30,7 @@ namespace DOL.GS.Scripts.AI.Strategies.Builtin
                 new InCombatTrigger(true),
                 new DelegateCheckSpellsAction(MimicBrain.eCheckSpellType.Offensive, "ranged-offensive-cycle"),
                 priority: 60,
-                cooldownMs: 1000,
+                cooldownMs: 500,
                 exclusive: false);
         }
     }
