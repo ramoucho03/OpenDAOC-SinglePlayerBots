@@ -439,14 +439,30 @@ namespace DOL.GS.Scripts
 
             if (text.ToLower() == "atlantis")
             {
+                // TOA hub = Oceanus Hesperos (Region 73). Each realm has its
+                // own Haven cluster within the region — coords sourced from
+                // the trainer / channeler NPCs actually placed in db-public
+                // (Mob.2.json) which we just imported.
                 DbTeleport teleport = new DbTeleport();
-                teleport.TeleportID = "Atlantis";
+                teleport.TeleportID = "Haven of Atlantis";
                 teleport.Realm = (int) DestinationRealm;
-                teleport.RegionID = 30;     // TOA — Aerus statue anchor
-                teleport.X = 383760;
-                teleport.Y = 714950;
-                teleport.Z = 9437;
-                teleport.Heading = 79;
+                teleport.RegionID = 73;
+                teleport.Heading = 0;
+                switch (player.Realm)
+                {
+                    case eRealm.Albion:
+                        teleport.X = 447323; teleport.Y = 552333; teleport.Z = 8567;
+                        break;
+                    case eRealm.Midgard:
+                        teleport.X = 331265; teleport.Y = 451002; teleport.Z = 8140;
+                        break;
+                    case eRealm.Hibernia:
+                        teleport.X = 330930; teleport.Y = 451170; teleport.Z = 8141;
+                        break;
+                    default:
+                        SayTo(player, "I cannot find an Atlantis haven for your kingdom.");
+                        return false;
+                }
                 OnDestinationPicked(player, teleport);
                 return true;
             }
