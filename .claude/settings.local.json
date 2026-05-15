@@ -13,7 +13,8 @@
       "WebFetch(domain:github.com)",
       "Read(//tmp/**)",
       "Read(//tmp/dol-dbpublic/src/schema/**)",
-      "Bash(awk '{print $NF}')"
+      "Bash(awk '{print $NF}')",
+      "Bash(docker compose *)"
     ]
   }
 }
