@@ -62,7 +62,7 @@ namespace DOL.GS
                 {
                     if (log.IsErrorEnabled)
                     {
-                        string message = $"GameClient.Player is being replaced but hasn't been deleted yet (current: {field}) (new: {field}){Environment.NewLine}{Environment.StackTrace}";
+                        string message = $"GameClient.Player is being replaced but hasn't been deleted yet (current: {field}) (new: {value}){Environment.NewLine}{Environment.StackTrace}";
                         log.Error(message);
                     }
 

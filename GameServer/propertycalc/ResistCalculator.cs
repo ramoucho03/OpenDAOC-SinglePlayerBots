@@ -43,7 +43,7 @@ namespace DOL.GS.PropertyCalc
             result += (int) ((1 - result * 0.01) * abilityBonus); // Secondary resists.
 
             // Treat NPC resists from constitution buffs as another layer of resists for now.
-            if (living is GameNPC && living is not MimicNPC)
+            if (living is GameNPC livingNpc && !livingNpc.IsMimic)
             {
                 double resistanceFromConstitution = StatCalculator.CalculateBuffContributionToAbsorbOrResist(living, eProperty.Constitution) / 8 * 100;
                 result += (int) ((1 - result * 0.01) * resistanceFromConstitution);
@@ -67,7 +67,7 @@ namespace DOL.GS.PropertyCalc
                 livingToCheck = living;
 
             int buff = living.BaseBuffBonusCategory[property] + living.SpecBuffBonusCategory[property];
-            buff = livingToCheck is GameNPC && livingToCheck is not MimicNPC ? buff : Math.Min(buff, BuffBonusCap);
+            buff = livingToCheck is GameNPC ltcNpc && !ltcNpc.IsMimic ? buff : Math.Min(buff, BuffBonusCap);
             int debuff = Math.Abs(living.DebuffCategory[property]) + Math.Abs(living.SpecDebuffCategory[property]);
             buff -= debuff;
 
@@ -90,7 +90,7 @@ namespace DOL.GS.PropertyCalc
             else
                 livingToCheck = living;
 
-            if (livingToCheck is GameNPC && livingToCheck is not MimicNPC)
+            if (livingToCheck is GameNPC ltcNpc && !ltcNpc.IsMimic)
                 return 0;
 
             int itemBonus = livingToCheck.ItemBonus[property];

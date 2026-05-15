@@ -602,6 +602,13 @@ namespace DOL.GS.Scripts
             {
                 if (groupMember is MimicNPC mimicNPC)
                 {
+                    // Skip dead bots waiting for a rez — teleporting their
+                    // corpse to the player creates a desync because the FSM
+                    // never transitions DEAD → WAKING_UP and the corpse looks
+                    // frozen client-side. The bot rejoins on revive/release.
+                    if (!mimicNPC.IsAlive || mimicNPC.InRezWait)
+                        continue;
+
                     bool movePet = false;
 
                     if (mimicNPC.ControlledBrain != null)
@@ -962,7 +969,12 @@ namespace DOL.GS.Scripts
                     {
                         if (args.Length > 2)
                         {
-                            if (!int.TryParse(args[2], out int range) || range < 0)
+                            // Clamp to a sane window. Below zero is nonsense
+                            // (would underflow downstream radius math) and
+                            // anything above the visibility distance just
+                            // makes the camp pull mobs the player can't even
+                            // see — invariably ends in a wipe.
+                            if (!int.TryParse(args[2], out int range) || range < 1 || range > 6000)
                                 range = 550;
 
                             foreach (GameLiving groupMember in player.Group.GetMembersInTheGroup())

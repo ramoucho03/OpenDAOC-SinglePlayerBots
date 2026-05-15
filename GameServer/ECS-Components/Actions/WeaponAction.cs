@@ -152,7 +152,7 @@ namespace DOL.GS
                 return 0;
             }
 
-            if (_owner is GameNPC npcOwner && _owner is not MimicNPC)
+            if (_owner is GameNPC npcOwner && !npcOwner.IsMimic)
             {
                 if (_attackWeapon == null || _attackWeapon.SlotPosition is not Slot.RIGHTHAND)
                     return 0;

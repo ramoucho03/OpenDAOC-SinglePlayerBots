@@ -888,7 +888,7 @@ namespace DOL.GS.Scripts
                     break;
 
                 case "Camp":
-                    if (Group == null)
+                    if (Group?.MimicGroup == null)
                     {
                         message = T(lang, "Mimic.Reply.NotInGroup");
                         break;
@@ -905,7 +905,7 @@ namespace DOL.GS.Scripts
                     break;
 
                 case "Pull":
-                    if (Group == null)
+                    if (Group?.MimicGroup == null)
                     {
                         message = T(lang, "Mimic.Reply.NotInGroup");
                         break;
@@ -1203,9 +1203,24 @@ namespace DOL.GS.Scripts
 
             GamePlayer player = source as GamePlayer;
 
-            // TODO: Add group checks when done testing
-            //if ((Group == null || Group != null && !Group.IsInTheGroup(source)) && player.Client.Account.PrivLevel == 1)
-            //    return false;
+            // Only accept items from a player who is currently in the bot's
+            // group. Without this check anyone could drop items on a bot's
+            // tile — and a subsequent /mclear from the owner would silently
+            // delete the corpse and its inventory, losing the gear. The
+            // privilege bypass is kept for GMs so they can hand-feed gear
+            // during testing.
+            if (player == null
+                || player.Client?.Account?.PrivLevel > 1)
+            {
+                // GM (or unknown caller): accept as before, drop straight
+                // into the auto-equip branch below.
+            }
+            else if (Group == null || !Group.IsInTheGroup(source))
+            {
+                player?.Out.SendMessage($"{GetName(0, true)} won't accept items from outside the group.",
+                    eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                return false;
+            }
 
             bool equipItem = false;
 
@@ -2533,6 +2548,17 @@ namespace DOL.GS.Scripts
         public override void Delete()
         {
             _beingDeleted = true;
+
+            // Stop the rez-wait timer if the bot is being deleted while still
+            // waiting for a resurrection (typical case: the owner disconnected
+            // before the rez window expired). Without this, the ECS timer would
+            // keep ticking and eventually call OnRezWaitExpired() on a deleted
+            // bot — best case the early-return guard catches it, worst case
+            // an NRE on a stale reference.
+            _rezWaitTimer?.Stop();
+            _rezWaitTimer = null;
+            _inRezWait = false;
+
             RemoveCampFire();
             Group?.RemoveMember(this);
             MimicManager.UnregisterOwned(this);
@@ -2652,6 +2678,8 @@ namespace DOL.GS.Scripts
             }
             set => m_targetInView = value;
         }
+
+        public override bool IsMimic => true;
 
         public override int TargetInViewAlwaysTrueMinRange => (TargetObject is GamePlayer targetPlayer && targetPlayer.IsMoving) ? 100 : 64;
 
@@ -3258,7 +3286,12 @@ namespace DOL.GS.Scripts
                 }
             }
 
-            GameEventMgr.RemoveHandler(this, GamePlayerEvent.Revive, new DOLEventHandler(OnRevive));
+            // The RemoveHandler call that used to live here was a no-op:
+            // no AddHandler(GamePlayerEvent.Revive, OnRevive) ever runs in
+            // the MimicNPC lifecycle, so unsubscribing achieved nothing and
+            // mostly just hinted (incorrectly) that the bot was subscribed
+            // to the revive event. If we ever wire OnRevive up later, add
+            // the matching AddHandler in the bot's init path first.
             m_deathtype = eDeathType.None;
             LastDeathPvP = false;
             //UpdatePlayerStatus();
@@ -3554,11 +3587,49 @@ namespace DOL.GS.Scripts
             {
                 if (charge is null)
                 {
+                    // The bot's own Long Wind (rare — stock mimics don't buy RAs).
                     AtlasOF_LongWindAbility raLongWind = GetAbility<AtlasOF_LongWindAbility>();
+                    int ownLongWindReduction = raLongWind != null
+                        ? raLongWind.GetAmountForLevel(CalculateSkillLevel(raLongWind))
+                        : 0;
 
-                    if (raLongWind != null)
-                        longWind -= raLongWind.GetAmountForLevel(CalculateSkillLevel(raLongWind)) * 5 / 100;
+                    // Mirror the human leader's sprint context. Live DAoC groups
+                    // sustain infinite sprint by running Endurance Regen potion +
+                    // Long Wind RA together — the potion supplies the regen, the
+                    // RA cancels the drain. A grouped bot has no real way to buy
+                    // either, so we let it inherit the leader's setup for the
+                    // duration of the sprint. No permanent buffs are applied;
+                    // these values only influence this single tick's math.
+                    GamePlayer humanLeader = MimicBrain?.CachedPlayerLeader;
 
+                    if (humanLeader != null && humanLeader.IsAlive
+                        && humanLeader.CurrentRegion == CurrentRegion)
+                    {
+                        AtlasOF_LongWindAbility leaderRa = humanLeader.GetAbility<AtlasOF_LongWindAbility>();
+                        int leaderLongWindReduction = leaderRa != null
+                            ? leaderRa.GetAmountForLevel(humanLeader.CalculateSkillLevel(leaderRa))
+                            : 0;
+
+                        // Use whichever Long Wind is stronger (bot's own RA or the
+                        // leader's). Same formula as GamePlayer: a level-5 RA
+                        // (reduction = 100) zeroes out longWind, so a 100 %
+                        // EnduRegen potion makes the net drain positive.
+                        ownLongWindReduction = Math.Max(ownLongWindReduction, leaderLongWindReduction);
+
+                        // If the leader is actively running the Endurance Regen
+                        // potion / chant, mirror that regen amount onto the bot.
+                        // Take the higher of (bot's own regen, leader's regen) so
+                        // a buffed bot stacked on a buffed leader doesn't lose
+                        // ground.
+                        if (humanLeader.effectListComponent.ContainsEffectForEffectType(eEffect.EnduranceRegenBuff))
+                        {
+                            int leaderRegen = humanLeader.GetModified(eProperty.EnduranceRegenerationAmount);
+                            if (leaderRegen > regen)
+                                regen = leaderRegen;
+                        }
+                    }
+
+                    longWind -= ownLongWindReduction * 5 / 100;
                     regen -= longWind;
 
                     if (endChant > 1)
@@ -6802,8 +6873,12 @@ namespace DOL.GS.Scripts
         // The bot stays in the group during that window. If no rez arrives in time,
         // the corpse is removed (Delete) and the bot leaves the group.
 
-        private const int REZ_WAIT_MS = 60_000;            // Window when a rezzer IS available in the group.
-        private const int REZ_WAIT_NO_HEALER_MS = 15_000;  // Auto-release window when no group member can rez.
+        // Window when a rezzer IS available in the group. Sourced from
+        // MimicConfig.BOT_REZ_WAIT_SECONDS at use-time so operators can
+        // tune it live via a server property without recompiling.
+        private static int REZ_WAIT_MS => Math.Max(1, MimicConfig.BOT_REZ_WAIT_SECONDS) * 1000;
+        // Auto-release window when no group member can rez. Same tuning model.
+        private static int REZ_WAIT_NO_HEALER_MS => Math.Max(1, MimicConfig.BOT_REZ_WAIT_NO_HEALER_SECONDS) * 1000;
 
         private ECSGameTimer _rezWaitTimer;
         private bool _inRezWait;
@@ -6908,21 +6983,66 @@ namespace DOL.GS.Scripts
             _inRezWait = false;
             _rezWaitTimer = null;
 
-            // Try to "release" the bot: teleport it back alive to its owner
-            // (or the group's leader) at reduced vitals — mimics a /release.
-            // If the owner is offline or unreachable, fall back to Delete.
-            GamePlayer owner = FindLiveOwnerOrLeader();
+            // What happens when no rez arrived in time is controlled by the
+            // BOT_REZ_TIMEOUT_BEHAVIOR server property:
+            //   - "release" (default): act like a player who has no bind to
+            //     return to — leave the group and despawn the corpse. The
+            //     player can /mlfg or /mcreate a fresh bot afterwards. This
+            //     is the realistic option asked for by operators who want
+            //     bots to feel like real party members.
+            //   - "revive": teleport the bot back to its owner at half
+            //     vitals, keep it in the group. Less realistic but
+            //     friendlier on long PvE runs. This was the pre-existing
+            //     behaviour, kept for backwards compatibility.
+            string mode = (MimicConfig.BOT_REZ_TIMEOUT_BEHAVIOR ?? "release").Trim().ToLowerInvariant();
 
-            if (owner != null && owner.IsAlive && owner.CurrentRegionID > 0)
+            if (mode == "revive")
             {
-                ReviveAtOwner(owner);
-                return 0;
+                GamePlayer owner = FindLiveOwnerOrLeader();
+
+                if (owner != null && owner.IsAlive && owner.CurrentRegionID > 0)
+                {
+                    ReviveAtOwner(owner);
+                    return 0;
+                }
+                // No live owner: fall through to release semantics so the
+                // corpse doesn't linger forever.
             }
 
-            // No-one to release to → standard cleanup.
+            // "release" path. Announce to the group via chat (best-effort,
+            // localized per recipient) then leave + delete the corpse.
+            AnnounceReleaseToGroup();
             Group?.RemoveMember(this);
             Delete();
             return 0;
+        }
+
+        /// <summary>
+        /// Sends a localized "I'm releasing to bind" line to every player
+        /// in the group, right before the bot leaves and the corpse is
+        /// deleted. Best-effort: a missing translation falls back to the
+        /// key, a missing group quietly skips the broadcast.
+        /// </summary>
+        private void AnnounceReleaseToGroup()
+        {
+            if (Group == null)
+                return;
+
+            string fromName = GetName(0, true);
+            string[] keys = new[]
+            {
+                "Mimic.Chat.ReleaseToBind.1",
+                "Mimic.Chat.ReleaseToBind.2",
+                "Mimic.Chat.ReleaseToBind.3",
+            };
+            string pickedKey = keys[Util.Random(keys.Length - 1)];
+
+            foreach (GamePlayer player in Group.GetPlayersInTheGroup())
+            {
+                string lang = player.Client?.Account?.Language;
+                string text = LanguageMgr.TryGetTranslation(out string t, lang, pickedKey) ? t : pickedKey;
+                player.Out.SendMessage($"[Party] {fromName}: \"{text}\"", eChatType.CT_Group, eChatLoc.CL_ChatWindow);
+            }
         }
 
         /// <summary>

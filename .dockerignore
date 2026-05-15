@@ -1,0 +1,33 @@
+# Build output — recreated inside the image by `dotnet build`
+build/
+Release/
+**/bin/
+**/obj/
+
+# Local config — the Dockerfile copies the example to serverconfig.xml itself
+CoreServer/config/serverconfig.xml
+
+# Git internals — keep the clone clean and shrink the build context
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# Editor / IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Docker artefacts so we don't recursively COPY them in
+.dockerignore
+docker-compose.yml
+
+# Misc
+*.log
+*.tmp

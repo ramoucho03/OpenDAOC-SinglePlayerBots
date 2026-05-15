@@ -145,7 +145,7 @@ namespace DOL.GS.Spells
 			if (ad.AttackResult != eAttackResult.Missed)
 			{
 				GameNPC npc = target as GameNPC;
-				if (npc != null && npc is not MimicNPC)
+				if (npc != null && !npc.IsMimic)
 				{
 					if (npc.Brain != null && (npc.Brain is IControlledBrain) == false)
 					{

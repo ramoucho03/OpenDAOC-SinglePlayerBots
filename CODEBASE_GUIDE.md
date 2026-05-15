@@ -52,11 +52,11 @@ L'IA NPC passe par `ABrain`, `FSM` et des etats `FSMState`. Les mobs standards u
 
 Chemin principal: `GameServer/custom/MimicNPC`.
 
-Le module contient 58 fichiers, dont 37 fichiers de specs de classes. Les fichiers les plus importants sont:
+Le module contient ~122 fichiers (le strategy framework Bot AI v2 et ses ~25 triggers + ~12 actions + 12 strategies built-in ont quasi doublé la taille du module depuis ce guide). Les fichiers les plus importants sont:
 
-- `MimicNPC.cs` (~7950 lignes): corps du bot. C'est un `GameNPC` qui implemente `IGamePlayer` et recopie une grande partie des capacites de `GamePlayer`.
-- `ai/MimicBrain.cs` (~2910 lignes): logique de decision, aggro, sorts, soins, pull, assist, flee/flank.
-- `ai/MimicState.cs` (~665 lignes): etats FSM du bot.
+- `MimicNPC.cs` (~8920 lignes): corps du bot. C'est un `GameNPC` qui implemente `IGamePlayer` et recopie une grande partie des capacites de `GamePlayer`.
+- `ai/MimicBrain.cs` (~5100 lignes): logique de decision, aggro, sorts, soins, pull, assist, flee/flank. A presque double depuis l'ajout du strategy manager (Phases A-E + Rez/Sprint/DPS/MainCC/Leader).
+- `ai/MimicState.cs` (~1680 lignes): etats FSM du bot.
 - `MimicGroup.cs`: roles de groupe, point de camp, point de pull, cache de soins.
 - `MimicManager.cs`: init, battlegrounds, spawners globaux, creation de mimics, equipement, specs, LFG, noms.
 - `MimicSpawner.cs`: spawner periodique de groupes ou bots.

@@ -148,7 +148,7 @@ namespace DOL.AI.Brain
                     return null;
 
                 _strategyManager = new BotStrategyManager(MimicBody, this);
-                EnableDefaultStrategies(_strategyManager);
+                EnableDefaultStrategies(_strategyManager, MimicBody);
                 return _strategyManager;
             }
         }
@@ -161,7 +161,7 @@ namespace DOL.AI.Brain
         /// individually toggleable later via /mstrategy if the player wants
         /// to silence one bot.
         /// </summary>
-        private static void EnableDefaultStrategies(BotStrategyManager mgr)
+        private static void EnableDefaultStrategies(BotStrategyManager mgr, MimicNPC bot)
         {
             if (mgr == null)
                 return;
@@ -171,6 +171,30 @@ namespace DOL.AI.Brain
             mgr.Enable(AssistStrategy.Key);
             mgr.Enable(SupportStrategy.Key);
             mgr.Enable(CampStrategy.Key);
+            // Activated on every bot; the bindings inside filter on the
+            // Leader role so only the actual MainLeader fires the lines.
+            mgr.Enable(LeaderStrategy.Key);
+
+            // Bot AI v2 — role-specific strategies. Each role is opted in
+            // per class via the matching CSV in MimicConfig (healer/tank/
+            // melee_dps/ranged_dps/caster_dps/cc). Strategies are
+            // composable: a Druid runs healer + caster_dps, a Bard runs
+            // healer + cc, a Reaver runs tank + melee_dps, a Friar runs
+            // healer + caster_dps. Pure tanks like the Paladin stay
+            // tank-only; assassins like Infiltrator/Nightshade/Shadowblade
+            // stay melee_dps-only. Operators tune the CSV at runtime;
+            // new bots pick up the change on spawn.
+            if (bot?.CharacterClass == null)
+                return;
+
+            int classId = bot.CharacterClass.ID;
+
+            if (MimicConfig.IsHealerClass(classId))    mgr.Enable(HealerStrategy.Key);
+            if (MimicConfig.IsTankClass(classId))      mgr.Enable(TankStrategy.Key);
+            if (MimicConfig.IsMeleeDpsClass(classId))  mgr.Enable(MeleeDpsStrategy.Key);
+            if (MimicConfig.IsRangedDpsClass(classId)) mgr.Enable(RangedDpsStrategy.Key);
+            if (MimicConfig.IsCasterDpsClass(classId)) mgr.Enable(CasterDpsStrategy.Key);
+            if (MimicConfig.IsCcClass(classId))        mgr.Enable(CcStrategy.Key);
         }
 
         public override void Think()
@@ -727,6 +751,15 @@ namespace DOL.AI.Brain
         // Resets to zero whenever we start a fresh pull cycle (no live target
         // chasing us). Used to gate chain pulls against the group's budget.
         private int _chainPullCount;
+
+        /// <summary>
+        /// Number of additional shots fired in the current chain-pull cycle
+        /// (0 means we are NOT chain-pulling; >0 means the puller has
+        /// already locked one mob this cycle and is now stacking another).
+        /// Read by IsChainPullingTrigger so the puller can call out
+        /// "Another one incoming!" as soon as the second arrow flies.
+        /// </summary>
+        public int ChainPullCount => _chainPullCount;
 
         // Time (GameLoopTime ms) the current pull shot was fired. Used as a
         // watchdog so a pull that never resolves doesn't permanently brick
@@ -1697,7 +1730,16 @@ namespace DOL.AI.Brain
             {
                 foreach (GameLiving cc in ccList)
                 {
-                    if (cc is GameNPC npc && npc != null && npc.IsAlive && ((StandardMobBrain)npc.Brain).HasAggro)
+                    // Drop the redundant `npc != null` check that used to sit
+                    // here — `is GameNPC npc` already guarantees a non-null
+                    // narrowing. Also use a typed pattern for Brain so a CCTarget
+                    // with a non-StandardMobBrain (a named-mob brain, a charm
+                    // pet brain, etc.) skips through instead of throwing
+                    // InvalidCastException on the direct cast.
+                    if (cc is GameNPC npc
+                        && npc.IsAlive
+                        && npc.Brain is StandardMobBrain smb
+                        && smb.HasAggro)
                     {
                         validatedList.Add(cc);
                     }
@@ -3014,6 +3056,48 @@ namespace DOL.AI.Brain
         }
 
         /// <summary>
+        /// True if any OTHER alive member of this bot's group is currently
+        /// casting a crowd-control spell on <paramref name="target"/>. Used by
+        /// <see cref="CheckSpells"/> when picking a CC candidate so two CC bots
+        /// in the same group don't lock onto the same add — that is the most
+        /// visible "CC bots don't coordinate" complaint, since one of the two
+        /// casts gets wasted and another add stays loose.
+        ///
+        /// Mirrors <see cref="IsBeingRezzedByGroup"/>: we only check spells
+        /// currently in flight (the caster is still IsCasting on a CC spell
+        /// type), not effects already landed — those are filtered out by the
+        /// existing <c>!LivingHasEffect(ccTarget, spell)</c> guard.
+        /// </summary>
+        public bool IsBeingCcedByGroup(GameLiving target)
+        {
+            if (target == null || Body.Group == null)
+                return false;
+
+            foreach (GameLiving gm in Body.Group.GetMembersInTheGroup())
+            {
+                if (gm == null || gm == Body || !gm.IsAlive || !gm.IsCasting)
+                    continue;
+
+                Spell active = gm.castingComponent?.SpellHandler?.Spell;
+                if (active == null || gm.TargetObject != target)
+                    continue;
+
+                // The five spell types we consider "soft CC" for de-dupe
+                // purposes. SpeedDecrease covers snares + roots; Amnesia is
+                // primarily a caster lock-out so it should also de-dupe with
+                // a Mez landing on the same target.
+                if (active.SpellType is eSpellType.Mesmerize
+                    or eSpellType.Mez
+                    or eSpellType.Stun
+                    or eSpellType.Amnesia
+                    or eSpellType.SpeedDecrease)
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// If the bot has a Resurrect spell and there's a dead group member in
         /// range, start casting rez on them. Runs regardless of combat state —
         /// an experienced healer drops everything to rez. Returns true when a
@@ -3111,7 +3195,44 @@ namespace DOL.AI.Brain
                             : null);
                 }
                 else if (MimicBody.CanCastCrowdControlSpells)
-                    ccTarget = MimicBody.Group?.MimicGroup.CCTargets[Util.Random(MimicBody.Group.MimicGroup.CCTargets.Count - 1)] as GameLiving;
+                {
+                    // Pick the first CCTarget that isn't already being CC'd by
+                    // another group member's in-flight cast. Random selection
+                    // (the previous behaviour) caused two CC bots ticking in
+                    // the same frame to lock onto the same add and waste one
+                    // of the two casts. Walk the list deterministically and
+                    // skip claimed targets. Falls back to null if every entry
+                    // is already being handled — CheckSpells then drops out
+                    // and the strategy cooldown will retry on the next tick.
+                    //
+                    // Note: CCTargets is pre-existing tech debt — a
+                    // List<GameLiving> mutated from multiple threads without
+                    // a lock. We bound the loop length to the snapshot taken
+                    // once at the top so an in-flight Add/Remove from another
+                    // thread can't blow the index range. Real fix is a
+                    // dedicated CcLock + ConcurrentBag, tracked separately.
+                    var ccTargets = MimicBody.Group?.MimicGroup.CCTargets;
+                    if (ccTargets != null)
+                    {
+                        int count = ccTargets.Count;
+                        for (int i = 0; i < count; i++)
+                        {
+                            if (i >= ccTargets.Count)
+                                break; // racy resize protection
+
+                            if (ccTargets[i] is not GameLiving candidate
+                                || !candidate.IsAlive
+                                || candidate.ObjectState != GameObject.eObjectState.Active)
+                                continue;
+
+                            if (IsBeingCcedByGroup(candidate))
+                                continue;
+
+                            ccTarget = candidate;
+                            break;
+                        }
+                    }
+                }
 
                 if (ccTarget != null && MimicBody.CanCastCrowdControlSpells)
                 {
@@ -3140,11 +3261,15 @@ namespace DOL.AI.Brain
 
                         if (spell == null)
                         {
-                            List<Spell> singleTargetCrowdControl = spellsToCast.Where(s => s.Radius <= 0).ToList();
-                            if (singleTargetCrowdControl.Count == 0)
+                            // Reuse the working list rather than allocating a new
+                            // filtered copy — we don't read spellsToCast again
+                            // after this branch picks a target. RemoveAll uses a
+                            // static lambda (no captures) so it allocates zero.
+                            spellsToCast.RemoveAll(static s => s.Radius > 0);
+                            if (spellsToCast.Count == 0)
                                 return false;
 
-                            spell = singleTargetCrowdControl[Util.Random(singleTargetCrowdControl.Count - 1)];
+                            spell = spellsToCast[Util.Random(spellsToCast.Count - 1)];
                         }
 
                         casted = Body.CastSpell(spell, MimicBody.GetSpellLineForSpell(spell));
@@ -3353,11 +3478,18 @@ namespace DOL.AI.Brain
                         return score;
                     }
 
-                    spellsToCast = spellsToCast
-                        .OrderByDescending(HasCluster)
-                        .ThenBy(SortScore)
-                        .ThenByDescending(s => s.Damage)
-                        .ToList();
+                    // In-place sort with the same key precedence as the previous
+                    // LINQ chain (OrderByDescending(HasCluster) ThenBy(SortScore)
+                    // ThenByDescending(Damage)). Avoids the 3 enumerator + 1 List
+                    // intermediate allocations the LINQ chain produced every tick.
+                    spellsToCast.Sort((a, b) =>
+                    {
+                        int byCluster = HasCluster(b).CompareTo(HasCluster(a));
+                        if (byCluster != 0) return byCluster;
+                        int byScore = SortScore(a).CompareTo(SortScore(b));
+                        if (byScore != 0) return byScore;
+                        return b.Damage.CompareTo(a.Damage);
+                    });
 
                     // Top of the priority list is normally the best pick. Add a small
                     // amount of variety (10% chance to pick second-best) so groups
@@ -3620,6 +3752,14 @@ namespace DOL.AI.Brain
         {
             if (spell == null || spell.Radius <= 0 || primaryTarget == null)
                 return 0;
+
+            // Veto AoE on epic / boss-class targets. AoE on a boss splits aggro
+            // (a fresh hostile entering range gets flagged for the same dispatcher
+            // tick) and wastes mana on a single high-HP enemy that single-target
+            // nukes burn down faster. The -1 sentinel is the same one the CC
+            // veto below uses, so the existing ShouldUseAoe path picks it up.
+            if (primaryTarget is IGameEpicNpc)
+                return -1;
 
             bool isPBAoE = spell.IsPBAoE;
             int radius = spell.Radius;

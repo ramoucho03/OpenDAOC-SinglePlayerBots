@@ -401,8 +401,8 @@ namespace DOL.GS.Spells
 
 			// Even with the spell queue disabled, spells are allowed to be queued silently to help counteract the client's anti spam feature.
 			// But this means we should use the most up-to-date target, as no actual queuing behavior is expected.
-			if (playerCaster != null && playerCaster is not MimicNPC && !((GamePlayer)playerCaster).SpellQueue)
-				Target = playerCaster.TargetObject as GameLiving;
+			if (playerCaster is GamePlayer realPlayerCaster && !realPlayerCaster.SpellQueue)
+				Target = realPlayerCaster.TargetObject as GameLiving;
 			else
 				Target = selectedTarget;
 
@@ -434,7 +434,7 @@ namespace DOL.GS.Spells
 			}
 
 			// Initial LoS state.
-			if (playerCaster != null && playerCaster is not MimicNPC)
+			if (playerCaster is GamePlayer)
 			{
 				// This may be wrong. This is the LoS state at the time the player used the spell, not necessarily for the target the spell is being cast on, assuming it can change.
 				// It should be fine since it's updated at the same time as `TargetObject`, and the spell handler doesn't receive a target explicitly. But it needs more testing.
@@ -476,7 +476,7 @@ namespace DOL.GS.Spells
 			if (IsQuickCasting)
 				_quickcast.ExpireTick = GameLoop.GameLoopTime + _quickcast.Duration;
 
-			if (playerCaster != null && playerCaster is not MimicNPC)
+			if (playerCaster is GamePlayer)
 			{
 				long nextSpellAvailTime = m_caster.TempProperties.GetProperty<long>(GamePlayer.NEXT_SPELL_AVAIL_TIME_BECAUSE_USE_POTION);
 
@@ -1903,7 +1903,7 @@ namespace DOL.GS.Spells
 				return;
 
 			// Sub spells aren't scaled on initialization.
-			if (Caster is GameNPC npc && Caster is not MimicNPC)
+			if (Caster is GameNPC npc && !npc.IsMimic)
 				spell = npc.GetScaledSpell(spell);
 
 			ISpellHandler spellHandler = ScriptMgr.CreateSpellHandler(m_caster, spell, SkillBase.GetSpellLine(GlobalSpellsLines.Reserved_Spells));
@@ -2902,7 +2902,7 @@ namespace DOL.GS.Spells
 			// Other pets use their own stats and level.
 			GameLiving modifiedCaster = Caster is NecromancerPet necromancerPet ? necromancerPet.Owner : Caster;
 
-			if (modifiedCaster is GameNPC && modifiedCaster is not MimicNPC)
+			if (modifiedCaster is GameNPC modifiedCasterNpc && !modifiedCasterNpc.IsMimic)
 				stat = modifiedCaster.GetModified(eProperty.Intelligence);
 			else if (modifiedCaster is IGamePlayer playerCaster)
 			{

@@ -99,13 +99,16 @@ namespace DOL.AI.Brain
 
             if (leaderSprinting)
             {
-                // Refill endurance ONLY when the bot is about to drop out of
-                // sprint (Sprint effect ends at Endurance <= 5). Refilling on
-                // every Think tick flooded the player with Group.UpdateMember
-                // packets (one per endurance-percent change × N bots × 2 Hz)
-                // which visually corrupted the player's own endurance bar.
-                if (body.Endurance < 25)
-                    body.Endurance = body.MaxEndurance;
+                // No more brute-force refill here. The endurance math in
+                // MimicNPC.EnduranceRegenerationTimerCallback now mirrors the
+                // leader's potion + Long Wind context, so a player running
+                // Endurance Regen potion + Long Wind RA keeps their bots in
+                // sprint indefinitely without us forcibly resetting the bar
+                // every tick (which used to flood the group with
+                // Group.UpdateMember packets and visibly corrupt the player's
+                // own endurance UI). When the leader has no sprint buffs the
+                // bot now drains realistically and eventually falls behind,
+                // exactly like a real human groupmate would.
 
                 if (!botSprinting)
                     body.Sprint(true); // checks alive/stealth internally
@@ -262,8 +265,9 @@ namespace DOL.AI.Brain
             if (_leader == null || (_leader != null && _leader.ObjectState != GameObject.eObjectState.Active || !_brain.Body.Group.IsInTheGroup(_leader)))
                 _leader = _brain.Body.Group.LivingLeader;
 
-            // Mirror the leader's sprint state so bots can keep up when the player presses Sprint.
-            MirrorLeaderSprint(_brain, _leader);
+            // Sprint mirroring is centralised in MimicBrain.Think() so it runs
+            // regardless of FSM state (ROAMING / WAKING_UP / AGGRO chases keep
+            // up too). Calling it here again would just duplicate the work.
 
             if (_followDistance != _targetFollowDistance)
             {

@@ -1,12 +1,58 @@
-﻿networks:
+networks:
   opendaoc-network:
     driver: bridge
 
 volumes:
+  # MariaDB on-disk data. Persist across `docker compose down`; nuke with
+  # `docker compose down -v` if you want to reset the world to factory.
   opendaoc-db-data:
+  # Shared between db-seed (writer) and db (reader): the seed sidecar drops
+  # combined.sql here, MariaDB's initdb picks it up on first launch.
   base-db:
 
 services:
+  # ---------------------------------------------------------------------------
+  # db-seed
+  #
+  # One-shot sidecar. Reuses the gameserver image (which embeds combined.sql
+  # at /tmp/opendaoc-db/) and copies that SQL into the shared `base-db`
+  # volume, then exits 0. The `db` service waits for this with
+  # `service_completed_successfully` so MariaDB's initdb directory is
+  # guaranteed populated before MariaDB ever touches it.
+  #
+  # Without this sidecar the original compose had a race: depends_on: db
+  # forced the gameserver to wait for the DB, but the DB's first-run init
+  # needed the SQL the gameserver had not yet written. The DB would come up
+  # with an empty schema and the server crashed on first query.
+  # ---------------------------------------------------------------------------
+  db-seed:
+    image: opendaoc-fork:latest
+    container_name: opendaoc-db-seed
+    build:
+      # Same context as the gameserver so docker compose tags the same image
+      # for both services and only builds once.
+      # Replace `#master` with another branch (e.g. `#claude/optimize-dol-server-gho1T`)
+      # to test a feature branch end-to-end without merging.
+      context: https://github.com/ramoucho03/OpenDAOC-SinglePlayerBots.git#master
+    entrypoint: ["/bin/sh", "-c"]
+    # Idempotent seed: the test-then-copy form is portable across GNU
+    # coreutils (Debian/Ubuntu) and BusyBox (Alpine) — `cp -n` was a
+    # GNU-ism not supported by every BusyBox version we might land on.
+    command: "if [ ! -f /seed/combined.sql ]; then cp /tmp/opendaoc-db/combined.sql /seed/combined.sql; fi && echo 'db-seed: schema ready in shared volume' && ls -lh /seed"
+    volumes:
+      - base-db:/seed
+    networks:
+      - opendaoc-network
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # db — MariaDB 10.6
+  #
+  # The healthcheck is the gate the gameserver waits on. Without it the
+  # gameserver can race the DB's first-launch initialisation and crash
+  # on its first connection attempt (the `restart: unless-stopped` would
+  # cover it, but the first 30s of logs would be confusing).
+  # ---------------------------------------------------------------------------
   db:
     image: mariadb:10.6
     container_name: opendaoc-db
@@ -20,27 +66,43 @@ services:
     volumes:
       - opendaoc-db-data:/var/lib/mysql
       - base-db:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "mariadb-admin", "ping", "-h", "127.0.0.1", "-uroot", "-pmy-secret-pw"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    depends_on:
+      db-seed:
+        condition: service_completed_successfully
     networks:
       - opendaoc-network
 
+  # ---------------------------------------------------------------------------
+  # gameserver
+  #
+  # Build context same as db-seed so a single image build covers both.
+  # `depends_on` waits on the DB being healthy, not just started, so the
+  # first dotnet log line you see is from a server that successfully opened
+  # the DB connection — not an exception trace.
+  # ---------------------------------------------------------------------------
   gameserver:
-    # Build direct depuis le fork GitHub (ramoucho03/OpenDAOC-SinglePlayerBots, branche master).
-    # Docker clone le repo distant à chaque `docker compose build` et exécute son Dockerfile.
-    # Workflow de mise à jour : `git push` puis `docker compose up -d --build gameserver`.
-    # Pour builder depuis le code local (changements non poussés), remettre `build: .`.
-    # Pour repasser sur l'image upstream, retirer `build:` et remettre
-    # `image: ghcr.io/opendaoc/opendaoc-core:latest`.
-    build:
-      context: https://github.com/ramoucho03/OpenDAOC-SinglePlayerBots.git#master
     image: opendaoc-fork:latest
     container_name: opendaoc-server
+    build:
+      # Replace `#master` with the branch you want to test:
+      #   context: https://github.com/ramoucho03/OpenDAOC-SinglePlayerBots.git#claude/optimize-dol-server-gho1T
+      # For uncommitted local changes use `context: .` (and remove the URL).
+      context: https://github.com/ramoucho03/OpenDAOC-SinglePlayerBots.git#master
+    restart: unless-stopped
     stdin_open: true
     tty: true
     ports:
       - "10300:10300"
-      - "10400:10400"
+      - "10400:10400/udp"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     environment:
       UID: "1000"
       GID: "1000"
@@ -85,7 +147,5 @@ services:
       DOTNET_ThreadPool_ForceMaxWorkerThreads: "256"
       # Bot AI scaling — see ServerProperty pvp_frontier_population_per_realm too.
       # The game loop runs at 30 TPS by default (game_loop_tick_rate ServerProperty).
-    volumes:
-      - base-db:/tmp/opendaoc-db
     networks:
       - opendaoc-network

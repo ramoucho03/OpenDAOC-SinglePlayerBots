@@ -108,6 +108,18 @@ namespace DOL.GS
 		protected Timer m_timer;
 
 		/// <summary>
+		/// Registry of optional <see cref="Modules.IGameModule"/> extensions
+		/// discovered at boot time. Initialized lazily so it exists even if a
+		/// subclass overrides Start without calling base.
+		/// </summary>
+		protected readonly Modules.GameModuleRegistry m_moduleRegistry = new();
+
+		/// <summary>
+		/// Read-only access to the module registry for diagnostics and tests.
+		/// </summary>
+		public Modules.GameModuleRegistry ModuleRegistry => m_moduleRegistry;
+
+		/// <summary>
 		/// A general logger for the server
 		/// </summary>
 		public Logging.Logger Log
@@ -519,6 +531,11 @@ namespace DOL.GS
 				if (!InitComponent(StatPrint.Init(), "StatPrint Init"))
 					return false;
 
+				// Optional modules. Failures here are logged but do not abort startup,
+				// because a misbehaving module should not prevent the core server
+				// from accepting players. Inspect logs if a feature is missing.
+				InitComponent(InitGameModules(), "Game Modules");
+
 				GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
 
 				if (log.IsInfoEnabled)
@@ -929,6 +946,21 @@ namespace DOL.GS
 		}
 
 		/// <summary>
+		/// Discover and initialize <see cref="Modules.IGameModule"/> implementations
+		/// from the GameServer assembly and any compiled script assemblies.
+		///
+		/// This wrapper always returns true: a module failing to initialize is a
+		/// soft error that should leave the server running. Per-module success
+		/// and failure are logged by the registry.
+		/// </summary>
+		protected bool InitGameModules()
+		{
+			IEnumerable<Assembly> assemblies = ScriptMgr.GameServerScripts;
+			m_moduleRegistry.InitAll(new Modules.GameServerContext(this), assemblies);
+			return true;
+		}
+
+		/// <summary>
 		/// Prints out some text info on component initialisation
 		/// and stops the server again if the component failed
 		/// </summary>
@@ -1007,6 +1039,10 @@ namespace DOL.GS
 
 			if (log.IsInfoEnabled)
 				log.Info("No longer accepting incoming connections");
+
+			// Shut down optional modules before tearing down core services.
+			// They may rely on GameLoop, WorldMgr, etc. being still alive.
+			m_moduleRegistry.ShutdownAll();
 
 			GameLoop.Exit();
 			GameEventMgr.Notify(ScriptEvent.Unloaded);

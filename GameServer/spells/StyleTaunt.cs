@@ -29,7 +29,7 @@ namespace DOL.GS.Spells
 
         public override void OnDirectEffect(GameLiving target)
         {
-            if (target is MimicNPC || target is not GameNPC npc || npc.Brain is not IOldAggressiveBrain brain)
+            if (target is not GameNPC npc || npc.IsMimic || npc.Brain is not IOldAggressiveBrain brain)
                 return;
 
             // Style taunt and style detaunt default values are 17 and -19 respectively. The old formula multiplied that value to the (non-critical) damage, which resulted in excessively high threat changes.

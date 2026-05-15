@@ -10936,7 +10936,7 @@ namespace DOL.GS
 
                 foreach (GameNPC npc in player.GetNPCsInRadius(1024))
                 {
-                    if (npc is MimicNPC)
+                    if (npc.IsMimic)
                         continue;
 
                     // Friendly mobs do not uncover stealthed players

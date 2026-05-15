@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
 using DOL.GS.PacketHandler;
@@ -128,7 +129,7 @@ namespace DOL.GS
             // We normally keep effects active on paused NPCs and let them expire naturally.
             // Concentration effects however should probably be stopped since they keep the effect list component permanently active for no good reason.
             // Checking `IsVisibleToPlayers` should be enough for this purpose.
-            if (caster is not MimicNPC && caster is GameNPC npcCaster && !npcCaster.IsVisibleToPlayers)
+            if (caster is GameNPC npcCaster && !npcCaster.IsMimic && !npcCaster.IsVisibleToPlayers)
             {
                 spellEffect.End();
                 return;
@@ -182,6 +183,10 @@ namespace DOL.GS
                     }
                 }
 
+                // Collect expired keys before mutating the dictionary; removing during foreach
+                // throws InvalidOperationException on Dictionary<,>.
+                List<GameLiving> expiredChildKeys = null;
+
                 foreach (var pair in pulseEffect.ChildEffects)
                 {
                     ECSGameSpellEffect childEffect = pair.Value;
@@ -195,8 +200,14 @@ namespace DOL.GS
                             continue;
 
                         childEffect.End();
-                        pulseEffect.ChildEffects.Remove(pair.Key);
+                        (expiredChildKeys ??= new List<GameLiving>(2)).Add(pair.Key);
                     }
+                }
+
+                if (expiredChildKeys != null)
+                {
+                    for (int i = 0; i < expiredChildKeys.Count; i++)
+                        pulseEffect.ChildEffects.Remove(expiredChildKeys[i]);
                 }
             }
             else if (spellEffect is not ECSImmunityEffect && spellEffect.EffectType is not eEffect.Pulse && spell.IsSnare)

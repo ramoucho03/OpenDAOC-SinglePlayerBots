@@ -1790,7 +1790,7 @@ namespace DOL.GS
 					// Non-damaging spells that always break mez.
 					removeMez = true;
 				}
-				else if ((ad.IsSpellResisted || this is GameNPC && this is not MimicNPC) && ad.SpellHandler is not MesmerizeSpellHandler)
+				else if ((ad.IsSpellResisted || this is GameNPC thisNpc && !thisNpc.IsMimic) && ad.SpellHandler is not MesmerizeSpellHandler)
 					removeMez = true;
 			}
 
@@ -2203,7 +2203,7 @@ namespace DOL.GS
 
 				case eActiveWeaponSlot.TwoHanded:
 				{
-					if (twoHandSlot != null && (twoHandSlot.Hand == 1 || (this is GameNPC && this is not MimicNPC))) // 2h
+					if (twoHandSlot != null && (twoHandSlot.Hand == 1 || (this is GameNPC twoHandedNpc && !twoHandedNpc.IsMimic))) // 2h
 					{
 						rightHand = leftHand = 0x02;
 						_activeWeapon = twoHandSlot;
@@ -2247,7 +2247,7 @@ namespace DOL.GS
 						rightHand = 0xFF;
 						_activeWeapon = null;
 					}
-					else if (distanceSlot.Hand == 1 || this is GameNPC && this is not MimicNPC) // NPC equipment does not have hand so always assume 2 handed bow
+					else if (distanceSlot.Hand == 1 || (this is GameNPC distNpc && !distNpc.IsMimic)) // NPC equipment does not have hand so always assume 2 handed bow
 						rightHand = leftHand = 0x03; // bows use 2 hands, throwing axes 1h
 					else
 						rightHand = 0x03;
@@ -3105,6 +3105,10 @@ namespace DOL.GS
 
             if (!IsWithinRadius(target, WorldMgr.WHISPER_DISTANCE))
             {
+                // Mimics ignore whisper range (no client to be out of earshot).
+                // Kept as a direct type check rather than the GameNPC.IsMimic
+                // virtual because Whisper accepts any GameLiving target and we
+                // would otherwise need an extra cast just to read .IsMimic.
                 if (target is not MimicNPC)
                     return false;
             }

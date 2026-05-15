@@ -77,6 +77,7 @@ Mimic.Button.Help:                    Help
 # Replies / status
 Mimic.Reply.IDoNotHaveThatAbility:    I do not have that ability.
 Mimic.Reply.MustBeInSameGroup:        We must be in the same group.
+Mimic.Reply.BrainReset:               Brain reset — I'm back in WAKING_UP.
 Mimic.Reply.IWillGuardYou:            I will guard you.
 Mimic.Reply.IWillNoLongerGuard:       I will no longer guard you.
 Mimic.Reply.ICannotGuardYou:          I cannot guard you.
@@ -133,6 +134,31 @@ Mimic.Chat.LowMana.3:                 My power is running dry.
 Mimic.Chat.LowEnd.1:                  I'm out of breath.
 Mimic.Chat.LowEnd.2:                  No more endurance left.
 Mimic.Chat.LowEnd.3:                  I need a moment to catch my breath.
+
+# Self-afflicted: bot is mezzed, diseased or poisoned and asks for a cure publicly
+Mimic.Chat.NeedCure.1:                I need a cure, please!
+Mimic.Chat.NeedCure.2:                Cure on me, fast!
+Mimic.Chat.NeedCure.3:                Got something on me, need a cleanse!
+
+# Tank lost aggro: a mob the tank is fighting is now hitting another group member
+Mimic.Chat.LostAggro.1:               Lost aggro, peel off me!
+Mimic.Chat.LostAggro.2:               Mob's on the wrong target, get back!
+Mimic.Chat.LostAggro.3:               Heads up, I lost the mob!
+
+# Bot released to bind: rez timeout expired, the bot is leaving the group
+Mimic.Chat.ReleaseToBind.1:           No rez incoming, releasing to bind. GL.
+Mimic.Chat.ReleaseToBind.2:           Releasing — see you in town.
+Mimic.Chat.ReleaseToBind.3:           Can't wait any longer, I'm out. Good luck!
+
+# Main leader: engagement call when the puller's mob arrives at camp
+Mimic.Chat.LeaderEngage.1:            Engage! All in!
+Mimic.Chat.LeaderEngage.2:            Mob's here, light it up.
+Mimic.Chat.LeaderEngage.3:            Pull's in, focus the assist!
+
+# Main leader: post-combat call when the fight is clean
+Mimic.Chat.LeaderPostCombat.1:        Good fight, regroup and regen.
+Mimic.Chat.LeaderPostCombat.2:        Clean. Take a breather.
+Mimic.Chat.LeaderPostCombat.3:        Sit down, next pull when ready.
 
 # Puller announcement (start of pull)
 Mimic.Chat.Pulling.1:                 Pulling now, get ready!

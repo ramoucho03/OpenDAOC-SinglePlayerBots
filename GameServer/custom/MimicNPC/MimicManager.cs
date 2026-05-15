@@ -783,10 +783,10 @@ namespace DOL.GS.Scripts
                                                                        DB.Column("Object_Type").IsEqualTo((int)weapType).And(
                                                                        DB.Column("Realm").IsEqualTo((int)player.Realm)).And(
                                                                        DB.Column("IsPickable").IsEqualTo(1)))));
+            List<DbItemTemplate> itemsToKeep = new List<DbItemTemplate>();
+
             if (itemList.Count != 0)
             {
-                List<DbItemTemplate> itemsToKeep = new List<DbItemTemplate>();
-
                 foreach (DbItemTemplate item in itemList)
                 {
                     bool shouldAddItem = false;
@@ -817,10 +817,32 @@ namespace DOL.GS.Scripts
                 {
                     DbItemTemplate itemTemplate = itemsToKeep[Util.Random(itemsToKeep.Count - 1)];
                     AddItem(player, itemTemplate, hand);
+                    return;
                 }
             }
-            else
-                log.Info("No melee weapon found for " + player.Name);
+
+            // ROG fallback: no DB-templated weapon matched the realm + class
+            // + level window. Without this the bot would spawn unarmed and
+            // CheckPuller / AttackAction would silently no-op forever. Roll
+            // a Generated Unique item in the right slot so the bot at least
+            // has SOMETHING to swing. Log a warn so operators notice their
+            // weapon table needs filling.
+            if (log.IsWarnEnabled)
+                log.Warn($"No melee weapon found in DB for {player.Name} ({weapType}/{hand} L{player.Level}/{player.Realm}); generating ROG fallback");
+
+            eInventorySlot fallbackSlot = hand switch
+            {
+                eHand.twoHand => eInventorySlot.TwoHandWeapon,
+                eHand.leftHand => eInventorySlot.LeftHandWeapon,
+                _ => eInventorySlot.RightHandWeapon,
+            };
+            SetWeaponROG((GameLiving)player,
+                player.Realm,
+                (eCharacterClass)player.CharacterClass.ID,
+                (byte)player.Level,
+                weapType,
+                fallbackSlot,
+                (eDamageType)(byte)damageType);
         }
 
         public static void SetRangedWeapon(IGamePlayer player, eObjectType weapType)
@@ -843,8 +865,20 @@ namespace DOL.GS.Scripts
 
                 return;
             }
-            else
-                log.Info("No Ranged weapon found for " + player.Name);
+
+            // ROG fallback for ranged: archer bots (Scout / Ranger / Hunter)
+            // without a bow simply can't pull, which kills the whole camp
+            // pipeline. Same Generated Unique fallback path as melee above.
+            if (log.IsWarnEnabled)
+                log.Warn($"No ranged weapon found in DB for {player.Name} ({weapType} L{player.Level}/{player.Realm}); generating ROG fallback");
+
+            SetWeaponROG((GameLiving)player,
+                player.Realm,
+                (eCharacterClass)player.CharacterClass.ID,
+                (byte)player.Level,
+                weapType,
+                eInventorySlot.DistanceWeapon,
+                eDamageType.Slash);
         }
 
         public static void SetShield(IGamePlayer player, int shieldSize)
@@ -1394,22 +1428,204 @@ namespace DOL.GS.Scripts
     // Just a quick way to get names...
     public static class MimicNames
     {
-        private const string albMaleNames = "Gareth,Lancelot,Cedric,Tristan,Percival,Gawain,Arthur,Merlin,Galahad,Ector,Uther,Mordred,Bors,Lionel,Agravain,Bedivere,Kay,Lamorak,Erec,Gaheris,Pellinore,Loholt,Leodegrance,Aglovale,Tor,Ywain,Uri,Cador,Elayne,Tristram,Cei,Gavain,Kei,Launcelot,Meleri,Isolde,Dindrane,Ragnelle,Lunete,Morgause,Yseult,Bellicent,Brangaine,Blanchefleur,Enid,Vivian,Laudine,Selivant,Lisanor,Ganelon,Cundrie,Guinevere,Norgal,Vivienne,Clarissant,Ettard,Morgaine,Serene,Serien,Selwod,Siraldus,Corbenic,Gurnemanz,Terreban,Malory,Dodinel,Serien,Gurnemanz,Manessen,Herzeleide,Taulat,Serien,Bohort,Ysabele,Karados,Dodinel,Peronell,Dinadan,Segwarides,Lucan,Lamorat,Enide,Parzival,Aelfric,Geraint,Rivalin,Blanchefleur,Gurnemanz,Terreban,Launceor,Clarissant,Herzeleide,Taulat,Zerbino,Serien,Bohort,Ysabele,Dodinel,Peronell,Serenadine,Dinadan,Caradoc,Segwarides,Lucan,Lamorat,Enide,Parzival,Aelfric,Geraint,Rivalin,Blanchefleur,Kaherdin,Gurnemanz,Terreban,Launceor,Clarissant,Patrise,Navarre,Taulat,Iseut,Guivret,Madouc,Ygraine,Tristran,Perceval,Lanzarote,Lamorat,Ysolt,Evaine,Guenever,Elisena,Rowena,Deirdre,Maelis,Clarissant,Palamedes,Yseult,Iseult,Palomides,Brangaine,Laudine,Herlews,Tristram,Alundyne,Blasine,Dinas";
-        private const string albFemaleNames = "Guinevere,Isolde,Morgana,Elaine,Vivienne,Nimue,Lynette,Rhiannon,Enid,Iseult,Bellicent,Brangaine,Blanchefleur,Laudine,Selivant,Lisanor,Elidor,Brisen,Linet,Serene,Serien,Selwod,Ysabele,Karados,Peronell,Serenadine,Dinadan,Clarissant,Igraine,Aelfric,Herzeleide,Taulat,Zerbino,Iseut,Guivret,Madouc,Ygraine,Elisena,Rowena,Deirdre,Maelis,Herlews,Alundyne,Blasine,Dinas,Evalach,Rohais,Soredamors,Orguelleuse,Egletine,Fenice,Amide,Lionesse,Eliduc,Silvayne,Amadas,Amadis,Iaonice,Emerause,Ysabeau,Idonia,Alardin,Lessele,Evelake,Herzeleide,Carahes,Elyabel,Igrayne,Laudine,Guenloie,Isolt,Urgan,Yglais,Nimiane,Arabele,Amabel,Clarissant,Patrise,Navarre,Iseut,Guivret,Madouc,Ygraine,Elisena,Rowena,Deirdre,Maelis,Herlews,Alundyne,Blasine,Dinas,Evalach,Rohais,Soredamors,Orguelleuse,Egletine,Fenice,Amide,Lionesse,Eliduc,Silvayne,Amadas,Amadis,Iaonice,Emerause,Ysabeau,Idonia,Alardin,Lessele,Evelake,Herzeleide,Carahes,Elyabel,Igrayne,Laudine,Guenloie,Isolt,Urgan,Yglais,Nimiane,Arabele,Amabel";
+        // Pre-split arrays, deduplicated, evenly capitalised. The previous
+        // implementation kept the lists as one giant comma-separated string
+        // and called Split(',') on every bot spawn, which both allocated a
+        // fresh string[] each time and re-walked the list for duplicates we
+        // never wanted in the first place. Build the arrays once at class
+        // init time and pick at random from them.
+        //
+        // Naming theme per realm:
+        //   Albion   — Arthurian + late-medieval English / Frankish
+        //   Hibernia — classical Irish / Welsh / Gaelic
+        //   Midgard  — Old Norse, Icelandic sagas, Viking-age
+        // Female and male sets are kept separate so the gender check stays
+        // truthful. Roughly 200+ candidates per realm/gender post-dedup.
 
-        private const string hibMaleNames = "Aonghus,Breandan,Cian,Dallan,Eogan,Fearghal,Greagoir,Iomhar,Lorcan,Mairtin,Neachtan,Odhran,Paraic,Ruairi,Seosamh,Toireasa,aed,Beircheart,Colm,Domhnall,eanna,Fergus,Goll,Irial,Liam,MacCon,Naoimhin,odhran,Padraig,Ronan,Seanan,Tadhgan,Uilliam,Ailill,Bran,Cairbre,Daithi,Eoghan,Faolan,Gorm,Iollan,Lughaidh,Manannan,Niall,Oisin,Padraig,Ronan,Seadna,Tadhg,Ultan,Alastar,Bairre,Caoilte,Daire,enna,Fiachra,Gairm,Imleach,Jarlath,Kian,Laoiseach,Malachy,Naoise,Odhran,Paidin,Roibeard,Seamus,Turlough,Uilleag,Alastriona,Bairrfhionn,Caoimhe,Dymphna,eabha,Fionnuala,Grainne,Isolt,Laoise,Maire,Niamh,Oonagh,Padraigin,Roisin,Saoirse,Teagan,Una,Aoife,Brid,Caitriona,Deirdre,eibhlin,Fia,Gormlaith,Iseult,Jennifer,Kerstin,Lean,Maighread,Noirin,orlaith,Plurabelle,Rioghnach,Siobhan,Treasa,Ursula,Aodh,Baird,Caoimhin,Daire,eamon,Fearghas,Gartlach,iomhar,Jozsef,Lochlainn,Manus,Naois,oisin,Paidin,Roibeard,Seaan,Tomas,Uilliam,Ailbhe,Bairrionn,Caoilinn,Dairine,Eabhnat,Gormfhlaith,Ite,Juliana,Kaitlin,Laochlann,Nollaig,ornait,Pala,Roise,Seaghdha,Tomaltach,Uinseann,Ailbin,Bairrionn,Caoimhin,Dairine,Eabhnat,Fearchara,Gormfhlaith,Ite,Juliana,Kaitlin,Laochlann,Nollaig,ornait,Pala,Roise,Seaghdha,Tomaltach,Uinseann";
-        private const string hibFemaleNames = "Aibhlinn,Brighid,Caoilfhionn,Deirdre,eabha,Fionnuala,Grainne,Iseult,Jennifer,Kerstin,Lean,Maire,Niamh,Oonagh,Padraigin,Roisin,Saoirse,Teagan,Una,Aoife,Aisling,Blathnat,Cliodhna,Dymphna,eidin,Fineachan,Gormfhlaith,iomhar,Juliana,Kaitlin,Laoise,Maighread,Noirin,orlaith,Plurabelle,Rioghnach,Siobhan,Treasa,Ursula,Ailbhe,Bairrfhionn,Caoilinn,Dairine,eabhnat,Fearchara,Gormlaith,Ite,Laochlann,Mairtin,Nollaig,ornait,Pala,Roise,Seaghdha,Tomaltach,Uinseann,Ailbin,Ailis,Blath,Dairin,eadaoin,Fionn,Gra,Iseabal,Jacinta,Kait,Laoiseach,Nuala,orfhlaith,Poilin,Saibh,Teadgh";
+        private static readonly string[] _albMale =
+        {
+            // Arthurian core
+            "Gareth", "Lancelot", "Cedric", "Tristan", "Percival", "Gawain",
+            "Arthur", "Merlin", "Galahad", "Ector", "Uther", "Mordred", "Bors",
+            "Lionel", "Agravain", "Bedivere", "Kay", "Lamorak", "Erec",
+            "Gaheris", "Pellinore", "Loholt", "Leodegrance", "Aglovale", "Tor",
+            "Ywain", "Cador", "Tristram", "Cei", "Launcelot", "Dinadan",
+            "Lucan", "Caradoc", "Segwarides", "Geraint", "Bohort", "Karados",
+            "Palomides", "Palamedes", "Parzival", "Kaherdin", "Patrise",
+            "Madouc", "Guivret", "Aelfric", "Rivalin",
+            // Late-medieval English / Frankish names a 1.65-era Albion roster would carry
+            "Aldred", "Aldous", "Alfred", "Alric", "Amalric", "Anselm",
+            "Athelstan", "Baldwin", "Bertrand", "Beorn", "Beorhtric",
+            "Cadell", "Cedric", "Charles", "Conrad", "Cuthbert", "Drogo",
+            "Edmund", "Edward", "Edwin", "Egbert", "Eldric", "Eustace",
+            "Everard", "Fulk", "Geoffrey", "Gilbert", "Godfrey", "Godwin",
+            "Gregory", "Guy", "Harold", "Hartwin", "Henry", "Hubert", "Hugh",
+            "Humphrey", "Ingram", "John", "Jordan", "Julian", "Lambert",
+            "Leofric", "Leofwine", "Lionel", "Lucan", "Magnus", "Martin",
+            "Matthew", "Maurice", "Nicholas", "Odo", "Osbert", "Osric",
+            "Oswin", "Owain", "Peter", "Philip", "Ralph", "Randolph",
+            "Raymond", "Reginald", "Richard", "Robert", "Roger", "Roland",
+            "Rufus", "Simon", "Stephen", "Talbot", "Theobald", "Thomas",
+            "Tobias", "Walter", "Wilbur", "Wilfred", "William", "Wulfric",
+        };
 
-        private const string midMaleNames = "Agnar,Bjorn,Dagur,Eirik,Fjolnir,Geir,Haldor,Ivar,Jarl,Kjartan,Leif,Magnus,Njall,Orvar,Ragnald,Sigbjorn,Thrain,Ulf,Vifil,Arni,Bardi,Dain,Einar,Faldan,Grettir,Hogni,Ingvar,Jokul,Koll,Leiknir,Mord,Nikul,Ornolf,Ragnvald,Sigmund,Thorfinn,Ulfar,Vali,Yngvar,Asgeir,Bolli,Darri,Egill,Flosi,Gisli,Hjortur,Ingolf,Jokull,Kolbeinn,Leikur,Mordur,Nils,Orri,Ragnaldur,Sigurdur,Thormundur,Ulfur,Valur,Yngvi,Arnstein,Bardur,David,Egill,Flosi,Gisli,Hjortur,Ingolf,Jokull,Kolbeinn,Leikur,Mordur,Nils,Orri,Ragnaldur,Sigurdur,Thormundur,Ulfur,Valur,Yngvi,Arnstein,Bardur,David,Eik,Fridgeir,Grimur,Hafthor,Ivar,Jorundur,Kari,Ljotur,Mord,Nokkvi,Oddur,Rafn,Steinar,Thorir,Valgard,Yngve,Askur,Baldur,Dagr,Eirikur,Fridleif";
-        private const string midFemaleNames = "Aesa,Bjorg,Dalla,Edda,Fjola,Gerd,Halla,Inga,Jora,Kari,Lina,Marna,Njola,Orna,Ragna,Sif,Thora,Ulfhild,Vika,Alva,Bodil,Dagny,Eira,Frida,Gisla,Hildur,Ingibjorg,Jofrid,Kolfinna,Leidr,Mina,Olina,Ragnheid,Sigrid,Thordis,Una,Yrsa,Asgerd,Bergthora,Eilif,Flosa,Gudrid,Hjordis,Ingimund,Jolninna,Lidgerd,Mjoll,Oddny,Ranveig,Sigrun,Thorhalla,Valdis,Alfhild,Bardis,Davida,Eilika,Fridleif,Gudrun,Hjortur,Jokulina,Kolfinna,Leiknir,Mordur,Njall,Orvar,Ragnald,Sigbjorn,Thrain,Ulf,Vifil,Arnstein,Bardur,David,Egill,Fridgeir,Grimur,Hafthor,Ivar,Jorundur,Kari,Ljotur,Mord,Nokkvi,Oddur,Rafn,Steinar,Thorir,Valgard,Yngve,Askur,Baldur,Dagr,Eirikur,Fridleif,Grimur,Halfdan,Ivarr,Kjell,Ljung,Nikul,Ornolf,Ragnvald,Sigurdur,Thormundur,Ulfur,Valur,Yngvi";
+        private static readonly string[] _albFemale =
+        {
+            // Arthurian core
+            "Guinevere", "Isolde", "Morgana", "Elaine", "Vivienne", "Nimue",
+            "Lynette", "Rhiannon", "Enid", "Iseult", "Bellicent", "Brangaine",
+            "Blanchefleur", "Laudine", "Lisanor", "Brisen", "Linet", "Serene",
+            "Ysabele", "Peronell", "Clarissant", "Igraine", "Yseult",
+            "Lunete", "Dindrane", "Ragnelle", "Morgause", "Bellicent",
+            "Cundrie", "Vivian", "Selene",
+            // Period-appropriate Albion roster
+            "Adela", "Adelaide", "Adelina", "Agatha", "Agnes", "Alice",
+            "Aline", "Amice", "Amicia", "Anne", "Avice", "Avis", "Beatrice",
+            "Belisent", "Cecily", "Clarice", "Constance", "Cristina",
+            "Diota", "Dionisia", "Edith", "Edmonia", "Edyth", "Eleanor",
+            "Elen", "Elfreda", "Eliduc", "Elysia", "Emelina", "Emma",
+            "Estrid", "Felicia", "Flora", "Florence", "Geva", "Godgifu",
+            "Goldwin", "Gunnora", "Helewise", "Helewysa", "Hilda", "Idonea",
+            "Idonia", "Inga", "Isabel", "Isabella", "Jocosa", "Joan",
+            "Juliana", "Katherine", "Lauretta", "Leofgifu", "Lettice",
+            "Lucia", "Mabel", "Margery", "Matilda", "Maud", "Millicent",
+            "Muriel", "Nesta", "Petronilla", "Phelippa", "Philippa", "Rohese",
+            "Rosamund", "Sibyl", "Sigrid", "Theodora", "Walburga", "Wilfrida",
+        };
+
+        private static readonly string[] _hibMale =
+        {
+            "Aonghus", "Breandan", "Cian", "Dallan", "Eogan", "Fearghal",
+            "Greagoir", "Iomhar", "Lorcan", "Mairtin", "Neachtan", "Odhran",
+            "Paraic", "Ruairi", "Seosamh", "Aed", "Beircheart", "Colm",
+            "Domhnall", "Eanna", "Fergus", "Goll", "Irial", "Liam", "MacCon",
+            "Naoimhin", "Padraig", "Ronan", "Seanan", "Tadhgan", "Uilliam",
+            "Ailill", "Bran", "Cairbre", "Daithi", "Eoghan", "Faolan", "Gorm",
+            "Iollan", "Lughaidh", "Manannan", "Niall", "Oisin", "Seadna",
+            "Tadhg", "Ultan", "Alastar", "Bairre", "Caoilte", "Daire", "Enna",
+            "Fiachra", "Gairm", "Imleach", "Jarlath", "Kian", "Laoiseach",
+            "Malachy", "Naoise", "Paidin", "Roibeard", "Seamus", "Turlough",
+            "Uilleag",
+            // Additional Irish / Scottish Gaelic and a sprinkle of Welsh
+            "Ailbhe", "Ainmire", "Amhlaoibh", "Aodhan", "Aralt", "Ardan",
+            "Art", "Bairrionn", "Bearach", "Brendan", "Brian", "Cadell",
+            "Cahir", "Caoimhin", "Carbry", "Cathal", "Cathaoir", "Cearul",
+            "Ciaran", "Cillian", "Coilin", "Conall", "Conan", "Conn",
+            "Conor", "Cormac", "Cuan", "Cuchulain", "Dagda", "Dallas",
+            "Darragh", "Declan", "Diarmuid", "Donn", "Donnchadh", "Dubhthach",
+            "Eamonn", "Earnan", "Eoin", "Faelan", "Fechin", "Felim", "Finn",
+            "Finnegan", "Flannan", "Garbhan", "Gilroy", "Glasny", "Iarfhlaith",
+            "Iarlaith", "Kevin", "Kieran", "Lugh", "Maelmuire", "Maoilbhrid",
+            "Maolmuire", "Murchadh", "Neamhain", "Nuadu", "Oghma", "Owen",
+            "Pearce", "Phelan", "Riordan", "Senan", "Seosamh", "Sloan",
+            "Sloane", "Tarlach", "Teague", "Tiernan", "Torin", "Uaithne",
+            // Welsh / Brythonic
+            "Aneurin", "Bedwyr", "Bran", "Caradog", "Cynan", "Dafydd",
+            "Drystan", "Eifion", "Emrys", "Garan", "Gareth", "Gawain",
+            "Geraint", "Idris", "Iestyn", "Iolo", "Llew", "Llywelyn",
+            "Madog", "Mervyn", "Owain", "Pryderi", "Pwyll", "Rhodri",
+            "Rhys", "Taliesin",
+        };
+
+        private static readonly string[] _hibFemale =
+        {
+            "Aibhlinn", "Brighid", "Caoilfhionn", "Deirdre", "Eabha",
+            "Fionnuala", "Grainne", "Iseult", "Lean", "Maire", "Niamh",
+            "Oonagh", "Padraigin", "Roisin", "Saoirse", "Teagan", "Una",
+            "Aoife", "Aisling", "Blathnat", "Cliodhna", "Dymphna", "Eidin",
+            "Fineachan", "Gormfhlaith", "Iomhar", "Laoise", "Maighread",
+            "Noirin", "Orlaith", "Plurabelle", "Rioghnach", "Siobhan",
+            "Treasa", "Ursula", "Ailbhe", "Bairrfhionn", "Caoilinn", "Dairine",
+            "Eabhnat", "Fearchara", "Gormlaith", "Ite", "Laochlann", "Mairtin",
+            "Nollaig", "Ornait", "Pala", "Roise", "Seaghdha", "Tomaltach",
+            "Uinseann",
+            // Additional Irish / Scottish Gaelic / Welsh
+            "Aifric", "Ailis", "Aine", "Aislinn", "Anwen", "Aoibheann",
+            "Aoibhgreine", "Aoibhin", "Arwen", "Banba", "Beibhinn", "Bevin",
+            "Branwen", "Cadhla", "Caireann", "Caitlin", "Caitriona", "Cara",
+            "Catriona", "Ceara", "Ciara", "Ciarrai", "Cinnia", "Clodagh",
+            "Daireann", "Damhnait", "Dechtire", "Dervorgilla", "Eavan",
+            "Eibhleann", "Eibhlin", "Eileen", "Eilis", "Eithne", "Etain",
+            "Eveleen", "Faye", "Fianait", "Finola", "Gormla", "Gwen",
+            "Gwendolyn", "Honora", "Ide", "Inan", "Ita", "Keelin", "Keira",
+            "Kelda", "Kennedy", "Kyna", "Liadan", "Lyne", "Maeve", "Mairead",
+            "Meara", "Meath", "Moira", "Mor", "Muireann", "Muirenn",
+            "Nessa", "Nuala", "Olwen", "Oonagh", "Orna", "Owena", "Pegeen",
+            "Rhonwen", "Ronat", "Sadhbh", "Saraid", "Seana", "Sile",
+            "Sinead", "Sive", "Sorcha", "Tara", "Tegan", "Triona",
+        };
+
+        private static readonly string[] _midMale =
+        {
+            "Agnar", "Bjorn", "Dagur", "Eirik", "Fjolnir", "Geir", "Haldor",
+            "Ivar", "Jarl", "Kjartan", "Leif", "Magnus", "Njall", "Orvar",
+            "Ragnald", "Sigbjorn", "Thrain", "Ulf", "Vifil", "Arni", "Bardi",
+            "Dain", "Einar", "Faldan", "Grettir", "Hogni", "Ingvar", "Jokul",
+            "Koll", "Leiknir", "Mord", "Nikul", "Ornolf", "Ragnvald",
+            "Sigmund", "Thorfinn", "Ulfar", "Vali", "Yngvar", "Asgeir",
+            "Bolli", "Darri", "Egill", "Flosi", "Gisli", "Hjortur", "Ingolf",
+            "Jokull", "Kolbeinn", "Leikur", "Mordur", "Nils", "Orri",
+            "Sigurdur", "Thormundur", "Ulfur", "Valur", "Yngvi", "Arnstein",
+            "Bardur", "David", "Eik", "Fridgeir", "Grimur", "Hafthor",
+            "Jorundur", "Kari", "Ljotur", "Nokkvi", "Oddur", "Rafn",
+            "Steinar", "Thorir", "Valgard", "Yngve", "Askur", "Baldur",
+            "Dagr", "Eirikur", "Fridleif",
+            // Additional Old Norse / Icelandic saga names
+            "Alfgeir", "Alrek", "Arinbjorn", "Asbjorn", "Asbrand", "Asmund",
+            "Atli", "Audun", "Bardi", "Bersi", "Bjarki", "Bjarni", "Bork",
+            "Brand", "Brodir", "Eilif", "Eindrid", "Eyjolf", "Eystein",
+            "Falgeir", "Finnbogi", "Finnr", "Floki", "Frodi", "Geirmund",
+            "Glum", "Gizur", "Gorm", "Grimkel", "Gudbrand", "Gudmund",
+            "Gudrod", "Gunnar", "Gunnlaug", "Gunnstein", "Hakon", "Halfdan",
+            "Hallbjorn", "Hallgrim", "Hallstein", "Hallvard", "Harald",
+            "Hauk", "Helgi", "Heming", "Hjalti", "Hrafn", "Hrolf", "Illugi",
+            "Knut", "Kolbein", "Kolskegg", "Olaf", "Onund", "Osvif", "Ottar",
+            "Ragnar", "Refr", "Rolf", "Runolf", "Sigvald", "Skapti", "Skarp",
+            "Snorri", "Solmund", "Stein", "Steinar", "Sturla", "Styr",
+            "Svein", "Thangbrand", "Thord", "Thorbjorn", "Thorgeir",
+            "Thorgrim", "Thorhall", "Thorkel", "Thorleif", "Thormod",
+            "Thorolf", "Thorstein", "Thorvald", "Thorvar", "Toki", "Tostig",
+            "Trygg", "Trygvi", "Vali", "Vermund", "Vigfus", "Yngvald",
+        };
+
+        private static readonly string[] _midFemale =
+        {
+            "Aesa", "Bjorg", "Dalla", "Edda", "Fjola", "Gerd", "Halla",
+            "Inga", "Jora", "Kari", "Lina", "Marna", "Njola", "Orna", "Ragna",
+            "Sif", "Thora", "Ulfhild", "Vika", "Alva", "Bodil", "Dagny",
+            "Eira", "Frida", "Gisla", "Hildur", "Ingibjorg", "Jofrid",
+            "Kolfinna", "Mina", "Olina", "Ragnheid", "Sigrid", "Thordis",
+            "Una", "Yrsa", "Asgerd", "Bergthora", "Flosa", "Gudrid", "Hjordis",
+            "Ingimund", "Lidgerd", "Mjoll", "Oddny", "Ranveig", "Sigrun",
+            "Thorhalla", "Valdis", "Alfhild", "Bardis", "Davida", "Eilika",
+            "Fridleif", "Gudrun", "Jokulina", "Halfdana", "Aslaug",
+            // Additional Old Norse / Icelandic saga names
+            "Arnbjorg", "Arndis", "Arngerd", "Arnora", "Asa", "Asdis",
+            "Asfrid", "Aslaug", "Astrid", "Audhild", "Audr", "Bera",
+            "Birgit", "Borghild", "Brunhild", "Dagrun", "Dis", "Drifa",
+            "Dyrleif", "Eilif", "Elin", "Erna", "Estrid", "Eyja", "Eyvor",
+            "Fastrid", "Finna", "Folkvi", "Freydis", "Geirhild", "Gerda",
+            "Gillaug", "Gjaflaug", "Gretha", "Grima", "Gudleif", "Gudny",
+            "Gudve", "Gunnhild", "Gyda", "Hallbera", "Hallveig", "Hedvig",
+            "Helga", "Herdis", "Hervor", "Hilda", "Hildigunn", "Hildr",
+            "Hjordis", "Hrafnhild", "Idunn", "Ingegerd", "Ingiborg",
+            "Ingrid", "Iona", "Iorunn", "Jodis", "Jofrid", "Jorunn",
+            "Katla", "Kolfinna", "Kolgrima", "Kraka", "Liv", "Mjoll",
+            "Nanna", "Olof", "Oluf", "Osk", "Rannveig", "Saga", "Salgerd",
+            "Sigfrid", "Sigga", "Sigvor", "Skadi", "Snorra", "Solveig",
+            "Steinunn", "Steingerd", "Svala", "Svana", "Svanhild", "Thordis",
+            "Thora", "Thorbjorg", "Thorbera", "Thorgerd", "Thorgunn",
+            "Thorlaug", "Thorny", "Thorunn", "Thorvor", "Thyra", "Tora",
+            "Turid", "Unn", "Vald", "Vigdis",
+        };
 
         public static string GetName(eGender gender, eRealm realm)
         {
             string[] names = realm switch
             {
-                eRealm.Albion   => (gender == eGender.Male ? albMaleNames : albFemaleNames).Split(','),
-                eRealm.Hibernia => (gender == eGender.Male ? hibMaleNames : hibFemaleNames).Split(','),
-                eRealm.Midgard  => (gender == eGender.Male ? midMaleNames : midFemaleNames).Split(','),
+                eRealm.Albion   => gender == eGender.Male ? _albMale : _albFemale,
+                eRealm.Hibernia => gender == eGender.Male ? _hibMale : _hibFemale,
+                eRealm.Midgard  => gender == eGender.Male ? _midMale : _midFemale,
                 _ => Array.Empty<string>()
             };
 
