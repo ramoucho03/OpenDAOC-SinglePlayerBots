@@ -847,6 +847,31 @@ namespace DOL.AI.Brain
             if (TryChainPull())
                 return;
 
+            // Caster-puller hold: archers chain on the move, but a caster
+            // (Sorc, Wiz, etc.) usually has the next mob outside its spell
+            // range, so TryChainPull above returned false. Without this
+            // guard the next block falls through to PerformPull → Body.Follow
+            // on a fresh target, sending the puller running forward again
+            // while the just-aggro'd mob is still en route — producing the
+            // visible "advance / retreat / advance" oscillation the user
+            // reports. Hold position at spawn until the previous mob engages
+            // (its InCombat flips) or dies. Once that happens, LastTargetObject
+            // is cleared downstream and the natural fresh-pull path resumes.
+            if (_chainPullCount > 0
+                && LastTargetObject is GameLiving prevPull
+                && prevPull.IsAlive
+                && prevPull.ObjectState == GameObject.eObjectState.Active
+                && !prevPull.InCombat)
+            {
+                Body.StopAttack();
+                Body.StopCurrentSpellcast();
+                if (!Body.IsWithinRadius(Body.SpawnPoint, 80))
+                    Body.ReturnToSpawnPoint(Body.MaxSpeed);
+                else
+                    Body.StopFollowing();
+                return;
+            }
+
             if (!Body.InCombat)
             {
                 if (CheckDelayPull())
