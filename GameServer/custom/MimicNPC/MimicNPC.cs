@@ -888,7 +888,7 @@ namespace DOL.GS.Scripts
                     break;
 
                 case "Camp":
-                    if (Group == null)
+                    if (Group?.MimicGroup == null)
                     {
                         message = T(lang, "Mimic.Reply.NotInGroup");
                         break;
@@ -905,7 +905,7 @@ namespace DOL.GS.Scripts
                     break;
 
                 case "Pull":
-                    if (Group == null)
+                    if (Group?.MimicGroup == null)
                     {
                         message = T(lang, "Mimic.Reply.NotInGroup");
                         break;
@@ -2533,6 +2533,17 @@ namespace DOL.GS.Scripts
         public override void Delete()
         {
             _beingDeleted = true;
+
+            // Stop the rez-wait timer if the bot is being deleted while still
+            // waiting for a resurrection (typical case: the owner disconnected
+            // before the rez window expired). Without this, the ECS timer would
+            // keep ticking and eventually call OnRezWaitExpired() on a deleted
+            // bot — best case the early-return guard catches it, worst case
+            // an NRE on a stale reference.
+            _rezWaitTimer?.Stop();
+            _rezWaitTimer = null;
+            _inRezWait = false;
+
             RemoveCampFire();
             Group?.RemoveMember(this);
             MimicManager.UnregisterOwned(this);

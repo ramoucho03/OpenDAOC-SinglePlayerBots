@@ -265,8 +265,9 @@ namespace DOL.AI.Brain
             if (_leader == null || (_leader != null && _leader.ObjectState != GameObject.eObjectState.Active || !_brain.Body.Group.IsInTheGroup(_leader)))
                 _leader = _brain.Body.Group.LivingLeader;
 
-            // Mirror the leader's sprint state so bots can keep up when the player presses Sprint.
-            MirrorLeaderSprint(_brain, _leader);
+            // Sprint mirroring is centralised in MimicBrain.Think() so it runs
+            // regardless of FSM state (ROAMING / WAKING_UP / AGGRO chases keep
+            // up too). Calling it here again would just duplicate the work.
 
             if (_followDistance != _targetFollowDistance)
             {
