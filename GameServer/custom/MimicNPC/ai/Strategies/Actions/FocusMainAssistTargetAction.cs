@@ -28,7 +28,17 @@ namespace DOL.GS.Scripts.AI.Strategies.Actions
 
         public bool Execute(BotContext ctx)
         {
-            GameLiving target = (GameLiving)ctx.MimicGroup.MainAssist.TargetObject;
+            // Re-validate the assist chain here: IsPossible runs first, but the
+            // bot may have left the group, the assist may have died or dropped
+            // its target, between the check and the execute. Bots tick in
+            // parallel (GameLoopThreadPoolMultiThreaded), so a sibling tick can
+            // mutate Group / MainAssist mid-tick. Snapshot once and short-circuit
+            // on any nullable in the chain instead of throwing.
+            GameLiving target = ctx.MimicGroup?.MainAssist?.TargetObject as GameLiving;
+
+            if (target == null || !target.IsAlive)
+                return false;
+
             ctx.Bot.TargetObject = target;
             ctx.Brain.AddToAggroList(target, 1);
             return true;
