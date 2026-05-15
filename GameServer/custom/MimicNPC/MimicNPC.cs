@@ -6804,8 +6804,12 @@ namespace DOL.GS.Scripts
         // The bot stays in the group during that window. If no rez arrives in time,
         // the corpse is removed (Delete) and the bot leaves the group.
 
-        private const int REZ_WAIT_MS = 60_000;            // Window when a rezzer IS available in the group.
-        private const int REZ_WAIT_NO_HEALER_MS = 15_000;  // Auto-release window when no group member can rez.
+        // Window when a rezzer IS available in the group. Sourced from
+        // MimicConfig.BOT_REZ_WAIT_SECONDS at use-time so operators can
+        // tune it live via a server property without recompiling.
+        private static int REZ_WAIT_MS => Math.Max(1, MimicConfig.BOT_REZ_WAIT_SECONDS) * 1000;
+        // Auto-release window when no group member can rez. Same tuning model.
+        private static int REZ_WAIT_NO_HEALER_MS => Math.Max(1, MimicConfig.BOT_REZ_WAIT_NO_HEALER_SECONDS) * 1000;
 
         private ECSGameTimer _rezWaitTimer;
         private bool _inRezWait;
@@ -6910,21 +6914,66 @@ namespace DOL.GS.Scripts
             _inRezWait = false;
             _rezWaitTimer = null;
 
-            // Try to "release" the bot: teleport it back alive to its owner
-            // (or the group's leader) at reduced vitals — mimics a /release.
-            // If the owner is offline or unreachable, fall back to Delete.
-            GamePlayer owner = FindLiveOwnerOrLeader();
+            // What happens when no rez arrived in time is controlled by the
+            // BOT_REZ_TIMEOUT_BEHAVIOR server property:
+            //   - "release" (default): act like a player who has no bind to
+            //     return to — leave the group and despawn the corpse. The
+            //     player can /mlfg or /mcreate a fresh bot afterwards. This
+            //     is the realistic option asked for by operators who want
+            //     bots to feel like real party members.
+            //   - "revive": teleport the bot back to its owner at half
+            //     vitals, keep it in the group. Less realistic but
+            //     friendlier on long PvE runs. This was the pre-existing
+            //     behaviour, kept for backwards compatibility.
+            string mode = (MimicConfig.BOT_REZ_TIMEOUT_BEHAVIOR ?? "release").Trim().ToLowerInvariant();
 
-            if (owner != null && owner.IsAlive && owner.CurrentRegionID > 0)
+            if (mode == "revive")
             {
-                ReviveAtOwner(owner);
-                return 0;
+                GamePlayer owner = FindLiveOwnerOrLeader();
+
+                if (owner != null && owner.IsAlive && owner.CurrentRegionID > 0)
+                {
+                    ReviveAtOwner(owner);
+                    return 0;
+                }
+                // No live owner: fall through to release semantics so the
+                // corpse doesn't linger forever.
             }
 
-            // No-one to release to → standard cleanup.
+            // "release" path. Announce to the group via chat (best-effort,
+            // localized per recipient) then leave + delete the corpse.
+            AnnounceReleaseToGroup();
             Group?.RemoveMember(this);
             Delete();
             return 0;
+        }
+
+        /// <summary>
+        /// Sends a localized "I'm releasing to bind" line to every player
+        /// in the group, right before the bot leaves and the corpse is
+        /// deleted. Best-effort: a missing translation falls back to the
+        /// key, a missing group quietly skips the broadcast.
+        /// </summary>
+        private void AnnounceReleaseToGroup()
+        {
+            if (Group == null)
+                return;
+
+            string fromName = GetName(0, true);
+            string[] keys = new[]
+            {
+                "Mimic.Chat.ReleaseToBind.1",
+                "Mimic.Chat.ReleaseToBind.2",
+                "Mimic.Chat.ReleaseToBind.3",
+            };
+            string pickedKey = keys[Util.Random(keys.Length - 1)];
+
+            foreach (GamePlayer player in Group.GetPlayersInTheGroup())
+            {
+                string lang = player.Client?.Account?.Language;
+                string text = LanguageMgr.TryGetTranslation(out string t, lang, pickedKey) ? t : pickedKey;
+                player.Out.SendMessage($"[Party] {fromName}: \"{text}\"", eChatType.CT_Group, eChatLoc.CL_ChatWindow);
+            }
         }
 
         /// <summary>

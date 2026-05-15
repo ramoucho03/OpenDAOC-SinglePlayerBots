@@ -145,6 +145,11 @@ Mimic.Chat.LostAggro.1:               J'ai perdu l'aggro, decroche !
 Mimic.Chat.LostAggro.2:               Le mob change de cible, reculez !
 Mimic.Chat.LostAggro.3:               Attention, le mob m'echappe !
 
+# Bot relache : timeout de rez expire, le bot quitte le groupe
+Mimic.Chat.ReleaseToBind.1:           Pas de rez en vue, je rentre. Bonne chance !
+Mimic.Chat.ReleaseToBind.2:           Je relache vers la pierre de liaison.
+Mimic.Chat.ReleaseToBind.3:           Je ne peux plus attendre, j'y vais. Bonne chance !
+
 # Annonce de pull
 Mimic.Chat.Pulling.1:                 Pull en cours, soyez prets !
 Mimic.Chat.Pulling.2:                 J'amene la cible !

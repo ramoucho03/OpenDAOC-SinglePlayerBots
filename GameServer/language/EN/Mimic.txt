@@ -144,6 +144,11 @@ Mimic.Chat.LostAggro.1:               Lost aggro, peel off me!
 Mimic.Chat.LostAggro.2:               Mob's on the wrong target, get back!
 Mimic.Chat.LostAggro.3:               Heads up, I lost the mob!
 
+# Bot released to bind: rez timeout expired, the bot is leaving the group
+Mimic.Chat.ReleaseToBind.1:           No rez incoming, releasing to bind. GL.
+Mimic.Chat.ReleaseToBind.2:           Releasing — see you in town.
+Mimic.Chat.ReleaseToBind.3:           Can't wait any longer, I'm out. Good luck!
+
 # Puller announcement (start of pull)
 Mimic.Chat.Pulling.1:                 Pulling now, get ready!
 Mimic.Chat.Pulling.2:                 Incoming! On the way!

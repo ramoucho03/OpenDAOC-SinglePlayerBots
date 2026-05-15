@@ -80,6 +80,32 @@ namespace DOL.GS.Scripts
             "GameStaticItem model used as the camp fire visual (2656 = OpenDAOC standard campfire, 3460 = larger campfire variant).", 2656)]
         public static int MIMIC_CAMPFIRE_MODEL;
 
+        // ----------------------------------------------------------------
+        // Death and resurrection tuning.
+        //
+        // When a bot dies while grouped with a player, the corpse lingers
+        // as a rez-able body. A group rezzer (Cleric/Druid/Friar/Bard/
+        // Warden/Healer/Heretic/etc.) can target the corpse and cast
+        // Resurrect on it like any player corpse — the bot auto-accepts.
+        // If no rez arrives in time the bot is released "to bind", which
+        // here means it leaves the group and despawns: bots have no
+        // bindstone so the realistic equivalent of /release is to drop
+        // the group, exactly like a player going to their bind point.
+        // ----------------------------------------------------------------
+
+        [ServerProperty("npc", "bot_rez_wait_seconds",
+            "Seconds a dead bot lingers as a rez-able corpse when a group rezzer is alive (default 60).", 60)]
+        public static int BOT_REZ_WAIT_SECONDS;
+
+        [ServerProperty("npc", "bot_rez_wait_no_healer_seconds",
+            "Seconds a dead bot lingers as a corpse when no group rezzer is available (default 15).", 15)]
+        public static int BOT_REZ_WAIT_NO_HEALER_SECONDS;
+
+        [ServerProperty("npc", "bot_rez_timeout_behavior",
+            "What happens to a bot whose rez timeout expired: 'release' (leave the group and despawn, like a player without a bind — default) or 'revive' (return at 50% next to the owner, pre-existing behaviour).",
+            "release")]
+        public static string BOT_REZ_TIMEOUT_BEHAVIOR;
+
         public static bool IsHealerClass(int classId)    => MatchesCsv(BOT_AI_V2_HEALER_CLASSES, classId);
         public static bool IsTankClass(int classId)      => MatchesCsv(BOT_AI_V2_TANK_CLASSES, classId);
         public static bool IsMeleeDpsClass(int classId)  => MatchesCsv(BOT_AI_V2_MELEE_DPS_CLASSES, classId);

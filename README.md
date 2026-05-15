@@ -310,6 +310,24 @@ The trigger / action / strategy contracts live under [`GameServer/custom/MimicNP
 
 ---
 
+## Death and resurrection
+
+Dead bots behave like dead players, not like NPCs that despawn instantly.
+
+When a bot dies while grouped with a player:
+
+1. The corpse stays in the world for a configurable window. With a rezzer in the group the default is **60 s**, without one it's **15 s**. Tune with `bot_rez_wait_seconds` and `bot_rez_wait_no_healer_seconds`.
+2. Any group member with a `Resurrect` spell — bot healer (Cleric, Druid, Friar, Bard, Heretic, Healer, Warden…) or real player — can target the corpse and cast it. Bots auto-accept; players see the usual accept/decline dialog.
+3. Healer bots actively try to rez during this window: `MimicBrain.CheckResurrect()` is called from the FOLLOW, AGGRO, CAMP and city states, so a Cleric will drop a swing or break a nuke to cast a rez. `IsRezzingTrigger` plus `Mimic.Chat.Rezzing.*` make the healer announce "rezzing — protect me" so the group doesn't break the cast.
+4. **Combat rezzing is allowed.** It's risky (the rezzer is a stationary target) but realistic — an experienced healer drops everything to rez, and that mirrors what a real player would do.
+5. If the timeout expires without a rez, the bot **releases to bind**. Because bots don't have a bindstone, the realistic equivalent of `/release` is to leave the group and despawn — the player can `/mlfg` or `/mcreate` a fresh bot afterwards. Behaviour controlled by `bot_rez_timeout_behavior`:
+   - `release` (default): announce `Mimic.Chat.ReleaseToBind.*` to the group, `Group.RemoveMember`, then `Delete()`.
+   - `revive`: teleport the bot back to its owner at 50% vitals and keep it in the group. Pre-existing softer behaviour, useful on long PvE runs where re-inviting bots is tedious.
+
+Dead **player** in a group with a bot rezzer works the same way: `CheckResurrect` scans every dead group member, not only mimics. The bot will run to the corpse, cast Resurrect, and the player gets the standard accept/decline dialog.
+
+---
+
 ## Game-server module system
 
 For features that aren't bot-specific, an optional `IGameModule` registry is wired into `GameServer.Start`:
@@ -366,6 +384,7 @@ The Bot AI v2 layer is being grown in phases. Each phase ships behind the per-cl
 | C | shipped | `healer` split into 5 priority bindings (critical / mezz / poison / disease / low) for diagnostic visibility and per-reason cooldowns; new `GroupMemberDiseasedTrigger` and `GroupMemberPoisonedTrigger` |
 | D | shipped | Immersion layer: every announce now uses localized translation keys (per-recipient language, random variant), bot publicly asks for a cure when self-mezzed/diseased/poisoned, tank emote (`/bangonshield`) on engage, salute emote when the camp is ready |
 | E | shipped | Cross-bot coordination — DPS bots actively switch off their current target when the main assist switches mob (`BotTargetDiffersFromAssistTrigger`); tanks publicly call lost aggro when their mob hits another group member (`TankLostAggroTrigger`) |
+| Rez | shipped | Bots die like players: rez-able corpse window (60 s with rezzer / 15 s without), healers actively cast Resurrect on dead bots AND dead players in the group, "release to bind" semantics on timeout (leave group + despawn — configurable via `bot_rez_timeout_behavior`). See [Death and resurrection](#death-and-resurrection). |
 | F | planned | CC distribution (claim-and-cast so two bots don't mez the same add), kick rotation on enemy casters, travel / quest / gather autonomy à la mod-playerbots |
 
 Class roles in the role CSVs were validated against multiple DAoC 1.65 sources (darkageofcamelot.com Class Library, Camelot Herald wiki, ZAM Allakhazam, Uthgard / Disorder / Phoenix / Eden community guides) — see commit `bd02702` for the full audit and the corrections that were applied.
