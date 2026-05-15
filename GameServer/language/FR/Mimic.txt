@@ -145,6 +145,16 @@ Mimic.Chat.LostAggro.1:               J'ai perdu l'aggro, decroche !
 Mimic.Chat.LostAggro.2:               Le mob change de cible, reculez !
 Mimic.Chat.LostAggro.3:               Attention, le mob m'echappe !
 
+# MainLeader : appel d'engagement quand le mob arrive au camp
+Mimic.Chat.LeaderEngage.1:            Engagez ! Tous dessus !
+Mimic.Chat.LeaderEngage.2:            Le mob arrive, on l'eclate.
+Mimic.Chat.LeaderEngage.3:            Pull en cours, focus l'assist !
+
+# MainLeader : appel post-combat quand le combat est propre
+Mimic.Chat.LeaderPostCombat.1:        Bon combat, regroupez-vous.
+Mimic.Chat.LeaderPostCombat.2:        Propre. On souffle un peu.
+Mimic.Chat.LeaderPostCombat.3:        Asseyez-vous, prochain pull quand pret.
+
 # Bot relache : timeout de rez expire, le bot quitte le groupe
 Mimic.Chat.ReleaseToBind.1:           Pas de rez en vue, je rentre. Bonne chance !
 Mimic.Chat.ReleaseToBind.2:           Je relache vers la pierre de liaison.

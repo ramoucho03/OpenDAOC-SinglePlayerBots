@@ -171,6 +171,9 @@ namespace DOL.AI.Brain
             mgr.Enable(AssistStrategy.Key);
             mgr.Enable(SupportStrategy.Key);
             mgr.Enable(CampStrategy.Key);
+            // Activated on every bot; the bindings inside filter on the
+            // Leader role so only the actual MainLeader fires the lines.
+            mgr.Enable(LeaderStrategy.Key);
 
             // Bot AI v2 — role-specific strategies. Each role is opted in
             // per class via the matching CSV in MimicConfig (healer/tank/

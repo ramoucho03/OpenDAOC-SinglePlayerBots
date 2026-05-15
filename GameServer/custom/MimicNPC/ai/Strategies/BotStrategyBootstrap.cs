@@ -30,6 +30,7 @@ namespace DOL.GS.Scripts.AI.Strategies
             BotStrategyRegistry.Register(RangedDpsStrategy.Key, static () => new RangedDpsStrategy());
             BotStrategyRegistry.Register(CasterDpsStrategy.Key, static () => new CasterDpsStrategy());
             BotStrategyRegistry.Register(CcStrategy.Key, static () => new CcStrategy());
+            BotStrategyRegistry.Register(LeaderStrategy.Key, static () => new LeaderStrategy());
 
             log.Info("Registre des stratégies bot initialisé (" + BotStrategyRegistry.ListKeys().Count + " stratégies).");
         }

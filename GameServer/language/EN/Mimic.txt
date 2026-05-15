@@ -149,6 +149,16 @@ Mimic.Chat.ReleaseToBind.1:           No rez incoming, releasing to bind. GL.
 Mimic.Chat.ReleaseToBind.2:           Releasing — see you in town.
 Mimic.Chat.ReleaseToBind.3:           Can't wait any longer, I'm out. Good luck!
 
+# Main leader: engagement call when the puller's mob arrives at camp
+Mimic.Chat.LeaderEngage.1:            Engage! All in!
+Mimic.Chat.LeaderEngage.2:            Mob's here, light it up.
+Mimic.Chat.LeaderEngage.3:            Pull's in, focus the assist!
+
+# Main leader: post-combat call when the fight is clean
+Mimic.Chat.LeaderPostCombat.1:        Good fight, regroup and regen.
+Mimic.Chat.LeaderPostCombat.2:        Clean. Take a breather.
+Mimic.Chat.LeaderPostCombat.3:        Sit down, next pull when ready.
+
 # Puller announcement (start of pull)
 Mimic.Chat.Pulling.1:                 Pulling now, get ready!
 Mimic.Chat.Pulling.2:                 Incoming! On the way!
