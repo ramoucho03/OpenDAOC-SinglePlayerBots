@@ -172,14 +172,23 @@ namespace DOL.AI.Brain
             mgr.Enable(SupportStrategy.Key);
             mgr.Enable(CampStrategy.Key);
 
-            // Bot AI v2 — role-specific strategies. Opt-in per class via
-            // MimicConfig.BOT_AI_V2_CLASSES so we can ship the framework
-            // and grow the v2 surface (healer first, tank/dps later) one
-            // role at a time without affecting other bots.
-            if (bot?.CharacterClass != null && MimicConfig.IsAiV2Class(bot.CharacterClass.ID))
-            {
-                mgr.Enable(HealerStrategy.Key);
-            }
+            // Bot AI v2 — role-specific strategies. Each role is opted in
+            // per class via the matching CSV in MimicConfig (healer/tank/
+            // melee_dps/ranged_dps/caster_dps/cc). Strategies are
+            // composable: a Druid runs healer + caster_dps, a Paladin runs
+            // tank + healer, a Bard runs healer + cc, etc. Operators tune
+            // the CSV at runtime; new bots pick up the change on spawn.
+            if (bot?.CharacterClass == null)
+                return;
+
+            int classId = bot.CharacterClass.ID;
+
+            if (MimicConfig.IsHealerClass(classId))    mgr.Enable(HealerStrategy.Key);
+            if (MimicConfig.IsTankClass(classId))      mgr.Enable(TankStrategy.Key);
+            if (MimicConfig.IsMeleeDpsClass(classId))  mgr.Enable(MeleeDpsStrategy.Key);
+            if (MimicConfig.IsRangedDpsClass(classId)) mgr.Enable(RangedDpsStrategy.Key);
+            if (MimicConfig.IsCasterDpsClass(classId)) mgr.Enable(CasterDpsStrategy.Key);
+            if (MimicConfig.IsCcClass(classId))        mgr.Enable(CcStrategy.Key);
         }
 
         public override void Think()

@@ -138,13 +138,29 @@ A bot has two parallel brains:
 
 ### Bot AI v2 role strategies (opt-in per class)
 
-Enabled at bot creation when the class matches the CSV in the `bot_ai_v2_classes` server property.
+Each role is enabled at bot creation when the bot's class appears in the matching server-property CSV. Strategies are composable — a Druid runs `healer` + `caster_dps`, a Paladin runs `tank` + `healer`, a Bard runs `healer` + `cc`, and so on.
 
-| Key | Default classes | What it owns |
-|---|---|---|
-| `healer` | Cleric, Friar, Druid, Healer, Shaman | Drives `CheckHeals` on any group heal need (critical / low / mezzed); exclusive binding so heals beat chatter |
+| Key | Priority | Cooldown | Drives | Default classes |
+|---|---:|---:|---|---|
+| `healer` | 90 | 250 ms | `CheckHeals` (emergency / cure / normal) on any group heal need | Cleric, Friar, Druid, Bard, Healer, Shaman |
+| `cc` | 85 | 750 ms | `CheckSpells(CrowdControl)` when the group has tracked CC targets | Sorcerer, Minstrel, Enchanter, Bard, Mentalist, Eldritch, Runemaster, Spiritmaster, Skald |
+| `caster_dps` | 75 | 600 ms | `CheckSpells(Offensive)` (nuke rotation) while engaged | Wizard, Theurgist, Cabalist, Sorcerer, Necromancer, Cleric, Friar, Eldritch, Enchanter, Mentalist, Animist, Bainshee, Druid, Runemaster, Spiritmaster, Bonedancer, Warlock, Shaman |
+| `tank` | 70 | 500 ms | `CheckSpells(Defensive)` (taunts, peels) while engaged | Armsman, Paladin, Mercenary, Reaver, Hero, Warden, Champion, Warrior, Thane, Skald |
+| `melee_dps` | 60 | 1000 ms | `CheckSpells(Offensive)` for melee-class procs / hybrid spells | Infiltrator, Mercenary, Reaver, Heretic, Blademaster, Nightshade, Vampiir, Valewalker, Berserker, Savage, Shadowblade |
+| `ranged_dps` | 60 | 1000 ms | `CheckSpells(Offensive)` for archer procs while engaged | Scout, Ranger, Hunter |
 
-Tank / melee-DPS / ranged-DPS / caster-DPS / CC strategies are in flight (Phase B).
+Server properties controlling these whitelists:
+
+```
+bot_ai_v2_healer_classes
+bot_ai_v2_tank_classes
+bot_ai_v2_melee_dps_classes
+bot_ai_v2_ranged_dps_classes
+bot_ai_v2_caster_dps_classes
+bot_ai_v2_cc_classes
+```
+
+Priorities mean: in a single tick, when several bindings could fire, the higher one wins. Exclusive bindings end the tick after a successful execute so lower-priority chatter doesn't immediately stack on top. The CSV is read at bot spawn — change it, then respawn (or `/mstrategy enable …` manually) to apply.
 
 You can flip strategies live on a targeted bot with:
 

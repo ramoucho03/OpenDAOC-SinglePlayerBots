@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using DOL.GS.ServerProperties;
 
 namespace DOL.GS.Scripts
@@ -16,22 +16,49 @@ namespace DOL.GS.Scripts
         // par défaut sur ce fork : nouvelles stratégies disponibles via /mstrategy.
         public static bool USE_STRATEGY_SYSTEM = true;
 
-        /// <summary>
-        /// Comma-separated list of MimicNPC class names (matching
-        /// <c>eCharacterClass</c>) for which role-specific Bot AI v2
-        /// strategies should be enabled at bot creation. Empty disables v2
-        /// everywhere — bots still get the meta strategies (Survival,
-        /// Awareness, Assist, Support, Camp) but no combat strategy is
-        /// auto-attached.
-        ///
-        /// Default targets pure healers only: Cleric/Friar (Albion),
-        /// Druid (Hibernia), Healer/Shaman (Midgard). Tank/DPS strategies
-        /// land in a follow-up PR.
-        /// </summary>
-        [ServerProperty("npc", "bot_ai_v2_classes",
-            "CSV of eCharacterClass names that should auto-enable role-specific Bot AI v2 strategies (default: pure healers).",
-            "Cleric,Friar,Druid,Healer,Shaman")]
-        public static string BOT_AI_V2_CLASSES;
+        // ----------------------------------------------------------------
+        // Bot AI v2 role-class whitelists.
+        //
+        // Each CSV lists the eCharacterClass names that should auto-enable
+        // the matching role strategy at bot creation. Classes can appear in
+        // multiple lists — strategies are composable, so a Druid runs the
+        // healer AND caster cycle, a Paladin runs tank AND healer, etc.
+        //
+        // The defaults reflect a 1.65-era reading of each class. Operators
+        // who want a Reaver to run the CC cycle (say) only need to edit the
+        // server property at runtime; the role strategy is then enabled the
+        // next time a bot of that class spawns.
+        // ----------------------------------------------------------------
+
+        [ServerProperty("npc", "bot_ai_v2_healer_classes",
+            "CSV of eCharacterClass names that auto-enable the v2 healer strategy.",
+            "Cleric,Friar,Druid,Bard,Healer,Shaman")]
+        public static string BOT_AI_V2_HEALER_CLASSES;
+
+        [ServerProperty("npc", "bot_ai_v2_tank_classes",
+            "CSV of eCharacterClass names that auto-enable the v2 tank strategy.",
+            "Armsman,Paladin,Mercenary,Reaver,Hero,Warden,Champion,Warrior,Thane,Skald")]
+        public static string BOT_AI_V2_TANK_CLASSES;
+
+        [ServerProperty("npc", "bot_ai_v2_melee_dps_classes",
+            "CSV of eCharacterClass names that auto-enable the v2 melee DPS strategy.",
+            "Infiltrator,Mercenary,Reaver,Heretic,Blademaster,Nightshade,Vampiir,Valewalker,Berserker,Savage,Shadowblade")]
+        public static string BOT_AI_V2_MELEE_DPS_CLASSES;
+
+        [ServerProperty("npc", "bot_ai_v2_ranged_dps_classes",
+            "CSV of eCharacterClass names that auto-enable the v2 ranged DPS strategy.",
+            "Scout,Ranger,Hunter")]
+        public static string BOT_AI_V2_RANGED_DPS_CLASSES;
+
+        [ServerProperty("npc", "bot_ai_v2_caster_dps_classes",
+            "CSV of eCharacterClass names that auto-enable the v2 caster DPS strategy.",
+            "Wizard,Theurgist,Cabalist,Sorcerer,Necromancer,Cleric,Friar,Eldritch,Enchanter,Mentalist,Animist,Bainshee,Druid,Runemaster,Spiritmaster,Bonedancer,Warlock,Shaman")]
+        public static string BOT_AI_V2_CASTER_DPS_CLASSES;
+
+        [ServerProperty("npc", "bot_ai_v2_cc_classes",
+            "CSV of eCharacterClass names that auto-enable the v2 crowd-control strategy.",
+            "Sorcerer,Minstrel,Enchanter,Bard,Mentalist,Eldritch,Runemaster,Spiritmaster,Skald")]
+        public static string BOT_AI_V2_CC_CLASSES;
 
         // Heal thresholds specifically for mimic groups. Bumped above the
         // generic NPC default (75/37) so healers stay proactive. 0 = use
@@ -52,20 +79,19 @@ namespace DOL.GS.Scripts
             "GameStaticItem model used as the camp fire visual (2656 = OpenDAOC standard campfire, 3460 = larger campfire variant).", 2656)]
         public static int MIMIC_CAMPFIRE_MODEL;
 
-        /// <summary>
-        /// Returns true when <paramref name="charClassId"/> matches one of
-        /// the class names listed in <see cref="BOT_AI_V2_CLASSES"/>. Names
-        /// are compared case-insensitively against <see cref="eCharacterClass"/>
-        /// enum names; unknown entries in the CSV are ignored.
-        /// </summary>
-        public static bool IsAiV2Class(int charClassId)
-        {
-            string csv = BOT_AI_V2_CLASSES;
+        public static bool IsHealerClass(int classId)    => MatchesCsv(BOT_AI_V2_HEALER_CLASSES, classId);
+        public static bool IsTankClass(int classId)      => MatchesCsv(BOT_AI_V2_TANK_CLASSES, classId);
+        public static bool IsMeleeDpsClass(int classId)  => MatchesCsv(BOT_AI_V2_MELEE_DPS_CLASSES, classId);
+        public static bool IsRangedDpsClass(int classId) => MatchesCsv(BOT_AI_V2_RANGED_DPS_CLASSES, classId);
+        public static bool IsCasterDpsClass(int classId) => MatchesCsv(BOT_AI_V2_CASTER_DPS_CLASSES, classId);
+        public static bool IsCcClass(int classId)        => MatchesCsv(BOT_AI_V2_CC_CLASSES, classId);
 
+        private static bool MatchesCsv(string csv, int classId)
+        {
             if (string.IsNullOrWhiteSpace(csv))
                 return false;
 
-            string current = Enum.GetName(typeof(eCharacterClass), charClassId);
+            string current = Enum.GetName(typeof(eCharacterClass), classId);
 
             if (string.IsNullOrEmpty(current))
                 return false;

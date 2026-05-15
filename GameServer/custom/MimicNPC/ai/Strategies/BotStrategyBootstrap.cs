@@ -25,6 +25,11 @@ namespace DOL.GS.Scripts.AI.Strategies
             BotStrategyRegistry.Register(SupportStrategy.Key, static () => new SupportStrategy());
             BotStrategyRegistry.Register(CampStrategy.Key, static () => new CampStrategy());
             BotStrategyRegistry.Register(HealerStrategy.Key, static () => new HealerStrategy());
+            BotStrategyRegistry.Register(TankStrategy.Key, static () => new TankStrategy());
+            BotStrategyRegistry.Register(MeleeDpsStrategy.Key, static () => new MeleeDpsStrategy());
+            BotStrategyRegistry.Register(RangedDpsStrategy.Key, static () => new RangedDpsStrategy());
+            BotStrategyRegistry.Register(CasterDpsStrategy.Key, static () => new CasterDpsStrategy());
+            BotStrategyRegistry.Register(CcStrategy.Key, static () => new CcStrategy());
 
             log.Info("Registre des stratégies bot initialisé (" + BotStrategyRegistry.ListKeys().Count + " stratégies).");
         }
