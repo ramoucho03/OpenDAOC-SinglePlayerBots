@@ -372,6 +372,58 @@ namespace DOL.AI.Brain
                 }
             }
 
+            // (3) Pre-hit aggro detection. Paths (1) and (2) cover post-event
+            //     signals (someone is actively attacking / has been hit), but
+            //     they miss the window between a mob aggroing a member and
+            //     landing its first swing. Without this branch, the camp /
+            //     group sits idle while a mob runs across the field at the
+            //     healer. We scan nearby hostile NPCs and engage any whose
+            //     own aggro list / current target includes a group member.
+            int scanRange = Math.Min(maxRange, MAX_AGGRO_DISTANCE);
+            foreach (GameNPC npc in Body.GetNPCsInRadius((ushort)scanRange))
+            {
+                if (npc == null || !npc.IsAlive)
+                    continue;
+                if (npc is MimicNPC || npc is GameTaxi or GameTrainingDummy)
+                    continue;
+                if (npc == Body)
+                    continue;
+                if (g.IsInTheGroup(npc))
+                    continue;
+                if (!CanAggroTarget(npc))
+                    continue;
+                if (AggroList.ContainsKey(npc))
+                    continue;
+
+                bool targetsGroup = npc.TargetObject is GameLiving npcTarget
+                    && g.IsInTheGroup(npcTarget);
+
+                if (!targetsGroup
+                    && npc.Brain is StandardMobBrain mobBrain
+                    && mobBrain.HasAggro)
+                {
+                    var ordered = mobBrain.GetOrderedAggroList();
+                    if (ordered != null)
+                    {
+                        for (int i = 0; i < ordered.Count; i++)
+                        {
+                            GameLiving aggroed = ordered[i].Living;
+                            if (aggroed != null && g.IsInTheGroup(aggroed))
+                            {
+                                targetsGroup = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (targetsGroup)
+                {
+                    AddToAggroList(npc, 1);
+                    found = true;
+                }
+            }
+
             return found;
         }
 
@@ -2867,14 +2919,36 @@ namespace DOL.AI.Brain
                 {
                     if (!ShouldAvoidCrowdControlledTarget(assistTarget, eMimicCombatMode.PvE, true))
                     {
-                        // DPS hold-fire: if the tank exists and hasn't established aggro
-                        // on this target yet, wait. The bot is already targeting via the
-                        // aggro list (we kept it), but returning null here suppresses the
-                        // next attack/cast in AttackMostWanted. This prevents casters from
-                        // pulling aggro before the tank has the mob.
+                        // DPS hold-fire: if a mimic tank exists and hasn't established
+                        // aggro on this target yet, wait. The bot is already targeting
+                        // via the aggro list (we kept it), but returning null here
+                        // suppresses the next attack/cast in AttackMostWanted. This
+                        // prevents casters from pulling aggro before the tank has the mob.
+                        // <para>Skipped when:</para>
+                        // <list type="bullet">
+                        //   <item>MainTank is a player — players are unpredictable
+                        //   tanks and we'd rather have responsive DPS than idle bots
+                        //   waiting on a player who may never engage.</item>
+                        //   <item>The target is already attacking a group member —
+                        //   the mob is locked, no risk of stealing aggro from a vacuum.</item>
+                        //   <item>The bot is itself being attacked by the target — it's
+                        //   already taking hits, fighting back is the safer move.</item>
+                        // </list>
+                        bool tankIsPlayer = mg.MainTank is GamePlayer;
+                        bool targetEngagedOnGroup = assistTarget.TargetObject is GameLiving aTgt
+                                                    && Body.Group != null
+                                                    && Body.Group.IsInTheGroup(aTgt);
+                        bool selfUnderAttack = assistTarget.TargetObject == Body
+                                               || (assistTarget.attackComponent != null
+                                                   && assistTarget.attackComponent.AttackState
+                                                   && assistTarget.TargetObject == Body);
+
                         if (mg.MainTank != null
                             && mg.MainTank != Body
                             && mg.MainTank.IsAlive
+                            && !tankIsPlayer
+                            && !targetEngagedOnGroup
+                            && !selfUnderAttack
                             && !TargetHasAggroOnTank(assistTarget, mg.MainTank))
                         {
                             // Still record interest so we'll engage as soon as tank locks in.
