@@ -139,6 +139,11 @@ Mimic.Chat.NeedCure.1:                I need a cure, please!
 Mimic.Chat.NeedCure.2:                Cure on me, fast!
 Mimic.Chat.NeedCure.3:                Got something on me, need a cleanse!
 
+# Tank lost aggro: a mob the tank is fighting is now hitting another group member
+Mimic.Chat.LostAggro.1:               Lost aggro, peel off me!
+Mimic.Chat.LostAggro.2:               Mob's on the wrong target, get back!
+Mimic.Chat.LostAggro.3:               Heads up, I lost the mob!
+
 # Puller announcement (start of pull)
 Mimic.Chat.Pulling.1:                 Pulling now, get ready!
 Mimic.Chat.Pulling.2:                 Incoming! On the way!

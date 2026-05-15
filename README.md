@@ -132,7 +132,7 @@ A bot has two parallel brains:
 |---|---|
 | `survival` | Sit to recover, stand on engage |
 | `awareness` | Self callouts (low HP/mana/end, "need cure" when self-afflicted), pulling/tank-engage chat + emote, idle banter, salute when the camp is ready |
-| `assist` | Focus the group's main assist target |
+| `assist` | Two bindings: re-acquire the assist target when the bot has no live target, and switch off the current target when the main assist switches mob (Phase E — keeps focus fire tight on broken-mez adds, etc.) |
 | `support` | Localized callouts: announce a critical/mezzed group member by name, and signal incoming CC. Designed to be active on a single bot (leader / main assist) to avoid chat spam |
 | `camp` | Glue layer for `/mcamp` |
 
@@ -147,7 +147,7 @@ Each role is enabled at bot creation when the bot's class appears in the matchin
 | `healer` | 100 / 95 / 92 / 90 / 85 | 200–1500 ms | `CheckHeals` split into 5 priority bindings: critical / mezz / poison / disease / low | Cleric, Friar, Heretic, Druid, Bard, Warden, Mentalist, Healer, Shaman |
 | `cc` | 85 | 750 ms | `CheckSpells(CrowdControl)` when the group has tracked CC targets | Sorcerer, Minstrel, Theurgist, Enchanter, Bard, Mentalist, Animist, Druid, Runemaster, Spiritmaster, Warlock, Healer, Vampiir |
 | `caster_dps` | 75 | 600 ms | `CheckSpells(Offensive)` (nuke rotation) while engaged | Wizard, Theurgist, Cabalist, Sorcerer, Necromancer, Heretic, Eldritch, Enchanter, Mentalist, Animist, Bainshee, Valewalker, Runemaster, Spiritmaster, Bonedancer, Warlock, Thane |
-| `tank` | 70 | 500 ms | `CheckSpells(Defensive)` (taunts, peels) while engaged | Armsman, Paladin, Reaver, Hero, Warden, Champion, Warrior, Thane |
+| `tank` | 70 / 65 | 500 ms / 12 s | Defensive spell/style cycle while engaged + lost-aggro callout when the target switches to another group member | Armsman, Paladin, Reaver, Hero, Warden, Champion, Warrior, Thane |
 | `melee_dps` | 60 | 1000 ms | `CheckSpells(Offensive)` for melee-class procs / hybrid spells | Infiltrator, Mercenary, Minstrel, Blademaster, Nightshade, Vampiir, Valewalker, Berserker, Savage, Shadowblade, Skald, Valkyrie, MaulerAlb, MaulerMid, MaulerHib |
 | `ranged_dps` | 60 | 1000 ms | `CheckSpells(Offensive)` for archer procs while engaged | Scout, Ranger, Hunter |
 
@@ -233,8 +233,8 @@ The Bot AI v2 layer is being grown in phases. Each phase ships behind the per-cl
 | B | shipped | `tank`, `melee_dps`, `ranged_dps`, `caster_dps`, `cc` role strategies covering the rest of the archetypes |
 | C | shipped | `healer` split into 5 priority bindings (critical / mezz / poison / disease / low) for diagnostic visibility and per-reason cooldowns; new `GroupMemberDiseasedTrigger` and `GroupMemberPoisonedTrigger` |
 | D | shipped | Immersion layer: every announce now uses localized translation keys (per-recipient language, random variant), bot publicly asks for a cure when self-mezzed/diseased/poisoned, tank emote (`/bangonshield`) on engage, salute emote when the camp is ready |
-| E | planned | Cross-bot coordination — main-assist target propagation, kick rotation, CC chain, pull breaks via tank |
-| F | planned | Travel / quest / gather autonomy à la mod-playerbots |
+| E | shipped | Cross-bot coordination — DPS bots actively switch off their current target when the main assist switches mob (`BotTargetDiffersFromAssistTrigger`); tanks publicly call lost aggro when their mob hits another group member (`TankLostAggroTrigger`) |
+| F | planned | CC distribution (claim-and-cast so two bots don't mez the same add), kick rotation on enemy casters, travel / quest / gather autonomy à la mod-playerbots |
 
 Class roles in the role CSVs were validated against multiple DAoC 1.65 sources (darkageofcamelot.com Class Library, Camelot Herald wiki, ZAM Allakhazam, Uthgard / Disorder / Phoenix / Eden community guides) — see commit `bd02702` for the full audit and the corrections that were applied.
 
