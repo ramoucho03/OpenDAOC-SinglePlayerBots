@@ -56,18 +56,34 @@ A French-language deep-dive of the codebase, including where to go to change com
 
 ## Quick start (Docker)
 
-The shipped `docker-compose.yml` builds the server directly from this repository and starts a MariaDB beside it.
+The shipped `docker-compose.yml` builds the server directly from this repository, seeds the schema into a one-shot sidecar, and starts a MariaDB beside it. One command, three services, no manual setup.
 
 ```bash
 # clone, then:
 docker compose up -d --build
 ```
 
-Ports: TCP `10300` (game), UDP `10400` (game).
+Ports: TCP `10300` (game login + traffic), UDP `10400` (game UDP channel). Mapped both at the host on the same numbers.
 
-The compose file ships with sensible .NET 10 runtime tuning for high-allocation game-loop workloads (`gcServer=1`, `gcConcurrent=1`, tiered PGO, pre-warmed thread pool). Edit `docker-compose.yml` to point at your own image registry or to switch back to the upstream `ghcr.io/opendaoc/opendaoc-core` image.
+### What runs
 
-Database schema: the Dockerfile clones [`OpenDAoC-Database`](https://github.com/OpenDAoC/OpenDAoC-Database) and concatenates the SQL files into a single bootstrap script. For AF buffs to work you need the latest schema — apply [this commit](https://github.com/OpenDAoC/OpenDAoC-Database/commit/c6153398bf65faa61b665b6b4cae68b5fa8c0862) if you're upgrading manually.
+| Service | Role |
+|---|---|
+| `db-seed` | One-shot sidecar. Built from the same image as the gameserver, copies the embedded `combined.sql` into a shared volume, exits 0. Reused on every `compose up` but `cp -n` keeps the seed idempotent. |
+| `db` | MariaDB 10.6. Waits on `db-seed` completion via `service_completed_successfully` so the SQL is guaranteed in place before MariaDB's first-run `initdb` ever reads the directory. Exposes a `mariadb-admin ping` healthcheck. |
+| `gameserver` | The DOL server. Waits on the DB being **healthy** (not just started) so its first dotnet log is from a successful DB connection, not an exception trace. `restart: unless-stopped` covers transient hiccups. |
+
+`db-seed` and `gameserver` share the same `opendaoc-fork:latest` image tag and the same `build:` context, so docker compose builds the image once.
+
+### Tuning
+
+The compose file ships with sensible .NET 10 runtime knobs for the high-allocation game-loop workload (`gcServer=1`, `gcConcurrent=1`, tiered PGO, pre-warmed thread pool with 32 min / 256 max workers). Adjust the `DOTNET_ThreadPool_Force*` values to your VM core count.
+
+### Database schema
+
+The Dockerfile clones [`OpenDAoC-Database`](https://github.com/OpenDAoC/OpenDAoC-Database) over HTTPS with TLS verification on, concatenates every `.sql` from `opendaoc-db-core/` into a single `combined.sql`, and bakes it into the runtime image. The `db-seed` sidecar copies it into the volume MariaDB watches for first-run initialisation.
+
+For AF buffs to work you need the latest schema — apply [this commit](https://github.com/OpenDAoC/OpenDAoC-Database/commit/c6153398bf65faa61b665b6b4cae68b5fa8c0862) if you're upgrading manually. To fully reset the world: `docker compose down -v` (the `-v` nukes the data volume too).
 
 ---
 
@@ -113,37 +129,43 @@ Switch back with `git checkout master` when you're done. No merge, no PR require
 
 ### Option 2 — Docker compose pulling the remote branch
 
-Edit one line in `docker-compose.yml`:
+The compose file has **two** services that share the build context (`db-seed` and `gameserver`). Edit the same `context:` line on **both** so the seed sidecar and the running server come from the same code:
 
 ```yaml
+  db-seed:
+    build:
+      context: https://github.com/ramoucho03/OpenDAOC-SinglePlayerBots.git#claude/optimize-dol-server-gho1T
   gameserver:
     build:
-      # Replace `#master` with the branch you want to test:
       context: https://github.com/ramoucho03/OpenDAOC-SinglePlayerBots.git#claude/optimize-dol-server-gho1T
 ```
 
 Then:
 
 ```bash
-docker compose up -d --build gameserver
+docker compose up -d --build
 ```
 
-Docker clones the branch fresh on every `--build`, so any new push to that branch is picked up by re-running the same command. Revert the line to `#master` to swap back.
+Docker clones the branch fresh on every `--build`, so any new push to that branch is picked up by re-running the same command. Revert both lines to `#master` to swap back.
 
 ### Option 3 — Docker compose against your local checkout
 
 Useful when you have uncommitted changes you want to test before pushing.
 
 ```yaml
-  gameserver:
+  db-seed:
     build:
       context: .          # Use the current working tree
+      dockerfile: Dockerfile
+  gameserver:
+    build:
+      context: .
       dockerfile: Dockerfile
 ```
 
 ```bash
 git checkout claude/optimize-dol-server-gho1T
-docker compose up -d --build gameserver
+docker compose up -d --build
 ```
 
 Every rebuild uses whatever is in your working copy — staged, unstaged, even untracked files. Don't forget to revert `docker-compose.yml` before pushing.
