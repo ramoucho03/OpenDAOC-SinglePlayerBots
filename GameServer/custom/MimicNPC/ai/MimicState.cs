@@ -990,16 +990,18 @@ namespace DOL.AI.Brain
                         mg.SetCampPhase(MimicGroup.eCampPhase.Combat);
                         break;
                     }
-                    // Healthy group → skip the long PostCombat dwell and jump
-                    // straight to Ready so the puller can chain a new pack
-                    // before the previous mob's body even fades. Otherwise we
-                    // keep the original 2s buffer for loot/buff windows.
+                    // Healthy group → skip PostCombat entirely so the next
+                    // pull fires the same tick the last mob dies. The 30%
+                    // mana floor is the only safety net, applied below.
                     if (IsGroupReady(mg))
                     {
                         mg.SetCampPhase(MimicGroup.eCampPhase.Ready);
                         break;
                     }
-                    int grace = AnyGroupMemberHasAggro() ? 2000 : 750;
+                    // Group still has residual aggro (a stray mob coming
+                    // back, a dot ticking, etc.) — short 1s window before
+                    // we drop to Regen so the next pull isn't pre-empted.
+                    int grace = AnyGroupMemberHasAggro() ? 1000 : 0;
                     if (now - mg.CampPhaseSinceTick > grace)
                         mg.SetCampPhase(MimicGroup.eCampPhase.Regen);
                     break;
@@ -1038,12 +1040,13 @@ namespace DOL.AI.Brain
         /// </summary>
         private bool IsGroupReady(MimicGroup mg)
         {
-            // Thresholds tuned for chain-friendly pacing: 85% HP / 80% mana /
-            // 60% endurance lets a healthy group resume pulling within seconds
-            // of combat ending instead of waiting on the tail-end of regen.
-            const int READY_HP_PCT = 85;
-            const int READY_MANA_PCT = 80;
-            const int READY_END_PCT = 60;
+            // Aggressive chain-pull pacing per user spec: the only hard gate
+            // is "no caster mimic below 30% mana". HP and endurance are NOT
+            // gated — heals and slot-regen ramp during the next pull anyway,
+            // and stopping the cycle for them produced visible idle gaps the
+            // user explicitly wants gone. The human leader is also excluded:
+            // their mana/end flow is decoupled from the bot regen cycle.
+            const int READY_MANA_PCT = 30;
 
             if (_brain.Body.Group == null)
                 return true;
@@ -1052,11 +1055,9 @@ namespace DOL.AI.Brain
             {
                 if (gl == null || !gl.IsAlive)
                     continue;
-                if (gl.HealthPercent < READY_HP_PCT)
-                    return false;
+                if (gl is GamePlayer)
+                    continue;
                 if (gl.MaxMana > 0 && gl.ManaPercent < READY_MANA_PCT)
-                    return false;
-                if (gl.EndurancePercent < READY_END_PCT)
                     return false;
             }
             return true;
@@ -1072,9 +1073,11 @@ namespace DOL.AI.Brain
         /// </summary>
         private bool IsGroupStillFresh(MimicGroup mg)
         {
-            const int FRESH_HP_PCT = 70;
+            // Matches IsGroupReady: only the 30% mana floor blocks pulling.
+            // The Pulling phase machine drops to Regen when this returns
+            // false; aligning both gates on the same threshold removes the
+            // flap-zone where Ready and Regen could ping-pong.
             const int FRESH_MANA_PCT = 30;
-            const int FRESH_END_PCT = 35;
 
             if (_brain.Body.Group == null)
                 return true;
@@ -1083,11 +1086,9 @@ namespace DOL.AI.Brain
             {
                 if (gl == null || !gl.IsAlive)
                     continue;
-                if (gl.HealthPercent < FRESH_HP_PCT)
-                    return false;
+                if (gl is GamePlayer)
+                    continue;
                 if (gl.MaxMana > 0 && gl.ManaPercent < FRESH_MANA_PCT)
-                    return false;
-                if (gl.EndurancePercent < FRESH_END_PCT)
                     return false;
             }
             return true;

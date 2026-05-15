@@ -1074,14 +1074,18 @@ namespace DOL.AI.Brain
                     return true;
             }
 
-            // Group regen gate (per user spec): puller starts when every
-            // caster is at MANA_RESUME_PCT (80%) and stops the moment any
-            // caster drops below MANA_STOP_PCT (30%). The 50pp hysteresis
-            // prevents flap on regen ticks.
+            // Group regen gate (per user spec): puller stops the moment any
+            // caster drops below MANA_STOP_PCT (30%), resumes the moment
+            // every caster recovers back above MANA_RESUME_PCT (35%). The
+            // tight 5pp hysteresis prevents flap on regen ticks without
+            // forcing the long 80% wait that produced visible idle gaps.
+            // The human leader is excluded — their mana flow is decoupled
+            // from the bot regen cycle, and a player intentionally holding
+            // mana would otherwise wedge the puller forever.
             if (Body.Group != null)
             {
                 const int MANA_STOP_PCT = 30;
-                const int MANA_RESUME_PCT = 80;
+                const int MANA_RESUME_PCT = 35;
 
                 bool anyLow = false;
                 bool allHigh = true;
@@ -1089,6 +1093,8 @@ namespace DOL.AI.Brain
                 foreach (GameLiving gl in Body.Group.GetMembersInTheGroup())
                 {
                     if (gl == null || !gl.IsAlive || gl.MaxMana <= 0)
+                        continue;
+                    if (gl is GamePlayer)
                         continue;
 
                     int pct = gl.ManaPercent;
@@ -1195,9 +1201,12 @@ namespace DOL.AI.Brain
                 }
             }
 
-            // 1 base + 1 per CC + 1 bonus for 2+ healers (sustain) +
-            // 1 bonus for a full 6+ member group (more raw DPS = bigger pack).
-            int budget = 1 + ccCount;
+            // Base 2 (a tank can comfortably hold a small pack) + 1 per CC +
+            // 1 per healer past the first (sustain) + 1 bonus for a full 6+
+            // member group (more raw DPS = bigger pack). The previous base-1
+            // made the puller score for *lonely* mobs (idealPack=0) which is
+            // why single-class pulls felt one-by-one.
+            int budget = 2 + ccCount;
             if (healerCount >= 2)
                 budget++;
             if (aliveMembers >= 6)
