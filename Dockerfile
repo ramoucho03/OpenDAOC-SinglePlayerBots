@@ -34,10 +34,14 @@ RUN cat *.sql > combined.sql
 WORKDIR /build
 COPY . .
 
-# Restore once, build once — the project files declare OutputPath=../Release
-# (see CoreServer.csproj), so the runtime tree ends up at /build/Release.
-RUN dotnet restore DOLLinux.sln \
-    && dotnet build DOLLinux.sln -c Release --no-restore
+# Build the solution — restore happens implicitly. We tried splitting into
+# `restore` + `build --no-restore`, but SDK 10.0.300 fails to locate the
+# generated project.assets.json under the BaseIntermediateOutputPath=..\build\<Project>\
+# layout declared by the .csproj files, with NETSDK1004 on every project.
+# Letting `build` drive the restore avoids that path-resolution bug.
+# The project files declare OutputPath=../Release (see CoreServer.csproj),
+# so the runtime tree ends up at /build/Release.
+RUN dotnet build DOLLinux.sln -c Release
 
 # ============================================================================
 # Runtime stage — ASP.NET 10 on Alpine, smaller than the SDK
