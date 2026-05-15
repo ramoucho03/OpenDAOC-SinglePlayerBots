@@ -7,7 +7,13 @@
       "Bash(dotnet test *)",
       "Bash(docker buildx *)",
       "Bash(docker version *)",
-      "Bash(docker build *)"
+      "Bash(docker build *)",
+      "WebSearch",
+      "WebFetch(domain:eden-daoc.net)",
+      "WebFetch(domain:github.com)",
+      "Read(//tmp/**)",
+      "Read(//tmp/dol-dbpublic/src/schema/**)",
+      "Bash(awk '{print $NF}')"
     ]
   }
 }

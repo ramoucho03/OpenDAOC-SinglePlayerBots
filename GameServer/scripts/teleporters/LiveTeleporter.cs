@@ -152,6 +152,14 @@ namespace DOL.GS.Scripts
             message += "\n\n" +
                        "Perhaps you would like the challenge of the [Epic Dungeon]?";
 
+            // Expansion shortcuts — added by Option 3 patch. Each destination
+            // is realm-aware in GetTeleportLocation so the same keyword routes
+            // every realm to its own throne / catacombs entrance. Atlantis is
+            // a shared TOA hub (coords from db-public Aerus statue anchor).
+            message += "\n\n" +
+                       "I can also send you to the expansion lands of [Atlantis], " +
+                       "the [Throne Room] of our king, or the [Catacombs] beneath our realm.";
+
             SayTo(player, message);
 
             return true;
@@ -422,6 +430,74 @@ namespace DOL.GS.Scripts
                         GetTeleportLocation(player, "Galladoria");
                         return false;
                 }
+            }
+
+            // === Expansion destinations (Option 3 patch) =====================
+            // Coordinates lifted from db-public/Mob.4.json (DR throne guards)
+            // and Mob.2.json (TOA Aerus statue anchor). Adjust in-game via
+            // /loc + edit if the landing spot is sub-optimal.
+
+            if (text.ToLower() == "atlantis")
+            {
+                DbTeleport teleport = new DbTeleport();
+                teleport.TeleportID = "Atlantis";
+                teleport.Realm = (int) DestinationRealm;
+                teleport.RegionID = 30;     // TOA — Aerus statue anchor
+                teleport.X = 383760;
+                teleport.Y = 714950;
+                teleport.Z = 9437;
+                teleport.Heading = 79;
+                OnDestinationPicked(player, teleport);
+                return true;
+            }
+
+            if (text.ToLower() == "throne room")
+            {
+                DbTeleport teleport = new DbTeleport();
+                teleport.TeleportID = "Throne Room";
+                teleport.Realm = (int) DestinationRealm;
+                switch (player.Realm)
+                {
+                    case eRealm.Albion:
+                        teleport.RegionID = 394; teleport.X = 32331; teleport.Y = 31723; teleport.Z = 15901; teleport.Heading = 21;
+                        break;
+                    case eRealm.Midgard:
+                        teleport.RegionID = 360; teleport.X = 32331; teleport.Y = 30414; teleport.Z = 15563; teleport.Heading = 23;
+                        break;
+                    case eRealm.Hibernia:
+                        teleport.RegionID = 395; teleport.X = 32331; teleport.Y = 31690; teleport.Z = 15715; teleport.Heading = 39;
+                        break;
+                    default:
+                        SayTo(player, "I'm afraid your kingdom has no royal throne I can reach.");
+                        return false;
+                }
+                OnDestinationPicked(player, teleport);
+                return true;
+            }
+
+            if (text.ToLower() == "catacombs")
+            {
+                DbTeleport teleport = new DbTeleport();
+                teleport.TeleportID = "Catacombs";
+                teleport.Realm = (int) DestinationRealm;
+                teleport.Heading = 0;
+                switch (player.Realm)
+                {
+                    case eRealm.Albion:
+                        teleport.RegionID = 66;  teleport.X = 19161; teleport.Y = 19846; teleport.Z = 16178;
+                        break;
+                    case eRealm.Midgard:
+                        teleport.RegionID = 58;  teleport.X = 23176; teleport.Y = 22681; teleport.Z = 16173;
+                        break;
+                    case eRealm.Hibernia:
+                        teleport.RegionID = 197; teleport.X = 27437; teleport.Y = 40806; teleport.Z = 16548;
+                        break;
+                    default:
+                        SayTo(player, "I cannot guide you to your realm's catacombs.");
+                        return false;
+                }
+                OnDestinationPicked(player, teleport);
+                return true;
             }
 
             // Find the teleport location in the database.
