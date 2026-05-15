@@ -3161,11 +3161,15 @@ namespace DOL.AI.Brain
 
                         if (spell == null)
                         {
-                            List<Spell> singleTargetCrowdControl = spellsToCast.Where(s => s.Radius <= 0).ToList();
-                            if (singleTargetCrowdControl.Count == 0)
+                            // Reuse the working list rather than allocating a new
+                            // filtered copy — we don't read spellsToCast again
+                            // after this branch picks a target. RemoveAll uses a
+                            // static lambda (no captures) so it allocates zero.
+                            spellsToCast.RemoveAll(static s => s.Radius > 0);
+                            if (spellsToCast.Count == 0)
                                 return false;
 
-                            spell = singleTargetCrowdControl[Util.Random(singleTargetCrowdControl.Count - 1)];
+                            spell = spellsToCast[Util.Random(spellsToCast.Count - 1)];
                         }
 
                         casted = Body.CastSpell(spell, MimicBody.GetSpellLineForSpell(spell));
@@ -3374,11 +3378,18 @@ namespace DOL.AI.Brain
                         return score;
                     }
 
-                    spellsToCast = spellsToCast
-                        .OrderByDescending(HasCluster)
-                        .ThenBy(SortScore)
-                        .ThenByDescending(s => s.Damage)
-                        .ToList();
+                    // In-place sort with the same key precedence as the previous
+                    // LINQ chain (OrderByDescending(HasCluster) ThenBy(SortScore)
+                    // ThenByDescending(Damage)). Avoids the 3 enumerator + 1 List
+                    // intermediate allocations the LINQ chain produced every tick.
+                    spellsToCast.Sort((a, b) =>
+                    {
+                        int byCluster = HasCluster(b).CompareTo(HasCluster(a));
+                        if (byCluster != 0) return byCluster;
+                        int byScore = SortScore(a).CompareTo(SortScore(b));
+                        if (byScore != 0) return byScore;
+                        return b.Damage.CompareTo(a.Damage);
+                    });
 
                     // Top of the priority list is normally the best pick. Add a small
                     // amount of variety (10% chance to pick second-best) so groups
