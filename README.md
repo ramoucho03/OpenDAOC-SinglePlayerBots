@@ -138,15 +138,15 @@ A bot has two parallel brains:
 
 ### Bot AI v2 role strategies (opt-in per class)
 
-Each role is enabled at bot creation when the bot's class appears in the matching server-property CSV. Strategies are composable — a Druid runs `healer` + `caster_dps`, a Bard runs `healer` + `cc`, a Skald runs `tank` + `cc`, a Friar runs `healer` + `melee_dps`, and so on. Pure tanks like the Paladin stay `tank`-only.
+Each role is enabled at bot creation when the bot's class appears in the matching server-property CSV. Strategies are composable — a Druid runs `healer` + `caster_dps`, a Bard runs `healer` + `cc`, a Reaver runs `tank` + `melee_dps`, a Friar runs `healer` + `caster_dps`, and so on. Pure tanks like the Paladin stay `tank`-only; assassins like Infiltrator / Nightshade / Shadowblade stay `melee_dps`-only.
 
 | Key | Priority | Cooldown | Drives | Default classes |
 |---|---:|---:|---|---|
 | `healer` | 90 | 250 ms | `CheckHeals` (emergency / cure / normal) on any group heal need | Cleric, Friar, Druid, Bard, Healer, Shaman |
 | `cc` | 85 | 750 ms | `CheckSpells(CrowdControl)` when the group has tracked CC targets | Sorcerer, Minstrel, Enchanter, Bard, Mentalist, Eldritch, Runemaster, Spiritmaster, Skald |
 | `caster_dps` | 75 | 600 ms | `CheckSpells(Offensive)` (nuke rotation) while engaged | Wizard, Theurgist, Cabalist, Sorcerer, Necromancer, Cleric, Friar, Eldritch, Enchanter, Mentalist, Animist, Bainshee, Druid, Runemaster, Spiritmaster, Bonedancer, Warlock, Shaman |
-| `tank` | 70 | 500 ms | `CheckSpells(Defensive)` (taunts, peels) while engaged | Armsman, Paladin, Mercenary, Reaver, Hero, Warden, Champion, Warrior, Thane, Skald |
-| `melee_dps` | 60 | 1000 ms | `CheckSpells(Offensive)` for melee-class procs / hybrid spells | Infiltrator, Mercenary, Reaver, Heretic, Blademaster, Nightshade, Vampiir, Valewalker, Berserker, Savage, Shadowblade |
+| `tank` | 70 | 500 ms | `CheckSpells(Defensive)` (taunts, peels) while engaged | Armsman, Paladin, Reaver, Hero, Warden, Champion, Warrior, Thane |
+| `melee_dps` | 60 | 1000 ms | `CheckSpells(Offensive)` for melee-class procs / hybrid spells | Infiltrator, Mercenary, Reaver, Blademaster, Nightshade, Vampiir, Valewalker, Berserker, Savage, Shadowblade |
 | `ranged_dps` | 60 | 1000 ms | `CheckSpells(Offensive)` for archer procs while engaged | Scout, Ranger, Hunter |
 
 Server properties controlling these whitelists:

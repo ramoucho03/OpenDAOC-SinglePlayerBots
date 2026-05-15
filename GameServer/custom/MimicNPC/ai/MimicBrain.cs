@@ -176,10 +176,11 @@ namespace DOL.AI.Brain
             // per class via the matching CSV in MimicConfig (healer/tank/
             // melee_dps/ranged_dps/caster_dps/cc). Strategies are
             // composable: a Druid runs healer + caster_dps, a Bard runs
-            // healer + cc, a Skald runs tank + cc, a Friar runs healer +
-            // melee_dps, etc. Pure tanks like the Paladin stay tank-only.
-            // Operators tune the CSV at runtime; new bots pick up the
-            // change on spawn.
+            // healer + cc, a Reaver runs tank + melee_dps, a Friar runs
+            // healer + caster_dps. Pure tanks like the Paladin stay
+            // tank-only; assassins like Infiltrator/Nightshade/Shadowblade
+            // stay melee_dps-only. Operators tune the CSV at runtime;
+            // new bots pick up the change on spawn.
             if (bot?.CharacterClass == null)
                 return;
 

@@ -22,8 +22,8 @@ namespace DOL.GS.Scripts
         // Each CSV lists the eCharacterClass names that should auto-enable
         // the matching role strategy at bot creation. Classes can appear in
         // multiple lists — strategies are composable, so a Druid runs the
-        // healer AND caster_dps cycle, a Bard runs healer AND cc, a Skald
-        // runs tank AND cc, etc.
+        // healer AND caster_dps cycle, a Bard runs healer AND cc, a Reaver
+        // runs tank AND melee_dps, a Friar runs healer AND caster_dps, etc.
         //
         // The defaults reflect a 1.65-era reading of each class. Operators
         // who want a Reaver to run the CC cycle (say) only need to edit the
@@ -38,12 +38,12 @@ namespace DOL.GS.Scripts
 
         [ServerProperty("npc", "bot_ai_v2_tank_classes",
             "CSV of eCharacterClass names that auto-enable the v2 tank strategy.",
-            "Armsman,Paladin,Mercenary,Reaver,Hero,Warden,Champion,Warrior,Thane,Skald")]
+            "Armsman,Paladin,Reaver,Hero,Warden,Champion,Warrior,Thane")]
         public static string BOT_AI_V2_TANK_CLASSES;
 
         [ServerProperty("npc", "bot_ai_v2_melee_dps_classes",
             "CSV of eCharacterClass names that auto-enable the v2 melee DPS strategy.",
-            "Infiltrator,Mercenary,Reaver,Heretic,Blademaster,Nightshade,Vampiir,Valewalker,Berserker,Savage,Shadowblade")]
+            "Infiltrator,Mercenary,Reaver,Blademaster,Nightshade,Vampiir,Valewalker,Berserker,Savage,Shadowblade")]
         public static string BOT_AI_V2_MELEE_DPS_CLASSES;
 
         [ServerProperty("npc", "bot_ai_v2_ranged_dps_classes",
