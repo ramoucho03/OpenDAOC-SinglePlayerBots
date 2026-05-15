@@ -35,9 +35,10 @@ services:
       # to test a feature branch end-to-end without merging.
       context: https://github.com/ramoucho03/OpenDAOC-SinglePlayerBots.git#master
     entrypoint: ["/bin/sh", "-c"]
-    # `-n` keeps the existing file across restarts: the SQL is the same
-    # between runs, no point re-copying after the first successful seed.
-    command: "cp -n /tmp/opendaoc-db/combined.sql /seed/combined.sql && echo 'db-seed: schema ready in shared volume' && ls -lh /seed"
+    # Idempotent seed: the test-then-copy form is portable across GNU
+    # coreutils (Debian/Ubuntu) and BusyBox (Alpine) — `cp -n` was a
+    # GNU-ism not supported by every BusyBox version we might land on.
+    command: "if [ ! -f /seed/combined.sql ]; then cp /tmp/opendaoc-db/combined.sql /seed/combined.sql; fi && echo 'db-seed: schema ready in shared volume' && ls -lh /seed"
     volumes:
       - base-db:/seed
     networks:

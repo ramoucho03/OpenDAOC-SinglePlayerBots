@@ -557,7 +557,7 @@ namespace DOL.AI.Brain
                             break;
                         }
 
-                        if (owner is GameNPC npc && owner is not MimicNPC)
+                        if (owner is GameNPC npc && !npc.IsMimic)
                         {
                             //Buff other minions
                             foreach (IControlledBrain brain in npc.ControlledNpcList)

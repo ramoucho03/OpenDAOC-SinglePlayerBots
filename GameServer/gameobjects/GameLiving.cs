@@ -3105,6 +3105,10 @@ namespace DOL.GS
 
             if (!IsWithinRadius(target, WorldMgr.WHISPER_DISTANCE))
             {
+                // Mimics ignore whisper range (no client to be out of earshot).
+                // Kept as a direct type check rather than the GameNPC.IsMimic
+                // virtual because Whisper accepts any GameLiving target and we
+                // would otherwise need an extra cast just to read .IsMimic.
                 if (target is not MimicNPC)
                     return false;
             }
