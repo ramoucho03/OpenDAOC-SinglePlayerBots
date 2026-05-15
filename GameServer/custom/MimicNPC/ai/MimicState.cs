@@ -794,7 +794,41 @@ namespace DOL.AI.Brain
                 if (effective <= CAMP_ENGAGE_RANGE)
                 {
                     _brain.AddToAggroList(incoming, 1);
-                    _brain.Body.StopMoving();
+
+                    if (_brain.IsMainTank)
+                    {
+                        // Proactive charge: kick off Follow + auto-attack
+                        // THIS tick so the tank visibly closes the gap before
+                        // the mob reaches camp. The default AGGRO path still
+                        // works but only chases after a Think → AttackMostWanted
+                        // → StartAttack → AttackAction round-trip — enough
+                        // latency that the tank looks reactive (waits for melee
+                        // or first hit) instead of pro-active.
+                        _brain.Body.TargetObject = incoming;
+                        _brain.MimicBody?.Sit(false);
+                        int attackRange = _brain.Body.attackComponent?.AttackRange ?? 200;
+                        _brain.Body.Follow(incoming, Math.Max(80, attackRange - 30), 5000);
+                        _brain.Body.StartAttack(incoming);
+                    }
+                    else if (_brain.MimicBody != null
+                             && _brain.MimicBody.Inventory?.GetItem(eInventorySlot.DistanceWeapon) != null
+                             && !_brain.IsMainPuller)
+                    {
+                        // Ranged DPS (Scout/Ranger/Hunter not pulling): pre-arm
+                        // the bow and start drawing on the incoming. They'll
+                        // still hold-fire if the tank hasn't established aggro
+                        // (DPS hold-fire in CalculateNextAttackTarget), but the
+                        // bow is up and the bot is in line of sight when the
+                        // gate releases — no fumbling for the weapon switch.
+                        _brain.Body.TargetObject = incoming;
+                        _brain.MimicBody?.Sit(false);
+                        _brain.Body.SwitchWeapon(eActiveWeaponSlot.Distance);
+                    }
+                    else
+                    {
+                        _brain.Body.StopMoving();
+                    }
+
                     _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
                     return true;
                 }
