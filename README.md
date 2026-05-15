@@ -142,12 +142,14 @@ Each role is enabled at bot creation when the bot's class appears in the matchin
 
 | Key | Priority | Cooldown | Drives | Default classes |
 |---|---:|---:|---|---|
-| `healer` | 90 | 250 ms | `CheckHeals` (emergency / cure / normal) on any group heal need | Cleric, Friar, Druid, Bard, Healer, Shaman |
-| `cc` | 85 | 750 ms | `CheckSpells(CrowdControl)` when the group has tracked CC targets | Sorcerer, Minstrel, Enchanter, Bard, Mentalist, Eldritch, Runemaster, Spiritmaster, Skald |
-| `caster_dps` | 75 | 600 ms | `CheckSpells(Offensive)` (nuke rotation) while engaged | Wizard, Theurgist, Cabalist, Sorcerer, Necromancer, Cleric, Friar, Eldritch, Enchanter, Mentalist, Animist, Bainshee, Druid, Runemaster, Spiritmaster, Bonedancer, Warlock, Shaman |
+| `healer` | 100 / 95 / 92 / 90 / 85 | 200–1500 ms | `CheckHeals` split into 5 priority bindings: critical / mezz / poison / disease / low | Cleric, Friar, Heretic, Druid, Bard, Warden, Mentalist, Healer, Shaman |
+| `cc` | 85 | 750 ms | `CheckSpells(CrowdControl)` when the group has tracked CC targets | Sorcerer, Minstrel, Theurgist, Enchanter, Bard, Mentalist, Animist, Druid, Runemaster, Spiritmaster, Warlock, Healer, Vampiir |
+| `caster_dps` | 75 | 600 ms | `CheckSpells(Offensive)` (nuke rotation) while engaged | Wizard, Theurgist, Cabalist, Sorcerer, Necromancer, Heretic, Eldritch, Enchanter, Mentalist, Animist, Bainshee, Valewalker, Runemaster, Spiritmaster, Bonedancer, Warlock, Thane |
 | `tank` | 70 | 500 ms | `CheckSpells(Defensive)` (taunts, peels) while engaged | Armsman, Paladin, Reaver, Hero, Warden, Champion, Warrior, Thane |
-| `melee_dps` | 60 | 1000 ms | `CheckSpells(Offensive)` for melee-class procs / hybrid spells | Infiltrator, Mercenary, Reaver, Blademaster, Nightshade, Vampiir, Valewalker, Berserker, Savage, Shadowblade |
+| `melee_dps` | 60 | 1000 ms | `CheckSpells(Offensive)` for melee-class procs / hybrid spells | Infiltrator, Mercenary, Minstrel, Blademaster, Nightshade, Vampiir, Valewalker, Berserker, Savage, Shadowblade, Skald, Valkyrie, MaulerAlb, MaulerMid, MaulerHib |
 | `ranged_dps` | 60 | 1000 ms | `CheckSpells(Offensive)` for archer procs while engaged | Scout, Ranger, Hunter |
+
+Note on hybrids: chain-armor "tanks" (Warden, Thane, Reaver) are not strict plate tanks but are kept in `tank` because they hold the iconic peel/guard role in 1.65 group play. Warden, Mentalist and Heretic carry real heal spec lines (Regrowth, Mana, Rejuvenation) and therefore appear in `healer` alongside the obvious cleric/druid/healer trio.
 
 Server properties controlling these whitelists:
 

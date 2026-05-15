@@ -33,7 +33,7 @@ namespace DOL.GS.Scripts
 
         [ServerProperty("npc", "bot_ai_v2_healer_classes",
             "CSV of eCharacterClass names that auto-enable the v2 healer strategy.",
-            "Cleric,Friar,Druid,Bard,Healer,Shaman")]
+            "Cleric,Friar,Heretic,Druid,Bard,Warden,Mentalist,Healer,Shaman")]
         public static string BOT_AI_V2_HEALER_CLASSES;
 
         [ServerProperty("npc", "bot_ai_v2_tank_classes",
@@ -43,7 +43,7 @@ namespace DOL.GS.Scripts
 
         [ServerProperty("npc", "bot_ai_v2_melee_dps_classes",
             "CSV of eCharacterClass names that auto-enable the v2 melee DPS strategy.",
-            "Infiltrator,Mercenary,Reaver,Blademaster,Nightshade,Vampiir,Valewalker,Berserker,Savage,Shadowblade")]
+            "Infiltrator,Mercenary,Minstrel,Blademaster,Nightshade,Vampiir,Valewalker,Berserker,Savage,Shadowblade,Skald,Valkyrie,MaulerAlb,MaulerMid,MaulerHib")]
         public static string BOT_AI_V2_MELEE_DPS_CLASSES;
 
         [ServerProperty("npc", "bot_ai_v2_ranged_dps_classes",
@@ -53,12 +53,12 @@ namespace DOL.GS.Scripts
 
         [ServerProperty("npc", "bot_ai_v2_caster_dps_classes",
             "CSV of eCharacterClass names that auto-enable the v2 caster DPS strategy.",
-            "Wizard,Theurgist,Cabalist,Sorcerer,Necromancer,Cleric,Friar,Eldritch,Enchanter,Mentalist,Animist,Bainshee,Druid,Runemaster,Spiritmaster,Bonedancer,Warlock,Shaman")]
+            "Wizard,Theurgist,Cabalist,Sorcerer,Necromancer,Heretic,Eldritch,Enchanter,Mentalist,Animist,Bainshee,Valewalker,Runemaster,Spiritmaster,Bonedancer,Warlock,Thane")]
         public static string BOT_AI_V2_CASTER_DPS_CLASSES;
 
         [ServerProperty("npc", "bot_ai_v2_cc_classes",
             "CSV of eCharacterClass names that auto-enable the v2 crowd-control strategy.",
-            "Sorcerer,Minstrel,Enchanter,Bard,Mentalist,Eldritch,Runemaster,Spiritmaster,Skald")]
+            "Sorcerer,Minstrel,Theurgist,Enchanter,Bard,Mentalist,Animist,Druid,Runemaster,Spiritmaster,Warlock,Healer,Vampiir")]
         public static string BOT_AI_V2_CC_CLASSES;
 
         // Heal thresholds specifically for mimic groups. Bumped above the
