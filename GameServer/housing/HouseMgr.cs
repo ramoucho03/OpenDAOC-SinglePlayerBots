@@ -256,6 +256,11 @@ namespace DOL.GS.Housing
 					return house.ConsignmentMerchant;
 			}
 
+			// Fallback: virtual sellers from the dynamic auction-house economy module.
+			GameConsignmentMerchant virtualCm = DOL.GS.Economy.EconomyManager.GetVirtualMerchant(houseNumber);
+			if (virtualCm != null)
+				return virtualCm;
+
 			// couldn't find the house, return null
 			return null;
 		}
