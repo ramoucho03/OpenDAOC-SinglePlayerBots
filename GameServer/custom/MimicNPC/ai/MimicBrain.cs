@@ -3035,6 +3035,48 @@ namespace DOL.AI.Brain
         }
 
         /// <summary>
+        /// True if any OTHER alive member of this bot's group is currently
+        /// casting a crowd-control spell on <paramref name="target"/>. Used by
+        /// <see cref="CheckSpells"/> when picking a CC candidate so two CC bots
+        /// in the same group don't lock onto the same add — that is the most
+        /// visible "CC bots don't coordinate" complaint, since one of the two
+        /// casts gets wasted and another add stays loose.
+        ///
+        /// Mirrors <see cref="IsBeingRezzedByGroup"/>: we only check spells
+        /// currently in flight (the caster is still IsCasting on a CC spell
+        /// type), not effects already landed — those are filtered out by the
+        /// existing <c>!LivingHasEffect(ccTarget, spell)</c> guard.
+        /// </summary>
+        public bool IsBeingCcedByGroup(GameLiving target)
+        {
+            if (target == null || Body.Group == null)
+                return false;
+
+            foreach (GameLiving gm in Body.Group.GetMembersInTheGroup())
+            {
+                if (gm == null || gm == Body || !gm.IsAlive || !gm.IsCasting)
+                    continue;
+
+                Spell active = gm.castingComponent?.SpellHandler?.Spell;
+                if (active == null || gm.TargetObject != target)
+                    continue;
+
+                // The five spell types we consider "soft CC" for de-dupe
+                // purposes. SpeedDecrease covers snares + roots; Amnesia is
+                // primarily a caster lock-out so it should also de-dupe with
+                // a Mez landing on the same target.
+                if (active.SpellType is eSpellType.Mesmerize
+                    or eSpellType.Mez
+                    or eSpellType.Stun
+                    or eSpellType.Amnesia
+                    or eSpellType.SpeedDecrease)
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// If the bot has a Resurrect spell and there's a dead group member in
         /// range, start casting rez on them. Runs regardless of combat state —
         /// an experienced healer drops everything to rez. Returns true when a
@@ -3132,7 +3174,44 @@ namespace DOL.AI.Brain
                             : null);
                 }
                 else if (MimicBody.CanCastCrowdControlSpells)
-                    ccTarget = MimicBody.Group?.MimicGroup.CCTargets[Util.Random(MimicBody.Group.MimicGroup.CCTargets.Count - 1)] as GameLiving;
+                {
+                    // Pick the first CCTarget that isn't already being CC'd by
+                    // another group member's in-flight cast. Random selection
+                    // (the previous behaviour) caused two CC bots ticking in
+                    // the same frame to lock onto the same add and waste one
+                    // of the two casts. Walk the list deterministically and
+                    // skip claimed targets. Falls back to null if every entry
+                    // is already being handled — CheckSpells then drops out
+                    // and the strategy cooldown will retry on the next tick.
+                    //
+                    // Note: CCTargets is pre-existing tech debt — a
+                    // List<GameLiving> mutated from multiple threads without
+                    // a lock. We bound the loop length to the snapshot taken
+                    // once at the top so an in-flight Add/Remove from another
+                    // thread can't blow the index range. Real fix is a
+                    // dedicated CcLock + ConcurrentBag, tracked separately.
+                    var ccTargets = MimicBody.Group?.MimicGroup.CCTargets;
+                    if (ccTargets != null)
+                    {
+                        int count = ccTargets.Count;
+                        for (int i = 0; i < count; i++)
+                        {
+                            if (i >= ccTargets.Count)
+                                break; // racy resize protection
+
+                            if (ccTargets[i] is not GameLiving candidate
+                                || !candidate.IsAlive
+                                || candidate.ObjectState != GameObject.eObjectState.Active)
+                                continue;
+
+                            if (IsBeingCcedByGroup(candidate))
+                                continue;
+
+                            ccTarget = candidate;
+                            break;
+                        }
+                    }
+                }
 
                 if (ccTarget != null && MimicBody.CanCastCrowdControlSpells)
                 {
