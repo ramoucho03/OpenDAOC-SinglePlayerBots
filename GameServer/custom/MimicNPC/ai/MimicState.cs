@@ -208,6 +208,16 @@ namespace DOL.AI.Brain
         {
             _brain.AlreadyCheckedHeals = false;
 
+            // Idle still means "no current threat" but we DO want to react if
+            // a group member opens fire on something — without this, a bot
+            // sitting in IDLE (camp without a CampPoint, or a holding bot)
+            // would never join its group's fights until melee-touched.
+            if (!_brain.IsHealer && _brain.ScanGroupCombat())
+            {
+                _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
+                return;
+            }
+
             _brain.CheckSpells(MimicBrain.eCheckSpellType.Defensive);
 
             base.Think();
@@ -275,12 +285,16 @@ namespace DOL.AI.Brain
                 _brain.Body.Follow(_leader, _followDistance, 5000);
             }
 
-            if (!_brain.IsHealer 
-                && ((_leader.IsCasting && _leader.castingComponent.SpellHandler.Spell.IsHarmful) || _leader.IsAttacking)
-                && _leader.TargetObject is GameLiving livingTarget && _brain.CanAggroTarget(livingTarget))
+            // Group-combat assist: react when ANY group member (player or
+            // mimic) is engaged or being attacked — not just the leader. The
+            // legacy leader-only check missed every secondary engagement
+            // (a second player in the group pulling, a mimic taking aggro
+            // from a wandering mob, etc.) and left non-tank bots dormant
+            // until the mob actually melee-touched them.
+            if (!_brain.IsHealer && _brain.ScanGroupCombat())
             {
                 _brain.OnLeaderAggro();
-                _brain.AddToAggroList(livingTarget, 1);
+                _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
                 return;
             }
 
@@ -512,6 +526,16 @@ namespace DOL.AI.Brain
 
                 if (!_brain.PvPMode && delayRoam)
                     return;
+
+                // Assist any group member already in combat before falling
+                // back to passive proximity scan. A grouped roamer should
+                // never wander past their healer / puller while a fight is
+                // happening one slot over.
+                if (_brain.Body.Group != null && _brain.ScanGroupCombat())
+                {
+                    _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
+                    return;
+                }
 
                 if (_brain.CheckProximityAggro(_brain.AggroRange))
                 {
@@ -793,74 +817,56 @@ namespace DOL.AI.Brain
                 const int CAMP_ENGAGE_RANGE = 2500;
                 if (effective <= CAMP_ENGAGE_RANGE)
                 {
-                    _brain.AddToAggroList(incoming, 1);
-
-                    if (_brain.IsMainTank)
-                    {
-                        // Proactive charge: kick off Follow + auto-attack
-                        // THIS tick so the tank visibly closes the gap before
-                        // the mob reaches camp. The default AGGRO path still
-                        // works but only chases after a Think → AttackMostWanted
-                        // → StartAttack → AttackAction round-trip — enough
-                        // latency that the tank looks reactive (waits for melee
-                        // or first hit) instead of pro-active.
-                        _brain.Body.TargetObject = incoming;
-                        _brain.MimicBody?.Sit(false);
-                        int attackRange = _brain.Body.attackComponent?.AttackRange ?? 200;
-                        _brain.Body.Follow(incoming, Math.Max(80, attackRange - 30), 5000);
-                        _brain.Body.StartAttack(incoming);
-                    }
-                    else if (_brain.MimicBody != null
-                             && _brain.MimicBody.Inventory?.GetItem(eInventorySlot.DistanceWeapon) != null
-                             && !_brain.IsMainPuller)
-                    {
-                        // Ranged DPS (Scout/Ranger/Hunter not pulling): pre-arm
-                        // the bow and start drawing on the incoming. They'll
-                        // still hold-fire if the tank hasn't established aggro
-                        // (DPS hold-fire in CalculateNextAttackTarget), but the
-                        // bow is up and the bot is in line of sight when the
-                        // gate releases — no fumbling for the weapon switch.
-                        _brain.Body.TargetObject = incoming;
-                        _brain.MimicBody?.Sit(false);
-                        _brain.Body.SwitchWeapon(eActiveWeaponSlot.Distance);
-                    }
-                    else
-                    {
-                        _brain.Body.StopMoving();
-                    }
-
-                    _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
+                    EngageIncomingTarget(incoming, mg.MainPuller);
                     return true;
                 }
             }
 
-            // 3. Leader (player) opened combat on something — DPS/tank/CC
-            //    converge. Puller stays put (it has its own pulling work).
+            // 3. Leader / non-mimic puller opened combat on a hostile target
+            //    BEFORE any bot puller fired (player-initiated pull, or a
+            //    different player took the puller slot). Promote the target
+            //    to IncomingPullTarget so the rest of the camp picks up the
+            //    same Engaging/Combat machinery — without this the camp would
+            //    sit on Ready until the mob actually swung in melee.
             if (!_brain.IsPulling)
             {
-                GameLiving leader = _brain.Body.Group?.LivingLeader;
-                if (leader != null && leader != _brain.Body)
+                GameLiving externalPuller = ResolveExternalPuller(mg);
+                if (externalPuller != null && externalPuller != _brain.Body)
                 {
-                    bool leaderEngaging = (leader.IsCasting && leader.castingComponent?.SpellHandler?.Spell?.IsHarmful == true)
-                                          || leader.IsAttacking;
+                    bool pullerEngaging = (externalPuller.IsCasting
+                                              && externalPuller.castingComponent?.SpellHandler?.Spell?.IsHarmful == true)
+                                          || externalPuller.IsAttacking;
 
-                    if (leaderEngaging && leader.TargetObject is GameLiving leaderTarget
-                        && leaderTarget.IsAlive
-                        && _brain.CanAggroTarget(leaderTarget))
+                    if (pullerEngaging && externalPuller.TargetObject is GameLiving pulledTarget
+                        && pulledTarget.IsAlive
+                        && _brain.CanAggroTarget(pulledTarget))
                     {
                         const int LEADER_ENGAGE_RANGE = 2500;
-                        if (_brain.Body.IsWithinRadius(leaderTarget, LEADER_ENGAGE_RANGE))
+                        if (_brain.Body.IsWithinRadius(pulledTarget, LEADER_ENGAGE_RANGE)
+                            || _brain.Body.IsWithinRadius(externalPuller, LEADER_ENGAGE_RANGE))
                         {
-                            _brain.AddToAggroList(leaderTarget, 1);
-                            _brain.Body.StopMoving();
-                            _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
+                            PromotePlayerPullToCamp(mg, pulledTarget);
+                            EngageIncomingTarget(pulledTarget, externalPuller);
                             return true;
                         }
                     }
                 }
             }
 
-            // 4. Passive proximity scan (camp's small AggroRange).
+            // 4. Group-combat assist: react when ANY group member (player or
+            //    mimic, not just leader/puller) is engaging or being attacked.
+            //    Bound the scan to a wider camp-aware radius (3000u) so a
+            //    side-fight at the line still triggers the rest of the camp,
+            //    without sucking in remote brawls across the zone.
+            const int CAMP_ASSIST_RADIUS = 3000;
+            if (_brain.ScanGroupCombat(CAMP_ASSIST_RADIUS))
+            {
+                _brain.Body.StopMoving();
+                _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
+                return true;
+            }
+
+            // 5. Passive proximity scan (camp's small AggroRange).
             if (_brain.CheckProximityAggro(_brain.AggroRange))
             {
                 _brain.Body.StopMoving();
@@ -869,6 +875,160 @@ namespace DOL.AI.Brain
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Shared proactive-engage path used by Case 2 (mimic puller fired)
+        /// and Case 3 (player/leader pulled). Picks the right reaction per
+        /// role so the camp doesn't wait for the mob to melee-touch before
+        /// reacting: tank charges, ranged DPS pre-arm the bow + step forward
+        /// for LoS, CC pre-targets, melee DPS stand up and pre-target. All
+        /// branches transition to AGGRO at the end so AttackMostWanted picks
+        /// up next tick with the right weapon/target/position.
+        /// </summary>
+        private void EngageIncomingTarget(GameLiving incoming, GameLiving puller)
+        {
+            _brain.AddToAggroList(incoming, 1);
+            _brain.MimicBody?.Sit(false);
+
+            // Pick the anchor for the "advance for LoS / pre-position" step.
+            // Prefer the puller (likely visible, in the open) over the mob,
+            // which can be tucked behind a corner mid-pull.
+            GameLiving anchor = (puller != null && puller.IsAlive) ? puller : incoming;
+
+            if (_brain.IsMainTank)
+            {
+                // Proactive charge: kick off Follow + auto-attack THIS tick
+                // so the tank visibly closes the gap before the mob reaches
+                // camp. The default AGGRO path also chases but only after a
+                // Think → AttackMostWanted → StartAttack round-trip — enough
+                // latency that the tank looks reactive instead of pro-active.
+                _brain.Body.TargetObject = incoming;
+                int attackRange = _brain.Body.attackComponent?.AttackRange ?? 200;
+                _brain.Body.Follow(incoming, Math.Max(80, attackRange - 30), 5000);
+                _brain.Body.StartAttack(incoming);
+            }
+            else if (_brain.MimicBody != null
+                     && _brain.MimicBody.Inventory?.GetItem(eInventorySlot.DistanceWeapon) != null
+                     && !_brain.IsMainPuller)
+            {
+                // Ranged DPS (Scout/Ranger/Hunter not pulling): pre-arm the
+                // bow, pre-target, and step forward toward the anchor for LoS
+                // / range. They'll still hold-fire if the tank hasn't
+                // established aggro (DPS hold-fire in CalculateNextAttackTarget).
+                _brain.Body.TargetObject = incoming;
+                _brain.Body.SwitchWeapon(eActiveWeaponSlot.Distance);
+                AdvanceTowardAnchor(anchor, 180);
+            }
+            else if (_brain.IsMainCC)
+            {
+                // CC pre-targets so the mez/root spell picker resolves the
+                // incoming instantly when the gate opens. Slight side-step
+                // for LoS — but never directly into the incoming axis.
+                _brain.Body.TargetObject = incoming;
+                AdvanceTowardAnchor(anchor, 120);
+            }
+            else if (!_brain.IsMainPuller && !_brain.IsHealer)
+            {
+                // Generic DPS (melee or caster non-CC): stand, pre-target,
+                // and step a short distance forward so the mob lands on a
+                // formation that's already moving — not a flat-footed line.
+                _brain.Body.TargetObject = incoming;
+                AdvanceTowardAnchor(anchor, 120);
+            }
+            else
+            {
+                _brain.Body.StopMoving();
+            }
+
+            _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
+        }
+
+        /// <summary>
+        /// Steps the bot a short distance toward <paramref name="anchor"/>
+        /// without breaking from camp entirely. Used by EngageIncomingTarget
+        /// to nudge ranged DPS / CC / melee out of their seated positions on
+        /// the pull-side of camp before the mob arrives, instead of standing
+        /// flat-footed. No-ops when already close, when the camp point is
+        /// missing, or when the bot is in motion.
+        /// </summary>
+        private void AdvanceTowardAnchor(GameLiving anchor, int stepUnits)
+        {
+            if (anchor == null) return;
+            if (_brain.Body.IsCasting || _brain.Body.attackComponent.AttackState) return;
+
+            int dist = _brain.Body.GetDistanceTo(anchor);
+            if (dist <= stepUnits + 60) return; // already close enough
+
+            double dx = anchor.X - _brain.Body.X;
+            double dy = anchor.Y - _brain.Body.Y;
+            double len = Math.Sqrt(dx * dx + dy * dy);
+            if (len < 50) return;
+
+            int ax = _brain.Body.X + (int)(dx / len * stepUnits);
+            int ay = _brain.Body.Y + (int)(dy / len * stepUnits);
+            Point3D dest = new(ax, ay, _brain.Body.Z);
+            _brain.Body.StopFollowing();
+            _brain.Body.WalkTo(dest, _brain.Body.MaxSpeed);
+        }
+
+        /// <summary>
+        /// Returns the most likely non-mimic puller we should track for
+        /// player-initiated pulls — preferring the explicit MainPuller when
+        /// it's a player (a user could /maspuller themselves), and falling
+        /// back to the group's living leader. Returns null when a mimic
+        /// puller is currently in flight so we don't fight its own
+        /// IncomingPullTarget machinery.
+        /// </summary>
+        private GameLiving ResolveExternalPuller(MimicGroup mg)
+        {
+            if (mg == null)
+                return _brain.Body.Group?.LivingLeader;
+
+            // If a mimic puller is actively pulling, defer to Case 2.
+            if (mg.MainPuller is MimicNPC mp && mp.MimicBrain != null && mp.MimicBrain.IsPulling)
+                return null;
+
+            // Prefer an explicit non-mimic puller (rare: another player holds
+            // the role). Otherwise fall back to the group leader, which is
+            // the default puller when a player runs the camp.
+            if (mg.MainPuller is GamePlayer gp)
+                return gp;
+
+            return _brain.Body.Group?.LivingLeader;
+        }
+
+        /// <summary>
+        /// Surfaces a player-initiated pull to the rest of the camp by
+        /// posting <paramref name="target"/> as the group's IncomingPullTarget
+        /// and advancing the camp phase to Pulling. This is the bridge that
+        /// makes downstream systems — MaintainTankIntercept, MaintainHealerFocus,
+        /// IncomingAddsTrigger, IsCastingCcTrigger phase gates — work the same
+        /// way for a player puller as for a mimic puller. Idempotent and
+        /// guarded so we don't overwrite a mimic puller's in-flight target.
+        /// </summary>
+        private void PromotePlayerPullToCamp(MimicGroup mg, GameLiving target)
+        {
+            if (mg == null || target == null)
+                return;
+
+            // Don't trample a mimic puller's active pull — the mimic might
+            // be locked on a different mob, and overwriting would confuse
+            // adds-detection / phase tracking.
+            if (mg.MainPuller is MimicNPC mp && mp.MimicBrain != null && mp.MimicBrain.IsPulling)
+                return;
+
+            if (mg.IncomingPullTarget != target)
+                mg.IncomingPullTarget = target;
+
+            switch (mg.CampPhase)
+            {
+                case MimicGroup.eCampPhase.Ready:
+                case MimicGroup.eCampPhase.Regen:
+                case MimicGroup.eCampPhase.PostCombat:
+                    mg.SetCampPhase(MimicGroup.eCampPhase.Pulling);
+                    break;
+            }
         }
 
         /// <summary>
@@ -977,6 +1137,18 @@ namespace DOL.AI.Brain
                     }
                     // Puller is in flight → switch.
                     if (mg.MainPuller is MimicNPC mp && mp.MimicBrain != null && mp.MimicBrain.IsPulling)
+                    {
+                        mg.SetCampPhase(MimicGroup.eCampPhase.Pulling);
+                        break;
+                    }
+                    // Player-puller bridge: when a non-mimic (player) starts a
+                    // pull, no IsPulling flag flips, but PromotePlayerPullToCamp
+                    // has already posted IncomingPullTarget. Recognise it here
+                    // so the phase advances and tank-intercept / healer-focus
+                    // strategies kick in instead of waiting for melee contact.
+                    if (mg.IncomingPullTarget is GameLiving ppt
+                        && ppt.IsAlive
+                        && ppt.ObjectState == GameObject.eObjectState.Active)
                     {
                         mg.SetCampPhase(MimicGroup.eCampPhase.Pulling);
                         break;

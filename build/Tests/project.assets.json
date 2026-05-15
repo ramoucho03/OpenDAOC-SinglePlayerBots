@@ -4570,42 +4570,49 @@
     ]
   },
   "packageFolders": {
-    "/root/.nuget/packages/": {}
+    "C:\\Users\\Olivier\\.nuget\\packages\\": {},
+    "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "/home/user/OpenDAOC-SinglePlayerBots/Tests/Tests.csproj",
+      "projectUniqueName": "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\Tests\\Tests.csproj",
       "projectName": "Tests",
-      "projectPath": "/home/user/OpenDAOC-SinglePlayerBots/Tests/Tests.csproj",
-      "packagesPath": "/root/.nuget/packages/",
-      "outputPath": "/home/user/OpenDAOC-SinglePlayerBots/Tests/../build/Tests//",
+      "projectPath": "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\Tests\\Tests.csproj",
+      "packagesPath": "C:\\Users\\Olivier\\.nuget\\packages\\",
+      "outputPath": "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\Tests\\..\\build\\Tests\\\\",
       "projectStyle": "PackageReference",
+      "fallbackFolders": [
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+      ],
       "configFilePaths": [
-        "/root/.nuget/NuGet/NuGet.Config"
+        "C:\\Users\\Olivier\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
       ],
       "originalTargetFrameworks": [
         "net10.0"
       ],
       "sources": {
-        "/usr/lib/dotnet/library-packs": {},
+        "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+        "C:\\Program Files\\dotnet\\library-packs": {},
         "https://api.nuget.org/v3/index.json": {}
       },
       "frameworks": {
         "net10.0": {
           "targetAlias": "net10.0",
           "projectReferences": {
-            "/home/user/OpenDAOC-SinglePlayerBots/CoreBase/CoreBase.csproj": {
-              "projectPath": "/home/user/OpenDAOC-SinglePlayerBots/CoreBase/CoreBase.csproj"
+            "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreBase\\CoreBase.csproj": {
+              "projectPath": "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreBase\\CoreBase.csproj"
             },
-            "/home/user/OpenDAOC-SinglePlayerBots/CoreDatabase/CoreDatabase.csproj": {
-              "projectPath": "/home/user/OpenDAOC-SinglePlayerBots/CoreDatabase/CoreDatabase.csproj"
+            "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreDatabase\\CoreDatabase.csproj": {
+              "projectPath": "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreDatabase\\CoreDatabase.csproj"
             },
-            "/home/user/OpenDAOC-SinglePlayerBots/CoreServer/CoreServer.csproj": {
-              "projectPath": "/home/user/OpenDAOC-SinglePlayerBots/CoreServer/CoreServer.csproj"
+            "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreServer\\CoreServer.csproj": {
+              "projectPath": "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreServer\\CoreServer.csproj"
             },
-            "/home/user/OpenDAOC-SinglePlayerBots/GameServer/GameServer.csproj": {
-              "projectPath": "/home/user/OpenDAOC-SinglePlayerBots/GameServer/GameServer.csproj"
+            "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\GameServer\\GameServer.csproj": {
+              "projectPath": "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\GameServer\\GameServer.csproj"
             }
           }
         }
@@ -4663,7 +4670,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "/usr/lib/dotnet/sdk/10.0.107/PortableRuntimeIdentifierGraph.json",
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.102/PortableRuntimeIdentifierGraph.json",
         "packagesToPrune": {
           "Microsoft.CSharp": "(,4.7.32767]",
           "Microsoft.VisualBasic": "(,10.4.32767]",

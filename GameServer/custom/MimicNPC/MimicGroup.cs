@@ -40,7 +40,10 @@ namespace DOL.GS.Scripts
 
         public List<GameLiving> CCTargets { get; set; }
 
-        public int ConLevelFilter = -2;
+        // Default minimum con-level to pull: -1 (blue). The puller skips grey
+        // (-3) and green (-2) by default so chain-pulling doesn't burn cycles
+        // on no-xp / trivial mobs. Players can relax it via /mcamp.
+        public int ConLevelFilter = -1;
 
         #region Camp Phase State Machine
 

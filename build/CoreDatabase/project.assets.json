@@ -391,8 +391,8 @@
         "net10.0": {
           "targetAlias": "net10.0",
           "projectReferences": {
-            "c:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreBase\\CoreBase.csproj": {
-              "projectPath": "c:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreBase\\CoreBase.csproj"
+            "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreBase\\CoreBase.csproj": {
+              "projectPath": "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreBase\\CoreBase.csproj"
             }
           }
         }

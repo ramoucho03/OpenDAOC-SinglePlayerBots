@@ -236,24 +236,39 @@ namespace DOL.AI.Brain
         {
             if (FSM.GetState(eFSMStateType.CAMP) == FSM.GetCurrentState())
             {
-                // Camp-mode aggro filter. The old logic ignored any attacker
-                // beyond AggroRange (250/550), which silenced the camp when the
-                // puller was hit far away — the rest of the group only woke up
-                // once the puller actually reached the line. New behaviour:
-                //   • Always propagate when the attacker is the puller's
-                //     IncomingPullTarget — the camp expects this mob.
-                //   • Always propagate when the victim is the puller — pullers
-                //     come back wounded all the time and need backup.
-                //   • Otherwise apply the AggroRange filter as before.
+                // Camp-mode aggro filter. Original behaviour was tight to the
+                // bot's own AggroRange (250/550) which silenced the camp the
+                // moment anyone took a hit from outside their personal zone.
+                // We now propagate aggressively — any victim in the group, or
+                // any attacker close to ANY group member, wakes the camp.
                 MimicGroup mg = Body.Group?.MimicGroup;
                 bool isIncomingPull = mg != null
                     && mg.IncomingPullTarget == ad.Attacker;
-                bool victimIsPuller = mg != null
-                    && mg.MainPuller != null
-                    && ad.Target == mg.MainPuller;
+                bool victimIsGroupMember = Body.Group != null
+                    && ad.Target is GameLiving victim
+                    && Body.Group.IsInTheGroup(victim);
+
+                // Probe: is the attacker within AggroRange of *some* group
+                // member, not just us? Avoids the silent-camp bug where the
+                // puller / scout is hit 1000u away and only the puller
+                // himself sees the attacker.
+                bool attackerNearGroup = false;
+                if (!isIncomingPull && !victimIsGroupMember && Body.Group != null)
+                {
+                    foreach (GameLiving gl in Body.Group.GetMembersInTheGroup())
+                    {
+                        if (gl == null || !gl.IsAlive) continue;
+                        if (gl.IsWithinRadius(ad.Attacker, AggroRange))
+                        {
+                            attackerNearGroup = true;
+                            break;
+                        }
+                    }
+                }
 
                 if (!isIncomingPull
-                    && !victimIsPuller
+                    && !victimIsGroupMember
+                    && !attackerNearGroup
                     && !Body.IsWithinRadius(ad.Attacker, AggroRange))
                     return;
             }
@@ -273,6 +288,91 @@ namespace DOL.AI.Brain
 
             if (FSM.GetState(eFSMStateType.AGGRO) != FSM.GetCurrentState() && !IsHealer)
                 FSM.SetCurrentState(eFSMStateType.AGGRO);
+        }
+
+        /// <summary>
+        /// Group-combat assist scan. Walks every other group member (player or
+        /// mimic) and adds their current engagement target plus any active
+        /// attacker to our aggro list, so the bot reacts the moment ANY
+        /// member opens or receives combat — instead of waiting for the mob
+        /// to actually melee-touch us, or for the leader specifically to
+        /// engage. Returns true when at least one target was queued.
+        ///
+        /// <para>What gets surfaced per member:</para>
+        /// <list type="bullet">
+        ///   <item>The member's TargetObject when they are auto-attacking
+        ///   or casting a harmful spell on it.</item>
+        ///   <item>Every living in the member's AttackerTracker (anyone
+        ///   currently hitting them).</item>
+        /// </list>
+        ///
+        /// <para>Filters:</para>
+        /// <list type="bullet">
+        ///   <item>Skips dead/inactive members and self.</item>
+        ///   <item>Skips targets we can't legally aggro (faction, mez state).</item>
+        ///   <item>Skips targets too far from us (per <paramref name="maxRange"/>),
+        ///   so a bot 10000u away doesn't sprint across the zone for a brawl.</item>
+        /// </list>
+        ///
+        /// Used by every non-passive FSM state (Camp, FollowLeader, Idle,
+        /// Roaming) so combat assist is uniform regardless of where the bot
+        /// is when the group engages.
+        /// </summary>
+        public bool ScanGroupCombat(int maxRange = 0)
+        {
+            Group g = Body.Group;
+            if (g == null)
+                return false;
+
+            if (maxRange <= 0)
+                maxRange = MAX_AGGRO_LIST_DISTANCE;
+
+            bool found = false;
+
+            foreach (GameLiving member in g.GetMembersInTheGroup())
+            {
+                if (member == null || !member.IsAlive || member == Body)
+                    continue;
+
+                // (1) Member is actively engaging a hostile of their own.
+                bool engaging = member.IsAttacking
+                                || (member.IsCasting
+                                    && member.castingComponent?.SpellHandler?.Spell?.IsHarmful == true);
+                if (engaging
+                    && member.TargetObject is GameLiving target
+                    && target.IsAlive
+                    && target.ObjectState == GameObject.eObjectState.Active
+                    && CanAggroTarget(target)
+                    && Body.IsWithinRadius(target, maxRange))
+                {
+                    if (!AggroList.ContainsKey(target))
+                        AddToAggroList(target, 1);
+                    found = true;
+                }
+
+                // (2) Someone is hitting the member right now — engage the
+                //     attacker so a mob beating on a healer/caster doesn't go
+                //     untouched while everyone else clings to the assist target.
+                if (member.attackComponent?.AttackerTracker != null)
+                {
+                    foreach (GameLiving attacker in member.attackComponent.AttackerTracker.Attackers)
+                    {
+                        if (attacker == null || !attacker.IsAlive)
+                            continue;
+                        if (attacker == Body)
+                            continue;
+                        if (!CanAggroTarget(attacker))
+                            continue;
+                        if (!Body.IsWithinRadius(attacker, maxRange))
+                            continue;
+                        if (!AggroList.ContainsKey(attacker))
+                            AddToAggroList(attacker, 1);
+                        found = true;
+                    }
+                }
+            }
+
+            return found;
         }
 
         public virtual bool CheckProximityAggro(int aggroRange)
@@ -994,7 +1094,11 @@ namespace DOL.AI.Brain
                 || (!MimicBody.CanCastInstantHarmfulSpells && !MimicBody.CanCastHarmfulSpells))
                 return false;
 
-            Spell chainSpell = SelectPullSpell();
+            // AoE preference when the chain target is part of a pack — one
+            // AoE volley tags the whole cluster instead of single-target
+            // chain-shotting one mob at a time.
+            bool chainPack = chainTarget is GameNPC chainNpc && EstimatePackSize(chainNpc) > 0;
+            Spell chainSpell = SelectPullSpell(chainPack);
             if (chainSpell == null)
                 return false;
 
@@ -1435,7 +1539,11 @@ namespace DOL.AI.Brain
             }
 
             // Caster-style: no bow but can throw a ranged harmful spell.
-            Spell pullSpell = SelectPullSpell();
+            // Prefer an AoE damage spell when the target has BAF neighbours
+            // so every mob in the cluster aggros at once — much cleaner than
+            // single-tagging and hoping the BAF mechanic chains them in.
+            bool pullPack = target is GameNPC pulledNpc && EstimatePackSize(pulledNpc) > 0;
+            Spell pullSpell = SelectPullSpell(pullPack);
 
             if (pullSpell == null)
             {
@@ -1503,27 +1611,56 @@ namespace DOL.AI.Brain
         // Reset to null if spellbook contents change (handled by MimicNPC.SortSpells flow).
         private Spell _cachedPullSpell;
         private bool _pullSpellCached;
+        private Spell _cachedAoePullSpell;
+        private bool _aoePullSpellCached;
 
         public void InvalidatePullSpellCache()
         {
             _cachedPullSpell = null;
             _pullSpellCached = false;
+            _cachedAoePullSpell = null;
+            _aoePullSpellCached = false;
         }
 
         /// <summary>
-        /// Picks the best spell for pulling: long range, low impact.
-        /// Priority order: Snare/SpeedDecrease > DoT/Disease > stat debuff > weakest direct damage.
-        /// Returns null if no suitable harmful spell exists.
+        /// Picks the best spell for pulling. Two scoring modes:
+        ///   <para>• <paramref name="preferAoe"/> = false (default): single-target
+        ///   bias — Snare/Root, DoT, debuffs, then weakest direct damage.</para>
+        ///   <para>• <paramref name="preferAoe"/> = true: pack-aware — prefer a
+        ///   ranged AoE damage spell (Radius > 0, not PBAoE) so every mob in
+        ///   the cluster aggros at once instead of relying on BAF
+        ///   propagation. Falls back to the single-target pick when no AoE
+        ///   spell exists.</para>
+        /// Cached per mode so the per-tick lookup stays cheap. Returns null
+        /// when the caster has no eligible harmful spell.
         /// </summary>
-        public Spell SelectPullSpell()
+        public Spell SelectPullSpell(bool preferAoe = false)
+        {
+            if (preferAoe)
+            {
+                if (_aoePullSpellCached)
+                    return _cachedAoePullSpell ?? _cachedPullSpellCore();
+                _aoePullSpellCached = true;
+                _cachedAoePullSpell = ComputePullSpell(true);
+                return _cachedAoePullSpell ?? _cachedPullSpellCore();
+            }
+
+            return _cachedPullSpellCore();
+        }
+
+        private Spell _cachedPullSpellCore()
         {
             if (_pullSpellCached)
                 return _cachedPullSpell;
-
             _pullSpellCached = true;
+            _cachedPullSpell = ComputePullSpell(false);
+            return _cachedPullSpell;
+        }
 
+        private Spell ComputePullSpell(bool preferAoe)
+        {
             if (MimicBody == null)
-                return _cachedPullSpell = null;
+                return null;
 
             // Build candidate list from both non-instant and instant harmful spells.
             // We exclude PBAoE (radius > 0 and pulse > 0 or PBAoE flag), pets-only targets and self-only spells.
@@ -1534,20 +1671,43 @@ namespace DOL.AI.Brain
             if (MimicBody.InstantHarmfulSpells != null)
                 candidates.AddRange(MimicBody.InstantHarmfulSpells);
 
+            // For an AoE pull we additionally require Radius > 0 so the spell
+            // actually hits the cluster. Single-target pulls don't filter on
+            // radius (a radius=0 nuke is still a fine single-target pull).
             candidates = candidates
                 .Where(s => s != null
                             && s.Range >= 500            // need real distance
                             && !s.IsPBAoE
                             && s.Target != eSpellTarget.SELF
-                            && s.Target != eSpellTarget.PET)
+                            && s.Target != eSpellTarget.PET
+                            && (!preferAoe || s.Radius > 0))
                 .ToList();
 
             if (candidates.Count == 0)
-                return _cachedPullSpell = null;
+                return null;
 
-            // Score: lower is better. Prefer non-damaging single-target effects.
+            // Score: lower is better.
             int Score(Spell s)
             {
+                if (preferAoe)
+                {
+                    // Pack-aware: prefer AoE damage that tags every mob.
+                    // Snare/DoT can still be picked if no real AoE damage
+                    // exists, but they sit behind damage AoE in the order.
+                    switch (s.SpellType)
+                    {
+                        case eSpellType.DirectDamage: return 0;
+                        case eSpellType.DirectDamageWithDebuff: return 1;
+                        case eSpellType.DamageOverTime: return 2;
+                        case eSpellType.DamageSpeedDecrease: return 3;
+                        case eSpellType.Lifedrain: return 4;
+                        case eSpellType.SpeedDecrease: return 5;
+                        case eSpellType.Bolt: return 6;
+                        default: return 10;
+                    }
+                }
+
+                // Single-target bias: low-alpha, low-noise effects first.
                 switch (s.SpellType)
                 {
                     case eSpellType.SpeedDecrease: return 0;     // snare/root: safest puller
@@ -1573,14 +1733,12 @@ namespace DOL.AI.Brain
                 }
             }
 
-            // Best = lowest score, then longest range, then lowest damage.
-            _cachedPullSpell = candidates
-                .OrderBy(Score)
-                .ThenByDescending(s => s.Range)
-                .ThenBy(s => s.Damage)
-                .First();
-
-            return _cachedPullSpell;
+            // Best = lowest score, then longest range, then lowest damage
+            // (single mode) / highest damage (aoe mode — we want it to bite).
+            var ordered = candidates.OrderBy(Score).ThenByDescending(s => s.Range);
+            return preferAoe
+                ? ordered.ThenByDescending(s => s.Damage).First()
+                : ordered.ThenBy(s => s.Damage).First();
         }
 
         #endregion MainPuller

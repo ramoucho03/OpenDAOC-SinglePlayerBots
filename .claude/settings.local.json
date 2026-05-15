@@ -3,7 +3,8 @@
     "allow": [
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Olivier\\\\botdaoc\\\\OpenDAOC-SinglePlayerBots\\\\GameServer\\\\custom\\\\MimicNPC\\\\\" -Recurse -Name | head -50)",
       "Bash(dotnet build *)",
-      "Bash(dir /B)"
+      "Bash(dir /B)",
+      "Bash(dotnet test *)"
     ]
   }
 }
