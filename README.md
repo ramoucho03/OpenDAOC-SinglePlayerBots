@@ -138,7 +138,7 @@ A bot has two parallel brains:
 
 ### Bot AI v2 role strategies (opt-in per class)
 
-Each role is enabled at bot creation when the bot's class appears in the matching server-property CSV. Strategies are composable — a Druid runs `healer` + `caster_dps`, a Paladin runs `tank` + `healer`, a Bard runs `healer` + `cc`, and so on.
+Each role is enabled at bot creation when the bot's class appears in the matching server-property CSV. Strategies are composable — a Druid runs `healer` + `caster_dps`, a Bard runs `healer` + `cc`, a Skald runs `tank` + `cc`, a Friar runs `healer` + `melee_dps`, and so on. Pure tanks like the Paladin stay `tank`-only.
 
 | Key | Priority | Cooldown | Drives | Default classes |
 |---|---:|---:|---|---|

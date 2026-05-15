@@ -22,7 +22,8 @@ namespace DOL.GS.Scripts
         // Each CSV lists the eCharacterClass names that should auto-enable
         // the matching role strategy at bot creation. Classes can appear in
         // multiple lists — strategies are composable, so a Druid runs the
-        // healer AND caster cycle, a Paladin runs tank AND healer, etc.
+        // healer AND caster_dps cycle, a Bard runs healer AND cc, a Skald
+        // runs tank AND cc, etc.
         //
         // The defaults reflect a 1.65-era reading of each class. Operators
         // who want a Reaver to run the CC cycle (say) only need to edit the

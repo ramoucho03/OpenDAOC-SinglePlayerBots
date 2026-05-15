@@ -175,9 +175,11 @@ namespace DOL.AI.Brain
             // Bot AI v2 — role-specific strategies. Each role is opted in
             // per class via the matching CSV in MimicConfig (healer/tank/
             // melee_dps/ranged_dps/caster_dps/cc). Strategies are
-            // composable: a Druid runs healer + caster_dps, a Paladin runs
-            // tank + healer, a Bard runs healer + cc, etc. Operators tune
-            // the CSV at runtime; new bots pick up the change on spawn.
+            // composable: a Druid runs healer + caster_dps, a Bard runs
+            // healer + cc, a Skald runs tank + cc, a Friar runs healer +
+            // melee_dps, etc. Pure tanks like the Paladin stay tank-only.
+            // Operators tune the CSV at runtime; new bots pick up the
+            // change on spawn.
             if (bot?.CharacterClass == null)
                 return;
 

@@ -16,9 +16,10 @@ namespace DOL.GS.Scripts.AI.Strategies.Builtin
     /// /mstrategy) and rate-limited (500 ms between attempts so we don't
     /// burn through endurance trying to chain taunt styles every tick).
     ///
-    /// Lower priority than HealerStrategy (70 vs 90): if a tank also
-    /// happens to be a healer-class hybrid (Paladin, Friar), heals always
-    /// preempt defensive cycles in the same tick.
+    /// Lower priority than HealerStrategy (70 vs 90): no stock DAoC tank
+    /// also heals, but operators are free to opt a class into both lists
+    /// — when that happens, heals always preempt the defensive cycle in
+    /// the same tick.
     /// </summary>
     public sealed class TankStrategy : IBotStrategy
     {
