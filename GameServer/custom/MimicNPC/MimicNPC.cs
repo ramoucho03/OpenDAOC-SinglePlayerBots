@@ -3271,7 +3271,12 @@ namespace DOL.GS.Scripts
                 }
             }
 
-            GameEventMgr.RemoveHandler(this, GamePlayerEvent.Revive, new DOLEventHandler(OnRevive));
+            // The RemoveHandler call that used to live here was a no-op:
+            // no AddHandler(GamePlayerEvent.Revive, OnRevive) ever runs in
+            // the MimicNPC lifecycle, so unsubscribing achieved nothing and
+            // mostly just hinted (incorrectly) that the bot was subscribed
+            // to the revive event. If we ever wire OnRevive up later, add
+            // the matching AddHandler in the bot's init path first.
             m_deathtype = eDeathType.None;
             LastDeathPvP = false;
             //UpdatePlayerStatus();

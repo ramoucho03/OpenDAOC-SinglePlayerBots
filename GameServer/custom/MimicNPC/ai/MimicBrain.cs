@@ -1721,7 +1721,16 @@ namespace DOL.AI.Brain
             {
                 foreach (GameLiving cc in ccList)
                 {
-                    if (cc is GameNPC npc && npc != null && npc.IsAlive && ((StandardMobBrain)npc.Brain).HasAggro)
+                    // Drop the redundant `npc != null` check that used to sit
+                    // here — `is GameNPC npc` already guarantees a non-null
+                    // narrowing. Also use a typed pattern for Brain so a CCTarget
+                    // with a non-StandardMobBrain (a named-mob brain, a charm
+                    // pet brain, etc.) skips through instead of throwing
+                    // InvalidCastException on the direct cast.
+                    if (cc is GameNPC npc
+                        && npc.IsAlive
+                        && npc.Brain is StandardMobBrain smb
+                        && smb.HasAggro)
                     {
                         validatedList.Add(cc);
                     }
