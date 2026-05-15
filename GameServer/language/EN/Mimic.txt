@@ -134,6 +134,11 @@ Mimic.Chat.LowEnd.1:                  I'm out of breath.
 Mimic.Chat.LowEnd.2:                  No more endurance left.
 Mimic.Chat.LowEnd.3:                  I need a moment to catch my breath.
 
+# Self-afflicted: bot is mezzed, diseased or poisoned and asks for a cure publicly
+Mimic.Chat.NeedCure.1:                I need a cure, please!
+Mimic.Chat.NeedCure.2:                Cure on me, fast!
+Mimic.Chat.NeedCure.3:                Got something on me, need a cleanse!
+
 # Puller announcement (start of pull)
 Mimic.Chat.Pulling.1:                 Pulling now, get ready!
 Mimic.Chat.Pulling.2:                 Incoming! On the way!

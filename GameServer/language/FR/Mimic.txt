@@ -135,6 +135,11 @@ Mimic.Chat.LowEnd.1:                  Je suis a bout de souffle.
 Mimic.Chat.LowEnd.2:                  Plus d'endurance.
 Mimic.Chat.LowEnd.3:                  Il me faut une pause pour souffler.
 
+# Bot afflige : mezz, maladie ou poison sur soi, demande une dissipation publiquement
+Mimic.Chat.NeedCure.1:                Une dissipation sur moi, vite !
+Mimic.Chat.NeedCure.2:                J'ai besoin d'un cure !
+Mimic.Chat.NeedCure.3:                Quelque chose me ronge, dissipez !
+
 # Annonce de pull
 Mimic.Chat.Pulling.1:                 Pull en cours, soyez prets !
 Mimic.Chat.Pulling.2:                 J'amene la cible !

@@ -131,10 +131,12 @@ A bot has two parallel brains:
 | Key | Purpose |
 |---|---|
 | `survival` | Sit to recover, stand on engage |
-| `awareness` | Self callouts, idle banter |
+| `awareness` | Self callouts (low HP/mana/end, "need cure" when self-afflicted), pulling/tank-engage chat + emote, idle banter, salute when the camp is ready |
 | `assist` | Focus the group's main assist target |
-| `support` | Announce mezz / criticals / CC targets in group chat |
+| `support` | Localized callouts: announce a critical/mezzed group member by name, and signal incoming CC. Designed to be active on a single bot (leader / main assist) to avoid chat spam |
 | `camp` | Glue layer for `/mcamp` |
+
+All chat lines come from translation keys (`Mimic.Chat.*`) under [`GameServer/language/EN/Mimic.txt`](GameServer/language/EN/Mimic.txt) and `FR/Mimic.txt`. Each recipient sees the line in their account language; bots pick a random variant per execution so they don't sound robotic.
 
 ### Bot AI v2 role strategies (opt-in per class)
 
@@ -218,6 +220,23 @@ Pathing/         pathfinding native bindings
 ```
 
 For navigation tips and a full picture of where to go to change a specific behaviour, see [`CODEBASE_GUIDE.md`](CODEBASE_GUIDE.md) (français).
+
+---
+
+## Roadmap status
+
+The Bot AI v2 layer is being grown in phases. Each phase ships behind the per-class CSV opt-ins so adoption is gradual and rollback is cheap.
+
+| Phase | Status | What it adds |
+|---|---|---|
+| A | shipped | Strategy framework first role: `healer` drives `CheckHeals` |
+| B | shipped | `tank`, `melee_dps`, `ranged_dps`, `caster_dps`, `cc` role strategies covering the rest of the archetypes |
+| C | shipped | `healer` split into 5 priority bindings (critical / mezz / poison / disease / low) for diagnostic visibility and per-reason cooldowns; new `GroupMemberDiseasedTrigger` and `GroupMemberPoisonedTrigger` |
+| D | shipped | Immersion layer: every announce now uses localized translation keys (per-recipient language, random variant), bot publicly asks for a cure when self-mezzed/diseased/poisoned, tank emote (`/bangonshield`) on engage, salute emote when the camp is ready |
+| E | planned | Cross-bot coordination — main-assist target propagation, kick rotation, CC chain, pull breaks via tank |
+| F | planned | Travel / quest / gather autonomy à la mod-playerbots |
+
+Class roles in the role CSVs were validated against multiple DAoC 1.65 sources (darkageofcamelot.com Class Library, Camelot Herald wiki, ZAM Allakhazam, Uthgard / Disorder / Phoenix / Eden community guides) — see commit `bd02702` for the full audit and the corrections that were applied.
 
 ---
 
