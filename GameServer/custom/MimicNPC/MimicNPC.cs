@@ -3556,11 +3556,49 @@ namespace DOL.GS.Scripts
             {
                 if (charge is null)
                 {
+                    // The bot's own Long Wind (rare — stock mimics don't buy RAs).
                     AtlasOF_LongWindAbility raLongWind = GetAbility<AtlasOF_LongWindAbility>();
+                    int ownLongWindReduction = raLongWind != null
+                        ? raLongWind.GetAmountForLevel(CalculateSkillLevel(raLongWind))
+                        : 0;
 
-                    if (raLongWind != null)
-                        longWind -= raLongWind.GetAmountForLevel(CalculateSkillLevel(raLongWind)) * 5 / 100;
+                    // Mirror the human leader's sprint context. Live DAoC groups
+                    // sustain infinite sprint by running Endurance Regen potion +
+                    // Long Wind RA together — the potion supplies the regen, the
+                    // RA cancels the drain. A grouped bot has no real way to buy
+                    // either, so we let it inherit the leader's setup for the
+                    // duration of the sprint. No permanent buffs are applied;
+                    // these values only influence this single tick's math.
+                    GamePlayer humanLeader = MimicBrain?.CachedPlayerLeader;
 
+                    if (humanLeader != null && humanLeader.IsAlive
+                        && humanLeader.CurrentRegion == CurrentRegion)
+                    {
+                        AtlasOF_LongWindAbility leaderRa = humanLeader.GetAbility<AtlasOF_LongWindAbility>();
+                        int leaderLongWindReduction = leaderRa != null
+                            ? leaderRa.GetAmountForLevel(humanLeader.CalculateSkillLevel(leaderRa))
+                            : 0;
+
+                        // Use whichever Long Wind is stronger (bot's own RA or the
+                        // leader's). Same formula as GamePlayer: a level-5 RA
+                        // (reduction = 100) zeroes out longWind, so a 100 %
+                        // EnduRegen potion makes the net drain positive.
+                        ownLongWindReduction = Math.Max(ownLongWindReduction, leaderLongWindReduction);
+
+                        // If the leader is actively running the Endurance Regen
+                        // potion / chant, mirror that regen amount onto the bot.
+                        // Take the higher of (bot's own regen, leader's regen) so
+                        // a buffed bot stacked on a buffed leader doesn't lose
+                        // ground.
+                        if (humanLeader.effectListComponent.ContainsEffectForEffectType(eEffect.EnduranceRegenBuff))
+                        {
+                            int leaderRegen = humanLeader.GetModified(eProperty.EnduranceRegenerationAmount);
+                            if (leaderRegen > regen)
+                                regen = leaderRegen;
+                        }
+                    }
+
+                    longWind -= ownLongWindReduction * 5 / 100;
                     regen -= longWind;
 
                     if (endChant > 1)

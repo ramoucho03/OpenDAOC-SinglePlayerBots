@@ -310,6 +310,20 @@ The trigger / action / strategy contracts live under [`GameServer/custom/MimicNP
 
 ---
 
+## Sprint and follow
+
+Bots in follow mode mirror their human leader's sprint state every tick (`MimicState.MirrorLeaderSprint` is called from `MimicBrain.Think` regardless of FSM state, so a bot in ROAMING / WAKING_UP / AGGRO keeps up too — the cached human-leader lookup refreshes every 2 s).
+
+What's special in this fork is **endurance bookkeeping for grouped bots**. Live DAoC groups sustain infinite sprint by stacking an **Endurance Regen Potion** with the **Long Wind RA** (the potion supplies the regen, the RA cancels the drain). A grouped bot can't realistically buy either — so `MimicNPC.EnduranceRegenerationTimerCallback` reads the leader's setup at tick time and mirrors it onto the bot's sprint math:
+
+- If the leader has `eEffect.EnduranceRegenBuff` active (potion or chant), the bot's regen is bumped to at least the leader's `EnduranceRegenerationAmount` for the sprint calculation.
+- If the leader owns `AtlasOF_LongWindAbility`, the bot uses **whichever Long Wind is stronger** (its own or the leader's) when computing the sprint drain — so a level-5 RA on the leader zeroes the bot's drain too.
+- No permanent buffs are applied: these values only influence this single regen tick. The bot's stat sheet is untouched, the leader's potion isn't consumed twice, and a non-buffed bot still drains normally and eventually falls behind — exactly like a real groupmate.
+
+The previous behaviour was a brute-force `if (body.Endurance < 25) body.Endurance = body.MaxEndurance` inside `MirrorLeaderSprint`. It kept bots sprinting forever but flickered the player's group-endurance UI (the refill spammed `Group.UpdateMember` packets at ~2 Hz). That hack is gone now.
+
+---
+
 ## Death and resurrection
 
 Dead bots behave like dead players, not like NPCs that despawn instantly.
@@ -385,6 +399,7 @@ The Bot AI v2 layer is being grown in phases. Each phase ships behind the per-cl
 | D | shipped | Immersion layer: every announce now uses localized translation keys (per-recipient language, random variant), bot publicly asks for a cure when self-mezzed/diseased/poisoned, tank emote (`/bangonshield`) on engage, salute emote when the camp is ready |
 | E | shipped | Cross-bot coordination — DPS bots actively switch off their current target when the main assist switches mob (`BotTargetDiffersFromAssistTrigger`); tanks publicly call lost aggro when their mob hits another group member (`TankLostAggroTrigger`) |
 | Rez | shipped | Bots die like players: rez-able corpse window (60 s with rezzer / 15 s without), healers actively cast Resurrect on dead bots AND dead players in the group, "release to bind" semantics on timeout (leave group + despawn — configurable via `bot_rez_timeout_behavior`). See [Death and resurrection](#death-and-resurrection). |
+| Sprint | shipped | Bots in follow inherit their human leader's Endurance Regen Potion + Long Wind RA at the tick level — leader running infinite-sprint kit ⇒ bots stay topped up; un-buffed leader ⇒ bots drain realistically and fall behind. Replaces the previous endurance-refill hack which flickered the player's group UI. See [Sprint and follow](#sprint-and-follow). |
 | F | planned | CC distribution (claim-and-cast so two bots don't mez the same add), kick rotation on enemy casters, travel / quest / gather autonomy à la mod-playerbots |
 
 Class roles in the role CSVs were validated against multiple DAoC 1.65 sources (darkageofcamelot.com Class Library, Camelot Herald wiki, ZAM Allakhazam, Uthgard / Disorder / Phoenix / Eden community guides) — see commit `bd02702` for the full audit and the corrections that were applied.
