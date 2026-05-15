@@ -37,7 +37,23 @@ namespace DOL.GS.Economy
         private const int MID_LOT_TOP = 2573, MID_LOT_BOTTOM = 2480;
         private const int HIB_LOT_TOP = 4398, HIB_LOT_BOTTOM = 4300;
 
-        private const string OWNER_PREFIX = "Economy:";
+        // Shared identifiers. Exposed internal so the merchant class can reference them
+        // without re-declaring the literal (one source of truth).
+        internal const string OWNER_PREFIX = "Economy:";
+        internal const string CREATOR_TAG = "Auction Market";
+        internal const int ADD_BATCH_WAIT_SECONDS = 30;
+
+        // Tick / safety constants.
+        private const int MIN_TICK_SECONDS = 5;
+        private const int MIN_FLUSH_SECONDS = 5;
+        private const int SHUTDOWN_WAIT_SECONDS = 5;
+        // Max items per single AddObject/DeleteObject call. Caps the initial-flush spike
+        // when the worker accumulates ~10k items between the first Initialize and the
+        // first FlushLoop tick.
+        private const int MAX_FLUSH_CHUNK = 500;
+        // Tick-percent calc: ticks_per_hour = 3600/tickSec. perTick = total * pct/100 / ticks_per_hour
+        // = total * pct * tickSec / 360000. The 360000 is 100 (percent units) * 3600 (sec/h).
+        private const long PERCENT_PER_HOUR_TO_PER_TICK_DIVISOR = 360000L;
 
         // Init-time state. The snapshot becomes immutable post-Initialize so we can read
         // it lock-free on the hot path.
@@ -48,6 +64,12 @@ namespace DOL.GS.Economy
         // Serializes all generation work so concurrent /economy refresh/topup invocations
         // cannot overshoot or race with the worker.
         private static readonly SemaphoreSlim _generationGate = new(1, 1);
+
+        // Serializes DoFlush calls. The flusher task ticks every ECONOMY_DB_FLUSH_SECONDS,
+        // and Shutdown also calls DoFlush after cancelling the task; if the flusher task
+        // is still inside DoFlush when the shutdown wait times out, the two calls would
+        // race on CompleteAddBatch. The mutex prevents that.
+        private static readonly object _flushMutex = new();
 
         private static CancellationTokenSource _cts;
         private static Task _worker;
@@ -128,7 +150,9 @@ namespace DOL.GS.Economy
                 if (EconomyItemPool.TotalTemplates == 0)
                 {
                     log.Warn("Economy: no eligible item templates found. Economy will not run.");
-                    _initialized = true;
+                    // Don't set _initialized = true: a subsequent Initialize() (e.g. after
+                    // the operator imports a template set and calls /economy refresh) can
+                    // succeed without a process restart.
                     return;
                 }
 
@@ -185,7 +209,7 @@ namespace DOL.GS.Economy
                 try { GameServer.Database.DeleteObject(orphans); }
                 catch (Exception ex) { log.Error("Economy: failed to delete orphan listings.", ex); }
                 if (log.IsInfoEnabled)
-                    log.Info($"Economy: pruned {orphans.Count} orphan listings (lot/slot mismatch).");
+                    log.Info($"Economy: pruned {orphans.Count} orphan listings (unknown owner lot or duplicate slot).");
             }
 
             return attached;
@@ -210,11 +234,12 @@ namespace DOL.GS.Economy
             try
             {
                 cts?.Cancel();
-                Task.WaitAll(new[] { worker, flusher }.Where(t => t != null).ToArray(), TimeSpan.FromSeconds(5));
+                Task.WaitAll(new[] { worker, flusher }.Where(t => t != null).ToArray(), TimeSpan.FromSeconds(SHUTDOWN_WAIT_SECONDS));
             }
             catch { /* ignore on shutdown */ }
 
             // Final flush so pending changes are persisted before process exit.
+            // _flushMutex serializes this against any flusher task that's still finishing.
             if (EconomyConfig.ECONOMY_PERSIST)
             {
                 try { DoFlush(); }
@@ -234,6 +259,14 @@ namespace DOL.GS.Economy
 
             _merchants = Array.Empty<EconomyConsignmentMerchant>();
             _byLot = new Dictionary<int, EconomyConsignmentMerchant>();
+
+            // Reset the player-listings snapshot too so a subsequent Initialize doesn't
+            // serve stale entries from the previous run.
+            lock (_playerListingsCacheLock)
+            {
+                _playerListingsCache = Array.Empty<DbInventoryItem>();
+                _playerListingsCacheUtcSec = 0;
+            }
 
             cts?.Dispose();
         }
@@ -271,8 +304,8 @@ namespace DOL.GS.Economy
 
                 // Same per-tick share as the worker, but at least 1 per non-empty merchant.
                 int pctPerHour = Math.Clamp(EconomyConfig.ECONOMY_TURNOVER_PERCENT_PER_HOUR, 1, 100);
-                int tickSec = Math.Max(5, EconomyConfig.ECONOMY_TICK_SECONDS);
-                long perTickL = (long) total * pctPerHour * tickSec / 360000L;
+                int tickSec = Math.Max(MIN_TICK_SECONDS, EconomyConfig.ECONOMY_TICK_SECONDS);
+                long perTickL = (long) total * pctPerHour * tickSec / PERCENT_PER_HOUR_TO_PER_TICK_DIVISOR;
                 int toRotate = (int) Math.Max(1, perTickL);
 
                 int popped = 0;
@@ -365,7 +398,7 @@ namespace DOL.GS.Economy
 
                 while (!token.IsCancellationRequested)
                 {
-                    int tickSec = Math.Max(5, EconomyConfig.ECONOMY_TICK_SECONDS);
+                    int tickSec = Math.Max(MIN_TICK_SECONDS, EconomyConfig.ECONOMY_TICK_SECONDS);
                     try
                     {
                         await Task.Delay(TimeSpan.FromSeconds(tickSec), token).ConfigureAwait(false);
@@ -447,7 +480,7 @@ namespace DOL.GS.Economy
 
             // Items to rotate this tick = total * pct/100 * tickSec/3600.
             // Computed in long to avoid overflow at large stock sizes.
-            long perTickL = (long) total * turnoverPctPerHour * tickSec / 360000L;
+            long perTickL = (long) total * turnoverPctPerHour * tickSec / PERCENT_PER_HOUR_TO_PER_TICK_DIVISOR;
             int perTick = (int) Math.Min(int.MaxValue, perTickL);
             if (perTick < 1)
                 perTick = 1;
@@ -492,7 +525,7 @@ namespace DOL.GS.Economy
             {
                 while (!token.IsCancellationRequested)
                 {
-                    int sec = Math.Max(5, EconomyConfig.ECONOMY_DB_FLUSH_SECONDS);
+                    int sec = Math.Max(MIN_FLUSH_SECONDS, EconomyConfig.ECONOMY_DB_FLUSH_SECONDS);
                     try { await Task.Delay(TimeSpan.FromSeconds(sec), token).ConfigureAwait(false); }
                     catch (OperationCanceledException) { return; }
 
@@ -504,6 +537,15 @@ namespace DOL.GS.Economy
         }
 
         private static void DoFlush()
+        {
+            // Serialize: the periodic flusher and the shutdown-final flush must not
+            // overlap, or two CompleteAddBatch calls on the same merchant would step on
+            // each other's _inFlightAdds / _addBatchIdle state.
+            lock (_flushMutex)
+                DoFlushLocked();
+        }
+
+        private static void DoFlushLocked()
         {
             var snapshot = _merchants;
             List<DbInventoryItem> allAdds = null;
@@ -530,17 +572,11 @@ namespace DOL.GS.Economy
             // Phase 2: the actual DB calls happen OUTSIDE any merchant lock so we don't
             // serialize buy/sell/rotation against DB latency. Player buys that touched an
             // in-flight item block briefly on the merchant's _addBatchIdle event.
-            if (allAdds != null && allAdds.Count > 0)
-            {
-                try { GameServer.Database.AddObject(allAdds); }
-                catch (Exception ex) { log.Error($"Economy: batched AddObject failed for {allAdds.Count} listings.", ex); }
-            }
-
-            if (allDels != null && allDels.Count > 0)
-            {
-                try { GameServer.Database.DeleteObject(allDels); }
-                catch (Exception ex) { log.Error($"Economy: batched DeleteObject failed for {allDels.Count} listings.", ex); }
-            }
+            // Big batches are chunked so the very first DoFlush after a fresh-server
+            // initial population (which accumulates ~10k items into _pendingAdds before
+            // the flusher's first tick) doesn't hit the DB with a single huge transaction.
+            FlushChunked(allAdds, isAdd: true);
+            FlushChunked(allDels, isAdd: false);
 
             // Phase 3: complete the add batch and pick up "raced" rows that were popped
             // or transferred to a player while their AddObject was running. Items left
@@ -557,14 +593,41 @@ namespace DOL.GS.Economy
                 }
             }
 
-            if (followUpDeletes != null && followUpDeletes.Count > 0)
-            {
-                try { GameServer.Database.DeleteObject(followUpDeletes); }
-                catch (Exception ex) { log.Error($"Economy: follow-up DeleteObject failed for {followUpDeletes.Count} raced listings.", ex); }
-            }
+            FlushChunked(followUpDeletes, isAdd: false);
 
             if (EconomyConfig.ECONOMY_VERBOSE_LOG && log.IsDebugEnabled && (allAdds != null || allDels != null || followUpDeletes != null))
                 log.Debug($"Economy flush: +{allAdds?.Count ?? 0} / -{allDels?.Count ?? 0} / raced -{followUpDeletes?.Count ?? 0}");
+        }
+
+        private static void FlushChunked(List<DbInventoryItem> items, bool isAdd)
+        {
+            if (items == null || items.Count == 0)
+                return;
+
+            int total = items.Count;
+            if (total <= MAX_FLUSH_CHUNK)
+            {
+                try
+                {
+                    if (isAdd) GameServer.Database.AddObject(items);
+                    else GameServer.Database.DeleteObject(items);
+                }
+                catch (Exception ex) { log.Error($"Economy: batched {(isAdd ? "AddObject" : "DeleteObject")} failed for {total} listings.", ex); }
+                return;
+            }
+
+            // Subdivide. Allocations are minimal: we rent slices via List<T>.GetRange.
+            for (int offset = 0; offset < total; offset += MAX_FLUSH_CHUNK)
+            {
+                int take = Math.Min(MAX_FLUSH_CHUNK, total - offset);
+                List<DbInventoryItem> chunk = items.GetRange(offset, take);
+                try
+                {
+                    if (isAdd) GameServer.Database.AddObject(chunk);
+                    else GameServer.Database.DeleteObject(chunk);
+                }
+                catch (Exception ex) { log.Error($"Economy: chunked {(isAdd ? "AddObject" : "DeleteObject")} failed at offset {offset}/{total}.", ex); }
+            }
         }
 
         // ---------- bot purchases from player listings ----------
@@ -600,7 +663,7 @@ namespace DOL.GS.Economy
                 // player could flip bot listings (buy at 70% market, relist at 150%, bot
                 // buys back) for a sustainable gold faucet. Mob loot / quest / crafted
                 // items have a different Creator and remain eligible.
-                if (string.Equals(item.Creator, "Auction Market", StringComparison.Ordinal))
+                if (string.Equals(item.Creator, CREATOR_TAG, StringComparison.Ordinal))
                     continue;
 
                 // Apply the same price floor as bot pricing so cheap listings can't be
@@ -927,7 +990,7 @@ namespace DOL.GS.Economy
 
             item.IsCrafted = false;
             item.IsROG = false;
-            item.Creator = "Auction Market";
+            item.Creator = CREATOR_TAG;
             item.AllowAdd = true;
             item.IsPersisted = false;
 

@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 using DOL.GS.Commands;
 using DOL.GS.PacketHandler;
@@ -32,13 +33,20 @@ namespace DOL.GS.Economy
             {
                 case "stats":
                 {
+                    if (!EconomyManager.IsInitialized)
+                    {
+                        player.Out.SendMessage("Economy: not initialized (disabled, market off, or no eligible templates).", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                        break;
+                    }
                     int total = EconomyManager.TotalListings;
                     var merchants = EconomyManager.Merchants;
+                    int marketTotal = MarketCache.ItemCount;
+                    int playerListings = Math.Max(0, marketTotal - total);
                     player.Out.SendMessage($"Economy: initialized={EconomyManager.IsInitialized}, suspended={EconomyManager.IsSuspended}", eChatType.CT_System, eChatLoc.CL_SystemWindow);
                     player.Out.SendMessage($"Economy: target stock = {EconomyConfig.ECONOMY_TARGET_STOCK}, current listings = {total}", eChatType.CT_System, eChatLoc.CL_SystemWindow);
-                    int marketTotal = MarketCache.ItemCount;
-                    int playerListings = System.Math.Max(0, marketTotal - total);
                     player.Out.SendMessage($"Economy: market cache total = {marketTotal} (bots={total}, players={playerListings})", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    player.Out.SendMessage($"Economy: template pool = {EconomyItemPool.TotalTemplates}", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    player.Out.SendMessage($"Economy: tick={EconomyConfig.ECONOMY_TICK_SECONDS}s, turnover={EconomyConfig.ECONOMY_TURNOVER_PERCENT_PER_HOUR}%/h", eChatType.CT_System, eChatLoc.CL_SystemWindow);
                     player.Out.SendMessage($"Economy: bot-buys-from-players={EconomyConfig.ECONOMY_BOT_BUYS_FROM_PLAYERS}, fair-time={EconomyConfig.ECONOMY_FAIR_PRICE_BASE_HOURS}h, hard-ceiling={EconomyConfig.ECONOMY_HARD_MAX_OVERPRICE_PERCENT}%", eChatType.CT_System, eChatLoc.CL_SystemWindow);
                     player.Out.SendMessage($"Economy: persist={EconomyConfig.ECONOMY_PERSIST}, flush={EconomyConfig.ECONOMY_DB_FLUSH_SECONDS}s", eChatType.CT_System, eChatLoc.CL_SystemWindow);
                     player.Out.SendMessage($"Economy: {merchants.Count} virtual sellers across realms.", eChatType.CT_System, eChatLoc.CL_SystemWindow);

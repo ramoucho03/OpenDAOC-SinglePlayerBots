@@ -266,7 +266,7 @@ namespace DOL.GS.Economy
                     string owner = item.OwnerID;
 
                     // Player took ownership during flight: leave the row, player save will UPDATE.
-                    if (string.IsNullOrEmpty(owner) || !owner.StartsWith("Economy:", StringComparison.Ordinal))
+                    if (string.IsNullOrEmpty(owner) || !owner.StartsWith(EconomyManager.OWNER_PREFIX, StringComparison.Ordinal))
                         continue;
 
                     // Still ours - is the slot still occupied by this exact instance?
@@ -429,7 +429,7 @@ namespace DOL.GS.Economy
             }
 
             if (waitForAddBatch)
-                _addBatchIdle.Wait(TimeSpan.FromSeconds(5));
+                _addBatchIdle.Wait(TimeSpan.FromSeconds(EconomyManager.ADD_BATCH_WAIT_SECONDS));
 
             item.OwnerLot = 0;
             item.SellPrice = 0;

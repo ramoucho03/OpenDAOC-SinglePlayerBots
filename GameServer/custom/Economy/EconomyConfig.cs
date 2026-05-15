@@ -16,9 +16,9 @@ namespace DOL.GS.Economy
         public static int ECONOMY_TARGET_STOCK;
 
         // Continuous trickle rotation. The worker wakes every TICK_SECONDS and rotates
-        // a small slice of stock so the market feels alive at every moment instead of
-        // jumping every 30 minutes. Default values: every 60s, ~16%/hour turnover at
-        // 10000 stock target = ~27 listings rotated per minute.
+        // a small slice of stock so the market feels alive at every moment. Default values:
+        // every 60s, ~16%/hour turnover at 10000 stock target = ~27 listings rotated per
+        // minute, distributed smoothly across the hour.
         [ServerProperty("economy", "economy_tick_seconds", "How often the rotation worker ticks (seconds). Lower = smoother, slightly higher CPU.", 60)]
         public static int ECONOMY_TICK_SECONDS;
 
@@ -65,9 +65,6 @@ namespace DOL.GS.Economy
 
         [ServerProperty("economy", "economy_seller_count_per_realm", "Number of virtual NPC sellers spawned per realm. Items are spread across them.", 6)]
         public static int ECONOMY_SELLER_COUNT_PER_REALM;
-
-        [ServerProperty("economy", "economy_seller_capacity", "Maximum items a single virtual seller can hold. Should be <= 100 to match consignment slots.", 100)]
-        public static int ECONOMY_SELLER_CAPACITY;
 
         [ServerProperty("economy", "economy_verbose_log", "Verbose logging for the dynamic economy.", false)]
         public static bool ECONOMY_VERBOSE_LOG;
