@@ -15,17 +15,21 @@ namespace DOL.GS.Economy
         [ServerProperty("economy", "economy_target_stock", "Target number of bot-listed items kept in the market at any time.", 10000)]
         public static int ECONOMY_TARGET_STOCK;
 
-        [ServerProperty("economy", "economy_refresh_interval_minutes", "How often the bot market rotates a fraction of its stock (minutes).", 30)]
-        public static int ECONOMY_REFRESH_INTERVAL_MINUTES;
+        // Continuous trickle rotation. The worker wakes every TICK_SECONDS and rotates
+        // a small slice of stock so the market feels alive at every moment instead of
+        // jumping every 30 minutes. Default values: every 60s, ~16%/hour turnover at
+        // 10000 stock target = ~27 listings rotated per minute.
+        [ServerProperty("economy", "economy_tick_seconds", "How often the rotation worker ticks (seconds). Lower = smoother, slightly higher CPU.", 60)]
+        public static int ECONOMY_TICK_SECONDS;
 
-        [ServerProperty("economy", "economy_rotation_percent", "Percent of stock replaced at each refresh tick (5 = 5%).", 8)]
-        public static int ECONOMY_ROTATION_PERCENT;
+        [ServerProperty("economy", "economy_turnover_percent_per_hour", "Percent of total stock rotated each hour. 16 = ~16% of listings refreshed every hour.", 16)]
+        public static int ECONOMY_TURNOVER_PERCENT_PER_HOUR;
 
-        [ServerProperty("economy", "economy_batch_size", "Maximum items inserted per batch when populating the market. Lower to reduce CPU spikes.", 200)]
-        public static int ECONOMY_BATCH_SIZE;
+        [ServerProperty("economy", "economy_initial_batch_size", "Items inserted per batch during the one-time initial population. Lower to reduce CPU spikes at startup.", 200)]
+        public static int ECONOMY_INITIAL_BATCH_SIZE;
 
-        [ServerProperty("economy", "economy_batch_sleep_ms", "Sleep between batches in milliseconds. Prevents long blocking work.", 50)]
-        public static int ECONOMY_BATCH_SLEEP_MS;
+        [ServerProperty("economy", "economy_initial_batch_sleep_ms", "Sleep between batches during initial population (ms).", 50)]
+        public static int ECONOMY_INITIAL_BATCH_SLEEP_MS;
 
         [ServerProperty("economy", "economy_min_level", "Lowest item level the bot market lists.", 1)]
         public static int ECONOMY_MIN_LEVEL;

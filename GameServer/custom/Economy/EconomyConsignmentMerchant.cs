@@ -6,20 +6,27 @@ using DOL.GS.PacketHandler;
 namespace DOL.GS.Economy
 {
     /// <summary>
-    /// A virtual consignment merchant that owns a bag of bot-generated items.
+    /// Virtual consignment merchant for the dynamic auction-house economy.
     /// It is NOT placed in the world, has no House behind it, and does not persist money.
-    /// Players interact with it through the Market Explorer; the resolution path is
-    /// HouseMgr.GetConsignmentByHouseNumber -> EconomyManager.GetVirtualMerchant.
+    /// Players reach it through the Market Explorer (HouseMgr fallback).
     ///
-    /// Items live in-memory until purchased. When the existing move/buy pipeline saves
-    /// the item it ends up in the player's inventory exactly like a real CM sale.
-    /// The "money paid" by the player is silently sunk (no DB row for our fake house),
-    /// which gives the dynamic economy a natural gold sink.
+    /// Storage: a fixed array of 100 slots matching the DB slot range
+    /// [Consignment_First..Consignment_Last]. A parallel List of occupied slot indices
+    /// supports O(1) random pop with swap-with-last. All MarketCache add/remove calls
+    /// happen INSIDE _itemsLock so the cache and the merchant cannot drift out of sync.
     /// </summary>
     public class EconomyConsignmentMerchant : GameConsignmentMerchant
     {
+        private const int SLOT_COUNT = GameConsignmentMerchant.CONSIGNMENT_SIZE; // 100
+
         private readonly object _itemsLock = new();
-        private readonly Dictionary<int, DbInventoryItem> _items = new(); // db-slot -> item
+        // Indexed by (dbSlot - FirstDbSlot); fixed-size for O(1) lookup and cache locality.
+        private readonly DbInventoryItem[] _items = new DbInventoryItem[SLOT_COUNT];
+        // List of occupied array indices. Random pop swaps the picked index with the last
+        // entry so removal is O(1) instead of an O(n) dictionary enumeration.
+        private readonly List<int> _occupied = new(SLOT_COUNT);
+        private int _nextFreeHint;
+
         private readonly string _ownerId;
         private readonly int _houseNumber;
         private readonly eRealm _realm;
@@ -32,7 +39,9 @@ namespace DOL.GS.Economy
             HouseNumber = (ushort) houseNumber;
             Realm = realm;
             Name = displayName;
-            ObjectState = GameObject.eObjectState.Active;
+            // Stays Inactive: the merchant is never in any region. Active+null-region would
+            // confuse any future ECS sweep that touches all active objects.
+            ObjectState = GameObject.eObjectState.Inactive;
         }
 
         public eRealm SellerRealm => _realm;
@@ -51,7 +60,7 @@ namespace DOL.GS.Economy
             get
             {
                 lock (_itemsLock)
-                    return _items.Count;
+                    return _occupied.Count;
             }
         }
 
@@ -59,97 +68,95 @@ namespace DOL.GS.Economy
         {
             get
             {
-                int cap = EconomyConfig.ECONOMY_SELLER_CAPACITY;
-                if (cap <= 0)
-                    cap = GameConsignmentMerchant.CONSIGNMENT_SIZE;
                 lock (_itemsLock)
-                    return cap - _items.Count;
+                    return SLOT_COUNT - _occupied.Count;
             }
         }
 
         /// <summary>
-        /// Adds a freshly built listing to the merchant's stock. The item is registered
-        /// with the global MarketCache so the Market Explorer can find it.
-        /// Returns true if added, false if the merchant is full or slot is in use.
+        /// Adds a freshly built listing to the merchant's stock. The MarketCache insertion
+        /// happens INSIDE the lock so concurrent pops cannot orphan an in-flight item.
+        /// Returns true if added, false if the merchant is full.
         /// </summary>
         public bool TryAddListing(DbInventoryItem item)
         {
             if (item == null)
                 return false;
 
-            int cap = EconomyConfig.ECONOMY_SELLER_CAPACITY;
-            if (cap <= 0)
-                cap = GameConsignmentMerchant.CONSIGNMENT_SIZE;
-
             lock (_itemsLock)
             {
-                if (_items.Count >= cap)
+                if (_occupied.Count >= SLOT_COUNT)
                     return false;
 
-                int slot = FindFreeSlotLocked();
-                if (slot < 0)
+                int idx = FindFreeIndexLocked();
+                if (idx < 0)
                     return false;
 
+                int dbSlot = idx + FirstDbSlot;
                 item.OwnerID = _ownerId;
                 item.OwnerLot = (ushort) _houseNumber;
-                item.SlotPosition = slot;
-                _items[slot] = item;
-            }
+                item.SlotPosition = dbSlot;
 
-            return MarketCache.AddItem(item);
+                _items[idx] = item;
+                _occupied.Add(idx);
+                _nextFreeHint = idx + 1;
+
+                // Inside the lock: MarketCache must agree with _items at all times.
+                return MarketCache.AddItem(item);
+            }
         }
 
         /// <summary>
-        /// Picks a random listing from this merchant, removes it, and returns it. Null if empty.
-        /// Used by the periodic refresh to rotate stock.
+        /// Picks a random listing, removes it, returns it. Null if empty.
+        /// O(1) thanks to swap-with-last on _occupied.
         /// </summary>
         public DbInventoryItem PopRandomListing()
         {
-            DbInventoryItem picked = null;
             lock (_itemsLock)
             {
-                if (_items.Count == 0)
+                int n = _occupied.Count;
+                if (n == 0)
                     return null;
 
-                int idx = Util.Random(_items.Count - 1);
-                int i = 0;
-                int keyToRemove = -1;
-                foreach (var kv in _items)
-                {
-                    if (i++ == idx)
-                    {
-                        keyToRemove = kv.Key;
-                        picked = kv.Value;
-                        break;
-                    }
-                }
+                int pick = Util.Random(n - 1);
+                int idx = _occupied[pick];
+                int last = n - 1;
+                if (pick != last)
+                    _occupied[pick] = _occupied[last];
+                _occupied.RemoveAt(last);
 
-                if (keyToRemove >= 0)
-                    _items.Remove(keyToRemove);
+                DbInventoryItem item = _items[idx];
+                _items[idx] = null;
+                if (idx < _nextFreeHint)
+                    _nextFreeHint = idx;
+
+                if (item != null)
+                    MarketCache.RemoveItem(item);
+
+                return item;
             }
-
-            if (picked != null)
-                MarketCache.RemoveItem(picked);
-
-            return picked;
         }
 
         /// <summary>
-        /// Removes every listing this merchant owns from MarketCache. In-memory only.
+        /// Removes every listing this merchant owns from the MarketCache. In-memory only.
         /// </summary>
         public int ClearStock()
         {
-            List<DbInventoryItem> all;
             lock (_itemsLock)
             {
-                all = new List<DbInventoryItem>(_items.Values);
-                _items.Clear();
+                int n = _occupied.Count;
+                for (int i = 0; i < n; i++)
+                {
+                    int idx = _occupied[i];
+                    DbInventoryItem item = _items[idx];
+                    _items[idx] = null;
+                    if (item != null)
+                        MarketCache.RemoveItem(item);
+                }
+                _occupied.Clear();
+                _nextFreeHint = 0;
+                return n;
             }
-
-            foreach (var it in all)
-                MarketCache.RemoveItem(it);
-
-            return all.Count;
         }
 
         // ---- IGameInventoryObject overrides (called from the buy / move pipeline) ----
@@ -157,36 +164,49 @@ namespace DOL.GS.Economy
         public override IEnumerable<DbInventoryItem> GetDbItems()
         {
             lock (_itemsLock)
-                return new List<DbInventoryItem>(_items.Values);
+            {
+                int n = _occupied.Count;
+                var copy = new List<DbInventoryItem>(n);
+                for (int i = 0; i < n; i++)
+                    copy.Add(_items[_occupied[i]]);
+                return copy;
+            }
         }
 
         public override bool TryGetItem(int clientSlot, out DbInventoryItem item)
         {
-            int dbSlot = clientSlot - (int) FirstClientSlot + FirstDbSlot;
+            int idx = clientSlot - (int) FirstClientSlot;
+            if ((uint) idx >= SLOT_COUNT)
+            {
+                item = null;
+                return false;
+            }
             lock (_itemsLock)
-                return _items.TryGetValue(dbSlot, out item);
+            {
+                item = _items[idx];
+                return item != null;
+            }
         }
 
         public override Dictionary<int, DbInventoryItem> GetClientInventory()
         {
-            Dictionary<int, DbInventoryItem> inventory = new();
-            int slotOffset = (int) FirstClientSlot - FirstDbSlot;
-
             lock (_itemsLock)
             {
-                foreach (var kv in _items)
+                int n = _occupied.Count;
+                var inventory = new Dictionary<int, DbInventoryItem>(n);
+                int firstClient = (int) FirstClientSlot;
+                for (int i = 0; i < n; i++)
                 {
-                    int clientSlot = kv.Key + slotOffset;
-                    inventory[clientSlot] = kv.Value;
+                    int idx = _occupied[i];
+                    inventory[idx + firstClient] = _items[idx];
                 }
+                return inventory;
             }
-
-            return inventory;
         }
 
-        // The base class `MoveItem` bails out when CurrentHouse is null. Our virtual
-        // merchant has no House, so we replace the implementation with a House-free version
-        // that still delegates to `ConsignmentState.ProcessMoveItem` for the actual buy flow.
+        // The base class `MoveItem` bails out when CurrentHouse is null. Our virtual merchant
+        // has no House, so we replace it with a House-free version that still delegates to
+        // ConsignmentState.ProcessMoveItem for the actual buy flow.
         public override bool MoveItem(GamePlayer player, eInventorySlot fromClientSlot, eInventorySlot toClientSlot, ushort count)
         {
             if (fromClientSlot == toClientSlot)
@@ -199,45 +219,63 @@ namespace DOL.GS.Economy
             return state?.ProcessMoveItem(player, this, fromClientSlot, toClientSlot, count) ?? false;
         }
 
+        // Called when a player buys the item. The base class would also clear OwnerLot/SellPrice
+        // and remove from MarketCache - we do the same but on our array, atomically.
         public override bool OnRemoveItem(GamePlayer player, DbInventoryItem item, int previousSlot)
         {
-            // Called when a player buys the item. The base class would clear OwnerLot/SellPrice
-            // and remove from MarketCache - we do the same but also drop our slot record.
-            MarketCache.RemoveItem(item);
-            lock (_itemsLock)
-                _items.Remove(previousSlot);
-
+            int idx = previousSlot - FirstDbSlot;
+            if ((uint) idx < SLOT_COUNT)
+            {
+                lock (_itemsLock)
+                {
+                    if (_items[idx] == item)
+                    {
+                        _items[idx] = null;
+                        int pos = _occupied.IndexOf(idx);
+                        if (pos >= 0)
+                        {
+                            int last = _occupied.Count - 1;
+                            if (pos != last)
+                                _occupied[pos] = _occupied[last];
+                            _occupied.RemoveAt(last);
+                        }
+                        if (idx < _nextFreeHint)
+                            _nextFreeHint = idx;
+                        MarketCache.RemoveItem(item);
+                    }
+                }
+            }
             item.OwnerLot = 0;
             item.SellPrice = 0;
             return true;
         }
 
-        public override bool OnAddItem(GamePlayer player, DbInventoryItem item, int previousSlot)
-        {
-            // Players cannot deposit items into a bot seller. The buy flow never reaches here.
-            return false;
-        }
+        public override bool OnAddItem(GamePlayer player, DbInventoryItem item, int previousSlot) => false;
 
-        // `HasPermissionToMove` on the base class is not virtual but it returns false for
-        // any merchant whose CurrentHouse is null - which is our case - so we don't override it.
+        // Defense-in-depth: never let a player interact with the virtual NPC directly.
+        public override bool Interact(GamePlayer player) => false;
 
-        public override bool SearchInventory(GamePlayer player, MarketSearch.SearchData searchData)
-        {
-            // Search is handled by MarketExplorer over the whole MarketCache.
-            return false;
-        }
+        public override bool SearchInventory(GamePlayer player, MarketSearch.SearchData searchData) => false;
 
         public override void AddObserver(GamePlayer player) { /* No state needed. */ }
         public override void RemoveObserver(GamePlayer player) { /* No state needed. */ }
 
-        private int FindFreeSlotLocked()
+        // Looks for an empty index. The dense slot range + _nextFreeHint makes the typical
+        // case O(1); worst case O(SLOT_COUNT).
+        private int FindFreeIndexLocked()
         {
-            int first = FirstDbSlot;
-            int last = LastDbSlot;
-            for (int s = first; s <= last; s++)
+            if (_occupied.Count >= SLOT_COUNT)
+                return -1;
+            int start = (uint) _nextFreeHint < SLOT_COUNT ? _nextFreeHint : 0;
+            for (int i = start; i < SLOT_COUNT; i++)
             {
-                if (!_items.ContainsKey(s))
-                    return s;
+                if (_items[i] == null)
+                    return i;
+            }
+            for (int i = 0; i < start; i++)
+            {
+                if (_items[i] == null)
+                    return i;
             }
             return -1;
         }

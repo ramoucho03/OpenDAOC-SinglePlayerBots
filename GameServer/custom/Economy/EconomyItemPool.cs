@@ -76,6 +76,12 @@ namespace DOL.GS.Economy
                 if (t.Price <= 0)
                     continue;
 
+                // ClassTypes with destructive OnReceive (guild banners, mythical bind-on-equip
+                // logic, etc.) must never appear in the bot market - they would consume
+                // themselves the moment a player buys them.
+                if (IsBlockedClassType(t.ClassType))
+                    continue;
+
                 Category? cat = ClassifyTemplate(t);
                 if (cat == null)
                     continue;
@@ -111,6 +117,19 @@ namespace DOL.GS.Economy
             for (int c = 0; c < 5; c++)
                 total += _buckets[r][c].Count;
             return total;
+        }
+
+        private static bool IsBlockedClassType(string classType)
+        {
+            if (string.IsNullOrEmpty(classType))
+                return false;
+            // Exact-match or suffix-match on the type name. Templates store fully qualified
+            // names like "DOL.GS.GuildBannerItem".
+            if (classType.EndsWith("GuildBannerItem", StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (classType.EndsWith("GameSiegeItem", StringComparison.OrdinalIgnoreCase))
+                return true;
+            return false;
         }
 
         private static int ClampRealmIndex(int realm)

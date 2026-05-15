@@ -4,17 +4,13 @@ using DOL.Database;
 namespace DOL.GS.Economy
 {
     /// <summary>
-    /// Computes a dynamic sale price for a market listing.
-    /// The model is deterministic in inputs (template, level, quality, randomness)
-    /// but each new listing rolls a fresh random multiplier, so prices vary item-to-item
-    /// without server-wide volatility tracking.
+    /// Computes a dynamic sale price for a market listing. Inputs: template price,
+    /// quality, level scaling, magical bonus count, procs, and a per-listing random
+    /// multiplier. Prices vary item-to-item without server-wide volatility tracking.
     /// </summary>
     public static class EconomyPricing
     {
-        /// <summary>
-        /// Compute a sale price for a template. Returns a clamped positive int.
-        /// </summary>
-        public static int ComputeSellPrice(DbItemTemplate template, int categoryWeight)
+        public static int ComputeSellPrice(DbItemTemplate template)
         {
             if (template == null)
                 return EconomyConfig.ECONOMY_PRICE_FLOOR_COPPER;
@@ -23,7 +19,6 @@ namespace DOL.GS.Economy
             if (basePrice <= 0)
                 basePrice = Math.Max(1, template.Level) * 200L;
 
-            // Quality bumps price for high-end pieces.
             double qualityFactor = 1.0;
             if (template.Quality >= 100)
                 qualityFactor = 1.4;
@@ -34,20 +29,16 @@ namespace DOL.GS.Economy
             else if (template.Quality < 90)
                 qualityFactor = 0.85;
 
-            // Level scaling - high level items command more, beyond their template price.
             double levelFactor = 0.8 + (template.Level / 50.0) * 0.6;
 
-            // Magical bonus boosts price proportionally to the bonus count.
             int magicalBonuses = CountMagicalBonuses(template);
             double magicalFactor = 1.0 + magicalBonuses * 0.05;
 
-            // Procs / charges premium.
             if (template.ProcSpellID > 0 || template.ProcSpellID1 > 0)
                 magicalFactor *= 1.15;
             if (template.SpellID > 0 || template.SpellID1 > 0)
                 magicalFactor *= 1.10;
 
-            // Random multiplier - rolled per listing.
             int minMul = Math.Max(10, EconomyConfig.ECONOMY_PRICE_MIN_MULTIPLIER);
             int maxMul = Math.Max(minMul, EconomyConfig.ECONOMY_PRICE_MAX_MULTIPLIER);
             int rolledMul = Util.Random(minMul, maxMul);
@@ -55,11 +46,21 @@ namespace DOL.GS.Economy
 
             double finalPrice = basePrice * qualityFactor * levelFactor * magicalFactor * randomFactor;
 
-            // Cap to int range, apply floor.
-            if (finalPrice < EconomyConfig.ECONOMY_PRICE_FLOOR_COPPER)
+            // BP mode: SellPrice is consumed as BountyPoints by ConsignmentState. Divide by
+            // the configured gold->BP equivalence and by 10000 copper-per-gold to land on
+            // a sensible BP figure (~Price gold / RENT_BOUNTY_POINT_TO_GOLD gold-per-BP).
+            if (ServerProperties.Properties.CONSIGNMENT_USE_BP)
+            {
+                long bpDivisor = Math.Max(1, ServerProperties.Properties.RENT_BOUNTY_POINT_TO_GOLD);
+                finalPrice /= bpDivisor;
+                if (finalPrice < 1)
+                    finalPrice = 1;
+            }
+            else if (finalPrice < EconomyConfig.ECONOMY_PRICE_FLOOR_COPPER)
+            {
                 finalPrice = EconomyConfig.ECONOMY_PRICE_FLOOR_COPPER;
+            }
 
-            // Hard cap at int.MaxValue - 1 (DbInventoryItem.SellPrice is int).
             if (finalPrice > int.MaxValue - 1)
                 finalPrice = int.MaxValue - 1;
 
