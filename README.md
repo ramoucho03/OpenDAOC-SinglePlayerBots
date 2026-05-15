@@ -6,6 +6,38 @@ If you came here looking for the upstream OpenDAoC server, go to the [OpenDAoC p
 
 ---
 
+## 🇫🇷 Présentation rapide
+
+**OpenDAOC SinglePlayerBots** est un fork lourdement modifié d'OpenDAoC orienté **jouer DAoC en solo** : un joueur peut monter un groupe complet de bots (MimicNPC) qui se comportent comme des vrais joueurs — classes du jeu, specs réelles, formules de combat identiques, distribution loot/XP/RP comme un groupe normal.
+
+**Ce que ce fork ajoute par rapport à OpenDAoC officiel :**
+
+- Système de **bots MimicNPC** complet (classes joueur, brains FSM, rôles de groupe)
+- Framework **Bot AI v2** d'inspiration mod-playerbots (stratégies / triggers / actions composables par classe)
+- Stratégies de rôle par classe (`healer`, `tank`, `melee_dps`, `ranged_dps`, `caster_dps`, `cc`) configurables via server properties
+- Couche d'**immersion** : callouts localisés (FR / EN), emotes contextuels, demande de cure publique
+- **Coordination cross-bots** : focus fire automatique sur le main assist, callout perte d'aggro tank
+- Système de **modules** (`IGameModule`) pour ajouter des features sans toucher au cœur
+- Refacto polymorphique (virtuelle `GameNPC.IsMimic`) supprimant ~20 `is MimicNPC` épars dans le moteur
+- Plusieurs **fixes de concurrence** (`EffectService` mutation Dictionary, `PacketProcessor` cache race, `GameClient` log)
+
+**Commandes bot principales :**
+
+| Commande | Effet |
+|---|---|
+| `/mcreate <classe> [niveau]` | Crée un bot |
+| `/mgroup [royaume] [nb] [niveau]` | Crée un groupe complet |
+| `/mlfg [index]` | Liste les bots disponibles à proximité, en invite un |
+| `/mcamp set` | Pose un camp PvE sur le ground target |
+| `/mrole tank\|assist\|cc\|puller` | Assigne un rôle au bot ciblé |
+| `/msummon` | Téléporte le groupe sur le joueur |
+| `/mstrategy enable\|disable <clé>` | Active / désactive une stratégie sur le bot ciblé |
+| `/mhelp` | Affiche la liste complète des commandes |
+
+Pour la doc technique complète et les détails d'architecture, voir les sections anglaises ci-dessous et le [`CODEBASE_GUIDE.md`](CODEBASE_GUIDE.md) (français).
+
+---
+
 ## What this fork adds on top of OpenDAoC
 
 | Subsystem | Upstream | This fork |
@@ -56,6 +88,84 @@ dotnet test DOLLinux.sln -c Release --no-build
 # run the server
 dotnet build/CoreServer/Release/lib/CoreServer.dll
 ```
+
+---
+
+## Testing a feature branch without merging to main
+
+Active development happens on feature branches (e.g. `claude/optimize-dol-server-gho1T`). You can run a branch end-to-end without merging — pick whichever option fits your workflow.
+
+### Option 1 — Local build (fastest iteration loop)
+
+```bash
+git fetch origin claude/optimize-dol-server-gho1T
+git checkout claude/optimize-dol-server-gho1T
+
+cp CoreServer/config/serverconfig.example.xml CoreServer/config/serverconfig.xml
+dotnet build DOLLinux.sln -c Release
+dotnet test DOLLinux.sln -c Release --no-build
+
+# Run against an already-provisioned MariaDB / SQLite instance:
+dotnet build/CoreServer/Release/lib/CoreServer.dll
+```
+
+Switch back with `git checkout master` when you're done. No merge, no PR required.
+
+### Option 2 — Docker compose pulling the remote branch
+
+Edit one line in `docker-compose.yml`:
+
+```yaml
+  gameserver:
+    build:
+      # Replace `#master` with the branch you want to test:
+      context: https://github.com/ramoucho03/OpenDAOC-SinglePlayerBots.git#claude/optimize-dol-server-gho1T
+```
+
+Then:
+
+```bash
+docker compose up -d --build gameserver
+```
+
+Docker clones the branch fresh on every `--build`, so any new push to that branch is picked up by re-running the same command. Revert the line to `#master` to swap back.
+
+### Option 3 — Docker compose against your local checkout
+
+Useful when you have uncommitted changes you want to test before pushing.
+
+```yaml
+  gameserver:
+    build:
+      context: .          # Use the current working tree
+      dockerfile: Dockerfile
+```
+
+```bash
+git checkout claude/optimize-dol-server-gho1T
+docker compose up -d --build gameserver
+```
+
+Every rebuild uses whatever is in your working copy — staged, unstaged, even untracked files. Don't forget to revert `docker-compose.yml` before pushing.
+
+### Testing a specific phase in isolation
+
+The Bot AI v2 work is split across phases A–E with one commit per phase ([see Roadmap status](#roadmap-status)). To bisect or roll back to a single phase:
+
+```bash
+git fetch origin claude/optimize-dol-server-gho1T
+
+# Phase A only (healer strategy, no other roles)
+git checkout fc98448
+
+# Through Phase C (healer split into granular triggers)
+git checkout d65da20
+
+# Through Phase E (full coordination layer — branch tip)
+git checkout claude/optimize-dol-server-gho1T
+```
+
+Each phase compiles and passes the existing test suite on its own, so any of them is a valid starting point for in-game validation.
 
 ---
 
