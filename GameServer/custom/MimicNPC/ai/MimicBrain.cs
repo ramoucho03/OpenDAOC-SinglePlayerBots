@@ -148,7 +148,7 @@ namespace DOL.AI.Brain
                     return null;
 
                 _strategyManager = new BotStrategyManager(MimicBody, this);
-                EnableDefaultStrategies(_strategyManager);
+                EnableDefaultStrategies(_strategyManager, MimicBody);
                 return _strategyManager;
             }
         }
@@ -161,7 +161,7 @@ namespace DOL.AI.Brain
         /// individually toggleable later via /mstrategy if the player wants
         /// to silence one bot.
         /// </summary>
-        private static void EnableDefaultStrategies(BotStrategyManager mgr)
+        private static void EnableDefaultStrategies(BotStrategyManager mgr, MimicNPC bot)
         {
             if (mgr == null)
                 return;
@@ -171,6 +171,15 @@ namespace DOL.AI.Brain
             mgr.Enable(AssistStrategy.Key);
             mgr.Enable(SupportStrategy.Key);
             mgr.Enable(CampStrategy.Key);
+
+            // Bot AI v2 — role-specific strategies. Opt-in per class via
+            // MimicConfig.BOT_AI_V2_CLASSES so we can ship the framework
+            // and grow the v2 surface (healer first, tank/dps later) one
+            // role at a time without affecting other bots.
+            if (bot?.CharacterClass != null && MimicConfig.IsAiV2Class(bot.CharacterClass.ID))
+            {
+                mgr.Enable(HealerStrategy.Key);
+            }
         }
 
         public override void Think()

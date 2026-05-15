@@ -24,6 +24,7 @@ namespace DOL.GS.Scripts.AI.Strategies
             BotStrategyRegistry.Register(AssistStrategy.Key, static () => new AssistStrategy());
             BotStrategyRegistry.Register(SupportStrategy.Key, static () => new SupportStrategy());
             BotStrategyRegistry.Register(CampStrategy.Key, static () => new CampStrategy());
+            BotStrategyRegistry.Register(HealerStrategy.Key, static () => new HealerStrategy());
 
             log.Info("Registre des stratégies bot initialisé (" + BotStrategyRegistry.ListKeys().Count + " stratégies).");
         }
