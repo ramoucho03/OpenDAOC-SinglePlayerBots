@@ -301,6 +301,14 @@ namespace DOL.GS.Economy
 
                     try { await RotateTickAsync(tickSec, token).ConfigureAwait(false); }
                     catch (Exception ex) { log.Error("Economy: rotation tick failed.", ex); }
+
+                    // Bot purchases from player consignment listings - completes the
+                    // bidirectional economy (player can actually sell into a market).
+                    if (EconomyConfig.ECONOMY_BOT_BUYS_FROM_PLAYERS)
+                    {
+                        try { PlayerPurchaseTick(tickSec); }
+                        catch (Exception ex) { log.Error("Economy: player purchase tick failed.", ex); }
+                    }
                 }
             }
             catch (Exception ex)
@@ -396,6 +404,114 @@ namespace DOL.GS.Economy
                     GenerateBatchLocked(deficit, deficit);
             }
             finally { _generationGate.Release(); }
+        }
+
+        // ---------- bot purchases from player listings ----------
+
+        /// <summary>
+        /// Scans player consignment listings (non-bot) and probabilistically buys any
+        /// priced within ECONOMY_MAX_OVERPRICE_PERCENT of the deterministic market value.
+        /// Players post on their housing CM, bots buy at the player's asking price, money
+        /// is credited to the CM's gold/BP balance via the existing ConsignmentState path.
+        /// </summary>
+        private static void PlayerPurchaseTick(int tickSec)
+        {
+            int chancePctPerHour = Math.Clamp(EconomyConfig.ECONOMY_PLAYER_PURCHASE_CHANCE_PER_HOUR_PERCENT, 0, 100);
+            if (chancePctPerHour <= 0)
+                return;
+
+            // Per-listing roll: probability that this listing is bought this tick.
+            // chance_per_tick = chance_per_hour * (tick_sec / 3600). Computed in basis points
+            // so we can roll a single integer compare.
+            int chanceBpPerTick = (int) ((long) chancePctPerHour * tickSec * 100L / 3600L);
+            if (chanceBpPerTick <= 0)
+                return;
+
+            int maxOverpricePct = Math.Max(50, EconomyConfig.ECONOMY_MAX_OVERPRICE_PERCENT);
+            int hardCap = Math.Max(1, EconomyConfig.ECONOMY_PLAYER_PURCHASE_MAX_PER_TICK);
+
+            int boughtThisTick = 0;
+            int evaluated = 0;
+
+            foreach (DbInventoryItem item in MarketCache.SearchItems(default))
+            {
+                if (boughtThisTick >= hardCap)
+                    break;
+                if (item == null)
+                    continue;
+
+                string owner = item.OwnerID;
+                // Skip our own bot listings.
+                if (string.IsNullOrEmpty(owner) || owner.StartsWith(OWNER_PREFIX, StringComparison.Ordinal))
+                    continue;
+                if (item.SellPrice <= 0)
+                    continue;
+
+                evaluated++;
+
+                // Fair-price gate: ignore listings priced more than max-overprice above
+                // computed market value (per unit × count). This is the anti-cheat rail.
+                DbItemTemplate template = item.Template;
+                if (template == null)
+                    continue;
+
+                long fairUnit = EconomyPricing.ComputeFairValue(template);
+                long fairTotal = fairUnit * Math.Max(1, item.Count);
+                long ceiling = fairTotal * maxOverpricePct / 100L;
+                if (item.SellPrice > ceiling)
+                    continue;
+
+                // Per-listing roll.
+                if (Util.Random(0, 9999) >= chanceBpPerTick)
+                    continue;
+
+                if (TryBotBuyFromPlayer(item))
+                    boughtThisTick++;
+            }
+
+            if (EconomyConfig.ECONOMY_VERBOSE_LOG && log.IsDebugEnabled && evaluated > 0)
+                log.Debug($"Economy: player-purchase tick scanned {evaluated} listings, bought {boughtThisTick}.");
+        }
+
+        /// <summary>
+        /// Removes the item from the cache, deletes the row, credits the player's
+        /// consignment merchant. MarketCache.RemoveItem is the atomic race guard:
+        /// if a real player buy ran first and removed the same item, our call returns
+        /// false and we skip - the player buy already handled everything.
+        /// </summary>
+        private static bool TryBotBuyFromPlayer(DbInventoryItem item)
+        {
+            int price = item.SellPrice;
+            ushort lot = item.OwnerLot;
+            string owner = item.OwnerID;
+            string itemName = item.Name;
+
+            if (!MarketCache.RemoveItem(item))
+                return false;
+
+            try
+            {
+                GameServer.Database.DeleteObject(item);
+            }
+            catch (Exception ex)
+            {
+                if (log.IsWarnEnabled)
+                    log.Warn($"Economy: failed to delete purchased player listing '{itemName}' (owner={owner}).", ex);
+                // Item is already out of cache; continue with money credit anyway so the
+                // player isn't penalized by a transient DB hiccup.
+            }
+
+            GameConsignmentMerchant cm = Housing.HouseMgr.GetConsignmentByHouseNumber(lot);
+            if (cm != null && cm is not EconomyConsignmentMerchant)
+            {
+                ConsignmentState state = ConsignmentStateManager.GetState(cm);
+                state?.AddMoney(price);
+            }
+
+            if (EconomyConfig.ECONOMY_VERBOSE_LOG && log.IsDebugEnabled)
+                log.Debug($"Economy: bot bought '{itemName}' from {owner} for {price}.");
+
+            return true;
         }
 
         // ---------- generation (must be called with _generationGate held) ----------

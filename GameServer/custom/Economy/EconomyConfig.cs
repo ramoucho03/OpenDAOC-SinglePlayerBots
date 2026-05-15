@@ -71,5 +71,21 @@ namespace DOL.GS.Economy
 
         [ServerProperty("economy", "economy_verbose_log", "Verbose logging for the dynamic economy.", false)]
         public static bool ECONOMY_VERBOSE_LOG;
+
+        // ---- Bot-buys-from-player: gives the solo player an actual market to sell into.
+        // Bots periodically scan player consignment listings and buy any priced within
+        // a fair band of the market value. Player decides the price; bots filter out
+        // overpriced items, but pay the player's full asking price when within band.
+        [ServerProperty("economy", "economy_bot_buys_from_players", "If true, bots periodically purchase fairly-priced player consignment listings.", true)]
+        public static bool ECONOMY_BOT_BUYS_FROM_PLAYERS;
+
+        [ServerProperty("economy", "economy_max_overprice_percent", "Maximum percent of the computed market value a player listing can have to be eligible for bot purchase. 130 = up to 30% above market.", 130)]
+        public static int ECONOMY_MAX_OVERPRICE_PERCENT;
+
+        [ServerProperty("economy", "economy_player_purchase_chance_per_hour_percent", "Per-hour percent chance each eligible player listing is bought by a bot. 50 = a fairly-priced item has ~50%/hour of being sold.", 50)]
+        public static int ECONOMY_PLAYER_PURCHASE_CHANCE_PER_HOUR_PERCENT;
+
+        [ServerProperty("economy", "economy_player_purchase_max_per_tick", "Hard cap on bot purchases of player listings per tick, to prevent burst gold faucets.", 5)]
+        public static int ECONOMY_PLAYER_PURCHASE_MAX_PER_TICK;
     }
 }

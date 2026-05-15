@@ -15,6 +15,60 @@ namespace DOL.GS.Economy
             if (template == null)
                 return EconomyConfig.ECONOMY_PRICE_FLOOR_COPPER;
 
+            double finalPrice = ComputeBaseValue(template);
+
+            int minMul = Math.Max(10, EconomyConfig.ECONOMY_PRICE_MIN_MULTIPLIER);
+            int maxMul = Math.Max(minMul, EconomyConfig.ECONOMY_PRICE_MAX_MULTIPLIER);
+            int rolledMul = Util.Random(minMul, maxMul);
+            finalPrice *= rolledMul / 100.0;
+
+            // BP mode: SellPrice is consumed as BountyPoints by ConsignmentState. Divide by
+            // the configured gold->BP equivalence and by 10000 copper-per-gold to land on
+            // a sensible BP figure (~Price gold / RENT_BOUNTY_POINT_TO_GOLD gold-per-BP).
+            if (ServerProperties.Properties.CONSIGNMENT_USE_BP)
+            {
+                long bpDivisor = Math.Max(1, ServerProperties.Properties.RENT_BOUNTY_POINT_TO_GOLD);
+                finalPrice /= bpDivisor;
+                if (finalPrice < 1)
+                    finalPrice = 1;
+            }
+            else if (finalPrice < EconomyConfig.ECONOMY_PRICE_FLOOR_COPPER)
+            {
+                finalPrice = EconomyConfig.ECONOMY_PRICE_FLOOR_COPPER;
+            }
+
+            if (finalPrice > int.MaxValue - 1)
+                finalPrice = int.MaxValue - 1;
+
+            return (int) finalPrice;
+        }
+
+        /// <summary>
+        /// Deterministic market value used as the reference price when judging whether a
+        /// player listing is fairly priced. Same formula as ComputeSellPrice MINUS the
+        /// random multiplier and the BP conversion - returns copper.
+        /// </summary>
+        public static int ComputeFairValue(DbItemTemplate template)
+        {
+            if (template == null)
+                return EconomyConfig.ECONOMY_PRICE_FLOOR_COPPER;
+
+            double price = ComputeBaseValue(template);
+
+            // Stack count is multiplied by ComputeSellPrice's callers (item.Count is not
+            // factored here); fair value is per-unit. SellPrice on player listings is the
+            // listing price for the stack as-is, so callers compare item.SellPrice to
+            // fair * item.Count when relevant.
+
+            if (price < EconomyConfig.ECONOMY_PRICE_FLOOR_COPPER)
+                price = EconomyConfig.ECONOMY_PRICE_FLOOR_COPPER;
+            if (price > int.MaxValue - 1)
+                price = int.MaxValue - 1;
+            return (int) price;
+        }
+
+        private static double ComputeBaseValue(DbItemTemplate template)
+        {
             long basePrice = template.Price;
             if (basePrice <= 0)
                 basePrice = Math.Max(1, template.Level) * 200L;
@@ -39,32 +93,7 @@ namespace DOL.GS.Economy
             if (template.SpellID > 0 || template.SpellID1 > 0)
                 magicalFactor *= 1.10;
 
-            int minMul = Math.Max(10, EconomyConfig.ECONOMY_PRICE_MIN_MULTIPLIER);
-            int maxMul = Math.Max(minMul, EconomyConfig.ECONOMY_PRICE_MAX_MULTIPLIER);
-            int rolledMul = Util.Random(minMul, maxMul);
-            double randomFactor = rolledMul / 100.0;
-
-            double finalPrice = basePrice * qualityFactor * levelFactor * magicalFactor * randomFactor;
-
-            // BP mode: SellPrice is consumed as BountyPoints by ConsignmentState. Divide by
-            // the configured gold->BP equivalence and by 10000 copper-per-gold to land on
-            // a sensible BP figure (~Price gold / RENT_BOUNTY_POINT_TO_GOLD gold-per-BP).
-            if (ServerProperties.Properties.CONSIGNMENT_USE_BP)
-            {
-                long bpDivisor = Math.Max(1, ServerProperties.Properties.RENT_BOUNTY_POINT_TO_GOLD);
-                finalPrice /= bpDivisor;
-                if (finalPrice < 1)
-                    finalPrice = 1;
-            }
-            else if (finalPrice < EconomyConfig.ECONOMY_PRICE_FLOOR_COPPER)
-            {
-                finalPrice = EconomyConfig.ECONOMY_PRICE_FLOOR_COPPER;
-            }
-
-            if (finalPrice > int.MaxValue - 1)
-                finalPrice = int.MaxValue - 1;
-
-            return (int) finalPrice;
+            return basePrice * qualityFactor * levelFactor * magicalFactor;
         }
 
         private static int CountMagicalBonuses(DbItemTemplate t)
