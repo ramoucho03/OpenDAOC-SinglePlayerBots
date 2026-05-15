@@ -23,19 +23,17 @@ namespace DOL.GS.Economy
             finalPrice *= rolledMul / 100.0;
 
             // BP mode: SellPrice is consumed as BountyPoints by ConsignmentState. Divide by
-            // the configured gold->BP equivalence and by 10000 copper-per-gold to land on
-            // a sensible BP figure (~Price gold / RENT_BOUNTY_POINT_TO_GOLD gold-per-BP).
+            // the configured gold->BP equivalence (RENT_BOUNTY_POINT_TO_GOLD is "copper per BP",
+            // so default 10000 = 1 BP per gold). Floor applies in both modes.
+            int floor = Math.Max(1, EconomyConfig.ECONOMY_PRICE_FLOOR_COPPER);
             if (ServerProperties.Properties.CONSIGNMENT_USE_BP)
             {
                 long bpDivisor = Math.Max(1, ServerProperties.Properties.RENT_BOUNTY_POINT_TO_GOLD);
                 finalPrice /= bpDivisor;
-                if (finalPrice < 1)
-                    finalPrice = 1;
             }
-            else if (finalPrice < EconomyConfig.ECONOMY_PRICE_FLOOR_COPPER)
-            {
-                finalPrice = EconomyConfig.ECONOMY_PRICE_FLOOR_COPPER;
-            }
+
+            if (finalPrice < floor)
+                finalPrice = floor;
 
             if (finalPrice > int.MaxValue - 1)
                 finalPrice = int.MaxValue - 1;
@@ -115,25 +113,36 @@ namespace DOL.GS.Economy
             if (fairUnit <= 0)
                 return -1.0;
 
-            long fairTotal = fairUnit * count;
+            // (long) cast prevents int*int overflow when fairUnit is near int.MaxValue
+            // and count is a large stack (e.g. resource piles).
+            long fairTotal = (long) fairUnit * count;
+            if (fairTotal <= 0)
+                return -1.0;
+
             double ratio = (double) listedPrice / fairTotal;
 
             int hardCeilPct = Math.Max(100, EconomyConfig.ECONOMY_HARD_MAX_OVERPRICE_PERCENT);
-            if (ratio * 100.0 > hardCeilPct)
+            if (ratio * 100.0 >= hardCeilPct)
                 return -1.0;
 
-            double baseSeconds = Math.Max(60, EconomyConfig.ECONOMY_FAIR_PRICE_BASE_HOURS) * 3600.0;
-            double elasticity = Math.Max(50, EconomyConfig.ECONOMY_PRICE_ELASTICITY_X100) / 100.0;
+            // Sanity clamps: base time at least 1 hour (was 60, mis-typed - the user
+            // sets HOURS, the conversion happens via * 3600); elasticity at least 1.0
+            // so doubling the price genuinely doubles (at minimum) the sale time.
+            double baseSeconds = Math.Max(1, EconomyConfig.ECONOMY_FAIR_PRICE_BASE_HOURS) * 3600.0;
+            double elasticity = Math.Max(100, EconomyConfig.ECONOMY_PRICE_ELASTICITY_X100) / 100.0;
 
-            // Clamp ratio to avoid log(0) / arithmetic underflow when an item is essentially free.
+            // Ratio floored at 0.01 to avoid arithmetic underflow; below that the
+            // listing is essentially free and sells almost instantly anyway (which is
+            // the intended "cheap = ultra-rapide" behavior). The per-stack ECONOMY_PRICE_FLOOR_COPPER
+            // gate in PlayerPurchaseTick and the Creator="Auction Market" anti-flip check
+            // close the DoS/exploit angles.
             double clampedRatio = Math.Max(0.01, ratio);
             double seconds = baseSeconds * Math.Pow(clampedRatio, elasticity);
 
-            // Cap at one year to keep the per-tick probability math finite. Anything beyond
-            // is effectively "never" anyway.
+            // Anything beyond a year is effectively "never bought" - signal it explicitly.
             const double ONE_YEAR_SECONDS = 365.0 * 24.0 * 3600.0;
             if (seconds > ONE_YEAR_SECONDS)
-                seconds = ONE_YEAR_SECONDS;
+                return -1.0;
             return seconds;
         }
 

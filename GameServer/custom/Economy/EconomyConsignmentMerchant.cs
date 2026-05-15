@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Threading;
 using DOL.Database;
 using DOL.GS.Housing;
 using DOL.GS.PacketHandler;
@@ -32,6 +34,15 @@ namespace DOL.GS.Economy
         // _pendingAdds instead of being added to _pendingDeletes, so the DB never sees it.
         private readonly List<DbInventoryItem> _pendingAdds = new();
         private readonly List<DbInventoryItem> _pendingDeletes = new();
+        // Items currently being persisted (DrainPending moved them here; the actual
+        // AddObject is in flight on the flush worker). PopRandomListing / OnRemoveItem /
+        // ClearStock can race against the in-flight AddObject; the flush completion logic
+        // reconciles the race by inspecting in-memory state and item.OwnerID.
+        private readonly List<DbInventoryItem> _inFlightAdds = new();
+        // Set when no AddObject is in flight for this merchant. OnRemoveItem (player buy)
+        // waits on this if it sees the item is in flight, so the player save sees the
+        // post-AddObject IsPersisted=true state (and does UPDATE instead of duplicate INSERT).
+        private readonly ManualResetEventSlim _addBatchIdle = new(true);
 
         private readonly string _ownerId;
         private readonly int _houseNumber;
@@ -208,8 +219,9 @@ namespace DOL.GS.Economy
         }
 
         /// <summary>
-        /// Drains the pending DB mutations under the lock, returns them for batched flush.
-        /// Returns (null, null) when there's nothing to do, so the manager can skip cheap.
+        /// Drains the pending DB mutations under the lock and moves drained adds to the
+        /// in-flight list, returning them for batched flush. CompleteAddBatch MUST be
+        /// called after the AddObject finishes so the in-flight list is cleared.
         /// </summary>
         public (List<DbInventoryItem> adds, List<DbInventoryItem> deletes) DrainPending()
         {
@@ -217,22 +229,71 @@ namespace DOL.GS.Economy
             {
                 if (_pendingAdds.Count == 0 && _pendingDeletes.Count == 0)
                     return (null, null);
-                List<DbInventoryItem> a = _pendingAdds.Count > 0 ? new List<DbInventoryItem>(_pendingAdds) : null;
+                List<DbInventoryItem> a = null;
+                if (_pendingAdds.Count > 0)
+                {
+                    a = new List<DbInventoryItem>(_pendingAdds);
+                    _inFlightAdds.AddRange(_pendingAdds);
+                    _pendingAdds.Clear();
+                    _addBatchIdle.Reset(); // a buy of an in-flight item must wait
+                }
                 List<DbInventoryItem> d = _pendingDeletes.Count > 0 ? new List<DbInventoryItem>(_pendingDeletes) : null;
-                _pendingAdds.Clear();
                 _pendingDeletes.Clear();
                 return (a, d);
             }
         }
 
+        /// <summary>
+        /// Called after the batched AddObject completes. Reconciles items that were
+        /// popped or transferred to a player while their AddObject was in flight:
+        ///   - if item.OwnerID changed (player bought it): leave the row alone; the
+        ///     player inventory pipeline will UPDATE it with the new owner.
+        ///   - if the item is no longer in _items and OwnerID is still ours: it was
+        ///     popped by rotation/clear; schedule a delete for the next flush.
+        ///   - otherwise the item is still ours and persistent: nothing to do.
+        /// </summary>
+        public List<DbInventoryItem> CompleteAddBatch()
+        {
+            lock (_itemsLock)
+            {
+                if (_inFlightAdds.Count == 0)
+                    return null;
+
+                List<DbInventoryItem> toDeleteNow = null;
+                for (int i = 0; i < _inFlightAdds.Count; i++)
+                {
+                    DbInventoryItem item = _inFlightAdds[i];
+                    string owner = item.OwnerID;
+
+                    // Player took ownership during flight: leave the row, player save will UPDATE.
+                    if (string.IsNullOrEmpty(owner) || !owner.StartsWith("Economy:", StringComparison.Ordinal))
+                        continue;
+
+                    // Still ours - is the slot still occupied by this exact instance?
+                    int idx = item.SlotPosition - FirstDbSlot;
+                    bool stillPresent = (uint) idx < SLOT_COUNT && ReferenceEquals(_items[idx], item);
+                    if (stillPresent)
+                        continue;
+
+                    // Popped during flight - delete the row we just inserted.
+                    toDeleteNow ??= new List<DbInventoryItem>();
+                    toDeleteNow.Add(item);
+                }
+
+                _inFlightAdds.Clear();
+                _addBatchIdle.Set();
+                return toDeleteNow;
+            }
+        }
+
         // Cancel-out: if the item was added since the last flush (not yet in DB), drop the
-        // pending-add. Otherwise enqueue for batched DELETE.
+        // pending-add. If it's in flight (drained but AddObject hasn't returned yet),
+        // leave it - CompleteAddBatch will detect the slot is empty / OwnerID still ours
+        // and queue a follow-up delete. Otherwise (already persisted) enqueue a DELETE.
         private void EnqueueDeleteLocked(DbInventoryItem item)
         {
             if (!EconomyConfig.ECONOMY_PERSIST)
                 return;
-            // Object identity comparison via reference equals - fast and correct because
-            // DbInventoryItem does not override Equals/GetHashCode.
             for (int i = _pendingAdds.Count - 1; i >= 0; i--)
             {
                 if (ReferenceEquals(_pendingAdds[i], item))
@@ -241,9 +302,16 @@ namespace DOL.GS.Economy
                     return;
                 }
             }
+            for (int i = 0; i < _inFlightAdds.Count; i++)
+            {
+                if (ReferenceEquals(_inFlightAdds[i], item))
+                {
+                    // Reconciled by CompleteAddBatch when AddObject returns.
+                    return;
+                }
+            }
             if (item.IsPersisted)
                 _pendingDeletes.Add(item);
-            // If !IsPersisted and not in _pendingAdds, the row never reached the DB.
         }
 
         // ---- IGameInventoryObject overrides (called from the buy / move pipeline) ----
@@ -311,6 +379,8 @@ namespace DOL.GS.Economy
         // NOT enqueue a delete here - that would race the player's update.
         public override bool OnRemoveItem(GamePlayer player, DbInventoryItem item, int previousSlot)
         {
+            bool waitForAddBatch = false;
+
             int idx = previousSlot - FirstDbSlot;
             if ((uint) idx < SLOT_COUNT)
             {
@@ -330,7 +400,8 @@ namespace DOL.GS.Economy
                         if (idx < _nextFreeHint)
                             _nextFreeHint = idx;
                         MarketCache.RemoveItem(item);
-                        // If still in our pending-adds (never flushed), drop it. The player
+
+                        // If still queued for insert (never flushed), drop it. The player
                         // inventory save will AddObject it under the player's OwnerID.
                         for (int i = _pendingAdds.Count - 1; i >= 0; i--)
                         {
@@ -340,9 +411,26 @@ namespace DOL.GS.Economy
                                 break;
                             }
                         }
+
+                        // If the item is in flight (AddObject is currently running on the
+                        // flush worker), we must wait for it to finish so player.IsPersisted
+                        // is true when player.SaveIntoDatabase runs - otherwise the player
+                        // save would route to AddObject and we'd get a duplicate INSERT.
+                        for (int i = 0; i < _inFlightAdds.Count; i++)
+                        {
+                            if (ReferenceEquals(_inFlightAdds[i], item))
+                            {
+                                waitForAddBatch = true;
+                                break;
+                            }
+                        }
                     }
                 }
             }
+
+            if (waitForAddBatch)
+                _addBatchIdle.Wait(TimeSpan.FromSeconds(5));
+
             item.OwnerLot = 0;
             item.SellPrice = 0;
             return true;

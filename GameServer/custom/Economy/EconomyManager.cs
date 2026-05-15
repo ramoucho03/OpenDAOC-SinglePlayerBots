@@ -221,6 +221,20 @@ namespace DOL.GS.Economy
                 catch (Exception ex) { log.Error("Economy: final flush failed.", ex); }
             }
 
+            // Drop ConsignmentStateManager entries keyed by our OwnerIDs so a subsequent
+            // Initialize() (same process, e.g. unit test or in-process restart) doesn't
+            // inherit stale ConsignmentState money caches.
+            var snapshot = _merchants;
+            for (int i = 0; i < snapshot.Length; i++)
+            {
+                ConsignmentState state = ConsignmentStateManager.GetState(snapshot[i].OwnerId);
+                if (state != null)
+                    ConsignmentStateManager.RemoveState(snapshot[i].OwnerId, state);
+            }
+
+            _merchants = Array.Empty<EconomyConsignmentMerchant>();
+            _byLot = new Dictionary<int, EconomyConsignmentMerchant>();
+
             cts?.Dispose();
         }
 
@@ -495,6 +509,9 @@ namespace DOL.GS.Economy
             List<DbInventoryItem> allAdds = null;
             List<DbInventoryItem> allDels = null;
 
+            // Phase 1: drain pending mutations under per-merchant locks. Items in `adds`
+            // are tracked in each merchant's _inFlightAdds; any concurrent pop/buy is
+            // reconciled by CompleteAddBatch afterwards.
             for (int i = 0; i < snapshot.Length; i++)
             {
                 var (a, d) = snapshot[i].DrainPending();
@@ -510,6 +527,9 @@ namespace DOL.GS.Economy
                 }
             }
 
+            // Phase 2: the actual DB calls happen OUTSIDE any merchant lock so we don't
+            // serialize buy/sell/rotation against DB latency. Player buys that touched an
+            // in-flight item block briefly on the merchant's _addBatchIdle event.
             if (allAdds != null && allAdds.Count > 0)
             {
                 try { GameServer.Database.AddObject(allAdds); }
@@ -522,8 +542,29 @@ namespace DOL.GS.Economy
                 catch (Exception ex) { log.Error($"Economy: batched DeleteObject failed for {allDels.Count} listings.", ex); }
             }
 
-            if (EconomyConfig.ECONOMY_VERBOSE_LOG && log.IsDebugEnabled && (allAdds != null || allDels != null))
-                log.Debug($"Economy flush: +{allAdds?.Count ?? 0} / -{allDels?.Count ?? 0}");
+            // Phase 3: complete the add batch and pick up "raced" rows that were popped
+            // or transferred to a player while their AddObject was running. Items left
+            // in our slots are kept; ones that left in-memory state with OwnerID still
+            // ours get deleted now (in a single follow-up call).
+            List<DbInventoryItem> followUpDeletes = null;
+            for (int i = 0; i < snapshot.Length; i++)
+            {
+                var leftovers = snapshot[i].CompleteAddBatch();
+                if (leftovers != null && leftovers.Count > 0)
+                {
+                    followUpDeletes ??= new List<DbInventoryItem>(leftovers.Count);
+                    followUpDeletes.AddRange(leftovers);
+                }
+            }
+
+            if (followUpDeletes != null && followUpDeletes.Count > 0)
+            {
+                try { GameServer.Database.DeleteObject(followUpDeletes); }
+                catch (Exception ex) { log.Error($"Economy: follow-up DeleteObject failed for {followUpDeletes.Count} raced listings.", ex); }
+            }
+
+            if (EconomyConfig.ECONOMY_VERBOSE_LOG && log.IsDebugEnabled && (allAdds != null || allDels != null || followUpDeletes != null))
+                log.Debug($"Economy flush: +{allAdds?.Count ?? 0} / -{allDels?.Count ?? 0} / raced -{followUpDeletes?.Count ?? 0}");
         }
 
         // ---------- bot purchases from player listings ----------
@@ -544,6 +585,8 @@ namespace DOL.GS.Economy
             int boughtThisTick = 0;
             int evaluated = 0;
 
+            int priceFloor = Math.Max(1, EconomyConfig.ECONOMY_PRICE_FLOOR_COPPER);
+
             for (int i = 0; i < listings.Length; i++)
             {
                 if (boughtThisTick >= hardCap)
@@ -551,6 +594,18 @@ namespace DOL.GS.Economy
 
                 DbInventoryItem item = listings[i];
                 if (item == null || item.SellPrice <= 0)
+                    continue;
+
+                // Anti-exploit: refuse to buy back items we created ourselves. Otherwise a
+                // player could flip bot listings (buy at 70% market, relist at 150%, bot
+                // buys back) for a sustainable gold faucet. Mob loot / quest / crafted
+                // items have a different Creator and remain eligible.
+                if (string.Equals(item.Creator, "Auction Market", StringComparison.Ordinal))
+                    continue;
+
+                // Apply the same price floor as bot pricing so cheap listings can't be
+                // used to drain the player-listings cache or laundered into the economy.
+                if (item.SellPrice < priceFloor)
                     continue;
 
                 DbItemTemplate template = item.Template;
