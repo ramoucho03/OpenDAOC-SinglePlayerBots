@@ -523,6 +523,37 @@ namespace DOL.GS.Quests
     {
         public TaskDungeonInstance(ushort ID, RegionData dat) : base(ID, dat) { }
 
+        /// <summary>
+        /// LoadFromDatabase override: try InstanceXElement templates first (the original
+        /// Catacombs design), but if no templates are seeded for this skin region, fall back
+        /// to cloning the regular Mob rows of the skin region — so Task Dungeons work on
+        /// any natively-populated region even without the InstanceXElement seeding.
+        /// </summary>
+        public override void LoadFromDatabase(string instanceName)
+        {
+            int objectsBefore = Objects?.Length > 0 ? CountLiveObjects() : 0;
+            base.LoadFromDatabase(instanceName);
+            int objectsAfter = Objects?.Length > 0 ? CountLiveObjects() : 0;
+
+            // If the InstanceXElement template loaded anything, we're done.
+            if (objectsAfter > objectsBefore)
+                return;
+
+            if (RegionData?.Mobs == null || RegionData.Mobs.Length == 0)
+                return;
+
+            long mobCount = 0, merchantCount = 0, itemCount = 0, bindCount = 0;
+            LoadFromDatabase(RegionData.Mobs, ref mobCount, ref merchantCount, ref itemCount, ref bindCount);
+        }
+
+        private int CountLiveObjects()
+        {
+            int n = 0;
+            foreach (GameObject o in Objects)
+                if (o != null) n++;
+            return n;
+        }
+
         private TaskDungeonMission m_mission;
         /// <summary>
         /// Gets/Sets the Mission of this instance.

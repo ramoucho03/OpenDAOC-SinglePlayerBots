@@ -63,14 +63,10 @@ namespace DOL.GS
 							if (!player.CurrentRegion.IsRvR || player.Realm == Realm)
 								GameNPCHelper.CastSpellOnOwnerAndPets(this, player, SkillBase.GetSpellByID(GameHastener.SPEEDOFTHEREALMID), SkillBase.GetSpellLine(GlobalSpellsLines.Realm_Spells), false);
 							break;
-						// disabled until we figure out how to disable it on port outside of capital cities
-						// case "strength":
-						// 	if (player.CurrentRegion.IsCapitalCity)
-						// 	{
-						// 		TargetObject = player;
-						// 		CastSpell(SkillBase.GetSpellByID(STROFTHEREALMID), SkillBase.GetSpellLine(GlobalSpellsLines.Mob_Spells),false);
-						// 	}
-						// 	break;
+						// "strength" case left disabled: the original code referenced STROFTHEREALMID
+						// which was never declared as a constant and the spell isn't seeded in the
+						// Spell table. Requires defining the ID + ensuring the spell row exists
+						// before this can be re-enabled.
 					}
 				}
 
