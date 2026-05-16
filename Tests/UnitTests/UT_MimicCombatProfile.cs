@@ -88,6 +88,10 @@ namespace DOL.GS.Tests
             Assert.That(cleric.ShouldUseAoe(4, false, false), Is.False);
             Assert.That(bard.ShouldUseAoe(2, false, true), Is.True);
             Assert.That(bard.ShouldUseAoe(2, true, true), Is.False);
+            Assert.That(wizard.ShouldUsePbaoe(2, false), Is.True);
+            Assert.That(reaver.ShouldUsePbaoe(2, false), Is.False);
+            Assert.That(reaver.ShouldUsePbaoe(3, false), Is.True);
+            Assert.That(cleric.ShouldUsePbaoe(4, false), Is.False);
         }
     }
 }

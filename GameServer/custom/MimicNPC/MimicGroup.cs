@@ -340,6 +340,11 @@ namespace DOL.GS.Scripts
         public GameLiving MemberToCurePoison { get; private set; }
         /// <summary>Is a group member already casting an instant heal spell?</summary>
         public bool AlreadyCastInstantHeal;
+        /// <summary>Is a group member already casting a non-instant single-target heal?</summary>
+        public bool AlreadyCastingSingleHeal { get; private set; }
+        /// <summary>Group member currently covered by a non-instant single-target heal.</summary>
+        public GameLiving MemberBeingSingleHealed { get; private set; }
+        private readonly HashSet<GameLiving> _membersBeingSingleHealed = new();
         /// <summary>Is a group member already casting a heal over time spell?  Set in MimicBrain.CheckHeals()</summary>
         public bool AlreadyCastingHoT;
         /// <summary>Is a group member already casting a health regen spell?</summary>
@@ -394,6 +399,9 @@ namespace DOL.GS.Scripts
                 NumNeedCurePoison = 0;
                 MemberToCurePoison = null;
                 AlreadyCastInstantHeal = false;
+                AlreadyCastingSingleHeal = false;
+                MemberBeingSingleHealed = null;
+                _membersBeingSingleHealed.Clear();
                 AlreadyCastingHoT = false;
                 AlreadyCastingRegen = false;
                 AlreadyCastingCureMezz = false;
@@ -465,6 +473,15 @@ namespace DOL.GS.Scripts
                             {
                                 switch (handler.Spell.SpellType)
                                 {
+                                    case eSpellType.Heal:
+                                    case eSpellType.CombatHeal:
+                                    case eSpellType.MercHeal:
+                                    case eSpellType.OmniHeal:
+                                        if (!handler.Spell.IsInstantCast
+                                            && handler.Target != null
+                                            && checker.Group.IsInTheGroup(handler.Target))
+                                            MarkSingleHealInProgress(handler.Target);
+                                        break;
                                     case eSpellType.HealOverTime: AlreadyCastingHoT = true; break;
                                     case eSpellType.HealthRegenBuff: AlreadyCastingRegen = true; break;
                                     case eSpellType.CureMezz: AlreadyCastingCureMezz = true; break;
@@ -486,6 +503,68 @@ namespace DOL.GS.Scripts
                 if (MainTank != null && MainTank.IsAlive && MainTank.HealthPercent < HealThreshold)
                     MemberToHeal = MainTank;
             }
+        }
+
+        public void MarkSingleHealInProgress(GameLiving target)
+        {
+            if (target == null)
+                return;
+
+            AlreadyCastingSingleHeal = true;
+            MemberBeingSingleHealed ??= target;
+            _membersBeingSingleHealed.Add(target);
+        }
+
+        public bool IsSingleHealReserved(GameLiving target)
+        {
+            return target != null && _membersBeingSingleHealed.Contains(target);
+        }
+
+        public GameLiving PickAlternateHealTarget(MimicNPC checker, GameLiving excluded, bool includeInjured, bool avoidSingleHealReservation)
+        {
+            if (checker?.Group == null)
+                return null;
+
+            GameLiving best = null;
+            int bestScore = int.MaxValue;
+
+            foreach (GameLiving groupMember in checker.Group.GetMembersInTheGroup())
+            {
+                if (groupMember == null || !groupMember.IsAlive || groupMember == excluded)
+                    continue;
+
+                if (groupMember != checker && !groupMember.IsWithinRadius(checker, WorldMgr.VISIBILITY_DISTANCE))
+                    continue;
+
+                if (groupMember.HealthPercent >= 100)
+                    continue;
+
+                bool needsHeal = groupMember.HealthPercent < HealThreshold
+                    || (includeInjured && groupMember.HealthPercent < 100);
+
+                if (!needsHeal)
+                    continue;
+
+                if (avoidSingleHealReservation
+                    && AlreadyCastingSingleHeal
+                    && IsSingleHealReserved(groupMember)
+                    && groupMember.HealthPercent >= EmergencyThreshold)
+                    continue;
+
+                int score = groupMember.HealthPercent;
+                if (groupMember == MainTank)
+                    score -= 10;
+                if (groupMember.HealthPercent < EmergencyThreshold)
+                    score -= 25;
+
+                if (score < bestScore)
+                {
+                    best = groupMember;
+                    bestScore = score;
+                }
+            }
+
+            return best;
         }
 
         #endregion

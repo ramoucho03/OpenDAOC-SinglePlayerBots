@@ -109,6 +109,17 @@ namespace DOL.GS.Scripts
                 && hostileCount >= DamageAoeMinTargets;
         }
 
+        public bool ShouldUsePbaoe(int hostileCount, bool wouldBreakCrowdControl)
+        {
+            if (wouldBreakCrowdControl || hostileCount < 0)
+                return false;
+
+            bool allowed = (AoePolicy & eMimicAoePolicy.PbaoeWhenSafe) != 0
+                || (AoePolicy & eMimicAoePolicy.DamageWhenClustered) != 0;
+
+            return allowed && hostileCount >= DamageAoeMinTargets;
+        }
+
         public int ScoreTarget(
             MimicCombatProfile targetProfile,
             eMimicCombatMode mode,
@@ -363,8 +374,8 @@ namespace DOL.GS.Scripts
             Add(Profile(eMimicClass.Blademaster, tankMelee, eMimicCombatRole.MeleeDps, eMimicAoePolicy.Never, TankPve, TankPvp));
             Add(Profile(eMimicClass.Champion, tankMelee | eMimicCombatRole.Debuffer, eMimicCombatRole.Tank, eMimicAoePolicy.Never, TankPve, TankPvp));
             Add(Profile(eMimicClass.Druid, healer | eMimicCombatRole.PetCaster, eMimicCombatRole.Healer, eMimicAoePolicy.Never, HealerPve, HealerPvp));
-            Add(Profile(eMimicClass.Eldritch, caster | eMimicCombatRole.Debuffer | eMimicCombatRole.CrowdControl, eMimicCombatRole.CasterDps, eMimicAoePolicy.DamageWhenClustered | eMimicAoePolicy.CrowdControlWhenClustered, DpsPve, DpsPvp));
-            Add(Profile(eMimicClass.Enchanter, petCaster | eMimicCombatRole.CrowdControl | eMimicCombatRole.Debuffer, eMimicCombatRole.PetCaster, eMimicAoePolicy.DamageWhenClustered | eMimicAoePolicy.CrowdControlWhenClustered, CcPve, CcPvp));
+            Add(Profile(eMimicClass.Eldritch, caster | eMimicCombatRole.Debuffer | eMimicCombatRole.CrowdControl, eMimicCombatRole.CasterDps, eMimicAoePolicy.DamageWhenClustered | eMimicAoePolicy.CrowdControlWhenClustered | eMimicAoePolicy.PbaoeWhenSafe, DpsPve, DpsPvp));
+            Add(Profile(eMimicClass.Enchanter, petCaster | eMimicCombatRole.CrowdControl | eMimicCombatRole.Debuffer, eMimicCombatRole.PetCaster, eMimicAoePolicy.DamageWhenClustered | eMimicAoePolicy.CrowdControlWhenClustered | eMimicAoePolicy.PbaoeWhenSafe, CcPve, CcPvp));
             Add(Profile(eMimicClass.Hero, tankMelee, eMimicCombatRole.Tank, eMimicAoePolicy.Never, TankPve, TankPvp));
             Add(Profile(eMimicClass.Mentalist, supportCc | eMimicCombatRole.CasterDps | eMimicCombatRole.Support, eMimicCombatRole.CasterDps, eMimicAoePolicy.DamageWhenClustered | eMimicAoePolicy.CrowdControlWhenClustered, CcPve, CcPvp));
             Add(Profile(eMimicClass.Nightshade, assassin | eMimicCombatRole.CasterDps, eMimicCombatRole.Assassin, eMimicAoePolicy.Never, DpsPve, SupportHunterPvp));
@@ -381,7 +392,7 @@ namespace DOL.GS.Scripts
             Add(Profile(eMimicClass.Shadowblade, assassin, eMimicCombatRole.Assassin, eMimicAoePolicy.Never, DpsPve, SupportHunterPvp));
             Add(Profile(eMimicClass.Shaman, healer | eMimicCombatRole.Debuffer | eMimicCombatRole.CasterDps | eMimicCombatRole.Puller, eMimicCombatRole.Support, eMimicAoePolicy.DamageWhenClustered, HealerPve, HealerPvp, 3));
             Add(Profile(eMimicClass.Skald, supportCc | eMimicCombatRole.MeleeDps, eMimicCombatRole.Support, eMimicAoePolicy.Never, CcPve, CcPvp));
-            Add(Profile(eMimicClass.Spiritmaster, petCaster | eMimicCombatRole.CrowdControl, eMimicCombatRole.PetCaster, eMimicAoePolicy.DamageWhenClustered | eMimicAoePolicy.CrowdControlWhenClustered, CcPve, CcPvp));
+            Add(Profile(eMimicClass.Spiritmaster, petCaster | eMimicCombatRole.CrowdControl, eMimicCombatRole.PetCaster, eMimicAoePolicy.DamageWhenClustered | eMimicAoePolicy.CrowdControlWhenClustered | eMimicAoePolicy.PbaoeWhenSafe, CcPve, CcPvp));
             Add(Profile(eMimicClass.Thane, tankMelee | eMimicCombatRole.CasterDps, eMimicCombatRole.Tank, eMimicAoePolicy.DamageWhenClustered, TankPve, TankPvp, 3));
             Add(Profile(eMimicClass.Valkyrie, tankMelee | eMimicCombatRole.Support | eMimicCombatRole.Healer, eMimicCombatRole.Tank, eMimicAoePolicy.DamageWhenClustered, TankPve, TankPvp, 3));
             Add(Profile(eMimicClass.Warrior, tankMelee, eMimicCombatRole.Tank, eMimicAoePolicy.Never, TankPve, TankPvp));

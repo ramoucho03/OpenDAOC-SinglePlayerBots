@@ -27,6 +27,13 @@ namespace DOL.GS.Scripts.AI.Strategies.Builtin
         public IEnumerable<BotTriggerActionBinding> GetBindings(BotContext ctx)
         {
             yield return new BotTriggerActionBinding(
+                new HasAggroTrigger(true),
+                new DelegateCheckSpellsAction(MimicBrain.eCheckSpellType.Offensive, "ranged-pressure-cycle"),
+                priority: 62,
+                cooldownMs: 400,
+                exclusive: false);
+
+            yield return new BotTriggerActionBinding(
                 new InCombatTrigger(true),
                 new DelegateCheckSpellsAction(MimicBrain.eCheckSpellType.Offensive, "ranged-offensive-cycle"),
                 priority: 60,

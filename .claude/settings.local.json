@@ -18,7 +18,9 @@
       "WebFetch(domain:sourceforge.net)",
       "WebFetch(domain:dolserver.sourceforge.net)",
       "WebFetch(domain:losojos-001-site1.btempurl.com)",
-      "WebFetch(domain:daoc.ndlp.info)"
+      "WebFetch(domain:daoc.ndlp.info)",
+      "Bash(find /home/ramoucho/OpenDAOC-SinglePlayerBots -maxdepth 4 -iname \"serverconfig.xml\" 2>/dev/null | head -5)",
+      "Read(//home/ramoucho/**)"
     ]
   }
 }

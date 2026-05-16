@@ -37,6 +37,13 @@ namespace DOL.GS.Scripts.AI.Strategies.Builtin
         public IEnumerable<BotTriggerActionBinding> GetBindings(BotContext ctx)
         {
             yield return new BotTriggerActionBinding(
+                new HasAggroTrigger(true),
+                new DelegateCheckSpellsAction(MimicBrain.eCheckSpellType.Defensive, "tank-pressure-cycle"),
+                priority: 72,
+                cooldownMs: 350,
+                exclusive: true);
+
+            yield return new BotTriggerActionBinding(
                 new InCombatTrigger(true),
                 new DelegateCheckSpellsAction(MimicBrain.eCheckSpellType.Defensive, "tank-defensive-cycle"),
                 priority: 70,

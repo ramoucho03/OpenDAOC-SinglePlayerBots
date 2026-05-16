@@ -3803,7 +3803,7 @@ namespace DOL.AI.Brain
 
                             if (spell.Radius > 0
                                 && combatProfile != null
-                                && !combatProfile.ShouldUseAoe(combatProfile.DamageAoeMinTargets, false, false))
+                                && !ShouldUseDamageAoe(combatProfile, spell, combatProfile.DamageAoeMinTargets, false))
                                 continue;
 
                             // Skip debuffs / DoTs already applied on the target. We
@@ -3839,7 +3839,7 @@ namespace DOL.AI.Brain
 
                             int hostiles = CountAoeHostiles(s, castTarget);
 
-                            if (combatProfile?.ShouldUseAoe(hostiles, hostiles < 0, false) == true)
+                            if (ShouldUseDamageAoe(combatProfile, s, hostiles, hostiles < 0))
                             {
                                 clusteredAoe ??= new HashSet<Spell>();
                                 clusteredAoe.Add(s);
@@ -3889,6 +3889,13 @@ namespace DOL.AI.Brain
                     if (spellsToCast.Count > 1 && Util.Chance(10)
                         && HasCluster(spellsToCast[0]) == HasCluster(spellsToCast[1]))
                         spellToCast = spellsToCast[1];
+
+                    if (spellToCast.IsPBAoE)
+                    {
+                        GameLiving pbaoeTarget = PickPbaoeCastTarget(spellToCast, Body.TargetObject as GameLiving);
+                        if (pbaoeTarget != null)
+                            Body.TargetObject = pbaoeTarget;
+                    }
 
                     if (spellToCast.Uninterruptible || !Body.IsBeingInterrupted)
                         casted = CheckOffensiveSpells(spellToCast);
@@ -4035,6 +4042,16 @@ namespace DOL.AI.Brain
             }
         }
 
+        private static bool ShouldUseDamageAoe(MimicCombatProfile combatProfile, Spell spell, int hostileCount, bool wouldBreakCrowdControl)
+        {
+            if (combatProfile == null || spell == null)
+                return false;
+
+            return spell.IsPBAoE
+                ? combatProfile.ShouldUsePbaoe(hostileCount, wouldBreakCrowdControl)
+                : combatProfile.ShouldUseAoe(hostileCount, wouldBreakCrowdControl, false);
+        }
+
         /// <summary>
         /// PvP CC target priority: prefer enemy healers, then casters, then the
         /// rest. Excludes already-CC'd targets, dead targets, anyone outside the
@@ -4131,10 +4148,10 @@ namespace DOL.AI.Brain
         }
 
         /// <summary>
-        /// Counts hostiles (from this brain's aggro list) caught inside the AoE
-        /// footprint. Epicenter is the caster for PBAoE, otherwise the primary
-        /// target. CC'd mobs tracked by the group are excluded so we don't break
-        /// our own mez with the splash.
+        /// Counts active group hostiles caught inside the AoE footprint.
+        /// Epicenter is the caster for PBAoE, otherwise the primary target.
+        /// Mezzed/rooted mobs and queued CC targets veto damage AoE so we do not
+        /// break the group's control plan.
         /// </summary>
         private int CountAoeHostiles(Spell spell, GameLiving primaryTarget)
         {
@@ -4153,26 +4170,139 @@ namespace DOL.AI.Brain
             int radius = spell.Radius;
             var ccTargets = Body.Group?.MimicGroup?.CCTargets;
 
+            HashSet<GameLiving> counted = new();
             int count = 0;
-            foreach (var kv in AggroList)
+
+            bool TryCount(GameLiving hostile)
             {
-                GameLiving hostile = kv.Key;
-
-                if (hostile == null || !hostile.IsAlive || hostile.ObjectState != GameObject.eObjectState.Active)
-                    continue;
-
-                if (ccTargets != null && ccTargets.Contains(hostile))
-                    return -1; // splash would break our own CC; veto this AoE
+                if (!IsValidAoeHostile(hostile, primaryTarget))
+                    return true;
 
                 bool inRange = isPBAoE
                     ? Body.IsWithinRadius(hostile, radius)
                     : primaryTarget.IsWithinRadius(hostile, radius);
 
-                if (inRange)
+                if (!inRange)
+                    return true;
+
+                bool protectedCrowdControl = (ccTargets != null && ccTargets.Contains(hostile))
+                    || hostile.IsMezzed
+                    || (hostile.IsRooted && hostile != primaryTarget && hostile != Body.TargetObject);
+
+                if (protectedCrowdControl)
+                    return false;
+
+                if (counted.Add(hostile))
                     count++;
+
+                return true;
+            }
+
+            if (!TryCount(primaryTarget))
+                return -1;
+
+            foreach (var kv in AggroList)
+            {
+                if (!TryCount(kv.Key))
+                    return -1; // splash would break our own CC; veto this AoE
+            }
+
+            ushort scanRadius = (ushort)Math.Min(radius, ushort.MaxValue);
+            GameObject epicenter = isPBAoE ? Body : primaryTarget;
+            foreach (GameNPC npc in epicenter.GetNPCsInRadius(scanRadius))
+            {
+                if (!TryCount(npc))
+                    return -1;
             }
 
             return count;
+        }
+
+        private bool IsValidAoeHostile(GameLiving hostile, GameLiving primaryTarget)
+        {
+            if (hostile == null || !hostile.IsAlive || hostile.ObjectState != GameObject.eObjectState.Active)
+                return false;
+
+            if (hostile == Body)
+                return false;
+
+            if (hostile is GameTaxi or GameTrainingDummy)
+                return false;
+
+            if (Body.Group != null && Body.Group.IsInTheGroup(hostile))
+                return false;
+
+            if (!CanAggroTarget(hostile))
+                return false;
+
+            if (hostile == primaryTarget || hostile == Body.TargetObject || AggroList.ContainsKey(hostile))
+                return true;
+
+            if (Body.Group == null)
+                return false;
+
+            if (hostile.TargetObject is GameLiving target && Body.Group.IsInTheGroup(target))
+                return true;
+
+            if (hostile is GameNPC npc && npc.Brain is StandardMobBrain brain && brain.HasAggro)
+            {
+                var ordered = brain.GetOrderedAggroList();
+                if (ordered != null)
+                {
+                    for (int i = 0; i < ordered.Count; i++)
+                    {
+                        GameLiving aggroed = ordered[i].Living;
+                        if (aggroed != null && Body.Group.IsInTheGroup(aggroed))
+                            return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private GameLiving PickPbaoeCastTarget(Spell spell, GameLiving currentTarget)
+        {
+            if (spell == null || !spell.IsPBAoE || spell.Radius <= 0)
+                return currentTarget;
+
+            if (currentTarget != null && Body.IsWithinRadius(currentTarget, spell.Radius) && IsValidAoeHostile(currentTarget, currentTarget))
+                return currentTarget;
+
+            GameLiving best = null;
+            int bestDistance = int.MaxValue;
+
+            foreach (var kv in AggroList)
+            {
+                GameLiving hostile = kv.Key;
+                if (!IsValidAoeHostile(hostile, currentTarget))
+                    continue;
+                if (!Body.IsWithinRadius(hostile, spell.Radius))
+                    continue;
+
+                int distance = Body.GetDistanceTo(hostile);
+                if (distance < bestDistance)
+                {
+                    best = hostile;
+                    bestDistance = distance;
+                }
+            }
+
+            ushort scanRadius = (ushort)Math.Min(spell.Radius, ushort.MaxValue);
+            foreach (GameNPC npc in Body.GetNPCsInRadius(scanRadius))
+            {
+                if (!IsValidAoeHostile(npc, currentTarget))
+                    continue;
+
+                int distance = Body.GetDistanceTo(npc);
+                if (distance < bestDistance)
+                {
+                    best = npc;
+                    bestDistance = distance;
+                }
+            }
+
+            return best ?? currentTarget;
         }
 
         /// <summary>
@@ -4489,6 +4619,30 @@ namespace DOL.AI.Brain
 
                     if (mGroup.AlreadyCastingCurePoison)
                         m_canCastCurePoison = m_canCastCurePoisonGroup = false;
+
+                    // Multi-healer coordination: if another healer already has
+                    // a cast-time single heal landing on the selected target,
+                    // move this healer to another wounded member. Emergency
+                    // targets stay exempt; double-casting there is often correct.
+                    if (spellTarget != null
+                        && numEmergency == 0
+                        && mGroup.AlreadyCastingSingleHeal
+                        && mGroup.IsSingleHealReserved(spellTarget))
+                    {
+                        GameLiving alternate = mGroup.PickAlternateHealTarget(
+                            MimicBody,
+                            spellTarget,
+                            IsHealer,
+                            avoidSingleHealReservation: true);
+
+                        if (alternate != null)
+                            spellTarget = alternate;
+                        else
+                        {
+                            numNeedHealing = 0;
+                            amountToHeal = 0;
+                        }
+                    }
                 }
 
                 #endregion
@@ -4795,8 +4949,13 @@ namespace DOL.AI.Brain
                             switch (spellToCast.SpellType)
                             {
                                 case eSpellType.Heal:
+                                case eSpellType.CombatHeal:
+                                case eSpellType.MercHeal:
+                                case eSpellType.OmniHeal:
                                     if (spellToCast.IsInstantCast)
                                         mGroup.AlreadyCastInstantHeal = true;
+                                    else
+                                        mGroup.MarkSingleHealInProgress(spellTarget);
                                     break;
                                 case eSpellType.HealOverTime: mGroup.AlreadyCastingHoT = true; break;
                                 case eSpellType.HealthRegenBuff: mGroup.AlreadyCastingRegen = true; break;
@@ -5341,7 +5500,11 @@ namespace DOL.AI.Brain
                 {
                     int hostiles = CountAoeHostiles(spell, instantTarget);
                     bool crowdControlSpell = spell.SpellType is eSpellType.Stun or eSpellType.Mez or eSpellType.Mesmerize;
-                    if (MimicBody?.CombatProfile?.ShouldUseAoe(hostiles, hostiles < 0, crowdControlSpell) != true)
+                    bool useAoe = crowdControlSpell
+                        ? MimicBody?.CombatProfile?.ShouldUseAoe(hostiles, hostiles < 0, true) == true
+                        : ShouldUseDamageAoe(MimicBody?.CombatProfile, spell, hostiles, hostiles < 0);
+
+                    if (!useAoe)
                         break;
                 }
 

@@ -85,6 +85,16 @@ namespace DOL.GS.Scripts.AI.Strategies.Builtin
                 priority: 85,
                 cooldownMs: 400,
                 exclusive: true);
+
+            // Combat maintenance: this is what makes proactive tank HoT/regen
+            // actually happen while the tank is still healthy. CheckHeals is
+            // cheap when no spell is needed and still owns all dedupe logic.
+            yield return new BotTriggerActionBinding(
+                new HasAggroTrigger(true),
+                new RunHealCycleAction(),
+                priority: 82,
+                cooldownMs: 500,
+                exclusive: true);
         }
     }
 }
