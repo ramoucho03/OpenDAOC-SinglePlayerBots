@@ -49,9 +49,11 @@ namespace DOL.GS.Economy
         private const int MIN_FLUSH_SECONDS = 5;
         private const int SHUTDOWN_WAIT_SECONDS = 5;
         // Max items per single AddObject/DeleteObject call. Caps the initial-flush spike
-        // when the worker accumulates ~10k items between the first Initialize and the
-        // first FlushLoop tick.
-        private const int MAX_FLUSH_CHUNK = 500;
+        // when the worker accumulates many items between the first Initialize and the
+        // first FlushLoop tick. Smaller chunks spread DB pressure: 200 keeps each batch
+        // under ~50ms typical write time on MariaDB, so the game loop never starves on
+        // shared connection pool contention.
+        private const int MAX_FLUSH_CHUNK = 200;
         // Tick-percent calc: ticks_per_hour = 3600/tickSec. perTick = total * pct/100 / ticks_per_hour
         // = total * pct * tickSec / 360000. The 360000 is 100 (percent units) * 3600 (sec/h).
         private const long PERCENT_PER_HOUR_TO_PER_TICK_DIVISOR = 360000L;
@@ -146,18 +148,27 @@ namespace DOL.GS.Economy
         // sees the new value without a property reload.
         private static void AutoMigrateDefaults()
         {
-            TryMigrateInt("economy_target_stock", 10000, EconomyConfig.ECONOMY_TARGET_STOCK,
-                v => EconomyConfig.ECONOMY_TARGET_STOCK = v);
-            TryMigrateInt("economy_seller_count_per_realm", 6, EconomyConfig.ECONOMY_SELLER_COUNT_PER_REALM,
-                v => EconomyConfig.ECONOMY_SELLER_COUNT_PER_REALM = v);
-            TryMigrateInt("economy_initial_batch_sleep_ms", 50, EconomyConfig.ECONOMY_INITIAL_BATCH_SLEEP_MS,
-                v => EconomyConfig.ECONOMY_INITIAL_BATCH_SLEEP_MS = v);
+            // Each entry: (key, set of old defaults to catch, new default).
+            // Multiple old defaults are listed for properties that already migrated once
+            // (so we catch both pre-first-migration and pre-second-migration values).
+            // The newDefault is hardcoded rather than read from the static so the guard
+            // `oldDefault == newDefault` doesn't bail out when the DB row already holds
+            // the previous default (which is the case we actually want to fix).
+
+            // First-wave: 10k stock -> 100k, 6 sellers -> 334
+            TryMigrateIntMulti("economy_target_stock",            newDefault: 100000, 10000);
+            TryMigrateIntMulti("economy_seller_count_per_realm",  newDefault: 334,    6);
+
+            // Throttling pass: gentler defaults for a 100k market.
+            TryMigrateIntMulti("economy_initial_batch_size",      newDefault: 50,     200);
+            TryMigrateIntMulti("economy_initial_batch_sleep_ms",  newDefault: 100,    20, 50);
+            TryMigrateIntMulti("economy_tick_seconds",            newDefault: 120,    60);
+            TryMigrateIntMulti("economy_turnover_percent_per_hour", newDefault: 6,    16);
+            TryMigrateIntMulti("economy_db_flush_seconds",        newDefault: 90,     30);
         }
 
-        private static void TryMigrateInt(string key, int oldDefault, int newDefault, Action<int> applyInMemory)
+        private static void TryMigrateIntMulti(string key, int newDefault, params int[] oldDefaults)
         {
-            if (oldDefault == newDefault)
-                return;
             try
             {
                 var row = GameServer.Database.FindObjectByKey<DbServerProperty>(key);
@@ -165,18 +176,46 @@ namespace DOL.GS.Economy
                     return;
                 if (!int.TryParse(row.Value, out int currentValue))
                     return;
-                if (currentValue != oldDefault)
+
+                bool matchesOldDefault = false;
+                for (int i = 0; i < oldDefaults.Length; i++)
+                {
+                    if (currentValue == oldDefaults[i])
+                    {
+                        matchesOldDefault = true;
+                        break;
+                    }
+                }
+                if (!matchesOldDefault || currentValue == newDefault)
                     return;
+
                 row.Value = newDefault.ToString();
                 row.DefaultValue = newDefault.ToString();
                 GameServer.Database.SaveObject(row);
-                applyInMemory(newDefault);
+                ApplyToStatic(key, newDefault);
                 if (log.IsInfoEnabled)
-                    log.Info($"Economy: auto-migrated server property {key} from {oldDefault} to {newDefault}.");
+                    log.Info($"Economy: auto-migrated server property {key} from {currentValue} to {newDefault}.");
             }
             catch (Exception ex)
             {
                 log.Warn($"Economy: auto-migration of {key} failed: {ex.Message}");
+            }
+        }
+
+        // Writes the migrated value to the in-memory static so the running process uses
+        // it without waiting for a property reload. Switch-by-name keeps this colocated
+        // with the migration list above so adding a property is a one-line change.
+        private static void ApplyToStatic(string key, int value)
+        {
+            switch (key)
+            {
+                case "economy_target_stock":            EconomyConfig.ECONOMY_TARGET_STOCK = value; break;
+                case "economy_seller_count_per_realm":  EconomyConfig.ECONOMY_SELLER_COUNT_PER_REALM = value; break;
+                case "economy_initial_batch_size":      EconomyConfig.ECONOMY_INITIAL_BATCH_SIZE = value; break;
+                case "economy_initial_batch_sleep_ms":  EconomyConfig.ECONOMY_INITIAL_BATCH_SLEEP_MS = value; break;
+                case "economy_tick_seconds":            EconomyConfig.ECONOMY_TICK_SECONDS = value; break;
+                case "economy_turnover_percent_per_hour": EconomyConfig.ECONOMY_TURNOVER_PERCENT_PER_HOUR = value; break;
+                case "economy_db_flush_seconds":        EconomyConfig.ECONOMY_DB_FLUSH_SECONDS = value; break;
             }
         }
 

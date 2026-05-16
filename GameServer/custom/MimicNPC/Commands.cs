@@ -1016,6 +1016,93 @@ namespace DOL.GS.Scripts
     }
 
     [CmdAttribute(
+        "&mcampfire",
+        ePrivLevel.GM,
+        "/mcampfire <model> - Lâche un GameStaticItem à ta position pour tester un model id de feu de camp.",
+        "/mcampfire clean - Supprime tous les feux de test posés par cette commande.")]
+    public class MimicCampfireTestCommandHandler : AbstractCommandHandler, ICommandHandler
+    {
+        // Tracks the test fires per-player so each GM can clean up without
+        // blasting another tester's spawns.
+        private static readonly System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<GameStaticItem>> _testFires
+            = new(System.StringComparer.OrdinalIgnoreCase);
+        private static readonly object _lock = new();
+
+        public void OnCommand(GameClient client, string[] args)
+        {
+            GamePlayer player = client?.Player;
+            if (player == null)
+                return;
+
+            if (args.Length < 2)
+            {
+                player.Out.SendMessage("Usage : /mcampfire <model> | clean", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                return;
+            }
+
+            string acct = player.Client?.Account?.Name ?? "?";
+
+            if (string.Equals(args[1], "clean", System.StringComparison.OrdinalIgnoreCase))
+            {
+                int removed = 0;
+                lock (_lock)
+                {
+                    if (_testFires.TryGetValue(acct, out var list))
+                    {
+                        foreach (var f in list)
+                        {
+                            if (f != null && f.ObjectState == GameObject.eObjectState.Active)
+                            {
+                                f.Delete();
+                                removed++;
+                            }
+                        }
+                        list.Clear();
+                    }
+                }
+                player.Out.SendMessage($"{removed} feu(x) de test supprimé(s).", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                return;
+            }
+
+            if (!ushort.TryParse(args[1], out ushort model) || model == 0)
+            {
+                player.Out.SendMessage("Model invalide. Donne un entier > 0.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                return;
+            }
+
+            GameStaticItem fire = new()
+            {
+                Name = $"test-fire-{model}",
+                Model = model,
+                CurrentRegionID = player.CurrentRegionID,
+                X = player.X,
+                Y = player.Y,
+                Z = player.Z,
+                Heading = player.Heading,
+                Realm = eRealm.None,
+            };
+
+            if (!fire.AddToWorld())
+            {
+                player.Out.SendMessage($"Echec d'ajout du modèle {model} dans la zone.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                return;
+            }
+
+            lock (_lock)
+            {
+                if (!_testFires.TryGetValue(acct, out var list))
+                {
+                    list = new System.Collections.Generic.List<GameStaticItem>();
+                    _testFires[acct] = list;
+                }
+                list.Add(fire);
+            }
+
+            player.Out.SendMessage($"Modèle {model} posé. /mcampfire clean pour tout retirer.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+        }
+    }
+
+    [CmdAttribute(
      "&mpull",
      ePrivLevel.Player,
      "/mpull - Fixe le camp et le point de pull à votre position, et fait pull votre cible par le puller.")]
