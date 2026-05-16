@@ -52,8 +52,16 @@ namespace DOL.GS.PropertyCalc
 
                 if (ServerProperties.Properties.ENABLE_PVE_SPEED)
                 {
-                    // OF zones technically aren't in a RvR region.
-                    if (speedIncrease == 1 && !player.InCombat && !player.IsStealthed && !player.CurrentRegion.IsRvR && !player.CurrentZone.IsRvR)
+                    // OF zones technically aren't in a RvR region. CurrentRegion
+                    // / CurrentZone can be null when the living is mid-region
+                    // transition or being despawned (mimics + effect cleanup
+                    // hit this path on RemoveFromWorld) — treat null as
+                    // "not RvR" so the speed math doesn't NPE.
+                    Region region = player.CurrentRegion;
+                    Zone zone = player.CurrentZone;
+                    bool regionIsRvr = region != null && region.IsRvR;
+                    bool zoneIsRvr = zone != null && zone.IsRvR;
+                    if (speedIncrease == 1 && !player.InCombat && !player.IsStealthed && !regionIsRvr && !zoneIsRvr)
                         speedIncrease *= 1.25; // New run speed is 125% when no buff.
                 }
 

@@ -219,15 +219,46 @@ namespace DOL.GS.Scripts
 
             _running = true;
 
-            // Seed the LastPlayerSeenTick so spawns start in 'awake' state for
-            // the first hibernate window — they'll go to sleep naturally if no
-            // one actually visits.
+            // Validate spawn points against the world map. A coordinate that
+            // doesn't resolve to a Zone means CurrentZone stays null on the
+            // spawned mimic, and any GetModified(MaxSpeed) call later NPEs
+            // through MaxSpeedCalculator (was the root cause of the
+            // "Couldn't find a zone for MimicNPC ..." flood + cascading
+            // disconnects on the human players sharing the loop thread).
+            //
+            // We mark invalid spawns as permanently hibernated so the tick
+            // loop just skips them — the operator's job to fix the
+            // coordinates and reboot the server.
             long now = GameLoop.GameLoopTime;
+            int citiesSkipped = 0;
+            int fieldsSkipped = 0;
             lock (_lock)
             {
-                foreach (var c in _cities) c.LastPlayerSeenTick = now;
-                foreach (var f in _fields) f.LastPlayerSeenTick = now;
+                foreach (var c in _cities)
+                {
+                    if (!IsValidSpawnPoint(c.Region, c.Center, out string reason))
+                    {
+                        c.Hibernated = true;
+                        citiesSkipped++;
+                        if (log.IsWarnEnabled)
+                            log.Warn($"PvEPopulationManager: skipping city spawn realm={c.Realm} region={c.Region} ({c.Center.X},{c.Center.Y},{c.Center.Z}) — {reason}");
+                    }
+                    c.LastPlayerSeenTick = now;
+                }
+                foreach (var f in _fields)
+                {
+                    if (!IsValidSpawnPoint(f.Region, f.Center, out string reason))
+                    {
+                        f.Hibernated = true;
+                        fieldsSkipped++;
+                        if (log.IsWarnEnabled)
+                            log.Warn($"PvEPopulationManager: skipping field spawn realm={f.Realm} region={f.Region} lvl={f.LevelMin}-{f.LevelMax} ({f.Center.X},{f.Center.Y},{f.Center.Z}) — {reason}");
+                    }
+                    f.LastPlayerSeenTick = now;
+                }
             }
+            if (citiesSkipped > 0 || fieldsSkipped > 0)
+                log.Info($"PvEPopulationManager: disabled {citiesSkipped} city + {fieldsSkipped} field spawn(s) with invalid coordinates. Fix BuildDefaultConfig and reboot to re-enable.");
 
             _tickTimer = new ECSGameTimer(null, MaintenanceTick, TICK_MS);
             _tickTimer.Start();
@@ -314,6 +345,33 @@ namespace DOL.GS.Scripts
             }
 
             return TICK_MS;
+        }
+
+        /// <summary>
+        /// Verifies a spawn coordinate falls inside an actual Zone of the
+        /// requested Region. Region IDs that aren't loaded, or coordinates
+        /// that miss every Zone box, return false with a human-readable
+        /// reason. Used at Start() to disable bad spawn-point presets before
+        /// they flood the log with NPEs.
+        /// </summary>
+        private static bool IsValidSpawnPoint(ushort regionId, Point3D point, out string reason)
+        {
+            Region region = WorldMgr.GetRegion(regionId);
+            if (region == null)
+            {
+                reason = $"region {regionId} not loaded";
+                return false;
+            }
+
+            Zone zone = region.GetZone(point.X, point.Y);
+            if (zone == null)
+            {
+                reason = $"no zone at ({point.X},{point.Y}) in region {regionId}";
+                return false;
+            }
+
+            reason = null;
+            return true;
         }
 
         private static bool RegionHasPlayer(ushort regionId)
