@@ -10114,13 +10114,28 @@ namespace DOL.GS
 
                     if (!IsValidLoginPosition(CurrentRegion, m_x, m_y))
                     {
-                        (ushort capitalRegion, int cx, int cy, int cz) = GetRealmCapitalSpawn((eRealm) DBCharacter.Realm);
-                        log.WarnFormat("Bind point also invalid for {0} (bindReg={1}); falling back to realm capital reg={2}.", DBCharacter.Name, DBCharacter.BindRegion, capitalRegion);
-                        m_x = cx;
-                        m_y = cy;
-                        m_z = cz;
-                        Heading = 0;
-                        CurrentRegionID = capitalRegion;
+                        var start = TryGetRealmStartLocation();
+
+                        if (start is null)
+                        {
+                            log.ErrorFormat("No valid startup location found for {0} (realm={1}, race={2}, class={3}); character will load at invalid bind point.", DBCharacter.Name, DBCharacter.Realm, DBCharacter.Race, DBCharacter.Class);
+                        }
+                        else
+                        {
+                            log.WarnFormat("Bind point also invalid for {0} (bindReg={1}); falling back to start location reg={2}.", DBCharacter.Name, DBCharacter.BindRegion, start.Value.region);
+                            m_x = start.Value.x;
+                            m_y = start.Value.y;
+                            m_z = start.Value.z;
+                            Heading = (ushort) start.Value.heading;
+                            CurrentRegionID = start.Value.region;
+
+                            // Rebind to the same spot so the next login doesn't have to recompute this fallback.
+                            DBCharacter.BindRegion = start.Value.region;
+                            DBCharacter.BindXpos = start.Value.x;
+                            DBCharacter.BindYpos = start.Value.y;
+                            DBCharacter.BindZpos = start.Value.z;
+                            DBCharacter.BindHeading = start.Value.heading;
+                        }
                     }
                 }
             }
@@ -10135,14 +10150,19 @@ namespace DOL.GS
                 return region.GetZone(x, y) != null;
             }
 
-            static (ushort region, int x, int y, int z) GetRealmCapitalSpawn(eRealm realm)
+            (ushort region, int x, int y, int z, int heading)? TryGetRealmStartLocation()
             {
-                return realm switch
+                var locations = GameEvents.StartupLocations.GetAllStartupLocationForCharacter(DBCharacter, Client.Version);
+
+                foreach (var sl in locations)
                 {
-                    eRealm.Midgard  => (101, 31_000, 30_000, 8_700), // Jordheim
-                    eRealm.Hibernia => (201, 32_000, 27_000, 7_700), // Tir na Nog
-                    _               => (10,  33_000, 32_000, 5_000), // Camelot (Albion + fallback)
-                };
+                    Region region = WorldMgr.GetRegion((ushort) sl.Region);
+
+                    if (IsValidLoginPosition(region, sl.XPos, sl.YPos))
+                        return ((ushort) sl.Region, sl.XPos, sl.YPos, sl.ZPos, sl.Heading);
+                }
+
+                return null;
             }
 
             void HandleCharacterModel()
