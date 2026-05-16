@@ -17,7 +17,12 @@ namespace DOL.GS.Spells
         {
             if (Spell.SubSpellID == 0)
             {
-                MessageToCaster("SPELL NOT IMPLEMENTED: CONTACT GM", eChatType.CT_Important);
+                // The bomber relies on its sub-spell to explode on contact: without it the pet
+                // would summon, run to its target and do nothing. The fix is on the data side:
+                // populate ItemTemplate.SubSpellID / DBSpell.SubSpellID for this spell so the
+                // explosion payload is wired up. Keep the cast-time refusal so the player isn't
+                // silently scammed out of mana when the spell would otherwise no-op.
+                MessageToCaster($"Bomber spell '{Spell.Name}' (id {Spell.ID}) has no SubSpellID configured. Ask a GM to fix the spell row.", eChatType.CT_Important);
                 return false;
             }
 

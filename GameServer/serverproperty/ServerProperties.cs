@@ -458,13 +458,13 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// Post 1.108 Passive RA 9-Tiers
 		/// </summary>
-		[ServerProperty("server", "use_new_passives_ras_scaling", "Use new passives realmabilities scaling (1.108+) ?", false)]
+		[ServerProperty("server", "use_new_passives_ras_scaling", "Use new passives realmabilities scaling (1.108+) ?", true)]
 		public static bool USE_NEW_PASSIVES_RAS_SCALING;
 
 		/// <summary>
 		/// Post 1.108 Active RA 5-Tiers
 		/// </summary>
-		[ServerProperty("server", "use_new_actives_ras_scaling", "Use new actives realmabilities (5-Tiers) scaling (1.108+) ?", false)]
+		[ServerProperty("server", "use_new_actives_ras_scaling", "Use new actives realmabilities (5-Tiers) scaling (1.108+) ?", true)]
 		public static bool USE_NEW_ACTIVES_RAS_SCALING;
 
 		/// <summary>
@@ -578,7 +578,7 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// Enable PvE Speed
 		/// </summary>
-		[ServerProperty("server", "enable_pve_speed", "Set to true if you wish to enable the extra 25% increase to speed when not in combat or an RvR zone", false)]
+		[ServerProperty("server", "enable_pve_speed", "Set to true if you wish to enable the extra 25% increase to speed when not in combat or an RvR zone", true)]
 		public static bool ENABLE_PVE_SPEED;
 
 		/// <summary>
@@ -688,13 +688,13 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// Should we handle tasks with items
 		/// </summary>
-		[ServerProperty("world", "task_give_random_item", "Task is also rewarded with ROG ?", false)]
+		[ServerProperty("world", "task_give_random_item", "Task is also rewarded with ROG ?", true)]
 		public static bool TASK_GIVE_RANDOM_ITEM;
 
 		/// <summary>
 		/// Should we enable Zone Bonuses?
 		/// </summary>
-		[ServerProperty("world", "enable_zone_bonuses", "Are Zone Bonuses Enabled?", false)]
+		[ServerProperty("world", "enable_zone_bonuses", "Are Zone Bonuses Enabled?", true)]
 		public static bool ENABLE_ZONE_BONUSES;
 
 		/// <summary>
@@ -2142,7 +2142,7 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// Allow Cata Slash Level
 		/// </summary>
-		[ServerProperty("classes", "allow_cata_slash_level", "Allow catacombs classes to use /level command", false)]
+		[ServerProperty("classes", "allow_cata_slash_level", "Allow catacombs classes to use /level command", true)]
 		public static bool ALLOW_CATA_SLASH_LEVEL;
 
 		/// <summary>

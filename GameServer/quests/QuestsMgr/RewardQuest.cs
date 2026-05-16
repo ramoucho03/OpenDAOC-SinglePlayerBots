@@ -159,7 +159,10 @@ namespace DOL.GS.Quests
 
 		public override bool CheckQuestQualification(GamePlayer player)
 		{
-			throw new Exception("The method or operation is not implemented.");
+			// Default: any player qualifies. Subclasses should override to add level,
+			// class, race or prerequisite-quest restrictions. Returning true rather
+			// than throwing avoids crashing any quest that forgot to override.
+			return true;
 		}
 
 		/// <summary>

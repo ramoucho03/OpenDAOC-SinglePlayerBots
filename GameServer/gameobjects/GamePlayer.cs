@@ -4385,7 +4385,7 @@ namespace DOL.GS
             }
 
             // Get Champion Experience too
-            // GainChampionExperience(expTotal);
+            GainChampionExperience(expTotal);
 
             if (IsLevelSecondStage)
             {

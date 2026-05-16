@@ -117,7 +117,7 @@ namespace DOL.GS.Scripts
                               "[Camelot] our glorious capital,\n" +
                               "[Entrance] to the areas of [Housing]\n\n" +
                               "or one of the many [towns] throughout Albion.";
-                              //"For this event duration, I can send you to [Darkness Falls]";
+                              "I can also send you to [Darkness Falls].";
                     break;
 
                 case eRealm.Midgard:
@@ -129,7 +129,8 @@ namespace DOL.GS.Scripts
                               "[Aegirhamn] in the [Shrouded Isles],\n" +
                               "Our glorious city of [Jordheim],\n" +
                               "[Entrance] to the areas of [Housing]\n\n" +
-                              "or one of the many [towns] throughout Midgard.";
+                              "or one of the many [towns] throughout Midgard.\n" +
+                              "I can also send you to [Darkness Falls].";
                     break;
 
                 case eRealm.Hibernia:
@@ -141,7 +142,8 @@ namespace DOL.GS.Scripts
                               "[Domnann] Grove in the [Shrouded Isles],\n" +
                               "[Tir na Nog] our glorious capital,\n" +
                               "[Entrance] to the areas of [Housing]\n\n" +
-                              "or one of the many [towns] throughout Hibernia.";
+                              "or one of the many [towns] throughout Hibernia.\n" +
+                              "I can also send you to [Darkness Falls].";
                     break;
 
                 default:
@@ -206,22 +208,11 @@ namespace DOL.GS.Scripts
                         return false;
                     }
 
-                    /*
                     if (text.ToLower() == "darkness falls")
                     {
-                        IGameLocation location = new GameLocation("df", 249, 249, 23122, 19634, 22897, 3074);
-                        
-                        Teleport teleport = new Teleport();
-                        teleport.TeleportID = "Darkness Falls";
-                        teleport.Realm = (int) DestinationRealm;
-                        teleport.RegionID = location.RegionID;
-                        teleport.X = location.X;
-                        teleport.Y = location.Y;
-                        teleport.Z = location.Z;
-                        teleport.Heading = location.Heading;
-                        OnDestinationPicked(player, teleport);
+                        OnDestinationPicked(player, BuildDarknessFallsTeleport());
                         return true;
-                    }*/
+                    }
                     
                     break;
                 
@@ -256,9 +247,15 @@ namespace DOL.GS.Scripts
                             "[West Skona]");
                         return false;
                     }
-                    
+
+                    if (text.ToLower() == "darkness falls")
+                    {
+                        OnDestinationPicked(player, BuildDarknessFallsTeleport());
+                        return true;
+                    }
+
                     break;
-                
+
                 case eRealm.Hibernia:
                     
                     if (text.ToLower() == "shrouded isles")
@@ -286,6 +283,12 @@ namespace DOL.GS.Scripts
                             "[Connla]\n" +
                             "[Innis Carthaig]");
                         return false;
+                    }
+
+                    if (text.ToLower() == "darkness falls")
+                    {
+                        OnDestinationPicked(player, BuildDarknessFallsTeleport());
+                        return true;
                     }
 
                     break;
@@ -508,7 +511,27 @@ namespace DOL.GS.Scripts
         }
 
         /// <summary>
-        /// Teleport the player to the designated coordinates. 
+        /// Builds the Darkness Falls destination. Region 249 is shared by all realms;
+        /// drop point is the Albion entrance coordinate which is centrally placed and
+        /// works as a neutral landing for solo-server use. Adjust per realm if you want
+        /// realm-specific entrances.
+        /// </summary>
+        private DbTeleport BuildDarknessFallsTeleport()
+        {
+            return new DbTeleport
+            {
+                TeleportID = "Darkness Falls",
+                Realm = (int) DestinationRealm,
+                RegionID = 249,
+                X = 23122,
+                Y = 19634,
+                Z = 22897,
+                Heading = 3074
+            };
+        }
+
+        /// <summary>
+        /// Teleport the player to the designated coordinates.
         /// </summary>
         /// <param name="player"></param>
         /// <param name="destination"></param>
