@@ -19,16 +19,16 @@ namespace DOL.GS.Economy
         // a small slice of stock so the market feels alive at every moment. Default values:
         // every 60s, ~16%/hour turnover at 10000 stock target = ~27 listings rotated per
         // minute, distributed smoothly across the hour.
-        [ServerProperty("economy", "economy_tick_seconds", "How often the rotation worker ticks (seconds). Lower = smoother, slightly higher CPU.", 120)]
+        [ServerProperty("economy", "economy_tick_seconds", "How often the rotation worker ticks (seconds). Lower = smoother, slightly higher CPU.", 300)]
         public static int ECONOMY_TICK_SECONDS;
 
-        [ServerProperty("economy", "economy_turnover_percent_per_hour", "Percent of total stock rotated each hour. 6 = ~6% of listings refreshed every hour.", 6)]
+        [ServerProperty("economy", "economy_turnover_percent_per_hour", "Percent of total stock rotated each hour. 2 = ~1% per 30 minutes.", 2)]
         public static int ECONOMY_TURNOVER_PERCENT_PER_HOUR;
 
-        [ServerProperty("economy", "economy_initial_batch_size", "Items inserted per batch during the one-time initial population. Lower to reduce CPU spikes at startup.", 50)]
+        [ServerProperty("economy", "economy_initial_batch_size", "Items inserted per batch during the one-time initial population. Lower to reduce CPU spikes at startup.", 25)]
         public static int ECONOMY_INITIAL_BATCH_SIZE;
 
-        [ServerProperty("economy", "economy_initial_batch_sleep_ms", "Sleep between batches during initial population (ms).", 100)]
+        [ServerProperty("economy", "economy_initial_batch_sleep_ms", "Sleep between batches during initial population (ms).", 300)]
         public static int ECONOMY_INITIAL_BATCH_SLEEP_MS;
 
         [ServerProperty("economy", "economy_min_level", "Lowest item level the bot market lists.", 1)]
@@ -116,7 +116,7 @@ namespace DOL.GS.Economy
         [ServerProperty("economy", "economy_persist", "If true, persist bot listings to the Inventory table so they survive server restarts.", true)]
         public static bool ECONOMY_PERSIST;
 
-        [ServerProperty("economy", "economy_db_flush_seconds", "Period between batched DB flushes for bot listings (seconds).", 90)]
+        [ServerProperty("economy", "economy_db_flush_seconds", "Period between batched DB flushes for bot listings (seconds).", 180)]
         public static int ECONOMY_DB_FLUSH_SECONDS;
     }
 }

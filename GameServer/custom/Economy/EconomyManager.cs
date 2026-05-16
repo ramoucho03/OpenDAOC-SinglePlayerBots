@@ -50,10 +50,10 @@ namespace DOL.GS.Economy
         private const int SHUTDOWN_WAIT_SECONDS = 5;
         // Max items per single AddObject/DeleteObject call. Caps the initial-flush spike
         // when the worker accumulates many items between the first Initialize and the
-        // first FlushLoop tick. Smaller chunks spread DB pressure: 200 keeps each batch
-        // under ~50ms typical write time on MariaDB, so the game loop never starves on
-        // shared connection pool contention.
-        private const int MAX_FLUSH_CHUNK = 200;
+        // first FlushLoop tick. 100 = each DB batch finishes in ~25ms typical write time on
+        // MariaDB so other connections never wait noticeably for the pool, even on a host
+        // doing tight loop work elsewhere.
+        private const int MAX_FLUSH_CHUNK = 100;
         // Tick-percent calc: ticks_per_hour = 3600/tickSec. perTick = total * pct/100 / ticks_per_hour
         // = total * pct * tickSec / 360000. The 360000 is 100 (percent units) * 3600 (sec/h).
         private const long PERCENT_PER_HOUR_TO_PER_TICK_DIVISOR = 360000L;
@@ -159,12 +159,14 @@ namespace DOL.GS.Economy
             TryMigrateIntMulti("economy_target_stock",            newDefault: 100000, 10000);
             TryMigrateIntMulti("economy_seller_count_per_realm",  newDefault: 334,    6);
 
-            // Throttling pass: gentler defaults for a 100k market.
-            TryMigrateIntMulti("economy_initial_batch_size",      newDefault: 50,     200);
-            TryMigrateIntMulti("economy_initial_batch_sleep_ms",  newDefault: 100,    20, 50);
-            TryMigrateIntMulti("economy_tick_seconds",            newDefault: 120,    60);
-            TryMigrateIntMulti("economy_turnover_percent_per_hour", newDefault: 6,    16);
-            TryMigrateIntMulti("economy_db_flush_seconds",        newDefault: 90,     30);
+            // Ultra-calm pass: for 100k items + 1000 sellers on a server that's CPU/IO sensitive.
+            // List every prior default we shipped so the migration catches installs at any
+            // intermediate value. Each row in oldDefaults is one prior default we used.
+            TryMigrateIntMulti("economy_initial_batch_size",      newDefault: 25,     200, 50);
+            TryMigrateIntMulti("economy_initial_batch_sleep_ms",  newDefault: 300,    20, 50, 100);
+            TryMigrateIntMulti("economy_tick_seconds",            newDefault: 300,    60, 120);
+            TryMigrateIntMulti("economy_turnover_percent_per_hour", newDefault: 2,    16, 6);
+            TryMigrateIntMulti("economy_db_flush_seconds",        newDefault: 180,    30, 90);
         }
 
         private static void TryMigrateIntMulti(string key, int newDefault, params int[] oldDefaults)

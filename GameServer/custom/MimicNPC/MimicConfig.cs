@@ -125,16 +125,25 @@ namespace DOL.GS.Scripts
             "Emergency heal % threshold for mimic healers (default 50, vs the generic 37).", 50)]
         public static int MIMIC_EMERGENCY_THRESHOLD;
 
-        // Visual-only static item the bot drops at camp. Model 2674 is the
-        // canonical animated DAoC campfire (flickering small fire). The
-        // previously used 2656 turned out to render as a stone obelisk on
-        // some client/world-data combos. Operators can swap to other
-        // campfire variants via the server property (e.g. 829 for a
-        // smaller firepit, 3460 for a larger campfire on databases that
-        // ship that model).
+        // Visual-only entity the bot drops at camp. The campfire is spawned
+        // as an inert GameNPC (with no brain) using a mob model — the
+        // animated DAoC fire effects (model 1686 "vte5 fire effect", 1822
+        // "fire effect", 911 "Bright Flame", 907 "torchlight") only render
+        // correctly when attached to a GameNPC, NOT a GameStaticItem. A
+        // GameStaticItem with the same number resolves into the item-model
+        // space and produces an obelisk / sword / random prop. Defaults to
+        // 1686 (the most common fire effect mob model on OpenDAoC).
+        //
+        // To revert to the legacy GameStaticItem behaviour set
+        // mimic_campfire_use_npc=false; then mimic_campfire_model is read
+        // against the item-model space instead (2656 is the historical value).
         [ServerProperty("npc", "mimic_campfire_model",
-            "GameStaticItem model used as the camp fire visual (2674 = canonical small campfire, 829 = small firepit, 3460 = large campfire variant where available).", 2674)]
+            "Model used for the camp fire (mob model when mimic_campfire_use_npc=true, item model otherwise). Common mob fire effects: 1686, 1822, 911, 907.", 1686)]
         public static int MIMIC_CAMPFIRE_MODEL;
+
+        [ServerProperty("npc", "mimic_campfire_use_npc",
+            "When true (default), the camp fire is an inert GameNPC — required for animated fire mob models. When false, falls back to a GameStaticItem for legacy item-model campfires.", true)]
+        public static bool MIMIC_CAMPFIRE_USE_NPC;
 
         // ----------------------------------------------------------------
         // Death and resurrection tuning.

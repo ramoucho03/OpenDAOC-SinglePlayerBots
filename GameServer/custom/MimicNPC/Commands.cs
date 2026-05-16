@@ -1018,13 +1018,15 @@ namespace DOL.GS.Scripts
     [CmdAttribute(
         "&mcampfire",
         ePrivLevel.GM,
-        "/mcampfire <model> - Lâche un GameStaticItem à ta position pour tester un model id de feu de camp.",
+        "/mcampfire <model> - Spawn un GameNPC inerte (recommandé: feux animés via mob model, ex 1686/1822) à ta position.",
+        "/mcampfire item <model> - Spawn un GameStaticItem (modèle d'objet, pas de mob).",
         "/mcampfire clean - Supprime tous les feux de test posés par cette commande.")]
     public class MimicCampfireTestCommandHandler : AbstractCommandHandler, ICommandHandler
     {
         // Tracks the test fires per-player so each GM can clean up without
-        // blasting another tester's spawns.
-        private static readonly System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<GameStaticItem>> _testFires
+        // blasting another tester's spawns. Holds GameObject so it accepts
+        // both static items and NPCs.
+        private static readonly System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<GameObject>> _testFires
             = new(System.StringComparer.OrdinalIgnoreCase);
         private static readonly object _lock = new();
 
@@ -1036,7 +1038,7 @@ namespace DOL.GS.Scripts
 
             if (args.Length < 2)
             {
-                player.Out.SendMessage("Usage : /mcampfire <model> | clean", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                player.Out.SendMessage("Usage : /mcampfire <model> | item <model> | clean", eChatType.CT_System, eChatLoc.CL_SystemWindow);
                 return;
             }
 
@@ -1064,41 +1066,80 @@ namespace DOL.GS.Scripts
                 return;
             }
 
-            if (!ushort.TryParse(args[1], out ushort model) || model == 0)
+            bool useStaticItem = false;
+            int modelArgIdx = 1;
+            if (string.Equals(args[1], "item", System.StringComparison.OrdinalIgnoreCase))
+            {
+                useStaticItem = true;
+                modelArgIdx = 2;
+            }
+
+            if (args.Length <= modelArgIdx || !ushort.TryParse(args[modelArgIdx], out ushort model) || model == 0)
             {
                 player.Out.SendMessage("Model invalide. Donne un entier > 0.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
                 return;
             }
 
-            GameStaticItem fire = new()
+            GameObject spawned;
+            if (useStaticItem)
             {
-                Name = $"test-fire-{model}",
-                Model = model,
-                CurrentRegionID = player.CurrentRegionID,
-                X = player.X,
-                Y = player.Y,
-                Z = player.Z,
-                Heading = player.Heading,
-                Realm = eRealm.None,
-            };
-
-            if (!fire.AddToWorld())
+                GameStaticItem item = new()
+                {
+                    Name = $"test-fire-{model}",
+                    Model = model,
+                    CurrentRegionID = player.CurrentRegionID,
+                    X = player.X,
+                    Y = player.Y,
+                    Z = player.Z,
+                    Heading = player.Heading,
+                    Realm = eRealm.None,
+                };
+                if (!item.AddToWorld())
+                {
+                    player.Out.SendMessage($"Echec d'ajout du static item {model} dans la zone.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    return;
+                }
+                spawned = item;
+            }
+            else
             {
-                player.Out.SendMessage($"Echec d'ajout du modèle {model} dans la zone.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
-                return;
+                // Inert NPC: no brain (no aggro/movement), non-attackable flag set,
+                // zero size, zero health regen, level 0. Pure visual hull for the
+                // animated mob-model fire effects (1686, 1822, etc.) which only
+                // render correctly when attached to a GameNPC.
+                GameNPC fireNpc = new()
+                {
+                    Name = $"test-fire-{model}",
+                    Model = model,
+                    CurrentRegionID = player.CurrentRegionID,
+                    X = player.X,
+                    Y = player.Y,
+                    Z = player.Z,
+                    Heading = player.Heading,
+                    Realm = eRealm.None,
+                    Level = 1,
+                    Size = 50,
+                    Flags = GameNPC.eFlags.PEACE | GameNPC.eFlags.CANTTARGET | GameNPC.eFlags.DONTSHOWNAME,
+                };
+                if (!fireNpc.AddToWorld())
+                {
+                    player.Out.SendMessage($"Echec d'ajout du NPC fire {model} dans la zone.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    return;
+                }
+                spawned = fireNpc;
             }
 
             lock (_lock)
             {
                 if (!_testFires.TryGetValue(acct, out var list))
                 {
-                    list = new System.Collections.Generic.List<GameStaticItem>();
+                    list = new System.Collections.Generic.List<GameObject>();
                     _testFires[acct] = list;
                 }
-                list.Add(fire);
+                list.Add(spawned);
             }
 
-            player.Out.SendMessage($"Modèle {model} posé. /mcampfire clean pour tout retirer.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+            player.Out.SendMessage($"Modèle {model} ({(useStaticItem ? "static item" : "NPC")}) posé. /mcampfire clean pour tout retirer.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
         }
     }
 

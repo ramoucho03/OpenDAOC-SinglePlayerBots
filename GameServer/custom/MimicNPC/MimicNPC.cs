@@ -2413,8 +2413,11 @@ namespace DOL.GS.Scripts
 
         // Campfire visual the bot can deploy while regening in /mcamp set mode.
         // Held here so MimicState_Camp can spawn/remove it without leaking
-        // GameStaticItem instances between state transitions.
-        private GameStaticItem _campFire;
+        // instances between state transitions. Stored as GameObject so it
+        // works for both the modern inert-NPC path (animated mob-model fires
+        // like 1686 "vte5 fire effect") and the legacy GameStaticItem path
+        // (item-model fires controlled by mimic_campfire_use_npc=false).
+        private GameObject _campFire;
         private ECSGameTimer _campFireRegenTimer;
         // Range, period and amount of the mana/health/endurance bump that the
         // Modest regen pulse matching the spirit of the official "Comforting
@@ -2453,32 +2456,75 @@ namespace DOL.GS.Scripts
                 return;
 
             ushort model = (ushort)MimicConfig.MIMIC_CAMPFIRE_MODEL;
-            if (model == 0) model = 2656; // canonical OpenDAOC campfire model
+            if (model == 0) model = 1686; // default fire-effect mob model
 
             int fx = origin?.X ?? X;
             int fy = origin?.Y ?? Y;
             int fz = origin?.Z ?? Z;
 
-            // Lifted from the official Tinderbox item template (id b6997a94...
-            // in the OpenDAOC database). Same name + model the live "Comforting
-            // Flames" spell spawns when a tinderbox is used.
-            GameStaticItem fire = new()
-            {
-                Name = "campfire",
-                Model = model,
-                CurrentRegionID = CurrentRegionID,
-                X = fx,
-                Y = fy,
-                Z = fz,
-                Heading = Heading,
-                Realm = eRealm.None,
-            };
+            GameObject fire;
 
-            if (!fire.AddToWorld())
+            if (MimicConfig.MIMIC_CAMPFIRE_USE_NPC)
             {
-                log.WarnFormat("Failed to add campfire (model {0}) for {1} at ({2},{3},{4} in region {5})",
-                    model, Name, fx, fy, fz, CurrentRegionID);
-                return;
+                // Inert GameNPC carrying the mob-model fire effect. The mob
+                // model space (1686 = "vte5 fire effect", 1822 = "fire effect",
+                // 911 = "Bright Flame", etc.) contains the animated flame
+                // entities; mapping the same number through GameStaticItem
+                // resolves into the item model space and yields random props
+                // (the obelisk / sword the operator saw with 2656/2674).
+                //
+                // Flags make it unselectable, untargetable, no name plate,
+                // and the missing brain means no movement or aggro. Level 0
+                // and Size kept tiny so any stray collision math stays harmless.
+                GameNPC fireNpc = new()
+                {
+                    Name = "campfire",
+                    Model = model,
+                    CurrentRegionID = CurrentRegionID,
+                    X = fx,
+                    Y = fy,
+                    Z = fz,
+                    Heading = Heading,
+                    Realm = eRealm.None,
+                    Level = 1,
+                    Size = 50,
+                    Flags = GameNPC.eFlags.PEACE | GameNPC.eFlags.CANTTARGET | GameNPC.eFlags.DONTSHOWNAME,
+                };
+
+                if (!fireNpc.AddToWorld())
+                {
+                    log.WarnFormat("Failed to add campfire NPC (model {0}) for {1} at ({2},{3},{4} in region {5})",
+                        model, Name, fx, fy, fz, CurrentRegionID);
+                    return;
+                }
+
+                fire = fireNpc;
+            }
+            else
+            {
+                // Legacy path — kept for back-compat with operators who set
+                // mimic_campfire_use_npc=false and reference an item-model
+                // campfire (2656 is the historical OpenDAoC worldobject entry).
+                GameStaticItem fireItem = new()
+                {
+                    Name = "campfire",
+                    Model = model,
+                    CurrentRegionID = CurrentRegionID,
+                    X = fx,
+                    Y = fy,
+                    Z = fz,
+                    Heading = Heading,
+                    Realm = eRealm.None,
+                };
+
+                if (!fireItem.AddToWorld())
+                {
+                    log.WarnFormat("Failed to add campfire static item (model {0}) for {1} at ({2},{3},{4} in region {5})",
+                        model, Name, fx, fy, fz, CurrentRegionID);
+                    return;
+                }
+
+                fire = fireItem;
             }
 
             _campFire = fire;
@@ -2501,7 +2547,7 @@ namespace DOL.GS.Scripts
             if (!HasActiveCampFire)
                 return 0;
 
-            GameStaticItem fire = _campFire;
+            GameObject fire = _campFire;
             ushort regionId = fire.CurrentRegionID;
 
             // Use the fire's region to find players. Group members are the
