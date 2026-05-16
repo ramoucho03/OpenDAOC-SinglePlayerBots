@@ -126,23 +126,22 @@ namespace DOL.GS.Scripts
         public static int MIMIC_EMERGENCY_THRESHOLD;
 
         // Visual-only entity the bot drops at camp. The campfire is spawned
-        // as an inert GameNPC (with no brain) using a mob model — the
-        // animated DAoC fire effects (model 1686 "vte5 fire effect", 1822
-        // "fire effect", 911 "Bright Flame", 907 "torchlight") only render
-        // correctly when attached to a GameNPC, NOT a GameStaticItem. A
-        // GameStaticItem with the same number resolves into the item-model
-        // space and produces an obelisk / sword / random prop. Defaults to
-        // 1686 (the most common fire effect mob model on OpenDAoC).
+        // as a GameStaticItem (the historical OpenDAoC worldobject path)
+        // using model 3460 — confirmed on-server to render as a proper
+        // animated wood campfire on the live client. Model 2656 (the other
+        // worldobject "Campfire" entry) shows up as a stone obelisk on at
+        // least some client/world-data combos, so we avoid it by default.
         //
-        // To revert to the legacy GameStaticItem behaviour set
-        // mimic_campfire_use_npc=false; then mimic_campfire_model is read
-        // against the item-model space instead (2656 is the historical value).
+        // When mimic_campfire_use_npc=true, we spawn an inert GameNPC and
+        // read the model against the MOB model space instead — useful for
+        // animated mob fire effects (1686 "vte5 fire effect", 1822 "fire
+        // effect", 911 "Bright Flame", 907 "torchlight").
         [ServerProperty("npc", "mimic_campfire_model",
-            "Model used for the camp fire (mob model when mimic_campfire_use_npc=true, item model otherwise). Common mob fire effects: 1686, 1822, 911, 907.", 1686)]
+            "Model used for the camp fire. Default 3460 = OpenDAoC large wood campfire (rendered as GameStaticItem). Alternatives: 2656 (small campfire, may render as obelisk on some clients), or mob models 1686/1822/911 (require mimic_campfire_use_npc=true).", 3460)]
         public static int MIMIC_CAMPFIRE_MODEL;
 
         [ServerProperty("npc", "mimic_campfire_use_npc",
-            "When true (default), the camp fire is an inert GameNPC — required for animated fire mob models. When false, falls back to a GameStaticItem for legacy item-model campfires.", true)]
+            "When false (default), the camp fire is a GameStaticItem using a worldobject model (3460). When true, falls back to an inert GameNPC and the model is read against the mob model space — required for animated fire mob models (1686 etc.).", false)]
         public static bool MIMIC_CAMPFIRE_USE_NPC;
 
         // ----------------------------------------------------------------

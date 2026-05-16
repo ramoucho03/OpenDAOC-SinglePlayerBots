@@ -2456,7 +2456,7 @@ namespace DOL.GS.Scripts
                 return;
 
             ushort model = (ushort)MimicConfig.MIMIC_CAMPFIRE_MODEL;
-            if (model == 0) model = 1686; // default fire-effect mob model
+            if (model == 0) model = 3460; // default wood-campfire worldobject model
 
             int fx = origin?.X ?? X;
             int fy = origin?.Y ?? Y;

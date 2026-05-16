@@ -1017,7 +1017,7 @@ namespace DOL.GS.Scripts
 
     [CmdAttribute(
         "&mcampfire",
-        ePrivLevel.GM,
+        ePrivLevel.Player,
         "/mcampfire <model> - Spawn un GameNPC inerte (recommandé: feux animés via mob model, ex 1686/1822) à ta position.",
         "/mcampfire item <model> - Spawn un GameStaticItem (modèle d'objet, pas de mob).",
         "/mcampfire clean - Supprime tous les feux de test posés par cette commande.")]
