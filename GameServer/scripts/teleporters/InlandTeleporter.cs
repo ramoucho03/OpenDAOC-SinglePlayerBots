@@ -116,7 +116,7 @@ namespace DOL.GS.Scripts
                               "[Gothwaite Harbor] in the [Shrouded Isles],\n" +
                               "[Camelot] our glorious capital,\n" +
                               "[Entrance] to the areas of [Housing]\n\n" +
-                              "or one of the many [towns] throughout Albion.";
+                              "or one of the many [towns] throughout Albion.\n" +
                               "I can also send you to [Darkness Falls].";
                     break;
 
