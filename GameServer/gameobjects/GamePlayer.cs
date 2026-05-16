@@ -4371,7 +4371,13 @@ namespace DOL.GS
                     }
                 }
 
-                if (CurrentRegion.IsRvR || CurrentZone.IsRvR)
+                // Null-safe RvR check: CurrentRegion / CurrentZone can be
+                // null during world-entry XP grants (e.g. quest auto-grant
+                // fires before the player is fully placed). Treat null as
+                // "not RvR" rather than NPE.
+                bool isRvrXp = (CurrentRegion != null && CurrentRegion.IsRvR)
+                            || (CurrentZone != null && CurrentZone.IsRvR);
+                if (isRvrXp)
                     baseXp = (long) (baseXp * Properties.RvR_XP_RATE);
                 else
                     baseXp = (long) (baseXp * Properties.XP_RATE);
@@ -13073,8 +13079,16 @@ namespace DOL.GS
             {
                 double modifier = ServerProperties.Properties.CL_XP_RATE;
 
+                // CurrentRegion can be null during world-entry / region
+                // transition when GainExperience fires before the player is
+                // fully placed. The d64fbf06a commit re-enabled
+                // GainChampionExperience from GainExperience, surfacing this
+                // latent NPE — treat null as "not RvR" so the math falls
+                // through to the slower CLXP rate instead of crashing.
+                bool inRvR = CurrentRegion != null && CurrentRegion.IsRvR;
+
                 // 1 CLXP point per 333K normal XP
-                if (this.CurrentRegion.IsRvR)
+                if (inRvR)
                 {
                     experience = (long)((double)experience * modifier / 333000);
                 }

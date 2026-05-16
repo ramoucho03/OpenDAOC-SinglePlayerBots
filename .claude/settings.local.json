@@ -34,7 +34,8 @@
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Olivier\\\\botdaoc\\\\OpenDAOC-SinglePlayerBots\\\\GameServer\\\\gameutils\" -Directory -Filter \"*rontier*\" -ErrorAction SilentlyContinue)",
       "Bash(gh search *)",
       "WebFetch(domain:camelot.allakhazam.com)",
-      "Bash(git log *)"
+      "Bash(git log *)",
+      "Bash(powershell -Command \"Select-String -Path 'c:\\\\Users\\\\Olivier\\\\botdaoc\\\\OpenDAOC-SinglePlayerBots\\\\GameServer\\\\packets\\\\Server\\\\PacketLib168.cs' -Pattern 'SendUpdateWeaponAndArmorStats' -Context 50 | Select-Object -First 100\")"
     ]
   }
 }

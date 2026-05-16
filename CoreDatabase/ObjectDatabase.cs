@@ -20,7 +20,11 @@ namespace DOL.Database
 	{
 		protected static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
-		protected const long LONG_EXEC_THRESHOLD = 100;
+		// 500ms is a more realistic threshold for "this query is genuinely slow".
+		// Below that, you're mostly logging InnoDB commit fsync latency under load,
+		// which spams the log without revealing real problems. Raise temporarily to
+		// 100ms when chasing a specific slowdown.
+		protected const long LONG_EXEC_THRESHOLD = 500;
 
 		/// <summary>
 		/// Number Format Info to Use for Database

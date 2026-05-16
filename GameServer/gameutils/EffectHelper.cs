@@ -555,6 +555,16 @@ namespace DOL.GS
                     continue;
 
                 ISpellHandler handler = ScriptMgr.CreateSpellHandler(player, spell, line);
+
+                // ScriptMgr.CreateSpellHandler returns null when no
+                // SpellHandler is registered for the spell type (e.g. Heretic
+                // chant spell types like HereticDamageOnPulse that have no
+                // handler class). Without this guard the next two lines NPE
+                // and bubble all the way up, disconnecting the player at
+                // world entry. Skip the effect instead.
+                if (handler == null)
+                    continue;
+
                 handler.Spell.Duration = savedEffect.Duration;
                 handler.StartSpell(player);
                 player.Out.SendStatusUpdate();

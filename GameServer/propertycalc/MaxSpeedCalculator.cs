@@ -65,7 +65,14 @@ namespace DOL.GS.PropertyCalc
                         speedIncrease *= 1.25; // New run speed is 125% when no buff.
                 }
 
-                if (player.IsEncumbered && player.Client.Account.PrivLevel == 1 && ServerProperties.Properties.ENABLE_ENCUMBERANCE_SPEED_LOSS)
+                // Resolve PrivLevel safely — Client / Account can be null for
+                // bots (DummyClient guards exist) but also during transient
+                // states on real players. The encumbrance + stealth path used
+                // to NPE here when called from effect cleanup during world
+                // entry or region transition.
+                uint privLevel = player.Client?.Account?.PrivLevel ?? (uint)ePrivLevel.Player;
+
+                if (player.IsEncumbered && privLevel == (uint)ePrivLevel.Player && ServerProperties.Properties.ENABLE_ENCUMBERANCE_SPEED_LOSS)
                 {
                     speedIncrease *= player.MaxSpeedModifierFromEncumbrance;
 
@@ -73,7 +80,7 @@ namespace DOL.GS.PropertyCalc
                         speedIncrease = 0;
                 }
 
-                if (player.IsStealthed && player.Client.Account.PrivLevel == 1)
+                if (player.IsStealthed && privLevel == (uint)ePrivLevel.Player)
                 {
                     AtlasOF_MasteryOfStealth mos = player.GetAbility<AtlasOF_MasteryOfStealth>();
                     //GameSpellEffect bloodrage = SpellHandler.FindEffectOnTarget(player, "BloodRage");

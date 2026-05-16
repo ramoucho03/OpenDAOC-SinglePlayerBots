@@ -75,7 +75,53 @@ services:
     container_name: opendaoc-db
     stdin_open: true
     tty: true
-    command: --default-authentication-plugin=mysql_native_password --lower_case_table_names=1 --character-set-server=utf8mb3 --collation-server=utf8mb3_general_ci --innodb_large_prefix=1 --innodb_file_format=Barracuda --innodb_file_per_table=1
+    # Tuning for a 12-24 GB / 12 vCPU host.
+    # - innodb_buffer_pool_size: 2G fully caches the whole OpenDAOC DB (~200 MB
+    #   total) plus headroom for growth, so reads never hit disk after warmup.
+    # - innodb_buffer_pool_instances: 4 splits the pool to reduce mutex
+    #   contention when many threads read/write concurrently (login waves,
+    #   100+ Mimic bots ticking every frame).
+    # - innodb_log_file_size: 256M lets InnoDB batch many writes between
+    #   checkpoints, slashing per-INSERT latency on the game-loop workload.
+    # - innodb_log_buffer_size: 32M absorbs large transactions in RAM before
+    #   they ever touch the log file.
+    # - innodb_flush_log_at_trx_commit=2: fsync once per second instead of
+    #   per commit. You can lose ~1s of writes if the container is yanked,
+    #   which is acceptable for a game server (autosave runs every 10 min).
+    # - innodb_flush_method=O_DIRECT: bypass OS page cache, avoids double
+    #   buffering that wastes RAM.
+    # - innodb_io_capacity=2000 / max=4000: assume SSD. Drop both 10× on HDD.
+    # - innodb_read/write_io_threads=8: scale background I/O with 12 vCPU.
+    # - innodb_purge_threads=4: parallelise the undo-log cleanup so it
+    #   doesn't pile up under churn (Mimic loot pickups, drops).
+    # - max_connections=500: lots of headroom for the gameserver's MinPool=30
+    #   plus the 100+ Mimic threads grabbing pooled connections.
+    # - table_open_cache=4000 / thread_cache_size=100: avoid file-open and
+    #   thread-create overhead on bursty workloads.
+    command: >-
+      --default-authentication-plugin=mysql_native_password
+      --lower_case_table_names=1
+      --character-set-server=utf8mb3
+      --collation-server=utf8mb3_general_ci
+      --innodb_large_prefix=1
+      --innodb_file_format=Barracuda
+      --innodb_file_per_table=1
+      --innodb_buffer_pool_size=2G
+      --innodb_buffer_pool_instances=4
+      --innodb_log_file_size=256M
+      --innodb_log_buffer_size=32M
+      --innodb_flush_log_at_trx_commit=2
+      --innodb_flush_method=O_DIRECT
+      --innodb_io_capacity=2000
+      --innodb_io_capacity_max=4000
+      --innodb_read_io_threads=8
+      --innodb_write_io_threads=8
+      --innodb_purge_threads=4
+      --max_connections=500
+      --table_open_cache=4000
+      --thread_cache_size=100
+      --tmp_table_size=128M
+      --max_heap_table_size=128M
     restart: always
     environment:
       MYSQL_DATABASE: opendaoc
