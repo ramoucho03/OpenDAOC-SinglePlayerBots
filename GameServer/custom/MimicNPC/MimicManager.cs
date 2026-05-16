@@ -1210,6 +1210,7 @@ namespace DOL.GS.Scripts
                 case eMimicClass.Sorcerer: return new SorcererSpec(spec);
                 case eMimicClass.Theurgist: return new TheurgistSpec(spec);
                 case eMimicClass.Wizard: return new WizardSpec(spec);
+                case eMimicClass.Heretic: return new HereticSpec(spec);
 
                 case eMimicClass.Animist: return new AnimistSpec(spec);
                 case eMimicClass.Bainshee: return new BainsheeSpec(spec);

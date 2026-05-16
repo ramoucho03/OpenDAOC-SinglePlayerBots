@@ -33,6 +33,7 @@ namespace DOL.GS.Scripts
         Sorcerer = 8,
         Theurgist = 5,
         Wizard = 7,
+        Heretic = 33,
 
         Animist = 55,
         Bainshee = 39,

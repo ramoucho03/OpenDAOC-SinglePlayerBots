@@ -498,7 +498,14 @@ namespace DOL.GS
         public TryPickUpResult TryAutoPickUpItem(WorldInventoryItem inventoryItem)
         {
             // We don't care if players have auto loot enabled, or if they can see the item (the item isn't added to the world yet anyway), or who attacked last, etc.
-            return TryPickUpItem(Leader, inventoryItem);
+            // Leader can be null when the group is mid-disband (last human just
+            // left, mimics in the middle of being cleaned up) but a mob death
+            // tick still slips a loot pickup through. Bail instead of NPE'ing
+            // in TryPickUpItem.
+            IGamePlayer leader = Leader;
+            if (leader == null)
+                return TryPickUpResult.DoesNotWant;
+            return TryPickUpItem(leader, inventoryItem);
         }
 
         public TryPickUpResult TryPickUpMoney(IGamePlayer source, GameMoney money)

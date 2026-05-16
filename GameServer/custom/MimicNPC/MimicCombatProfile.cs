@@ -367,6 +367,10 @@ namespace DOL.GS.Scripts
             Add(Profile(eMimicClass.Sorcerer, supportCc | eMimicCombatRole.CasterDps | eMimicCombatRole.Debuffer, eMimicCombatRole.CrowdControl, eMimicAoePolicy.CrowdControlWhenClustered, CcPve, CcPvp));
             Add(Profile(eMimicClass.Theurgist, petCaster | eMimicCombatRole.CrowdControl, eMimicCombatRole.PetCaster, eMimicAoePolicy.DamageWhenClustered, DpsPve, DpsPvp, 3));
             Add(Profile(eMimicClass.Wizard, caster, eMimicCombatRole.CasterDps, eMimicAoePolicy.DamageWhenClustered | eMimicAoePolicy.PbaoeWhenSafe, DpsPve, DpsPvp));
+            // Heretic: Catacombs Acolyte sub-class. Hybrid healer + caster +
+            // light melee, with chant pressure as primary DPS. Roles match
+            // its dual identity: healer + caster + occasional puller.
+            Add(Profile(eMimicClass.Heretic, healer | eMimicCombatRole.CasterDps | eMimicCombatRole.Debuffer | eMimicCombatRole.Puller, eMimicCombatRole.CasterDps, eMimicAoePolicy.DamageWhenClustered | eMimicAoePolicy.PbaoeWhenSafe, HealerPve, HealerPvp, 3));
 
             Add(Profile(eMimicClass.Animist, petCaster | eMimicCombatRole.CrowdControl, eMimicCombatRole.PetCaster, eMimicAoePolicy.DamageWhenClustered | eMimicAoePolicy.CrowdControlWhenClustered, CcPve, CcPvp, 3));
             Add(Profile(eMimicClass.Bainshee, caster | eMimicCombatRole.Debuffer, eMimicCombatRole.CasterDps, eMimicAoePolicy.DamageWhenClustered | eMimicAoePolicy.PbaoeWhenSafe, DpsPve, DpsPvp));
