@@ -664,13 +664,16 @@ namespace DOL.GS.Scripts
 
     #region MimicGroup
 
+    // Alias `&m` was removed: it conflicts with the native `&makeleader` command's
+    // alias (DOL registers it first, so this one would throw at startup). Keep `&mlfg`
+    // as the canonical name plus the short `&mi` for ergonomic typing.
     [CmdAttribute(
        "&mlfg",
-       new[] { "&m" },
+       new[] { "&mi" },
        ePrivLevel.Player,
        "/mlfg [index] - Liste les mimics cherchant un groupe, ou recrute celui correspondant à l'index donné.",
-       "/m <index> - Raccourci pour /mlfg <index>.",
-       "/m page <n> - Raccourci pour /mlfg page <n>.")]
+       "/mi <index> - Raccourci pour /mlfg <index>.",
+       "/mi page <n> - Raccourci pour /mlfg page <n>.")]
     public class MimicLfgCommandHandler : AbstractCommandHandler, ICommandHandler
     {
         public void OnCommand(GameClient client, string[] args)

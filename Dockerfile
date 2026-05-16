@@ -52,6 +52,26 @@ RUN cp CoreServer/config/serverconfig.example.xml CoreServer/config/serverconfig
 RUN dotnet build DOLLinux.sln -c Release
 
 # ============================================================================
+# Native stage — compile the Detour pathfinding library against musl libc so
+# it's binary-compatible with the alpine runtime. Cannot build it in the .NET
+# SDK image (debian/glibc) because the resulting .so would fail to load under
+# alpine's musl with `Error loading shared library Detour.so: not found`.
+# ============================================================================
+FROM alpine:3.20 AS native
+LABEL stage=native
+
+RUN apk add --no-cache cmake g++ make
+
+WORKDIR /native
+COPY Pathing/Detour ./Detour
+
+# CMake produces `libDetour.so` by default; the managed P/Invoke looks for
+# `lib/Detour` (without the `lib` prefix), so we rename on copy.
+RUN cmake -S Detour -B build -DCMAKE_BUILD_TYPE=Release \
+    && cmake --build build --parallel \
+    && cp build/libDetour.so /native/Detour.so
+
+# ============================================================================
 # Runtime stage — ASP.NET 10 on Alpine, smaller than the SDK
 # ============================================================================
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS final
@@ -66,6 +86,12 @@ WORKDIR /app
 
 # Runtime tree produced by the build stage.
 COPY --from=build /build/Release /app
+
+# Native pathfinding library, compiled against alpine/musl in the native stage
+# so it loads at runtime. Without this, the server logs
+# `DllNotFoundException: Unable to load shared library 'lib/Detour'` and the
+# navmesh-dependent code paths fall back to less precise pathing.
+COPY --from=native /native/Detour.so /app/lib/Detour.so
 
 # Pre-baked SQL schema, ready for the db-seed sidecar to copy into the shared
 # volume mounted at /docker-entrypoint-initdb.d on the db container.
