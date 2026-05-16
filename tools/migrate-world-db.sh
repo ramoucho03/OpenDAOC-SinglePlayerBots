@@ -23,12 +23,27 @@
 set -Eeuo pipefail
 
 # ------------------------------- Defaults --------------------------------------
+#
+# WARNING: credentials are baked into this file for convenience. Do NOT commit
+# this script to a public repo as-is. If you do, override with --pass / --user
+# / --container and clear the defaults below, or move them to an env file
+# sourced before running.
 
 DB_NAME="opendaoc"
-DB_HOST="localhost"
-DB_PORT="3306"
 DB_USER="root"
-DB_PASS=""
+DB_PASS="my-secret-pw"
+DB_HOST="localhost"          # only used when --no-docker
+DB_PORT="3306"               # only used when --no-docker
+
+# Docker mode is the default since the DB runs inside a container.
+DOCKER_CONTAINER="opendaoc-db"
+DOCKER_CMD="sudo docker"     # set to "docker" if your user is in the docker group
+USE_DOCKER="yes"
+
+# Resolved at runtime by detect_container_binaries() (modern vs legacy MariaDB).
+CONTAINER_CLIENT=""          # "mariadb" or "mysql"
+CONTAINER_DUMP=""            # "mariadb-dump" or "mysqldump"
+
 ASSUME_YES="no"
 
 BACKUP_DIR="${BACKUP_DIR:-./db-backups}"
@@ -78,46 +93,58 @@ PRESERVED_TABLES=(
 # ------------------------------ Helpers ----------------------------------------
 
 color()    { printf '\033[%sm%s\033[0m\n' "$1" "$2"; }
-log()      { color '1;36' "[migrate] $*"; }
-warn()     { color '1;33' "[migrate] WARN: $*" >&2; }
-err()      { color '1;31' "[migrate] ERROR: $*" >&2; }
+# Logs always go to stderr so functions that return values via stdout
+# (e.g. `backup_full`, `clone_new_db`) can be captured cleanly with $(...).
+log()      { printf '\033[1;36m[migrate] %s\033[0m\n' "$*" >&2; }
+warn()     { printf '\033[1;33m[migrate] WARN: %s\033[0m\n' "$*" >&2; }
+err()      { printf '\033[1;31m[migrate] ERROR: %s\033[0m\n' "$*" >&2; }
 die()      { err "$*"; exit 1; }
 
 usage() {
   cat <<EOF
 Usage: $0 [options]
 
+Defaults assume Docker mode against container '$DOCKER_CONTAINER' with the
+credentials hardcoded at the top of this script.
+
 Options:
-  --db NAME       Database name             (default: $DB_NAME)
-  --host HOST     MySQL host                (default: $DB_HOST)
-  --port PORT     MySQL port                (default: $DB_PORT)
-  --user USER     MySQL user                (default: $DB_USER)
-  --pass PASS     MySQL password            (default: prompted)
-  --backup-dir D  Backup directory          (default: $BACKUP_DIR)
-  --branch B      OpenDAoC-Database branch  (default: $REPO_BRANCH)
-  -y, --yes       Skip all confirmations    (DANGEROUS)
-  -h, --help      Show this help
+  --db NAME          Database name              (default: $DB_NAME)
+  --user USER        MySQL user                 (default: $DB_USER)
+  --pass PASS        MySQL password             (default: hardcoded)
+  --container NAME   Docker container name      (default: $DOCKER_CONTAINER)
+  --docker-cmd CMD   Docker command prefix      (default: "$DOCKER_CMD")
+  --no-docker        Use mysql/mysqldump on host instead of docker exec
+  --host HOST        MySQL host (no-docker)     (default: $DB_HOST)
+  --port PORT        MySQL port (no-docker)     (default: $DB_PORT)
+  --backup-dir D     Backup directory           (default: $BACKUP_DIR)
+  --branch B         OpenDAoC-Database branch   (default: $REPO_BRANCH)
+  -y, --yes          Skip all confirmations     (DANGEROUS)
+  -h, --help         Show this help
 
-Environment:
-  MYSQL_PWD       Used as password if --pass is not set (skips prompt).
+Examples:
+  # Docker mode, all defaults (typical case)
+  $0
 
-Example:
-  $0 --db opendaoc --user root
+  # Host mode (mysql client on host)
+  $0 --no-docker --host 127.0.0.1
 EOF
 }
 
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --db)         DB_NAME="$2";  shift 2 ;;
-      --host)       DB_HOST="$2";  shift 2 ;;
-      --port)       DB_PORT="$2";  shift 2 ;;
-      --user)       DB_USER="$2";  shift 2 ;;
-      --pass)       DB_PASS="$2";  shift 2 ;;
-      --backup-dir) BACKUP_DIR="$2"; shift 2 ;;
-      --branch)     REPO_BRANCH="$2"; shift 2 ;;
-      -y|--yes)     ASSUME_YES="yes"; shift ;;
-      -h|--help)    usage; exit 0 ;;
+      --db)          DB_NAME="$2";          shift 2 ;;
+      --user)        DB_USER="$2";          shift 2 ;;
+      --pass)        DB_PASS="$2";          shift 2 ;;
+      --container)   DOCKER_CONTAINER="$2"; shift 2 ;;
+      --docker-cmd)  DOCKER_CMD="$2";       shift 2 ;;
+      --no-docker)   USE_DOCKER="no";       shift ;;
+      --host)        DB_HOST="$2";          shift 2 ;;
+      --port)        DB_PORT="$2";          shift 2 ;;
+      --backup-dir)  BACKUP_DIR="$2";       shift 2 ;;
+      --branch)      REPO_BRANCH="$2";      shift 2 ;;
+      -y|--yes)      ASSUME_YES="yes";      shift ;;
+      -h|--help)     usage; exit 0 ;;
       *) die "Unknown argument: $1 (use --help)" ;;
     esac
   done
@@ -142,30 +169,80 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# mysql / mysqldump wrappers: pull password from MYSQL_PWD env to avoid argv exposure.
-my_mysql()     { MYSQL_PWD="$DB_PASS" mysql     -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$@"; }
-my_mysqldump() { MYSQL_PWD="$DB_PASS" mysqldump -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$@"; }
+# mysql / mysqldump wrappers.
+# Docker mode: shell out to `docker exec`, pass password via -e MYSQL_PWD so it
+# never appears in argv / ps. Container is expected to have `mariadb` and
+# `mariadb-dump` (modern MariaDB) or `mysql` / `mysqldump` (legacy) binaries.
+#
+# Host mode: same env-var trick, against mysql/mysqldump on the host.
+my_mysql() {
+  if [[ "$USE_DOCKER" == "yes" ]]; then
+    $DOCKER_CMD exec -i -e MYSQL_PWD="$DB_PASS" "$DOCKER_CONTAINER" \
+      "$CONTAINER_CLIENT" -u "$DB_USER" "$@"
+  else
+    MYSQL_PWD="$DB_PASS" mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$@"
+  fi
+}
+
+my_mysqldump() {
+  if [[ "$USE_DOCKER" == "yes" ]]; then
+    $DOCKER_CMD exec -e MYSQL_PWD="$DB_PASS" "$DOCKER_CONTAINER" \
+      "$CONTAINER_DUMP" -u "$DB_USER" "$@"
+  else
+    MYSQL_PWD="$DB_PASS" mysqldump -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$@"
+  fi
+}
+
+detect_container_binaries() {
+  # Pick whichever client / dump binary exists in the container, modern first.
+  for c in mariadb mysql; do
+    if $DOCKER_CMD exec "$DOCKER_CONTAINER" sh -c "command -v $c" >/dev/null 2>&1; then
+      CONTAINER_CLIENT="$c"; break
+    fi
+  done
+  for d in mariadb-dump mysqldump; do
+    if $DOCKER_CMD exec "$DOCKER_CONTAINER" sh -c "command -v $d" >/dev/null 2>&1; then
+      CONTAINER_DUMP="$d"; break
+    fi
+  done
+  [[ -n "$CONTAINER_CLIENT" ]] || die "Neither 'mariadb' nor 'mysql' found in container '$DOCKER_CONTAINER'."
+  [[ -n "$CONTAINER_DUMP" ]]   || die "Neither 'mariadb-dump' nor 'mysqldump' found in container '$DOCKER_CONTAINER'."
+  log "Container binaries: client=$CONTAINER_CLIENT, dump=$CONTAINER_DUMP"
+}
 
 # ------------------------------ Steps ------------------------------------------
 
 require_tools() {
-  for t in git mysql mysqldump; do
-    command -v "$t" >/dev/null 2>&1 || die "Required tool not in PATH: $t"
-  done
+  command -v git >/dev/null 2>&1 || die "Required tool not in PATH: git"
+
+  if [[ "$USE_DOCKER" == "yes" ]]; then
+    # Probe the docker command (which may be "sudo docker", "docker", etc.).
+    $DOCKER_CMD version >/dev/null 2>&1 \
+      || die "Cannot run '$DOCKER_CMD version'. Adjust --docker-cmd or install Docker."
+    $DOCKER_CMD inspect "$DOCKER_CONTAINER" >/dev/null 2>&1 \
+      || die "Docker container '$DOCKER_CONTAINER' not found. Is it running?"
+  else
+    for t in mysql mysqldump; do
+      command -v "$t" >/dev/null 2>&1 || die "Required tool not in PATH: $t"
+    done
+  fi
 }
 
 prompt_password() {
-  if [[ -z "$DB_PASS" && -n "${MYSQL_PWD:-}" ]]; then
-    DB_PASS="$MYSQL_PWD"
-  fi
+  # Password is hardcoded at the top of the script. Only prompt if the user
+  # explicitly cleared it via --pass "".
   if [[ -z "$DB_PASS" ]]; then
-    read -r -s -p "$(color '1;35' "MySQL password for $DB_USER@$DB_HOST: ")" DB_PASS
+    read -r -s -p "$(color '1;35' "MySQL password for $DB_USER: ")" DB_PASS
     echo
   fi
 }
 
 test_connection() {
-  log "Testing connection to $DB_USER@$DB_HOST:$DB_PORT/$DB_NAME"
+  if [[ "$USE_DOCKER" == "yes" ]]; then
+    log "Testing connection: $DOCKER_CMD exec $DOCKER_CONTAINER mariadb -u$DB_USER -> $DB_NAME"
+  else
+    log "Testing connection to $DB_USER@$DB_HOST:$DB_PORT/$DB_NAME"
+  fi
   my_mysql -e "USE \`$DB_NAME\`; SELECT 1;" >/dev/null \
     || die "Cannot connect or database '$DB_NAME' does not exist."
 }
@@ -396,6 +473,7 @@ sanity_check() {
 main() {
   parse_args "$@"
   require_tools
+  [[ "$USE_DOCKER" == "yes" ]] && detect_container_binaries
   prompt_password
   test_connection
   confirm_server_stopped

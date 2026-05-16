@@ -38,12 +38,151 @@ namespace DOL.GS.Scripts
         public Point3D CampPoint { get; private set; }
         public Point2D PullFromPoint {get; private set; }
 
-        public List<GameLiving> CCTargets { get; set; }
+        // Thread-safe CC target list. Multiple bot brains tick on different
+        // threads, and the previous raw List<GameLiving> was mutated without
+        // any synchronisation (see TESTING.md). Callers now go through the
+        // helpers below (AddCcTarget / RemoveCcTarget / GetCcTargetsSnapshot /
+        // ClearCcTargets / CcTargetCount / ContainsCcTarget), which take the
+        // dedicated lock. The public CCTargets property remains as a snapshot
+        // accessor for legacy enumeration; never mutate the returned list.
+        private readonly List<GameLiving> _ccTargets = new();
+        private readonly Lock _ccTargetsLock = new();
+
+        /// <summary>
+        /// Snapshot of the current CC targets. Safe to enumerate / index but
+        /// MUTATION on the returned list has no effect on the group state —
+        /// use AddCcTarget / RemoveCcTarget / ClearCcTargets instead.
+        /// </summary>
+        public IReadOnlyList<GameLiving> CCTargets
+        {
+            get
+            {
+                lock (_ccTargetsLock)
+                    return _ccTargets.Count == 0 ? System.Array.Empty<GameLiving>() : _ccTargets.ToArray();
+            }
+        }
+
+        /// <summary>Number of currently tracked CC targets.</summary>
+        public int CcTargetCount
+        {
+            get
+            {
+                lock (_ccTargetsLock)
+                    return _ccTargets.Count;
+            }
+        }
+
+        /// <summary>Adds a CC target idempotently. Returns true when it was newly added.</summary>
+        public bool AddCcTarget(GameLiving target)
+        {
+            if (target == null)
+                return false;
+            lock (_ccTargetsLock)
+            {
+                if (_ccTargets.Contains(target))
+                    return false;
+                _ccTargets.Add(target);
+                return true;
+            }
+        }
+
+        /// <summary>Removes a CC target. Returns true when it was present.</summary>
+        public bool RemoveCcTarget(GameLiving target)
+        {
+            if (target == null)
+                return false;
+            lock (_ccTargetsLock)
+                return _ccTargets.Remove(target);
+        }
+
+        /// <summary>Drops every tracked CC target.</summary>
+        public void ClearCcTargets()
+        {
+            lock (_ccTargetsLock)
+                _ccTargets.Clear();
+        }
+
+        public bool ContainsCcTarget(GameLiving target)
+        {
+            if (target == null)
+                return false;
+            lock (_ccTargetsLock)
+                return _ccTargets.Contains(target);
+        }
+
+        /// <summary>
+        /// Re-validates the tracked CC targets, dropping any that the supplied
+        /// predicate rejects (dead, despawned, etc.). Returns the new count.
+        /// </summary>
+        public int ValidateCcTargets(System.Func<GameLiving, bool> keepPredicate)
+        {
+            if (keepPredicate == null)
+                return CcTargetCount;
+            lock (_ccTargetsLock)
+            {
+                _ccTargets.RemoveAll(gl => !keepPredicate(gl));
+                return _ccTargets.Count;
+            }
+        }
+
+        /// <summary>
+        /// Picks one of the tracked CC targets at random (or null if empty).
+        /// Pull-target fallback used by the main puller when CC pre-mez is staged.
+        /// </summary>
+        public GameLiving PickRandomCcTarget()
+        {
+            lock (_ccTargetsLock)
+            {
+                if (_ccTargets.Count == 0)
+                    return null;
+                return _ccTargets[Util.Random(_ccTargets.Count - 1)];
+            }
+        }
 
         // Default minimum con-level to pull: -1 (blue). The puller skips grey
         // (-3) and green (-2) by default so chain-pulling doesn't burn cycles
         // on no-xp / trivial mobs. Players can relax it via /mcamp.
         public int ConLevelFilter = -1;
+
+        // ---- Group-level chat dedup ----
+        // A "topic" (e.g. "say-low-health") is staked by the first bot that
+        // says it. Other bots in the group are silenced on that topic until
+        // the cooldown elapses — prevents 8 bots all shouting "I'm low!" in
+        // 2 seconds after a wipe. Per-topic timestamps, lock-protected.
+        private readonly System.Collections.Generic.Dictionary<string, long> _chatTopicUntil
+            = new System.Collections.Generic.Dictionary<string, long>(System.StringComparer.OrdinalIgnoreCase);
+        private readonly Lock _chatTopicLock = new();
+
+        /// <summary>
+        /// Tries to claim the right to speak on <paramref name="topic"/> at
+        /// the group level. Returns true (and arms the cooldown) when the
+        /// caller is free to speak; false when another group member already
+        /// covered that topic within the dedup window.
+        ///
+        /// <paramref name="cooldownMs"/> defaults to
+        /// <see cref="MimicConfig.MIMIC_GROUP_CHAT_DEDUP_MS"/>. Pass 0 to
+        /// bypass the dedup entirely.
+        /// </summary>
+        public bool TryClaimChatTopic(string topic, int cooldownMs = -1)
+        {
+            if (string.IsNullOrEmpty(topic))
+                return true; // unscoped chat is always allowed
+
+            int cd = cooldownMs < 0 ? MimicConfig.MIMIC_GROUP_CHAT_DEDUP_MS : cooldownMs;
+            if (cd <= 0)
+                return true;
+
+            long now = GameLoop.GameLoopTime;
+
+            lock (_chatTopicLock)
+            {
+                if (_chatTopicUntil.TryGetValue(topic, out long until) && until > now)
+                    return false;
+
+                _chatTopicUntil[topic] = now + cd;
+                return true;
+            }
+        }
 
         #region Camp Phase State Machine
 
@@ -153,7 +292,6 @@ namespace DOL.GS.Scripts
             MainTank = leader;
             MainCC = leader;
             MainPuller = leader;
-            CCTargets = new List<GameLiving>();
         }
 
         public bool SetLeader(GameLiving living)

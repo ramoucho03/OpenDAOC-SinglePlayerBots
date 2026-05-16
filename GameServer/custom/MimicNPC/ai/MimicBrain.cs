@@ -28,13 +28,34 @@ using static DOL.GS.Styles.Style;
 
 namespace DOL.AI.Brain
 {
-    public class MimicBrain : ABrain, IOldAggressiveBrain
+    // MimicBrain is intentionally split across several partial files
+    // (MimicBrain.*.cs) — heal cycle, pull cycle, etc. — so each subsystem
+    // stays navigable. Add a new partial file rather than growing this one
+    // further.
+    public partial class MimicBrain : ABrain, IOldAggressiveBrain
     {
         protected static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
         public override bool IsActive => Body != null && Body.IsAlive && Body.ObjectState == GameObject.eObjectState.Active;
 
+        /// <summary>
+        /// Runtime "I'm acting as the group healer" flag. Set by group
+        /// composition logic and toggleable at runtime (e.g. via
+        /// <c>MimicGroup.SetHealer</c> or /mset). Distinct from the
+        /// class-level CAPABILITY: see <see cref="IsHealerCapable"/>.
+        /// </summary>
         public bool IsHealer = false;
+
+        /// <summary>
+        /// True when the bot's class profile carries the Healer role,
+        /// independently of whether it has been assigned the group healer
+        /// duty this session. Sites that need "can this bot heal at all?"
+        /// (loot decisions, group composition, rez eligibility) should ask
+        /// this rather than <see cref="IsHealer"/>.
+        /// </summary>
+        public bool IsHealerCapable
+            => MimicBody?.CombatProfile?.HasRole(DOL.GS.Scripts.eMimicCombatRole.Healer) == true;
+
         public bool IsMainPuller { get { return Body.Group?.MimicGroup.MainPuller == Body; } }
         public bool IsMainTank { get { return Body.Group?.MimicGroup.MainTank == Body; } }
         public bool IsMainLeader { get { return Body.Group?.MimicGroup.MainLeader == Body; } }
@@ -920,19 +941,10 @@ namespace DOL.AI.Brain
         private long _pullStartTick;
 
         // Time the mana throttle activated. If it stays sticky for more than
-        // MAX_MANA_THROTTLE_MS we forcibly release it: the group is either
-        // stuck (a dead caster the throttle is waiting on) or the heuristic
-        // is wrong, and either way we want farming to resume.
+        // MimicConfig.MIMIC_MAX_MANA_THROTTLE_MS we forcibly release it: the
+        // group is either stuck (a dead caster the throttle is waiting on)
+        // or the heuristic is wrong, and either way we want farming to resume.
         private long _manaThrottleSinceTick;
-        private const int MAX_MANA_THROTTLE_MS = 90_000;
-
-        // Soft cap on how long a single pull can be in flight before we
-        // assume it's lost (cast interrupted, LoS broken, aggro never
-        // landed, mob walked off). Was 12s, lowered to 6s so a failed pull
-        // doesn't waste 6 extra seconds of the puller standing still — that
-        // dead time was a big chunk of the user-reported "5 minute random
-        // pull". The camp-state watchdog still uses 12s as a hard fallback.
-        private const int PULL_TIMEOUT_MS = 6_000;
 
         public void CheckPuller()
         {
@@ -942,7 +954,7 @@ namespace DOL.AI.Brain
             // user observed. The next tick re-evaluates from where we are.
             if (IsPulling
                 && _pullStartTick > 0
-                && GameLoop.GameLoopTime - _pullStartTick > PULL_TIMEOUT_MS)
+                && GameLoop.GameLoopTime - _pullStartTick > MimicConfig.MIMIC_PULL_TIMEOUT_MS)
             {
                 SoftResetPullerInPlace();
                 return;
@@ -974,10 +986,17 @@ namespace DOL.AI.Brain
                     _chainPullCount++;
                     Body.ReturnToSpawnPoint(Body.MaxSpeed);
 
-                    if (MimicBody.CharacterClass.ID != (int)eCharacterClass.Hunter &&
-                        MimicBody.CharacterClass.ID != (int)eCharacterClass.Ranger &&
-                        MimicBody.CharacterClass.ID != (int)eCharacterClass.Scout &&
-                        MimicBody.CharacterClass.ClassType != eClassType.ListCaster)
+                    // Switch back to a melee weapon after firing the pull —
+                    // unless the bot's role IS the ranged engagement (archer)
+                    // or relies on cast pressure (any ListCaster archetype).
+                    // Previously this was a hand-maintained list of class
+                    // IDs (Hunter / Ranger / Scout); driving it off the
+                    // combat profile means new archer/caster specs don't
+                    // need a code patch to be recognised.
+                    bool stayRanged = MimicBody.CombatProfile?.HasRole(eMimicCombatRole.Archer) == true
+                                      || MimicBody.CharacterClass.ClassType == eClassType.ListCaster;
+
+                    if (!stayRanged)
                     {
                         if (MimicBody.MimicSpec.Is2H)
                             Body.SwitchWeapon(eActiveWeaponSlot.TwoHanded);
@@ -1209,7 +1228,7 @@ namespace DOL.AI.Brain
                 return false;
             // Stay in scan radius (with slight slack) so a mob that wandered
             // out of practical range gets reconsidered instead of chased forever.
-            if (!Body.IsWithinRadius(_committedPullTarget, PULL_SCAN_RADIUS + 500))
+            if (!Body.IsWithinRadius(_committedPullTarget, MimicConfig.MIMIC_PULL_SCAN_RADIUS + 500))
                 return false;
             if (!GameServer.ServerRules.IsAllowedToAttack(Body, _committedPullTarget, true))
                 return false;
@@ -1257,17 +1276,18 @@ namespace DOL.AI.Brain
             }
 
             // Group regen gate (per user spec): puller stops the moment any
-            // caster drops below MANA_STOP_PCT (30%), resumes the moment
-            // every caster recovers back above MANA_RESUME_PCT (35%). The
-            // tight 5pp hysteresis prevents flap on regen ticks without
-            // forcing the long 80% wait that produced visible idle gaps.
-            // The human leader is excluded — their mana flow is decoupled
-            // from the bot regen cycle, and a player intentionally holding
-            // mana would otherwise wedge the puller forever.
+            // caster drops below MimicConfig.MIMIC_PULL_MANA_STOP_PCT (default 30%),
+            // resumes the moment every caster recovers back above
+            // MimicConfig.MIMIC_PULL_MANA_RESUME_PCT (default 35%). The
+            // tight hysteresis prevents flap on regen ticks without forcing
+            // the long 80% wait that produced visible idle gaps. The human
+            // leader is excluded — their mana flow is decoupled from the bot
+            // regen cycle, and a player intentionally holding mana would
+            // otherwise wedge the puller forever.
             if (Body.Group != null)
             {
-                const int MANA_STOP_PCT = 30;
-                const int MANA_RESUME_PCT = 35;
+                int manaStopPct = MimicConfig.MIMIC_PULL_MANA_STOP_PCT;
+                int manaResumePct = Math.Max(manaStopPct, MimicConfig.MIMIC_PULL_MANA_RESUME_PCT);
 
                 bool anyLow = false;
                 bool allHigh = true;
@@ -1280,8 +1300,8 @@ namespace DOL.AI.Brain
                         continue;
 
                     int pct = gl.ManaPercent;
-                    if (pct < MANA_STOP_PCT) anyLow = true;
-                    if (pct < MANA_RESUME_PCT) allHigh = false;
+                    if (pct < manaStopPct) anyLow = true;
+                    if (pct < manaResumePct) allHigh = false;
                 }
 
                 if (anyLow)
@@ -1303,7 +1323,7 @@ namespace DOL.AI.Brain
                     // and will never recover. Lift the throttle and let the
                     // group keep farming — better than standing idle forever.
                     if (_manaThrottleSinceTick > 0
-                        && GameLoop.GameLoopTime - _manaThrottleSinceTick > MAX_MANA_THROTTLE_MS)
+                        && GameLoop.GameLoopTime - _manaThrottleSinceTick > MimicConfig.MIMIC_MAX_MANA_THROTTLE_MS)
                     {
                         _pullManaThrottled = false;
                         _manaThrottleSinceTick = 0;
@@ -1338,14 +1358,8 @@ namespace DOL.AI.Brain
                 mg.IncomingPullTarget = null;
         }
 
-        // Maximum distance the puller will scan for a pull target. Independent
-        // of the camp's aggro range — pulling reaches further than passive aggro.
-        private const int PULL_SCAN_RADIUS = 3600;
-
-        // Approximate BAF radius — used to estimate how many friends a candidate
-        // mob will drag along when pulled. The real BAF radius is dynamic, but
-        // 500 is a good lower bound for scoring.
-        private const int PULL_PACK_RADIUS = 500;
+        // Pull scan / pack radii now live on MimicConfig; see MIMIC_PULL_SCAN_RADIUS
+        // and MIMIC_PULL_PACK_RADIUS. Defaults match the previous 3600 / 500 constants.
 
         /// <summary>
         /// How many mobs the group can realistically chew through at once.
@@ -1402,7 +1416,7 @@ namespace DOL.AI.Brain
         /// <summary>
         /// Count of nearby hostile mobs around the candidate — proxy for how
         /// many adds BAF will pull along when the candidate is attacked.
-        /// Cheap heuristic: same-realm hostile NPCs within PULL_PACK_RADIUS.
+        /// Cheap heuristic: same-realm hostile NPCs within MimicConfig.MIMIC_PULL_PACK_RADIUS.
         /// </summary>
         private int EstimatePackSize(GameNPC candidate)
         {
@@ -1410,7 +1424,7 @@ namespace DOL.AI.Brain
                 return 0;
 
             int count = 0;
-            foreach (GameNPC neighbor in candidate.GetNPCsInRadius(PULL_PACK_RADIUS))
+            foreach (GameNPC neighbor in candidate.GetNPCsInRadius((ushort)MimicConfig.MIMIC_PULL_PACK_RADIUS))
             {
                 if (neighbor == candidate)
                     continue;
@@ -1446,8 +1460,9 @@ namespace DOL.AI.Brain
                 return null;
 
             // Honour the group's chosen CC pull target list when present.
-            if (Body.Group.MimicGroup.CCTargets.Count > 0)
-                return Body.Group.MimicGroup.CCTargets[Util.Random(Body.Group.MimicGroup.CCTargets.Count - 1)];
+            GameLiving preMezPick = Body.Group.MimicGroup.PickRandomCcTarget();
+            if (preMezPick != null)
+                return preMezPick;
 
             // Tiered scan: strict first (con/grey/no-add filtering), then a
             // progressively looser fallback so a dense camp or low-con zone
@@ -1490,7 +1505,7 @@ namespace DOL.AI.Brain
             GameLiving best = null;
             int bestScore = int.MaxValue;
 
-            foreach (GameNPC npc in Body.GetNPCsInRadius(PULL_SCAN_RADIUS))
+            foreach (GameNPC npc in Body.GetNPCsInRadius((ushort)MimicConfig.MIMIC_PULL_SCAN_RADIUS))
             {
                 if (npc == null || !npc.IsAlive || npc.ObjectState != GameObject.eObjectState.Active)
                     continue;
@@ -1661,19 +1676,24 @@ namespace DOL.AI.Brain
         }
 
         // Cached pull spell chosen at first request and reused for subsequent pulls.
-        // Reset to null if spellbook contents change (handled by MimicNPC.SortSpells flow).
+        // The cache is keyed against MimicNPC.SpellbookRevision: if SortSpells
+        // bumps the revision (level-up, spec change, item bonus refresh), the
+        // next access recomputes. InvalidatePullSpellCache stays for back-compat
+        // and forces a re-evaluation without needing to touch SpellbookRevision.
         private Spell _cachedPullSpell;
-        private bool _pullSpellCached;
+        private int _cachedPullSpellRevision = -1;
         private Spell _cachedAoePullSpell;
-        private bool _aoePullSpellCached;
+        private int _cachedAoePullSpellRevision = -1;
 
         public void InvalidatePullSpellCache()
         {
             _cachedPullSpell = null;
-            _pullSpellCached = false;
+            _cachedPullSpellRevision = -1;
             _cachedAoePullSpell = null;
-            _aoePullSpellCached = false;
+            _cachedAoePullSpellRevision = -1;
         }
+
+        private int CurrentSpellbookRevision => MimicBody?.SpellbookRevision ?? -1;
 
         /// <summary>
         /// Picks the best spell for pulling. Two scoring modes:
@@ -1684,17 +1704,21 @@ namespace DOL.AI.Brain
         ///   the cluster aggros at once instead of relying on BAF
         ///   propagation. Falls back to the single-target pick when no AoE
         ///   spell exists.</para>
-        /// Cached per mode so the per-tick lookup stays cheap. Returns null
-        /// when the caster has no eligible harmful spell.
+        /// Cached per mode so the per-tick lookup stays cheap. Cache is
+        /// auto-invalidated when MimicNPC.SpellbookRevision changes. Returns
+        /// null when the caster has no eligible harmful spell.
         /// </summary>
         public Spell SelectPullSpell(bool preferAoe = false)
         {
+            int rev = CurrentSpellbookRevision;
+
             if (preferAoe)
             {
-                if (_aoePullSpellCached)
-                    return _cachedAoePullSpell ?? _cachedPullSpellCore();
-                _aoePullSpellCached = true;
-                _cachedAoePullSpell = ComputePullSpell(true);
+                if (_cachedAoePullSpellRevision != rev)
+                {
+                    _cachedAoePullSpell = ComputePullSpell(true);
+                    _cachedAoePullSpellRevision = rev;
+                }
                 return _cachedAoePullSpell ?? _cachedPullSpellCore();
             }
 
@@ -1703,10 +1727,11 @@ namespace DOL.AI.Brain
 
         private Spell _cachedPullSpellCore()
         {
-            if (_pullSpellCached)
+            int rev = CurrentSpellbookRevision;
+            if (_cachedPullSpellRevision == rev)
                 return _cachedPullSpell;
-            _pullSpellCached = true;
             _cachedPullSpell = ComputePullSpell(false);
+            _cachedPullSpellRevision = rev;
             return _cachedPullSpell;
         }
 
@@ -1851,15 +1876,18 @@ namespace DOL.AI.Brain
             // mezzes them. Caps at 2 adds to avoid mezzing the entire pack.
             PopulateAddsForCC();
 
-            if (Body.Group.MimicGroup.CCTargets.Count > 0)
+            if (Body.Group.MimicGroup.CcTargetCount > 0)
             {
                 if (CheckSpells(eCheckSpellType.CrowdControl))
                     return;
             }
 
-            if (!Body.InCombat && Body.Group.MimicGroup.CCTargets.Count > 0)
+            if (!Body.InCombat && Body.Group.MimicGroup.CcTargetCount > 0)
             {
-                Body.Group.MimicGroup.CCTargets = ValidateCCList(Body.Group.MimicGroup.CCTargets);
+                // Drop CC targets we can no longer legitimately CC (dead, despawned,
+                // no longer attacking the group). Done in-place under the dedicated
+                // lock — no more "rebuild the list and replace" race.
+                Body.Group.MimicGroup.ValidateCcTargets(IsValidCcTarget);
             }
         }
 
@@ -1882,7 +1910,7 @@ namespace DOL.AI.Brain
             if (mg.IncomingPullTarget is not GameNPC pulled || !pulled.IsAlive)
                 return;
 
-            if (mg.CCTargets.Count >= MAX_ADDS_TO_CC)
+            if (mg.CcTargetCount >= MAX_ADDS_TO_CC)
                 return;
 
             // The focus mob itself stays the tank's responsibility — never mez it.
@@ -1896,7 +1924,7 @@ namespace DOL.AI.Brain
                     continue;
                 if (neighbour.IsMezzed || neighbour.IsRooted)
                     continue;
-                if (mg.CCTargets.Contains(neighbour))
+                if (mg.ContainsCcTarget(neighbour))
                     continue;
                 if (!GameServer.ServerRules.IsAllowedToAttack(Body, neighbour, true))
                     continue;
@@ -1908,8 +1936,8 @@ namespace DOL.AI.Brain
                     && (Body.Group == null || !IsTargetInGroup(mb.Body.TargetObject)))
                     continue;
 
-                mg.CCTargets.Add(neighbour);
-                if (mg.CCTargets.Count >= MAX_ADDS_TO_CC)
+                mg.AddCcTarget(neighbour);
+                if (mg.CcTargetCount >= MAX_ADDS_TO_CC)
                     break;
             }
         }
@@ -1948,7 +1976,7 @@ namespace DOL.AI.Brain
                 if (c == null || !c.IsAlive) continue;
                 if (c == focus) continue;
                 if (c.IsMezzed || c.IsRooted) continue;
-                if (mg.CCTargets.Contains(c)) continue;
+                if (mg.ContainsCcTarget(c)) continue;
                 candidates.Add(c);
             }
 
@@ -1961,37 +1989,28 @@ namespace DOL.AI.Brain
                 return a.HealthPercent.CompareTo(b.HealthPercent);
             });
 
-            int room = MAX_ADDS_TO_CC - mg.CCTargets.Count;
-            for (int i = 0; i < candidates.Count && room > 0; i++, room--)
-                mg.CCTargets.Add(candidates[i]);
+            int room = MAX_ADDS_TO_CC - mg.CcTargetCount;
+            for (int i = 0; i < candidates.Count && room > 0; i++)
+            {
+                if (mg.AddCcTarget(candidates[i]))
+                    room--;
+            }
         }
 
-        // Test for bad lists. Might not be needed.
-        private List<GameLiving> ValidateCCList(List<GameLiving> ccList)
+        /// <summary>
+        /// Predicate variant of the legacy ValidateCCList: returns true when
+        /// the supplied CC target is still worth keeping in the group's queue.
+        /// A CC target is kept while it's a live NPC backed by a
+        /// StandardMobBrain that still has aggro — anything else gets dropped.
+        /// Used with MimicGroup.ValidateCcTargets to mutate the list under the
+        /// dedicated lock rather than rebuild-and-replace.
+        /// </summary>
+        private static bool IsValidCcTarget(GameLiving cc)
         {
-            List<GameLiving> validatedList = new List<GameLiving>();
-
-            if (ccList.Count != 0)
-            {
-                foreach (GameLiving cc in ccList)
-                {
-                    // Drop the redundant `npc != null` check that used to sit
-                    // here — `is GameNPC npc` already guarantees a non-null
-                    // narrowing. Also use a typed pattern for Brain so a CCTarget
-                    // with a non-StandardMobBrain (a named-mob brain, a charm
-                    // pet brain, etc.) skips through instead of throwing
-                    // InvalidCastException on the direct cast.
-                    if (cc is GameNPC npc
-                        && npc.IsAlive
-                        && npc.Brain is StandardMobBrain smb
-                        && smb.HasAggro)
-                    {
-                        validatedList.Add(cc);
-                    }
-                }
-            }
-
-            return validatedList;
+            return cc is GameNPC npc
+                && npc.IsAlive
+                && npc.Brain is StandardMobBrain smb
+                && smb.HasAggro;
         }
 
         #endregion MainCC
@@ -2305,10 +2324,39 @@ namespace DOL.AI.Brain
             public AggroAmount(long baseAggro = 0)
             {
                 Base = baseAggro;
+                LastTouchedTick = GameLoop.GameLoopTime;
             }
 
             public long Base { get; set; }
             public long Effective { get; set; }
+            /// <summary>
+            /// GameLoopTime ms at which this entry was last refreshed (added
+            /// or boosted). Used by the soft-decay sweep on Aggro.Exit so a
+            /// brief out-of-combat gap doesn't wipe long-running threat data.
+            /// </summary>
+            public long LastTouchedTick { get; set; }
+        }
+
+        /// <summary>
+        /// Drops aggro entries last touched longer than <paramref name="maxAgeMs"/>
+        /// milliseconds ago. Used instead of a wholesale ClearAggroList when
+        /// leaving the AGGRO FSM state — a 5–10 second out-of-combat blip
+        /// should not erase threat info that's still relevant for the next
+        /// engagement. Returns the count dropped.
+        /// </summary>
+        public int DecayAggroList(long maxAgeMs)
+        {
+            long now = GameLoop.GameLoopTime;
+            int dropped = 0;
+            foreach (var pair in AggroList)
+            {
+                if (now - pair.Value.LastTouchedTick > maxAgeMs)
+                {
+                    if (AggroList.TryRemove(pair.Key, out _))
+                        dropped++;
+                }
+            }
+            return dropped;
         }
 
         /// <summary>
@@ -2394,6 +2442,7 @@ namespace DOL.AI.Brain
             static AggroAmount Update(GameLiving key, AggroAmount oldValue, long arg)
             {
                 oldValue.Base = Math.Max(0, oldValue.Base + arg);
+                oldValue.LastTouchedTick = GameLoop.GameLoopTime;
                 return oldValue;
             }
         }
@@ -2655,13 +2704,12 @@ namespace DOL.AI.Brain
         // melee range, run away from it so the tank/peeler can taunt the add off.
         // Sets Body.TargetObject to the threat temporarily so the existing flee
         // routines compute the escape direction correctly.
-        private const int HEALER_FLEE_HEALTH_THRESHOLD = 60;
         public bool HealerEmergencyFlee()
         {
             if (!IsHealer || IsFleeing || TargetFleePosition != null)
                 return false;
 
-            if (Body.HealthPercent >= HEALER_FLEE_HEALTH_THRESHOLD)
+            if (Body.HealthPercent >= MimicConfig.MIMIC_HEALER_FLEE_HEALTH_PCT)
                 return false;
 
             GameLiving threat = null;
@@ -3593,22 +3641,15 @@ namespace DOL.AI.Brain
                     // is already being handled — CheckSpells then drops out
                     // and the strategy cooldown will retry on the next tick.
                     //
-                    // Note: CCTargets is pre-existing tech debt — a
-                    // List<GameLiving> mutated from multiple threads without
-                    // a lock. We bound the loop length to the snapshot taken
-                    // once at the top so an in-flight Add/Remove from another
-                    // thread can't blow the index range. Real fix is a
-                    // dedicated CcLock + ConcurrentBag, tracked separately.
-                    var ccTargets = MimicBody.Group?.MimicGroup.CCTargets;
-                    if (ccTargets != null)
+                    // Snapshot is now thread-safe: MimicGroup.CCTargets returns a
+                    // copy taken under the dedicated lock, so we can enumerate
+                    // freely without worrying about cross-thread Add/Remove.
+                    var ccTargetsSnapshot = MimicBody.Group?.MimicGroup.CCTargets;
+                    if (ccTargetsSnapshot != null)
                     {
-                        int count = ccTargets.Count;
-                        for (int i = 0; i < count; i++)
+                        foreach (GameLiving candidate in ccTargetsSnapshot)
                         {
-                            if (i >= ccTargets.Count)
-                                break; // racy resize protection
-
-                            if (ccTargets[i] is not GameLiving candidate
+                            if (candidate == null
                                 || !candidate.IsAlive
                                 || candidate.ObjectState != GameObject.eObjectState.Active)
                                 continue;
@@ -3665,7 +3706,7 @@ namespace DOL.AI.Brain
                         if (casted)
                         {
                             if (!PvPMode)
-                                MimicBody.Group.MimicGroup.CCTargets.Remove(ccTarget);
+                                MimicBody.Group.MimicGroup.RemoveCcTarget(ccTarget);
 
                             if (spell.CastTime > 0)
                                 Body.StopFollowing();
@@ -4168,7 +4209,15 @@ namespace DOL.AI.Brain
 
             bool isPBAoE = spell.IsPBAoE;
             int radius = spell.Radius;
-            var ccTargets = Body.Group?.MimicGroup?.CCTargets;
+            // Snapshot once into a HashSet for O(1) Contains. The CCTargets
+            // accessor on MimicGroup already returns a fresh copy under the
+            // dedicated lock so this is race-free.
+            HashSet<GameLiving> ccTargetSet = null;
+            var ccTargetsSnap = Body.Group?.MimicGroup?.CCTargets;
+            if (ccTargetsSnap != null && ccTargetsSnap.Count > 0)
+            {
+                ccTargetSet = new HashSet<GameLiving>(ccTargetsSnap);
+            }
 
             HashSet<GameLiving> counted = new();
             int count = 0;
@@ -4185,7 +4234,7 @@ namespace DOL.AI.Brain
                 if (!inRange)
                     return true;
 
-                bool protectedCrowdControl = (ccTargets != null && ccTargets.Contains(hostile))
+                bool protectedCrowdControl = (ccTargetSet != null && ccTargetSet.Contains(hostile))
                     || hostile.IsMezzed
                     || (hostile.IsRooted && hostile != primaryTarget && hostile != Body.TargetObject);
 
@@ -4347,680 +4396,6 @@ namespace DOL.AI.Brain
             return true;
         }
 
-        /// <summary>Have we already checked heals this loop?</summary>
-        public bool AlreadyCheckedHeals;
-        private long nextCureTime = 0;
-
-        /// <summary>Check for healing and cure spells</summary>
-        /// <returns>True if trying to heal, including moving to get into range</returns>
-        public bool CheckHeals()
-        {
-            /* Summary of priorities — picks the spell that matches the
-               *situation* (small / fast / group), not just availability.
-
-                EMERGENCY (someone below EmergencyThreshold):
-                  - Multi-emergency : instant group → instant single → group
-                                      cast → HealBig (fast) → HealEfficient
-                  - Single emergency: instant single → instant group → HealBig
-                                      → HealEfficient
-
-                Proactive tank HoT (dedicated healers only): refresh the
-                MainTank's HoT/regen while the group is in combat.
-
-                CURES: mezz / disease / poison (shared 5s timer for d/p).
-
-                NON-EMERGENCY (someone below HealThreshold):
-                  Multi-target (≥2 wounded):
-                    - Instant group HoT (low cooldown, free uptime)
-                    - Group HoT if not already running
-                    - HealGroup when 3+ are below threshold OR per-mana value
-                      beats the single-target efficient heal
-                  Single-target:
-                    - Instant HoT (no cast cost)
-                    - HoT if not already running
-                    - HealBig (fast/heavy) when target.HP < HealThreshold AND
-                      missing HP ≥ 60% of the big heal value AND mana ≥ 30%
-                    - HealEfficient (small/economic) — but skipped on trivial
-                      damage (<40% of its value) unless the target is the
-                      MainTank or we're in emergency
-
-                Notes:
-                  - Dedicated healers will heal members above threshold too
-                    and are more likely to fire group heals efficiently.
-                  - Spread heals are not considered.
-                  - Single-instance-per-tick spell types (instant heal, HoT,
-                    regen, cure mezz/disease/poison) are deduped via the
-                    MimicGroup AlreadyCasting* flags.
-                  - Cure d/p share a 5s timer to avoid spamming and to leave
-                    room for secondary healers.
-            */
-
-            const long CureDelay = 5000;
-
-            if (AlreadyCheckedHeals || !Body.CanCastHealSpells || Body.IsStunned || Body.IsMezzed || Body.IsSilenced)
-                return false;
-
-            AlreadyCheckedHeals = true;
-
-            #region Instant Spell Local Functions
-
-            bool? m_canCastInstantHeal = null;
-            bool CanCastInstantHeal() => m_canCastInstantHeal ??= CheckHealSpell(MimicBody.HealInstant);
-
-            bool? m_canCastInstantGroupHeal = null;
-            bool CanCastInstantGroupHeal() => m_canCastInstantGroupHeal ??= CheckHealSpell(MimicBody.HealInstantGroup);
-
-            bool? m_canCastInstantHot = null;
-            bool CanCastInstantHot() => m_canCastInstantHot ??= CheckHealSpell(MimicBody.HealOverTimeInstant);
-
-            bool? m_canCastInstantGroupHot = null;
-            bool CanCastInstantGroupHot() => m_canCastInstantGroupHot ??= CheckHealSpell(MimicBody.HealOverTimeInstantGroup);
-
-            // Instant cure spells are incredibly rare, so it's faster to check if instant before the general spell check
-            bool? m_canCastCureDisease = null;
-            bool CanCastCureDisease() => m_canCastCureDisease ??= CheckHealSpell(MimicBody.CureDisease) 
-                && (!MimicBody.IsBeingSelfInterrupted || MimicBody.CureDisease.IsInstantCast);
-            bool CanCastCureDiseaseInstant() => MimicBody.CureDisease != null && MimicBody.CureDisease.IsInstantCast 
-                && CanCastCureDisease();
-
-            bool? m_canCastCureDiseaseGroup = null;
-            bool CanCastCureDiseaseGroup() => m_canCastCureDiseaseGroup ??= CheckHealSpell(MimicBody.CureDiseaseGroup)
-                && (!MimicBody.IsBeingSelfInterrupted || MimicBody.CureDiseaseGroup.IsInstantCast);
-            bool CanCastCureDiseaseGroupInstant() => MimicBody.CureDiseaseGroup != null && MimicBody.CureDiseaseGroup.IsInstantCast
-                && CanCastCureDiseaseGroup();
-
-            bool? m_canCastCurePoison = null;
-            bool CanCastCurePoison() => m_canCastCurePoison ??= CheckHealSpell(MimicBody.CurePoison)
-                && (!MimicBody.IsBeingSelfInterrupted || MimicBody.CurePoison.IsInstantCast);
-            bool CanCastCurePoisonInstant() => MimicBody.CurePoison != null && MimicBody.CurePoison.IsInstantCast
-                && CanCastCurePoison();
-
-            bool? m_canCastCurePoisonGroup = null;
-            bool CanCastCurePoisonGroup() => m_canCastCurePoisonGroup ??= CheckHealSpell(MimicBody.CurePoisonGroup)
-                && (!MimicBody.IsBeingSelfInterrupted || MimicBody.CurePoisonGroup.IsInstantCast);
-            bool CanCastCurePoisonGroupInstant() => MimicBody.CurePoisonGroup != null && MimicBody.CurePoisonGroup.IsInstantCast
-                && CanCastCurePoisonGroup();
-
-            bool CanCastInstant() => CanCastInstantHeal() || CanCastInstantGroupHeal() 
-                || CanCastInstantHot() || CanCastInstantGroupHot()
-                || CanCastCureDiseaseInstant() || CanCastCureDiseaseGroupInstant()
-                || CanCastCurePoisonInstant() || CanCastCurePoisonGroupInstant();
-
-            #endregion
-
-            if (MimicBody.IsBeingSelfInterrupted && !CanCastInstant())
-                return false;
-
-            bool isCastingHeal = MimicBody.IsCasting && MimicBody.castingComponent.SpellHandler.Spell.IsHealing;
-
-            if (isCastingHeal && !CanCastInstant())
-                return true;
-
-            // Working variables
-            int amountToHeal;
-            int numEmergency = 0;
-            int numNeedHealing = 0;
-            Spell spellToCast = null;
-            GameLiving spellTarget = null;
-            GameObject oldTarget;
-            bool startedCasting = false;
-
-            #region Local Functions
-
-            bool? m_canCastGroupHeal = null;
-            bool CanCastGroupHeal() => m_canCastGroupHeal ??= CheckHealSpell(MimicBody.HealGroup);
-
-            bool? m_canCastBigHeal = null;
-            bool CanCastBigHeal() => m_canCastBigHeal ??= CheckHealSpell(MimicBody.HealBig);
-
-            bool? m_canCastEfficientHeal = null;
-            bool CanCastEfficientHeal() => m_canCastEfficientHeal ??= CheckHealSpell(MimicBody.HealEfficient);
-
-            bool? m_canCastHot = null;
-            bool CanCastHot() => m_canCastHot ??= CheckHealSpell(MimicBody.HealOverTime);
-
-            bool? m_canCastHotGroup = null;
-            bool CanCastHotGroup() => m_canCastHotGroup ??= CheckHealSpell(MimicBody.HealOverTimeGroup);
-
-            bool CheckHealSpell(Spell spell, bool checkGroup = true)
-            {
-                return spell != null
-                    && (!MimicBody.IsBeingSelfInterrupted || spell.IsInstantCast)
-                    && (!spell.HasRecastDelay || MimicBody.GetSkillDisabledDuration(spell) <= 0)
-                    && MimicBody.Mana >= MimicBody.PowerCost(spell);
-            }
-
-            double m_groupHealVal = double.MinValue;
-            double GetGroupHealVal()
-            {
-                if (m_groupHealVal < 0)
-                {
-                    m_groupHealVal = MimicBody.HealGroup.Value >= 0
-                        ? numNeedHealing * MimicBody.HealGroup.Value
-                        : amountToHeal * MimicBody.HealGroup.Value * -0.01d;
-                }
-                return m_groupHealVal;
-            }
-
-            double m_effectHoT = double.MinValue;
-            double m_effectRegen = double.MinValue;
-            double GetHotEffect(Spell spell)
-            {
-                switch (spell.SpellType)
-                {
-                    case eSpellType.HealOverTime:
-                        if (m_effectHoT < 0d)
-                        {
-                            List<ECSGameEffect> effects = spellTarget.effectListComponent.GetEffects(eEffect.HealOverTime);
-
-                            if (effects != null)
-                            {
-                                foreach (ECSGameEffect effect in effects)
-                                    if (effect is ECSGameSpellEffect)
-                                    {
-                                        double newHoT = MimicNPC.HealAmount(effect.SpellHandler.Spell, spellTarget);
-                                        if (newHoT > m_effectHoT)
-                                            m_effectHoT = newHoT;
-                                    }
-                            }
-                            else
-                                m_effectHoT = 0d;
-                        }
-                        return m_effectHoT;
-                    case eSpellType.HealthRegenBuff:
-                        if (m_effectRegen < 0d)
-                        {
-                            List<ECSGameEffect> effects = spellTarget.effectListComponent.GetEffects(eEffect.HealthRegenBuff);
-
-                            if (effects != null)
-                            {
-                                foreach (ECSGameEffect effect in effects)
-                                    if (effect is ECSGameSpellEffect)
-                                    {
-                                        double newRegen = MimicNPC.HealAmount(effect.SpellHandler.Spell, spellTarget);
-                                        if (newRegen > m_effectRegen)
-                                            m_effectRegen = newRegen;
-                                    }
-                            }
-                            else
-                                m_effectRegen = 0d;
-                        }
-                        return m_effectRegen;
-                }
-
-                return 0d;
-            }
-
-            #endregion
-
-            MimicGroup mGroup = MimicBody.Group?.MimicGroup;
-
-            lock (mGroup?.HealLock ?? new object())
-            {
-                #region Check Health
-
-                if (mGroup == null)
-                {
-                    amountToHeal = MimicBody.MaxHealth - MimicBody.Health;
-
-                    if (amountToHeal > 0)
-                    {
-                        spellTarget = MimicBody;
-
-                        if (MimicBody.HealthPercent < MimicGroup.HealThreshold)
-                        {
-                            numNeedHealing = 1;
-
-                            if (MimicBody.HealthPercent < MimicGroup.EmergencyThreshold)
-                                numEmergency = 1;
-                        }
-                    }
-                }
-                else
-                {
-                    mGroup.CheckGroupHealth(MimicBody);
-
-                    amountToHeal = mGroup.AmountToHeal;
-                    numEmergency = mGroup.NumNeedEmergencyHealing;
-                    numNeedHealing = IsHealer 
-                        ? mGroup.NumInjured 
-                        : mGroup.NumNeedHealing;
-                    spellTarget = mGroup.MemberToHeal;
-
-                    if (mGroup.AlreadyCastInstantHeal)
-                        m_canCastInstantHeal = m_canCastInstantGroupHeal = false;
-
-                    if (mGroup.AlreadyCastingHoT)
-                    {
-                        if (MimicBody.HealOverTimeInstant == null || MimicBody.HealOverTimeInstant.SpellType == eSpellType.HealOverTime)
-                            m_canCastInstantHot = false;
-                        if (MimicBody.HealOverTimeInstantGroup == null || MimicBody.HealOverTimeInstantGroup.SpellType == eSpellType.HealOverTime)
-                            m_canCastInstantGroupHot = false;
-                        if (MimicBody.HealOverTime == null || MimicBody.HealOverTime.SpellType == eSpellType.HealOverTime)
-                            m_canCastHot = false;
-                        if (MimicBody.HealOverTimeGroup == null || MimicBody.HealOverTimeGroup.SpellType == eSpellType.HealOverTime)
-                            m_canCastHotGroup = false;
-                    }
-
-                    if (mGroup.AlreadyCastingRegen)
-                    {
-                        if (MimicBody.HealOverTimeInstant == null || MimicBody.HealOverTimeInstant.SpellType == eSpellType.HealthRegenBuff)
-                            m_canCastInstantHot = false;
-                        if (MimicBody.HealOverTimeInstantGroup == null || MimicBody.HealOverTimeInstantGroup.SpellType == eSpellType.HealthRegenBuff)
-                            m_canCastInstantGroupHot = false;
-                        if (MimicBody.HealOverTime == null || MimicBody.HealOverTime.SpellType == eSpellType.HealthRegenBuff)
-                            m_canCastHot = false;
-                        if (MimicBody.HealOverTimeGroup == null || MimicBody.HealOverTimeGroup.SpellType == eSpellType.HealthRegenBuff)
-                            m_canCastHotGroup = false;
-                    }
-
-                    if (mGroup.AlreadyCastingCureDisease)
-                        m_canCastCureDisease = m_canCastCureDiseaseGroup = false;
-
-                    if (mGroup.AlreadyCastingCurePoison)
-                        m_canCastCurePoison = m_canCastCurePoisonGroup = false;
-
-                    // Multi-healer coordination: if another healer already has
-                    // a cast-time single heal landing on the selected target,
-                    // move this healer to another wounded member. Emergency
-                    // targets stay exempt; double-casting there is often correct.
-                    if (spellTarget != null
-                        && numEmergency == 0
-                        && mGroup.AlreadyCastingSingleHeal
-                        && mGroup.IsSingleHealReserved(spellTarget))
-                    {
-                        GameLiving alternate = mGroup.PickAlternateHealTarget(
-                            MimicBody,
-                            spellTarget,
-                            IsHealer,
-                            avoidSingleHealReservation: true);
-
-                        if (alternate != null)
-                            spellTarget = alternate;
-                        else
-                        {
-                            numNeedHealing = 0;
-                            amountToHeal = 0;
-                        }
-                    }
-                }
-
-                #endregion
- 
-                #region Emergency Heal
-
-                if (numEmergency > 0)
-                {
-                    if (numEmergency > 1)
-                    {
-                        if (CanCastInstantGroupHeal())
-                            spellToCast = MimicBody.HealInstantGroup;
-                        else if (CanCastInstantHeal())
-                            spellToCast = MimicBody.HealInstant;
-                        else if (!isCastingHeal && CanCastGroupHeal())
-                        {
-                            if (MimicNPC.HealAmount(MimicBody.HealBig, spellTarget) > GetGroupHealVal() && CanCastBigHeal())
-                                spellToCast = MimicBody.HealBig;
-                            else if (MimicNPC.HealAmount(MimicBody.HealEfficient, spellTarget) > GetGroupHealVal() && CanCastEfficientHeal())
-                                spellToCast = MimicBody.HealEfficient;
-                            else
-                                spellToCast = MimicBody.HealGroup;
-                        }
-                    }
-
-                    if (spellToCast == null)
-                    {
-                        if (CanCastInstantHeal())
-                            spellToCast = MimicBody.HealInstant;
-                        else if (CanCastInstantGroupHeal())
-                            spellToCast = MimicBody.HealInstantGroup;
-                        else if (!isCastingHeal)
-                        {
-                            if (CanCastBigHeal())
-                                spellToCast = MimicBody.HealBig;
-                            else if (CanCastEfficientHeal())
-                                spellToCast = MimicBody.HealEfficient;
-                        }
-                    }
-                }
-
-                #endregion
-
-                #region Proactive Tank HoT
-                // Keep the MainTank topped with a HoT/regen whenever the group
-                // is engaged, even if they're at full HP. The MimicGroup tracker
-                // (AlreadyCastingHoT) prevents two healers from spamming the same
-                // HoT every tick, and CheckHealSpell handles the recast delay.
-                if (spellToCast == null
-                    && IsHealer
-                    && mGroup != null
-                    && mGroup.MainTank != null
-                    && mGroup.MainTank.IsAlive
-                    && mGroup.MainTank.InCombat
-                    && !mGroup.AlreadyCastingHoT)
-                {
-                    GameLiving tank = mGroup.MainTank;
-
-                    // Only refresh when the HoT effect isn't already running on the tank.
-                    bool tankHasHoT = tank.effectListComponent.ContainsEffectForEffectType(eEffect.HealOverTime);
-
-                    if (!tankHasHoT)
-                    {
-                        if (CanCastInstantHot())
-                        {
-                            spellToCast = MimicBody.HealOverTimeInstant;
-                            spellTarget = tank;
-                        }
-                        else if (!MimicBody.IsCasting && CanCastHot())
-                        {
-                            spellToCast = MimicBody.HealOverTime;
-                            spellTarget = tank;
-                        }
-                    }
-                }
-                #endregion
-
-                #region Cure Mess/Disease/Poison
-
-                if (spellToCast == null)
-                {
-                    if (mGroup != null && mGroup.MemberToCureMezz != null && !mGroup.AlreadyCastingCureMezz
-                        && !MimicBody.IsCasting && CheckHealSpell(MimicBody.CureMezz))
-                    {
-                        spellToCast = MimicBody.CureMezz;
-                        spellTarget = mGroup.MemberToCureMezz;
-                    }
-                    else if (mGroup == null)
-                    {
-                        if (MimicBody.IsDiseased && nextCureTime < GameLoop.GameLoopTime)
-                        {
-                            if (CanCastCureDisease() && (!MimicBody.IsCasting || CanCastCureDiseaseInstant()))
-                            {
-                                spellToCast = MimicBody.CureDisease;
-                                spellTarget = MimicBody;
-                            }
-                            else if (CanCastCureDiseaseGroup() && (!MimicBody.IsCasting) || CanCastCureDiseaseGroupInstant())
-                            {
-                                spellToCast = MimicBody.CureDiseaseGroup;
-                                spellTarget = MimicBody;
-                            }
-                        }
-                        else if (MimicBody.IsPoisoned && nextCureTime < GameLoop.GameLoopTime)
-                        {
-                            if (CanCastCurePoison() && (!MimicBody.IsCasting || CanCastCurePoisonInstant()))
-                            {
-                                spellToCast = MimicBody.CurePoison;
-                                spellTarget = MimicBody;
-                            }
-                            else if (CanCastCurePoisonGroup() && (!MimicBody.IsCasting || CanCastCurePoisonGroupInstant()))
-                            {
-                                spellToCast = MimicBody.CurePoisonGroup;
-                                spellTarget = MimicBody;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        if (mGroup.MemberToCureDisease != null && nextCureTime < GameLoop.GameLoopTime)
-                        {
-                            if (CanCastCureDiseaseGroup()
-                                && (mGroup.NumNeedCureDisease > 1 || !CanCastCureDisease())
-                                && (!MimicBody.IsCasting || CanCastCureDiseaseGroupInstant()))
-                            {
-                                spellToCast = MimicBody.CureDiseaseGroup;
-                                spellTarget = mGroup.MemberToCureDisease;
-                            }
-                            else if (CanCastCureDisease()
-                                && (!MimicBody.IsCasting || CanCastCureDiseaseInstant()))
-                            {
-                                spellToCast = MimicBody.CureDisease;
-                                spellTarget = mGroup.MemberToCureDisease;
-                            }
-                        }
-                        else if (mGroup.MemberToCurePoison != null && nextCureTime < GameLoop.GameLoopTime)
-                        {
-                            if (CanCastCurePoisonGroup()
-                                && (mGroup.NumNeedCurePoison > 1 || !CanCastCurePoison())
-                                && (!MimicBody.IsCasting || CanCastCurePoisonGroupInstant()))
-                            {
-                                spellToCast = MimicBody.CurePoisonGroup;
-                                spellTarget = mGroup.MemberToCurePoison;
-                            }
-                            else if (CanCastCurePoison()
-                                && (!MimicBody.IsCasting || CanCastCurePoisonInstant()))
-                            {
-                                spellToCast = MimicBody.CurePoison;
-                                spellTarget = mGroup.MemberToCurePoison;
-                            }
-                        }
-                    }
-                }
-
-                #endregion
- 
-                #region Non-Emergency Heal
-
-                if (spellToCast == null && numNeedHealing > 0)
-                {
-                    // -------- Multi-target: prefer GROUP heal/HoT --------
-                    // Group heals are situational: they win when several
-                    // members are actually below the heal threshold, OR when
-                    // their mana-efficiency vs the single-target option is
-                    // genuinely better (the historical check). The 3-wounded
-                    // floor avoids AoE-spamming when only one or two members
-                    // are tagged — a single wounded body wastes most of the
-                    // group heal's healing on already-full members.
-                    if (numNeedHealing > 1)
-                    {
-                        // Instant HoTs usually have low cooldowns, so spam them whenever possible
-                        if (CanCastInstantGroupHot()
-                            && MimicNPC.HealAmount(MimicBody.HealOverTimeInstantGroup, spellTarget) > GetHotEffect(MimicBody.HealOverTimeInstantGroup))
-                                spellToCast = MimicBody.HealOverTimeInstantGroup;
-                        else if (!MimicBody.IsCasting || (numEmergency > 0 && !isCastingHeal))
-                        {
-                            if (CanCastHotGroup()
-                                && MimicNPC.HealAmount(MimicBody.HealOverTimeGroup, spellTarget) > GetHotEffect(MimicBody.HealOverTimeGroup))
-                                    spellToCast = MimicBody.HealOverTimeGroup;
-                            else if (CanCastGroupHeal())
-                            {
-                                // Two conditions accept the AoE heal:
-                                //   - 3+ are below heal threshold (broad spread of damage), or
-                                //   - the per-mana value still beats single-target efficient
-                                //     (historical heuristic, kept for sustained heal economy).
-                                bool manyWounded = numNeedHealing >= 3;
-                                bool moreEfficientThanSingle = !CanCastEfficientHeal()
-                                    || (GetGroupHealVal() / MimicBody.PowerCost(MimicBody.HealGroup))
-                                       > (MimicNPC.HealAmount(MimicBody.HealEfficient, spellTarget) / MimicBody.PowerCost(MimicBody.HealEfficient));
-
-                                if (manyWounded || moreEfficientThanSingle)
-                                    spellToCast = MimicBody.HealGroup;
-                            }
-                        }
-                    }
-
-                    // -------- Single-target: HoT → BIG vs SMALL choice --------
-                    if (spellToCast == null)
-                    {
-                        if (CanCastInstantHot()
-                            && MimicNPC.HealAmount(MimicBody.HealOverTimeInstant, spellTarget) > GetHotEffect(MimicBody.HealOverTimeInstant))
-                                spellToCast = MimicBody.HealOverTimeInstant;
-                        else if (CanCastInstantGroupHot()
-                            && MimicNPC.HealAmount(MimicBody.HealOverTimeInstantGroup, spellTarget) > GetHotEffect(MimicBody.HealOverTimeInstantGroup))
-                                spellToCast = MimicBody.HealOverTimeInstantGroup;
-                        else if (!MimicBody.IsCasting || (numEmergency > 0 && !isCastingHeal))
-                        {
-                            if (CanCastHot()
-                                && MimicNPC.HealAmount(MimicBody.HealOverTime, spellTarget) > GetHotEffect(MimicBody.HealOverTime))
-                                    spellToCast = MimicBody.HealOverTime;
-                            else if (CanCastHotGroup()
-                                && MimicNPC.HealAmount(MimicBody.HealOverTimeGroup, spellTarget) > GetHotEffect(MimicBody.HealOverTimeGroup))
-                                    spellToCast = MimicBody.HealOverTimeGroup;
-                            else
-                            {
-                                // Pick the cast-time heal whose magnitude best
-                                // matches the target's missing HP. The previous
-                                // logic required mana ≥ 90% to even consider
-                                // HealBig, so a tank that lost 60% of HP would
-                                // get patched up with the small HealEfficient
-                                // forever. We now decide by *damage taken*, not
-                                // mana headroom, and protect against overheal
-                                // on barely-scratched targets.
-                                int missing = spellTarget.MaxHealth - spellTarget.Health;
-                                double bigAmount = MimicBody.HealBig != null
-                                    ? MimicNPC.HealAmount(MimicBody.HealBig, spellTarget)
-                                    : 0d;
-                                double effAmount = MimicBody.HealEfficient != null
-                                    ? MimicNPC.HealAmount(MimicBody.HealEfficient, spellTarget)
-                                    : 0d;
-                                bool targetIsTank = mGroup != null && spellTarget == mGroup.MainTank;
-
-                                // BIG (fast/heavy) heal — target is significantly
-                                // hurt AND ≥60% of the big heal's value will land
-                                // without overheal. The 30% mana floor keeps the
-                                // healer from blowing the bar on a single cast.
-                                bool canUseBigHeal = CanCastBigHeal()
-                                    && bigAmount > 0
-                                    && missing >= bigAmount * 0.6d
-                                    && spellTarget.HealthPercent < MimicGroup.HealThreshold
-                                    && MimicBody.ManaPercent >= 30;
-
-                                if (canUseBigHeal)
-                                    spellToCast = MimicBody.HealBig;
-                                else if (CanCastEfficientHeal())
-                                {
-                                    // SMALL/efficient heal — but skip on trivial
-                                    // scratches (< 40% of the efficient heal value)
-                                    // to avoid wasted mana. The MainTank always
-                                    // gets topped regardless: keeping aggro on a
-                                    // full-HP tank is worth a small overheal.
-                                    bool worthCasting = effAmount <= 0d
-                                        || missing >= effAmount * 0.4d
-                                        || numEmergency > 0
-                                        || targetIsTank;
-
-                                    if (worthCasting)
-                                        spellToCast = MimicBody.HealEfficient;
-                                }
-                                else if (CanCastGroupHeal())
-                                    // We don't have a single target heal, but we might have a CL group heal
-                                    spellToCast = MimicBody.HealGroup;
-                            }
-                        }
-                    }
-                }
-
-                #endregion
- 
-                #region Cast Spell
-
-                if (spellToCast != null)
-                {
-                    if (!MimicBody.IsWithinRadius(spellTarget, spellToCast.CalculateEffectiveRange(spellTarget)))
-                    {
-                        MimicBody.PathTo(new Point3D(spellTarget.X, spellTarget.Y, spellTarget.Z), MimicBody.MaxSpeed);
-                        return true;
-                    }
-
-                    if (!spellToCast.IsInstantCast)
-                    {
-                        if (MimicBody.IsCasting)
-                            MimicBody.StopCurrentSpellcast();
-                        else if (MimicBody.IsAttacking)
-                            MimicBody.StopAttack();
-                    }
-
-                    oldTarget = MimicBody.TargetObject;
-                    MimicBody.TargetObject = spellTarget;
-                    startedCasting = MimicBody.CastSpell(spellToCast, MimicBody.GetSpellLineForSpell(spellToCast), false);
-
-                    if (!startedCasting)
-                        MimicBody.TargetObject = oldTarget;
-                    else
-                    {
-                        if (spellToCast.IsInstantCast)
-                        {
-                            MimicBody.TargetObject = oldTarget;
-                            startedCasting = false;
-                        }
-                        else if (spellToCast.SpellType == eSpellType.CureDisease || spellToCast.SpellType == eSpellType.CurePoison)
-                            nextCureTime = GameLoop.GameLoopTime + CureDelay;
-
-                        if (mGroup != null)
-                            switch (spellToCast.SpellType)
-                            {
-                                case eSpellType.Heal:
-                                case eSpellType.CombatHeal:
-                                case eSpellType.MercHeal:
-                                case eSpellType.OmniHeal:
-                                    if (spellToCast.IsInstantCast)
-                                        mGroup.AlreadyCastInstantHeal = true;
-                                    else
-                                        mGroup.MarkSingleHealInProgress(spellTarget);
-                                    break;
-                                case eSpellType.HealOverTime: mGroup.AlreadyCastingHoT = true; break;
-                                case eSpellType.HealthRegenBuff: mGroup.AlreadyCastingRegen = true; break;
-                                case eSpellType.CureMezz: mGroup.AlreadyCastingCureMezz = true; break;
-                                case eSpellType.CureDisease: mGroup.AlreadyCastingCureDisease = true; break;
-                                case eSpellType.CurePoison: mGroup.AlreadyCastingCurePoison = true; break;
-                            }
-                    }
-                }
-            } // lock
-
-            #endregion
-
-            return startedCasting || isCastingHeal;
-        }
-
-        bool CheckDefensiveSpells(List<Spell> spells)
-        {
-            // Contrary to offensive spells, we don't start with a valid target.
-            // So the idea here is to find a target, switch before calling `CastDefensiveSpell`, then retrieve our previous target.
-            List<(Spell, GameLiving)> spellsToCast = new(spells.Count);
-
-            foreach (Spell spell in spells)
-            {
-                if (CanCastDefensiveSpell(spell, out GameLiving target))
-                    spellsToCast.Add((spell, target));
-            }
-
-            if (spellsToCast.Count == 0)
-                return false;
-
-            GameObject oldTarget = Body.TargetObject;
-            (Spell spell, GameLiving target) spellToCast = spellsToCast[0];
-            Body.TargetObject = spellToCast.target;
-            bool cast = Body.CastSpell(spellToCast.spell, MimicBody.GetSpellLineForSpell(spellToCast.spell));
-
-            if (Debug)
-            {
-                if (cast)
-                    log.Info(Body.Name + " tried to cast " + spellToCast.spell.Name + " on " + spellToCast.target.Name + " and cast == true");
-                else
-                    log.Info(Body.Name + " tried to cast " + spellToCast.spell.Name + " on " + spellToCast.target.Name + " and cast == false");
-
-                if (LivingHasEffect(spellToCast.target, spellToCast.spell))
-                    log.Info(spellToCast.target.Name + " has the effect already.");
-            }
-
-            Body.TargetObject = oldTarget;
-            return cast;
-
-            bool CanCastDefensiveSpell(Spell spell, out GameLiving target)
-            {
-                target = null;
-
-                // TODO: Handle instrument spells
-                if (spell.NeedInstrument || (!spell.Uninterruptible && Body.IsBeingInterrupted) ||
-                    (spell.HasRecastDelay && Body.GetSkillDisabledDuration(spell) > 0))
-                {
-                    return false;
-                }
-
-                target = FindTargetForDefensiveSpell(spell);
-                return target != null;
-            }
-        }
 
         protected virtual GameLiving FindTargetForDefensiveSpell(Spell spell)
         {

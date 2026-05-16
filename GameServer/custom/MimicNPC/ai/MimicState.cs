@@ -351,7 +351,11 @@ namespace DOL.AI.Brain
             _brain.Body.StopAttack();
             _brain.Body.StopMoving();
             _brain.Body.StopCurrentSpellcast();
-            _brain.ClearAggroList();
+            // Soft-decay instead of full wipe: keep entries refreshed within
+            // the last 10s so a brief out-of-combat blip → Follow → re-aggro
+            // doesn't erase the threat picture. Stop()/ForcePullerRecovery
+            // and friends still call the hard ClearAggroList when truly leaving combat.
+            _brain.DecayAggroList(10_000);
             _brain.Body.TargetObject = null;
 
             _brain.IsFleeing = false;

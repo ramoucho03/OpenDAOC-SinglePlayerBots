@@ -12,7 +12,7 @@ namespace DOL.GS.Economy
         [ServerProperty("economy", "economy_enabled", "Enable the autonomous dynamic auction-house economy.", true)]
         public static bool ECONOMY_ENABLED;
 
-        [ServerProperty("economy", "economy_target_stock", "Target number of bot-listed items kept in the market at any time.", 10000)]
+        [ServerProperty("economy", "economy_target_stock", "Target number of bot-listed items kept in the market at any time.", 100000)]
         public static int ECONOMY_TARGET_STOCK;
 
         // Continuous trickle rotation. The worker wakes every TICK_SECONDS and rotates
@@ -28,7 +28,7 @@ namespace DOL.GS.Economy
         [ServerProperty("economy", "economy_initial_batch_size", "Items inserted per batch during the one-time initial population. Lower to reduce CPU spikes at startup.", 200)]
         public static int ECONOMY_INITIAL_BATCH_SIZE;
 
-        [ServerProperty("economy", "economy_initial_batch_sleep_ms", "Sleep between batches during initial population (ms).", 50)]
+        [ServerProperty("economy", "economy_initial_batch_sleep_ms", "Sleep between batches during initial population (ms).", 20)]
         public static int ECONOMY_INITIAL_BATCH_SLEEP_MS;
 
         [ServerProperty("economy", "economy_min_level", "Lowest item level the bot market lists.", 1)]
@@ -63,11 +63,29 @@ namespace DOL.GS.Economy
         [ServerProperty("economy", "economy_price_floor_copper", "Hard minimum sell price in copper, regardless of template price.", 100)]
         public static int ECONOMY_PRICE_FLOOR_COPPER;
 
-        [ServerProperty("economy", "economy_seller_count_per_realm", "Number of virtual NPC sellers spawned per realm. Items are spread across them.", 6)]
+        // Solo-server economies need pricier loot than the live RvR baseline so gold remains
+        // meaningful. Applied to both bot listings and the fair-value reference used to judge
+        // player listings, so the inflation is consistent across both sides of the market.
+        [ServerProperty("economy", "economy_price_global_multiplier", "Global price multiplier (percent). 100 = unchanged, 150 = +50%, 250 = 2.5x.", 150)]
+        public static int ECONOMY_PRICE_GLOBAL_MULTIPLIER;
+
+        [ServerProperty("economy", "economy_seller_count_per_realm", "Number of virtual NPC sellers spawned per realm. Items are spread across them.", 334)]
         public static int ECONOMY_SELLER_COUNT_PER_REALM;
 
         [ServerProperty("economy", "economy_verbose_log", "Verbose logging for the dynamic economy.", false)]
         public static bool ECONOMY_VERBOSE_LOG;
+
+        // Catalogue diversity: caps how many concurrent bot listings can share the same
+        // template id. Without this, with a 100k stock and ~40k templates the random picker
+        // spawns 50+ copies of popular templates. 0 disables the cap entirely.
+        [ServerProperty("economy", "economy_max_listings_per_template", "Max concurrent bot listings sharing the same template id. 0 = unlimited.", 5)]
+        public static int ECONOMY_MAX_LISTINGS_PER_TEMPLATE;
+
+        // Level stratification: CSV weights for tiers [1-15, 16-30, 31-45, 46-51]. Without
+        // this, low-level templates dominate (~70% of items in DAoC are sub-30) and high-
+        // level players see mostly junk in the AH. Empty string = uniform / disabled.
+        [ServerProperty("economy", "economy_tier_weights", "Level-tier weights CSV (4 ints): lvl 1-15, 16-30, 31-45, 46-51. Empty = uniform.", "15,25,30,30")]
+        public static string ECONOMY_TIER_WEIGHTS;
 
         // ---- Bot-buys-from-player: gives the solo player an actual market to sell into.
         // Time-to-sale is a continuous function of how the player priced the item against

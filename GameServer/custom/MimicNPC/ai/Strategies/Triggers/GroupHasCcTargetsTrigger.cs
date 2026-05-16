@@ -11,7 +11,7 @@ namespace DOL.GS.Scripts.AI.Strategies.Triggers
         public bool Check(BotContext ctx)
         {
             MimicGroup mg = ctx.MimicGroup;
-            return mg?.CCTargets != null && mg.CCTargets.Count > 0;
+            return mg != null && mg.CcTargetCount > 0;
         }
     }
 }

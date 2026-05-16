@@ -28,7 +28,20 @@ namespace DOL.GS.Scripts.AI.Strategies.Actions
             Name = actionName;
         }
 
-        public bool IsPossible(BotContext ctx) => _translationKeys.Length > 0;
+        public bool IsPossible(BotContext ctx)
+        {
+            if (_translationKeys.Length == 0)
+                return false;
+
+            // Group-level topic dedup. See LocalizedGroupSayAction.IsPossible
+            // for rationale: prevents the chat from being flooded by multiple
+            // bots reacting to the same group event in the same tick.
+            MimicGroup mg = ctx.MimicGroup;
+            if (mg != null && !mg.TryClaimChatTopic(Name))
+                return false;
+
+            return true;
+        }
 
         public bool Execute(BotContext ctx)
         {

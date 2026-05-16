@@ -28,7 +28,9 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(xargs wc -l)",
       "Bash(chmod +x c:/Users/Olivier/botdaoc/OpenDAOC-SinglePlayerBots/tools/migrate-world-db.sh)",
-      "Bash(bash -n c:/Users/Olivier/botdaoc/OpenDAOC-SinglePlayerBots/tools/migrate-world-db.sh)"
+      "Bash(bash -n c:/Users/Olivier/botdaoc/OpenDAOC-SinglePlayerBots/tools/migrate-world-db.sh)",
+      "Bash(awk 'NR<7651 || NR>8156' GameServer/custom/MimicNPC/MimicNPC.cs)",
+      "Bash(awk 'NR<6105 || NR>7310' GameServer/custom/MimicNPC/MimicNPC.cs)"
     ]
   }
 }

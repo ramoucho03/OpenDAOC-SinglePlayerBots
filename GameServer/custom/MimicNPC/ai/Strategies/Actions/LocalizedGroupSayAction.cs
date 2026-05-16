@@ -20,7 +20,22 @@ namespace DOL.GS.Scripts.AI.Strategies.Actions
             Name = actionName;
         }
 
-        public bool IsPossible(BotContext ctx) => _translationKeys.Length > 0;
+        public bool IsPossible(BotContext ctx)
+        {
+            if (_translationKeys.Length == 0)
+                return false;
+
+            // Group-level topic dedup: if another bot already shouted on this
+            // topic within MIMIC_GROUP_CHAT_DEDUP_MS, stay silent — eight bots
+            // saying "I'm low!" within two seconds breaks immersion. The
+            // action's Name is used as the topic key (already unique per
+            // binding: "say-low-health", "say-pulling", etc.).
+            MimicGroup mg = ctx.MimicGroup;
+            if (mg != null && !mg.TryClaimChatTopic(Name))
+                return false;
+
+            return true;
+        }
 
         public bool Execute(BotContext ctx)
         {

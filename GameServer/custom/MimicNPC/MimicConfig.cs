@@ -22,7 +22,52 @@ namespace DOL.GS.Scripts
         // Strategy/trigger/action layer. When false the system stays inert
         // and the existing FSM keeps full control of bot behaviour. Active
         // par défaut sur ce fork : nouvelles stratégies disponibles via /mstrategy.
-        public static bool USE_STRATEGY_SYSTEM = true;
+        [ServerProperty("npc", "mimic_use_strategy_system",
+            "Master switch for the Bot AI v2 strategy/trigger/action layer. When false, only the legacy FSM drives bots.", true)]
+        public static bool USE_STRATEGY_SYSTEM;
+
+        // ----------------------------------------------------------------
+        // Tunable AI constants. Previously hard-coded across MimicBrain.
+        // Each one is read once at bot construction / camp creation, so a
+        // /serverproperty change is picked up the next time the condition
+        // is evaluated rather than retroactively for already-pulled groups.
+        // ----------------------------------------------------------------
+
+        [ServerProperty("npc", "mimic_pull_timeout_ms",
+            "Soft cap (ms) for an in-flight pull before the puller is recovered. Default 6000.", 6000)]
+        public static int MIMIC_PULL_TIMEOUT_MS;
+
+        [ServerProperty("npc", "mimic_max_mana_throttle_ms",
+            "Maximum time (ms) the puller stays mana-throttled before forcibly resuming. Default 90000.", 90000)]
+        public static int MIMIC_MAX_MANA_THROTTLE_MS;
+
+        [ServerProperty("npc", "mimic_pull_mana_stop_pct",
+            "Puller stops when ANY caster in the group drops below this mana %. Default 30.", 30)]
+        public static int MIMIC_PULL_MANA_STOP_PCT;
+
+        [ServerProperty("npc", "mimic_pull_mana_resume_pct",
+            "Puller resumes only when EVERY caster is back above this mana %. Must be >= stop. Default 35.", 35)]
+        public static int MIMIC_PULL_MANA_RESUME_PCT;
+
+        [ServerProperty("npc", "mimic_pull_scan_radius",
+            "Maximum distance (units) the puller scans for a pull target. Default 3600.", 3600)]
+        public static int MIMIC_PULL_SCAN_RADIUS;
+
+        [ServerProperty("npc", "mimic_pull_pack_radius",
+            "Approximate BAF radius (units) used to estimate pack size around a pull candidate. Default 500.", 500)]
+        public static int MIMIC_PULL_PACK_RADIUS;
+
+        [ServerProperty("npc", "mimic_healer_flee_health_pct",
+            "Health % below which a healer auto-flees from a melee threat. Default 60.", 60)]
+        public static int MIMIC_HEALER_FLEE_HEALTH_PCT;
+
+        [ServerProperty("npc", "mimic_group_chat_dedup_ms",
+            "Cooldown (ms) during which the same chat topic stays silent for the rest of the group after one bot says it. Default 8000.", 8000)]
+        public static int MIMIC_GROUP_CHAT_DEDUP_MS;
+
+        [ServerProperty("npc", "mimic_linkdeath_grace_seconds",
+            "Seconds an owner-bot is hibernated (kept alive but inactive) after the owner link-deaths before being deleted. 0 to delete immediately. Default 60.", 60)]
+        public static int MIMIC_LINKDEATH_GRACE_SECONDS;
 
         // ----------------------------------------------------------------
         // Bot AI v2 role-class whitelists.

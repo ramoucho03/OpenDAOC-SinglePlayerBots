@@ -129,6 +129,7 @@ namespace DOL.GS.Economy
                 if (EconomyConfig.ECONOMY_PERSIST)
                     _pendingAdds.Add(item);
 
+                EconomyManager.OnListingAdded(item.Id_nb);
                 return true;
             }
         }
@@ -155,6 +156,7 @@ namespace DOL.GS.Economy
                 // Reset to 0: subsequent TryAddListing will find the lowest free slot via
                 // its wrap-around scan. Cheaper than incrementally tracking on reload.
                 _nextFreeHint = 0;
+                EconomyManager.OnListingAdded(item.Id_nb);
                 return true;
             }
         }
@@ -187,6 +189,7 @@ namespace DOL.GS.Economy
                 {
                     MarketCache.RemoveItem(item);
                     EnqueueDeleteLocked(item);
+                    EconomyManager.OnListingRemoved(item.Id_nb);
                 }
 
                 return item;
@@ -210,6 +213,7 @@ namespace DOL.GS.Economy
                     {
                         MarketCache.RemoveItem(item);
                         EnqueueDeleteLocked(item);
+                        EconomyManager.OnListingRemoved(item.Id_nb);
                     }
                 }
                 _occupied.Clear();
@@ -400,6 +404,7 @@ namespace DOL.GS.Economy
                         if (idx < _nextFreeHint)
                             _nextFreeHint = idx;
                         MarketCache.RemoveItem(item);
+                        EconomyManager.OnListingRemoved(item.Id_nb);
 
                         // If still queued for insert (never flushed), drop it. The player
                         // inventory save will AddObject it under the player's OwnerID.

@@ -69,7 +69,7 @@ namespace DOL.GS.Economy
         {
             long basePrice = template.Price;
             if (basePrice <= 0)
-                basePrice = Math.Max(1, template.Level) * 200L;
+                basePrice = ComputeFallbackPrice(template);
 
             double qualityFactor = 1.0;
             if (template.Quality >= 100)
@@ -83,15 +83,79 @@ namespace DOL.GS.Economy
 
             double levelFactor = 0.8 + (template.Level / 50.0) * 0.6;
 
+            // Progressive: a 5-bonus piece is worth meaningfully more than 5x a 1-bonus piece,
+            // matching DAoC's exponential SC value curve.
             int magicalBonuses = CountMagicalBonuses(template);
-            double magicalFactor = 1.0 + magicalBonuses * 0.05;
+            double magicalFactor = 1.0 + (magicalBonuses * magicalBonuses) * 0.04;
 
             if (template.ProcSpellID > 0 || template.ProcSpellID1 > 0)
                 magicalFactor *= 1.15;
             if (template.SpellID > 0 || template.SpellID1 > 0)
                 magicalFactor *= 1.10;
 
-            return basePrice * qualityFactor * levelFactor * magicalFactor;
+            double value = basePrice * qualityFactor * levelFactor * magicalFactor;
+
+            int globalMul = Math.Max(10, EconomyConfig.ECONOMY_PRICE_GLOBAL_MULTIPLIER);
+            value *= globalMul / 100.0;
+            return value;
+        }
+
+        /// <summary>
+        /// Fallback per-unit copper value when an ItemTemplate has no merchant price,
+        /// which is the case for almost all crafted outputs. The per-level rate is chosen
+        /// by object/item category so a level-50 cloth piece doesn't end up valued like a
+        /// level-50 jewelry. Resources/components stay cheap on purpose so the AH stays
+        /// affordable for low-level players sourcing materials.
+        /// </summary>
+        private static long ComputeFallbackPrice(DbItemTemplate t)
+        {
+            int level = Math.Max(1, (int) t.Level);
+            eObjectType ot = (eObjectType) t.Object_Type;
+            eInventorySlot slot = (eInventorySlot) t.Item_Type;
+
+            long perLevel;
+
+            if (slot == eInventorySlot.Jewelry || slot == eInventorySlot.Neck ||
+                slot == eInventorySlot.Cloak || slot == eInventorySlot.Waist ||
+                slot == eInventorySlot.LeftBracer || slot == eInventorySlot.RightBracer ||
+                slot == eInventorySlot.LeftRing || slot == eInventorySlot.RightRing)
+            {
+                perLevel = 800;
+            }
+            else if (ot == eObjectType.Arrow || ot == eObjectType.Bolt || ot == eObjectType.Poison)
+            {
+                perLevel = 50;  // ammo stacks - kept cheap because Count multiplies the total
+            }
+            else if (ot == eObjectType.Magical)
+            {
+                perLevel = 300; // potions / charge items
+            }
+            else if (ot == eObjectType.GenericItem || ot == eObjectType.AlchemyTincture || ot == eObjectType.SpellcraftGem)
+            {
+                perLevel = 80;  // crafting components
+            }
+            else if (ot == eObjectType.Instrument)
+            {
+                perLevel = 700;
+            }
+            else if (ot == eObjectType.Shield)
+            {
+                perLevel = 450;
+            }
+            else if (ot >= eObjectType.GenericArmor && ot <= eObjectType.Scale)
+            {
+                perLevel = 400;
+            }
+            else if (ot >= eObjectType.GenericWeapon && ot <= eObjectType.MaulerStaff)
+            {
+                perLevel = 600;
+            }
+            else
+            {
+                perLevel = 200;
+            }
+
+            return level * perLevel;
         }
 
         /// <summary>

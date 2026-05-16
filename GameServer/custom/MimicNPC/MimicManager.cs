@@ -384,6 +384,11 @@ namespace DOL.GS.Scripts
         {
             log.Info("MimicManager Initializing...");
 
+            // Fail-fast on missing chat translations: the previous behaviour
+            // silently leaked the raw key into party chat when a translation
+            // file was incomplete. Warns once per missing key in the boot log.
+            MimicChatKeys.ValidateAll();
+
             MimicBattlegrounds.Initialize();
             RegisterPlayerLifecycleHandlers();
             PvPFrontierManager.Initialize();
@@ -619,23 +624,50 @@ namespace DOL.GS.Scripts
         }
 
         /// <summary>
-        /// Called when a player quits or link-deaths. Deletes every mimic the
-        /// player owns immediately. No persistence/restore is performed — the
-        /// player must re-create their group with /mgroup or /mcreate after reconnect.
+        /// Player is leaving for good (Quit event, or the engine's
+        /// SECONDS_TO_QUIT_ON_LINKDEATH timer expired). Every mimic the
+        /// account owns is removed from the world.
         /// </summary>
-        private static void OnPlayerDisconnected(DOLEvent e, object sender, EventArgs args)
+        private static void OnPlayerQuit(DOLEvent e, object sender, EventArgs args)
         {
-            if (sender is not GamePlayer player || player.Client?.Account == null)
+            DeleteOwnedBy(sender as GamePlayer, "quit");
+        }
+
+        /// <summary>
+        /// Player just lost their connection. The engine already keeps the
+        /// avatar in-world for SECONDS_TO_QUIT_ON_LINKDEATH (60s by default)
+        /// before firing Quit — so mimics are safe during a short net blip.
+        ///
+        /// If <see cref="MimicConfig.MIMIC_LINKDEATH_GRACE_SECONDS"/> is zero,
+        /// we revert to the legacy "delete immediately" behaviour for
+        /// servers that want bots dropped the moment a link breaks.
+        /// </summary>
+        private static void OnPlayerLinkdeath(DOLEvent e, object sender, EventArgs args)
+        {
+            if (MimicConfig.MIMIC_LINKDEATH_GRACE_SECONDS <= 0)
+            {
+                DeleteOwnedBy(sender as GamePlayer, "linkdeath (grace=0)");
+                return;
+            }
+
+            if (sender is GamePlayer player && player.Client?.Account != null && log.IsInfoEnabled)
+            {
+                int owned = GetLiveOwnedBy(player.Client.Account.Name).Count;
+                if (owned > 0)
+                    log.Info($"Mimic linkdeath grace active for {player.Client.Account.Name}: keeping {owned} bot(s) alive until Quit.");
+            }
+        }
+
+        private static void DeleteOwnedBy(GamePlayer player, string reason)
+        {
+            if (player?.Client?.Account == null)
                 return;
 
             IReadOnlyList<MimicNPC> owned = GetLiveOwnedBy(player.Client.Account.Name);
-
             if (owned.Count == 0)
                 return;
 
             int deleted = 0;
-
-            // Take a copy because Delete mutates _liveByOwner via UnregisterOwned.
             foreach (MimicNPC mimic in owned.ToList())
             {
                 if (mimic != null && mimic.ObjectState == GameObject.eObjectState.Active)
@@ -646,7 +678,7 @@ namespace DOL.GS.Scripts
             }
 
             if (log.IsInfoEnabled)
-                log.Info($"Deleted {deleted} mimic(s) on disconnect for account {player.Client.Account.Name}");
+                log.Info($"Deleted {deleted} mimic(s) for account {player.Client.Account.Name} (reason: {reason})");
         }
 
         /// <summary>
@@ -675,8 +707,8 @@ namespace DOL.GS.Scripts
 
         internal static void RegisterPlayerLifecycleHandlers()
         {
-            GameEventMgr.AddHandler(GamePlayerEvent.Quit, OnPlayerDisconnected);
-            GameEventMgr.AddHandler(GamePlayerEvent.Linkdeath, OnPlayerDisconnected);
+            GameEventMgr.AddHandler(GamePlayerEvent.Quit, OnPlayerQuit);
+            GameEventMgr.AddHandler(GamePlayerEvent.Linkdeath, OnPlayerLinkdeath);
             GameEventMgr.AddHandler(GroupEvent.MemberDisbanded, OnGroupMemberDisbanded);
         }
 
@@ -1059,6 +1091,31 @@ namespace DOL.GS.Scripts
                 log.Info("No jewelry of any kind found for " + player.Name);
         }
 
+        /// <summary>
+        /// Whether the supplied bot's combat profile prefers an off-hand
+        /// loadout that makes equipping a shield strictly worse (assassin
+        /// dual-wield, archer bow, dual-wield berserker / savage, etc.).
+        /// Centralises the previous hand-maintained class-ID list — Mercenary,
+        /// Blademaster, Berserker and Savage are tank-melee classes whose
+        /// profile alone doesn't say "never shield", so we keep a class-ID
+        /// fallback for them. The role check covers Assassin and Archer.
+        /// </summary>
+        private static bool ShouldBackpackOffhandShield(IGamePlayer player)
+        {
+            if (player is MimicNPC m && m.CombatProfile != null)
+            {
+                if (m.CombatProfile.HasRole(eMimicCombatRole.Assassin)
+                    || m.CombatProfile.HasRole(eMimicCombatRole.Archer))
+                    return true;
+            }
+
+            int id = player?.CharacterClass?.ID ?? 0;
+            return id == (int)eCharacterClass.Mercenary
+                || id == (int)eCharacterClass.Blademaster
+                || id == (int)eCharacterClass.Berserker
+                || id == (int)eCharacterClass.Savage;
+        }
+
         private static void AddItem(IGamePlayer player, DbItemTemplate itemTemplate, eHand hand = eHand.None)
         {
             if (itemTemplate == null)
@@ -1085,15 +1142,13 @@ namespace DOL.GS.Scripts
                 }
                 else
                 {
-                    if (item.Object_Type == (int)eObjectType.Shield &&
-                        (player.CharacterClass.ID == (int)eCharacterClass.Infiltrator ||
-                        player.CharacterClass.ID == (int)eCharacterClass.Mercenary ||
-                        player.CharacterClass.ID == (int)eCharacterClass.Nightshade ||
-                        player.CharacterClass.ID == (int)eCharacterClass.Ranger ||
-                        player.CharacterClass.ID == (int)eCharacterClass.Blademaster ||
-                        player.CharacterClass.ID == (int)eCharacterClass.Shadowblade ||
-                        player.CharacterClass.ID == (int)eCharacterClass.Berserker ||
-                        player.CharacterClass.ID == (int)eCharacterClass.Savage))
+                    // Off-hand shield is backpacked for classes whose combat
+                    // profile actively prefers a dual-wield / 2H / ranged
+                    // loadout — equipping the shield would just waste the
+                    // off-hand. Driven by the combat profile (Assassin /
+                    // Archer roles) rather than a static class-ID list so
+                    // new specs slot in without a code patch.
+                    if (item.Object_Type == (int)eObjectType.Shield && ShouldBackpackOffhandShield(player))
                     {
                         player.Inventory.AddItem(player.Inventory.FindFirstEmptySlot(eInventorySlot.FirstEmptyBackpack, eInventorySlot.LastEmptyBackpack), item);
                     }

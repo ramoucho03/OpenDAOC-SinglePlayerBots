@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -84,6 +85,12 @@ namespace DOL.GS.Economy
         private static long _playerListingsCacheUtcSec;
         private static readonly object _playerListingsCacheLock = new();
 
+        // Anti-doublons: live count of bot listings per template id (Id_nb). The picker
+        // skips templates already at ECONOMY_MAX_LISTINGS_PER_TEMPLATE. Concurrent dict
+        // because OnRemoveItem (player buy) decrements from the player save thread while
+        // the worker increments from its own thread.
+        private static readonly ConcurrentDictionary<string, int> _listingsPerTemplate = new(StringComparer.Ordinal);
+
         public static bool IsInitialized => _initialized;
         public static bool IsSuspended => _suspended;
 
@@ -126,8 +133,51 @@ namespace DOL.GS.Economy
                 return;
             }
 
+            AutoMigrateDefaults();
+
             try { Initialize(); }
             catch (Exception ex) { log.Error("Economy: failed to initialize.", ex); }
+        }
+
+        // Bump existing ServerProperty rows that still hold a previous default to the new
+        // default. Manual overrides set to any other value are preserved. Runs once per
+        // boot, no-op after the first successful migration since Value no longer matches
+        // the old default. Also overrides the in-memory static so the current process
+        // sees the new value without a property reload.
+        private static void AutoMigrateDefaults()
+        {
+            TryMigrateInt("economy_target_stock", 10000, EconomyConfig.ECONOMY_TARGET_STOCK,
+                v => EconomyConfig.ECONOMY_TARGET_STOCK = v);
+            TryMigrateInt("economy_seller_count_per_realm", 6, EconomyConfig.ECONOMY_SELLER_COUNT_PER_REALM,
+                v => EconomyConfig.ECONOMY_SELLER_COUNT_PER_REALM = v);
+            TryMigrateInt("economy_initial_batch_sleep_ms", 50, EconomyConfig.ECONOMY_INITIAL_BATCH_SLEEP_MS,
+                v => EconomyConfig.ECONOMY_INITIAL_BATCH_SLEEP_MS = v);
+        }
+
+        private static void TryMigrateInt(string key, int oldDefault, int newDefault, Action<int> applyInMemory)
+        {
+            if (oldDefault == newDefault)
+                return;
+            try
+            {
+                var row = GameServer.Database.FindObjectByKey<DbServerProperty>(key);
+                if (row == null)
+                    return;
+                if (!int.TryParse(row.Value, out int currentValue))
+                    return;
+                if (currentValue != oldDefault)
+                    return;
+                row.Value = newDefault.ToString();
+                row.DefaultValue = newDefault.ToString();
+                GameServer.Database.SaveObject(row);
+                applyInMemory(newDefault);
+                if (log.IsInfoEnabled)
+                    log.Info($"Economy: auto-migrated server property {key} from {oldDefault} to {newDefault}.");
+            }
+            catch (Exception ex)
+            {
+                log.Warn($"Economy: auto-migration of {key} failed: {ex.Message}");
+            }
         }
 
         [GameServerStoppedEvent]
@@ -259,6 +309,7 @@ namespace DOL.GS.Economy
 
             _merchants = Array.Empty<EconomyConsignmentMerchant>();
             _byLot = new Dictionary<int, EconomyConsignmentMerchant>();
+            ResetListingCounts();
 
             // Reset the player-listings snapshot too so a subsequent Initialize doesn't
             // serve stale entries from the previous run.
@@ -868,15 +919,139 @@ namespace DOL.GS.Economy
         {
             // Realm-specific first, then realm-none fallback. We do NOT cross realms so
             // realm-filtered Market Explorer searches stay honest.
-            List<DbItemTemplate> bucket = EconomyItemPool.GetBucket(realm, cat);
-            if (bucket != null && bucket.Count > 0)
+            DbItemTemplate t = PickFromBuckets(realm, cat);
+            if (t != null)
+                return t;
+            return PickFromBuckets(eRealm.None, cat);
+        }
+
+        private static DbItemTemplate PickFromBuckets(eRealm realm, EconomyItemPool.Category cat)
+        {
+            int[] tierWeights = ResolveTierWeights();
+            int cap = EconomyConfig.ECONOMY_MAX_LISTINGS_PER_TEMPLATE;
+
+            // Up to 6 tier rolls so a saturated tier doesn't starve the picker. After 6,
+            // we fall back to the flat bucket so we always make progress.
+            for (int tierAttempt = 0; tierAttempt < 6; tierAttempt++)
+            {
+                List<DbItemTemplate> bucket = tierWeights == null
+                    ? EconomyItemPool.GetBucket(realm, cat)
+                    : EconomyItemPool.GetTieredBucket(realm, cat, RollTier(tierWeights));
+                if (bucket == null || bucket.Count == 0)
+                    continue;
+
+                DbItemTemplate picked = PickRespectingCap(bucket, cap);
+                if (picked != null)
+                    return picked;
+            }
+
+            // Last-resort flat bucket with cap (still honors anti-doublons).
+            var flat = EconomyItemPool.GetBucket(realm, cat);
+            if (flat == null || flat.Count == 0)
+                return null;
+            return PickRespectingCap(flat, cap) ?? flat[Util.Random(flat.Count - 1)];
+        }
+
+        // Bounded probing: a saturated bucket would otherwise loop forever. After
+        // MAX_PROBES failures we return null so the caller can fall back to another tier
+        // or a different bucket without blocking the generation tick.
+        private const int CAP_PROBE_ATTEMPTS = 24;
+
+        private static DbItemTemplate PickRespectingCap(List<DbItemTemplate> bucket, int cap)
+        {
+            if (bucket.Count == 0)
+                return null;
+            if (cap <= 0)
                 return bucket[Util.Random(bucket.Count - 1)];
 
-            bucket = EconomyItemPool.GetBucket(eRealm.None, cat);
-            if (bucket != null && bucket.Count > 0)
-                return bucket[Util.Random(bucket.Count - 1)];
-
+            int probes = Math.Min(CAP_PROBE_ATTEMPTS, bucket.Count);
+            for (int i = 0; i < probes; i++)
+            {
+                DbItemTemplate cand = bucket[Util.Random(bucket.Count - 1)];
+                if (!_listingsPerTemplate.TryGetValue(cand.Id_nb, out int n) || n < cap)
+                    return cand;
+            }
             return null;
+        }
+
+        private static int[] _cachedTierWeights;
+        private static string _cachedTierWeightsRaw;
+
+        private static int[] ResolveTierWeights()
+        {
+            string raw = EconomyConfig.ECONOMY_TIER_WEIGHTS;
+            if (string.IsNullOrWhiteSpace(raw))
+                return null;
+            if (ReferenceEquals(raw, _cachedTierWeightsRaw))
+                return _cachedTierWeights;
+
+            string[] parts = raw.Split(',');
+            if (parts.Length != EconomyItemPool.TIER_COUNT)
+            {
+                _cachedTierWeightsRaw = raw;
+                _cachedTierWeights = null;
+                return null;
+            }
+            int[] w = new int[EconomyItemPool.TIER_COUNT];
+            int sum = 0;
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (!int.TryParse(parts[i].Trim(), out w[i]) || w[i] < 0)
+                {
+                    _cachedTierWeightsRaw = raw;
+                    _cachedTierWeights = null;
+                    return null;
+                }
+                sum += w[i];
+            }
+            if (sum <= 0)
+            {
+                _cachedTierWeightsRaw = raw;
+                _cachedTierWeights = null;
+                return null;
+            }
+            _cachedTierWeightsRaw = raw;
+            _cachedTierWeights = w;
+            return w;
+        }
+
+        private static int RollTier(int[] weights)
+        {
+            int sum = 0;
+            for (int i = 0; i < weights.Length; i++)
+                sum += weights[i];
+            int roll = Util.Random(1, sum);
+            for (int i = 0; i < weights.Length; i++)
+            {
+                if (roll <= weights[i])
+                    return i;
+                roll -= weights[i];
+            }
+            return weights.Length - 1;
+        }
+
+        // ---- Listing-count hooks called by EconomyConsignmentMerchant on add/remove.
+        // Kept internal so only the economy module can mutate the counts.
+        internal static void OnListingAdded(string idNb)
+        {
+            if (string.IsNullOrEmpty(idNb))
+                return;
+            _listingsPerTemplate.AddOrUpdate(idNb, 1, static (_, c) => c + 1);
+        }
+
+        internal static void OnListingRemoved(string idNb)
+        {
+            if (string.IsNullOrEmpty(idNb))
+                return;
+            // Don't bother cleaning up zero entries: the dictionary upper bound is the
+            // number of distinct template ids, which is ~40k and dwarfed by the rest of
+            // the economy state.
+            _listingsPerTemplate.AddOrUpdate(idNb, 0, static (_, c) => c > 0 ? c - 1 : 0);
+        }
+
+        internal static void ResetListingCounts()
+        {
+            _listingsPerTemplate.Clear();
         }
 
         // Walks the immutable merchants snapshot. Two-pass reservoir to pick a random

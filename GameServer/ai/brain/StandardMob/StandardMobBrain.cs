@@ -802,7 +802,7 @@ namespace DOL.AI.Brain
 
                 if (target is IGamePlayer iPlayer)
                     if (iPlayer.Group != null)
-                        iPlayer.Group.MimicGroup.CCTargets.Add(brain.Body);
+                        iPlayer.Group.MimicGroup.AddCcTarget(brain.Body);
 
                 brain.AddToAggroList(target, 1);
             }

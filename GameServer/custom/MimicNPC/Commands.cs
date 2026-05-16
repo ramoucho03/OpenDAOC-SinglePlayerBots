@@ -1339,7 +1339,8 @@ namespace DOL.GS.Scripts
       "/mstrategy list - Liste les stratégies enregistrées et actives sur le mimic ciblé (ou sur tous les mimics groupés).",
       "/mstrategy add <clé> - Active une stratégie sur la cible ou le groupe.",
       "/mstrategy remove <clé> - Désactive une stratégie sur la cible ou le groupe.",
-      "/mstrategy clear - Désactive toutes les stratégies sur la cible ou le groupe.")]
+      "/mstrategy clear - Désactive toutes les stratégies sur la cible ou le groupe.",
+      "/mstrategy trace [secondes] - Stream chaque évaluation de binding du mimic ciblé (défaut 30s, 0 pour stopper).")]
     public class MimicStrategyCommandHandler : AbstractCommandHandler, ICommandHandler
     {
         public void OnCommand(GameClient client, string[] args)
@@ -1431,8 +1432,35 @@ namespace DOL.GS.Scripts
                     break;
                 }
 
+                case "trace":
+                {
+                    int seconds = 30;
+                    if (args.Length >= 3 && !int.TryParse(args[2], out seconds))
+                    {
+                        player.Out.SendMessage("Usage : /mstrategy trace [secondes] (entier, 0 = stop)", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                        return;
+                    }
+                    if (seconds < 0) seconds = 0;
+                    if (seconds > 300) seconds = 300; // cap to avoid runaway log spam
+
+                    int ok = 0;
+                    foreach (MimicNPC m in targets)
+                    {
+                        if (m.MimicBrain?.StrategyManager == null)
+                            continue;
+                        m.MimicBrain.StrategyManager.StartTrace(seconds == 0 ? null : player, seconds);
+                        ok++;
+                    }
+
+                    if (seconds == 0)
+                        player.Out.SendMessage($"Trace stoppée sur {ok} mimic(s).", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    else
+                        player.Out.SendMessage($"Trace de {seconds}s démarrée sur {ok} mimic(s). Chaque tick listera les bindings évalués.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    break;
+                }
+
                 default:
-                    player.Out.SendMessage("Sous-commande inconnue. Utilisez list|add|remove|clear.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    player.Out.SendMessage("Sous-commande inconnue. Utilisez list|add|remove|clear|trace.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
                     break;
             }
         }
