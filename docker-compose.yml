@@ -65,7 +65,13 @@ services:
   # cover it, but the first 30s of logs would be confusing).
   # ---------------------------------------------------------------------------
   db:
-    image: mariadb:10.6
+    # Pinned to 12.x (was 10.6) because the volume on disk was created by a
+    # newer mariadb image and the InnoDB redo log can't be downgraded: starting
+    # 10.6 against that volume aborts with
+    # `Unsupported redo log format. The redo log was created with MariaDB 12.2.2`.
+    # If you ever want to reset to a clean 10.6, nuke the volume first:
+    #   docker compose down -v   # (DESTROYS THE DB)
+    image: mariadb:12
     container_name: opendaoc-db
     stdin_open: true
     tty: true
