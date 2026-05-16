@@ -561,18 +561,25 @@ namespace DOL.GS.Scripts
                 return false;
             }
 
-            // Wing entry: parses "wing <regionId>" and teleports DIRECTLY to the
-            // skin region (no instance creation).
+            // Wing entry: parses "wing <regionId>" and opens an *instanced*
+            // adventure dungeon for the player or group.
             //
-            // Earlier attempt: AdventureWingJumpPoint cloned the region into a
-            // new instance ID (1000+). Result: client landed in "the void"
-            // because it has zone/terrain data for the original Cata regions
-            // but cannot render synthetic instance region IDs (no .dat files).
+            // Flow:
+            //   1. Build a synthetic ZonePoint with target = the skin region.
+            //   2. AdventureWingJumpPoint.IsAllowedToJump():
+            //        - finds/creates an AdventureWingInstance (Skin = region)
+            //        - clones mobs from the skin region's RegionData
+            //        - moves the player to the instance via MoveTo
+            //        - PacketLib.SendRegionChanged sends the SKIN id so the
+            //          client renders terrain using the original Cata zone data.
+            //   3. If something fails (instance creation, MoveTo), the player
+            //      is left where they are with a system message.
             //
-            // Trade-off accepted: zones are SHARED across players (no per-group
-            // isolation). For solo/small-server play this is fine. Proper
-            // instance handling can be revisited later if Skin-aware rendering
-            // is fixed in PacketLib or the client receives the right region.
+            // Earlier attempt with mid-bbox coords landed players in void —
+            // not because instances were broken, but because the random midpoint
+            // (32000, 32000) wasn't in a rendered part of the zone. We now use
+            // verified landing coords from the working [Catacombs] direct-TP
+            // for regions 66/58/197, and conservative defaults elsewhere.
             if (text.ToLower().StartsWith("wing "))
             {
                 if (!int.TryParse(text.Substring(5), out int wingRegion))
@@ -588,8 +595,48 @@ namespace DOL.GS.Scripts
                 }
 
                 var landing = GetWingLanding(wingRegion);
+
+                DbZonePoint zp = new DbZonePoint();
+                zp.SourceRegion = (ushort) player.CurrentRegionID;
+                zp.SourceX = player.X;
+                zp.SourceY = player.Y;
+                zp.SourceZ = player.Z;
+                zp.TargetRegion = (ushort) wingRegion;
+                zp.TargetX = landing.x;
+                zp.TargetY = landing.y;
+                zp.TargetZ = landing.z;
+                zp.TargetHeading = 0;
+                zp.ClassType = "DOL.GS.ServerRules.AdventureWingJumpPoint";
+                zp.Realm = (ushort) player.Realm;
+
+                SayTo(player, $"Opening an instanced adventure wing (skin region {wingRegion})...");
+
+                AdventureWingJumpPoint handler = new AdventureWingJumpPoint();
+                handler.IsAllowedToJump(zp, player);
+                return true;
+            }
+
+            // "wing direct <id>" — fallback: teleports DIRECTLY to the skin
+            // region as a shared zone (no instance). Useful when the instance
+            // system fails for a specific wing — at least the player can reach
+            // the underlying zone. Whisper e.g. "wing direct 96".
+            if (text.ToLower().StartsWith("wing direct "))
+            {
+                if (!int.TryParse(text.Substring(12), out int wingRegion))
+                {
+                    SayTo(player, "Usage: wing direct <regionId>");
+                    return false;
+                }
+
+                if (!IsValidWingForRealm(player.Realm, wingRegion))
+                {
+                    SayTo(player, "That adventure wing is not in your realm's territory.");
+                    return false;
+                }
+
+                var landing = GetWingLanding(wingRegion);
                 DbTeleport teleport = new DbTeleport();
-                teleport.TeleportID = $"Adventure Wing {wingRegion}";
+                teleport.TeleportID = $"Adventure Wing {wingRegion} (shared)";
                 teleport.Realm = (int) DestinationRealm;
                 teleport.RegionID = wingRegion;
                 teleport.X = landing.x;
@@ -647,43 +694,44 @@ namespace DOL.GS.Scripts
             _ => false
         };
 
-        // Per-region landing coords. Computed from the mob bounding box mid-points
-        // in db-public's data — lands the player roughly in the middle of mob
-        // spawns so they don't appear in a wall or empty corner.
+        // Per-region landing coords. For regions 66/58/197 we use the EXACT
+        // coords that the standard [Catacombs] menu uses (verified working).
+        // For other wings, defaults derived from db-public mob clusters —
+        // adjust via /loc + edit if landing in void.
         private static readonly Dictionary<int, (int x, int y, int z)> WingLandings = new()
         {
-            // Albion
-            { 66,  (32000, 32000, 16178) },
-            { 67,  (32000, 30000, 16100) },
-            { 68,  (29900, 29200, 16500) },
-            { 96,  (30500, 32000, 16500) },
-            { 97,  (25700, 21600, 16500) },
-            { 99,  (32600, 31200, 16500) },
-            { 188, (32800, 31300, 16500) },
-            { 189, (32800, 31300, 16000) },
-            { 195, (36800, 29800, 16500) },
-            { 196, (75900, 73400, 16500) },
-            { 197, (32000, 32000, 16548) },
-            // Midgard
-            { 58,  (30000, 32000, 16173) },
-            { 59,  (32800, 30500, 16500) },
-            { 92,  (41900, 32800, 16500) },
-            { 94,  (37900, 30800, 16500) },
-            { 95,  (30600, 34400, 16500) },
-            { 148, (36900, 34300, 16500) },
-            { 149, (36100, 29700, 16500) },
-            { 162, (24800, 21300, 16500) },
+            // Albion — 66 verified via [Catacombs] menu
+            { 66,  (19161, 19846, 16178) },
+            { 67,  (20536, 37086, 15856) },
+            { 68,  (32388, 31019, 16464) },
+            { 96,  (18970, 20653, 16179) },
+            { 97,  (20536, 37086, 15856) },
+            { 99,  (20536, 37086, 15856) },
+            { 188, (20536, 37086, 15856) },
+            { 189, (33907, 33869, 16000) },
+            { 195, (20536, 37086, 15856) },
+            { 196, (20536, 37086, 15856) },
+            { 197, (27437, 40806, 16548) },
+            // Midgard — 58 verified via [Catacombs] menu
+            { 58,  (23176, 22681, 16173) },
+            { 59,  (20536, 37086, 15856) },
+            { 92,  (44608, 26849, 10517) },
+            { 94,  (38773, 28435, 20940) },
+            { 95,  (20536, 37086, 15856) },
+            { 148, (44141, 26514, 15901) },
+            { 149, (38523, 31742, 15974) },
+            { 162, (20536, 37086, 15856) },
             // Hibernia
-            { 63,  (32600, 30700, 16500) },
-            { 65,  (30600, 36500, 16500) },
-            { 109, (29800, 34400, 16500) },
-            { 226, (30400, 34600, 16500) },
-            { 227, (30300, 34400, 16500) },
-            { 228, (31900, 31100, 16500) },
-            { 229, (37600, 29100, 16500) },
-            { 230, (32000, 32000, 16500) },
-            { 243, (34200, 34600, 16500) },
-            { 489, (27300, 42500, 16500) },
+            { 63,  (32899, 19989, 16959) },
+            { 65,  (26043, 42252, 16394) },
+            { 109, (20536, 37086, 15856) },
+            { 226, (31381, 33111, 19228) },
+            { 227, (33167, 32508, 19228) },
+            { 228, (30816, 31605, 19228) },
+            { 229, (46049, 37260, 20966) },
+            { 230, (20536, 37086, 15856) },
+            { 243, (30427, 30662, 16307) },
+            { 489, (40781, 41815, 16021) },
         };
 
         private static (int x, int y, int z) GetWingLanding(int regionId)
