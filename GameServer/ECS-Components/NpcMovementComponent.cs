@@ -286,7 +286,11 @@ namespace DOL.GS
 
             int maxRoamingRadius = Owner.RoamingRange;
 
-            if (Owner.CurrentZone.IsPathfindingEnabled)
+            // CurrentZone can be null if the NPC was spawned outside any defined zone
+            // (e.g. mimic spawned at exact spawnpoint that maps off-grid). The pathfinding
+            // branch requires a zone; without one we fall through to the random-angle
+            // wander below, which only needs the spawn coordinates.
+            if (Owner.CurrentZone != null && Owner.CurrentZone.IsPathfindingEnabled)
             {
                 EDtPolyFlags[] filters = PathfindingProvider.Instance.DefaultFilters;
                 Vector3? target = PathfindingProvider.Instance.GetRandomPoint(Owner.CurrentZone, new(Owner.SpawnPoint.X, Owner.SpawnPoint.Y, Owner.SpawnPoint.Z), maxRoamingRadius, filters);
