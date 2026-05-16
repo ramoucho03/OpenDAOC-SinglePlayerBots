@@ -29,16 +29,27 @@ services:
     image: opendaoc-fork:latest
     container_name: opendaoc-db-seed
     build:
-      # Same context as the gameserver so docker compose tags the same image
-      # for both services and only builds once.
-      # Replace `#master` with another branch (e.g. `#claude/optimize-dol-server-gho1T`)
-      # to test a feature branch end-to-end without merging.
-      context: https://github.com/ramoucho03/OpenDAOC-SinglePlayerBots.git#master
-    entrypoint: ["/bin/sh", "-c"]
+      # Local context: builds from the working tree so uncommitted changes
+      # (Dockerfile tweaks, native lib build, code fixes) land in the image
+      # without needing to push first. Swap to the GitHub URL form to pull
+      # straight from a branch:
+      #   context: https://github.com/ramoucho03/OpenDAOC-SinglePlayerBots.git#master
+      context: .
     # Idempotent seed: the test-then-copy form is portable across GNU
     # coreutils (Debian/Ubuntu) and BusyBox (Alpine) — `cp -n` was a
     # GNU-ism not supported by every BusyBox version we might land on.
-    command: "if [ ! -f /seed/combined.sql ]; then cp /tmp/opendaoc-db/combined.sql /seed/combined.sql; fi && echo 'db-seed: schema ready in shared volume' && ls -lh /seed"
+    # Using the array+heredoc form so YAML never collapses the if/then
+    # control flow into a single broken line (which crashed with
+    # `syntax error: unexpected end of file (expecting "then")` on some
+    # Compose versions when the inline string got re-quoted on its way to sh).
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ ! -f /seed/combined.sql ]; then
+          cp /tmp/opendaoc-db/combined.sql /seed/combined.sql
+        fi
+        echo "db-seed: schema ready in shared volume"
+        ls -lh /seed
     volumes:
       - base-db:/seed
     networks:
@@ -90,10 +101,11 @@ services:
     image: opendaoc-fork:latest
     container_name: opendaoc-server
     build:
-      # Replace `#master` with the branch you want to test:
+      # Local context: builds from the working tree so uncommitted changes
+      # land in the image without a push. Swap to the GitHub URL form to
+      # build a remote branch:
       #   context: https://github.com/ramoucho03/OpenDAOC-SinglePlayerBots.git#claude/optimize-dol-server-gho1T
-      # For uncommitted local changes use `context: .` (and remove the URL).
-      context: https://github.com/ramoucho03/OpenDAOC-SinglePlayerBots.git#master
+      context: .
     restart: unless-stopped
     stdin_open: true
     tty: true
