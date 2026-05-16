@@ -156,10 +156,10 @@ namespace DOL.AI.Brain
         /// <summary>
         /// Turns on the baseline strategy bundle every mimic should be running:
         /// survival (sit/stand auto), awareness (self callouts + banter),
-        /// assist (focus the assist target), support (announce mezz/crit/CC)
-        /// and camp (group-dynamics layer for /mcamp). Each strategy is
-        /// individually toggleable later via /mstrategy if the player wants
-        /// to silence one bot.
+        /// assist (focus the assist target), peel (protect vulnerable members),
+        /// support (announce mezz/crit/CC) and camp (group-dynamics layer for
+        /// /mcamp). Each strategy is individually toggleable later via
+        /// /mstrategy if the player wants to silence one bot.
         /// </summary>
         private static void EnableDefaultStrategies(BotStrategyManager mgr, MimicNPC bot)
         {
@@ -169,6 +169,7 @@ namespace DOL.AI.Brain
             mgr.Enable(SurvivalStrategy.Key);
             mgr.Enable(AwarenessStrategy.Key);
             mgr.Enable(AssistStrategy.Key);
+            mgr.Enable(PeelStrategy.Key);
             mgr.Enable(SupportStrategy.Key);
             mgr.Enable(CampStrategy.Key);
             // Activated on every bot; the bindings inside filter on the
@@ -2003,7 +2004,22 @@ namespace DOL.AI.Brain
         {
             MimicCombatProfile profile = MimicCombatProfileRegistry.GetForLiving(gl);
             if (profile == null)
+            {
+                if (gl is IGamePlayer player && player.CharacterClass != null)
+                {
+                    int classId = player.CharacterClass.ID;
+
+                    if (MimicConfig.IsHealerClass(classId))
+                        return 0;
+
+                    if (MimicConfig.IsCcClass(classId)
+                        || MimicConfig.IsCasterDpsClass(classId)
+                        || player.CharacterClass.ClassType == eClassType.ListCaster)
+                        return 1;
+                }
+
                 return 3;
+            }
 
             if (profile.HasRole(eMimicCombatRole.Healer))
                 return 0;
@@ -2016,6 +2032,108 @@ namespace DOL.AI.Brain
 
             return profile.HasRole(eMimicCombatRole.Tank) ? 3 : 2;
 
+        }
+
+        private bool TryGetProtectedVictim(GameLiving hostile, out GameLiving victim, out int tier)
+        {
+            victim = null;
+            tier = int.MaxValue;
+
+            if (hostile?.TargetObject is not GameLiving target)
+                return false;
+
+            if (!target.IsAlive || target.ObjectState != GameObject.eObjectState.Active)
+                return false;
+
+            Group group = Body.Group;
+            if (group == null || !group.IsInTheGroup(target))
+                return false;
+
+            tier = VulnerabilityTier(target);
+            if (tier > 1)
+                return false;
+
+            victim = target;
+            return true;
+        }
+
+        /// <summary>
+        /// Finds an urgent hostile currently targeting a healer, CC/support,
+        /// or caster. Used before normal assist logic so the group can peel
+        /// dangerous adds instead of tunnel-visioning the main target.
+        /// </summary>
+        public GameLiving SelectProtectedMemberThreat()
+        {
+            if (Body?.Group == null || AggroList.Count == 0 || IsHealer)
+                return null;
+
+            GameLiving best = null;
+            int bestScore = int.MaxValue;
+            int bestDistance = int.MaxValue;
+            MimicGroup mg = Body.Group.MimicGroup;
+            eMimicCombatMode mode = PvPMode ? eMimicCombatMode.PvP : eMimicCombatMode.PvE;
+
+            foreach (var pair in AggroList)
+            {
+                GameLiving hostile = pair.Key;
+
+                if (hostile == null
+                    || !hostile.IsAlive
+                    || hostile.ObjectState != GameObject.eObjectState.Active)
+                    continue;
+
+                if (ShouldBeRemovedFromAggroList(hostile) || ShouldBeIgnoredFromAggroList(hostile))
+                    continue;
+
+                if (!CanAggroTarget(hostile))
+                    continue;
+
+                if (ShouldAvoidCrowdControlledTarget(hostile, mode, false))
+                    continue;
+
+                if (!TryGetProtectedVictim(hostile, out GameLiving victim, out int victimTier))
+                    continue;
+
+                if (mg?.MainTank != null
+                    && mg.MainTank != Body
+                    && mg.MainTank.IsAlive
+                    && TargetHasAggroOnTank(hostile, mg.MainTank))
+                    continue;
+
+                int distance = Body.GetDistanceTo(hostile);
+                int score = victimTier * 1000 + victim.HealthPercent * 4 + distance / 80;
+
+                if (hostile.TargetObject == Body)
+                    score -= 250;
+                else if (victim.HealthPercent <= 60)
+                    score -= 150;
+
+                if (hostile == Body.TargetObject)
+                    score -= 25;
+
+                if (score < bestScore || (score == bestScore && distance < bestDistance))
+                {
+                    best = hostile;
+                    bestScore = score;
+                    bestDistance = distance;
+                }
+            }
+
+            return best;
+        }
+
+        public bool TryPeelProtectedMemberThreat()
+        {
+            if (PreventCombat)
+                return false;
+
+            GameLiving threat = SelectProtectedMemberThreat();
+            if (threat == null)
+                return false;
+
+            Body.TargetObject = threat;
+            AddToAggroList(threat, 1);
+            return true;
         }
 
         public bool CheckMainTankTarget()
@@ -2897,6 +3015,10 @@ namespace DOL.AI.Brain
         protected virtual GameLiving CalculateNextAttackTarget()
         {
             MimicGroup mg = Body.Group?.MimicGroup;
+
+            GameLiving protectedThreat = SelectProtectedMemberThreat();
+            if (protectedThreat != null)
+                return protectedThreat;
 
             if (PvPMode)
             {

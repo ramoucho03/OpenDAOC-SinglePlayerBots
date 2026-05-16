@@ -22,6 +22,7 @@ namespace DOL.GS.Scripts.AI.Strategies
             BotStrategyRegistry.Register(SurvivalStrategy.Key, static () => new SurvivalStrategy());
             BotStrategyRegistry.Register(AwarenessStrategy.Key, static () => new AwarenessStrategy());
             BotStrategyRegistry.Register(AssistStrategy.Key, static () => new AssistStrategy());
+            BotStrategyRegistry.Register(PeelStrategy.Key, static () => new PeelStrategy());
             BotStrategyRegistry.Register(SupportStrategy.Key, static () => new SupportStrategy());
             BotStrategyRegistry.Register(CampStrategy.Key, static () => new CampStrategy());
             BotStrategyRegistry.Register(HealerStrategy.Key, static () => new HealerStrategy());

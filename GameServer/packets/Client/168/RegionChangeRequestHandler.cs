@@ -40,6 +40,9 @@ namespace DOL.GS.PacketHandler.Client.v168
 
             if (zonePoint == null)
             {
+                if (Log.IsWarnEnabled)
+                    Log.Warn($"Missing ZonePoint row. Player={client.Player.Name} ZonePointID={zonePointId} Realm={(byte) playerRealm} Region={client.Player.CurrentRegionID} X={client.Player.X} Y={client.Player.Y} Z={client.Player.Z}");
+
                 ChatUtil.SendDebugMessage(client, $"Invalid ZonePoint. Wrong ID or mismatching realm. (ID: {zonePointId}) (playerRealm: {(byte) playerRealm})");
                 return;
             }

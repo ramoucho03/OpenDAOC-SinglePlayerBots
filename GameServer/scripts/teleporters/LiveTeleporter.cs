@@ -580,7 +580,7 @@ namespace DOL.GS.Scripts
             // (32000, 32000) wasn't in a rendered part of the zone. We now use
             // verified landing coords from the working [Catacombs] direct-TP
             // for regions 66/58/197, and conservative defaults elsewhere.
-            if (text.ToLower().StartsWith("wing "))
+            if (text.ToLower().StartsWith("wing ") && !text.ToLower().StartsWith("wing direct "))
             {
                 if (!int.TryParse(text.Substring(5), out int wingRegion))
                 {
