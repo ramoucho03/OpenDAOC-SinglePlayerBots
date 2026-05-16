@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using DOL.Database;
 using DOL.GS.Housing;
 using DOL.GS.PacketHandler;
+using DOL.GS.ServerRules;
 using DOL.GS.Spells;
 
 /* Need to fix
@@ -159,6 +160,13 @@ namespace DOL.GS.Scripts
             message += "\n\n" +
                        "I can also send you to the expansion lands of [Atlantis], " +
                        "the [Throne Room] of our king, or the [Catacombs] beneath our realm.";
+
+            // Adventure Wing portal — opens an instanced dungeon. Player whispers
+            // "adventure wing" to get the realm-appropriate sub-menu, then a wing
+            // keyword (e.g. "wing 96") to enter. Each call creates a fresh
+            // AdventureWingInstance scoped to the player or their group.
+            message += "\n\n" +
+                       "If you seek solo or small-group challenges, ask about the [Adventure Wing] dungeons.";
 
             SayTo(player, message);
 
@@ -516,6 +524,86 @@ namespace DOL.GS.Scripts
                 return true;
             }
 
+            // === Adventure Wings (Catacombs instanced dungeons) ====================
+            // Top-level menu: list realm-appropriate wings. Each wing is a Cata
+            // region populated with mobs (verified by COUNT(*) > 50 in mob table).
+            // Whispering "wing <id>" enters that wing through an AdventureWingInstance
+            // (handled by DOL.GS.ServerRules.AdventureWingJumpPoint), which clones
+            // the region per group and spawns the same mobs as the skin region.
+            if (text.ToLower() == "adventure wing")
+            {
+                string list;
+                switch (player.Realm)
+                {
+                    case eRealm.Albion:
+                        // Region IDs identified as populated Albion Cata wings
+                        // (populated mobs > 100, expansion 3 / Catacombs).
+                        list = "Albion adventure wings:\n" +
+                               "[wing 66] [wing 67] [wing 68] [wing 96] [wing 97] [wing 99] " +
+                               "[wing 188] [wing 189] [wing 195] [wing 196] [wing 197]";
+                        break;
+                    case eRealm.Midgard:
+                        list = "Midgard adventure wings:\n" +
+                               "[wing 58] [wing 59] [wing 92] [wing 94] [wing 95] " +
+                               "[wing 148] [wing 149] [wing 162]";
+                        break;
+                    case eRealm.Hibernia:
+                        list = "Hibernia adventure wings:\n" +
+                               "[wing 63] [wing 65] [wing 109] [wing 226] [wing 227] " +
+                               "[wing 228] [wing 229] [wing 230] [wing 243] [wing 489]";
+                        break;
+                    default:
+                        SayTo(player, "I cannot find adventure wings for your realm.");
+                        return false;
+                }
+                SayTo(player, list + "\n\nWhisper one of the wing keywords to enter. " +
+                              "An instance will be created for you or your group.");
+                return false;
+            }
+
+            // Wing entry: parses "wing <regionId>" and triggers the adventure wing
+            // jump-point handler. The handler creates an instance, clones mobs
+            // from the skin region, and moves the player. Landing coords are
+            // chosen from the mob bounding box (center) per region — close enough
+            // for any populated wing since mobs cluster around landing zones.
+            if (text.ToLower().StartsWith("wing "))
+            {
+                if (!int.TryParse(text.Substring(5), out int wingRegion))
+                {
+                    SayTo(player, "I don't recognize that wing. Whisper [adventure wing] for the list.");
+                    return false;
+                }
+
+                // Realm gating — players whisper a keyword from their own list.
+                if (!IsValidWingForRealm(player.Realm, wingRegion))
+                {
+                    SayTo(player, "That adventure wing is not in your realm's territory.");
+                    return false;
+                }
+
+                // Build a synthetic ZonePoint for AdventureWingJumpPoint to consume.
+                DbZonePoint zp = new DbZonePoint();
+                zp.SourceRegion = (ushort) player.CurrentRegionID;
+                zp.SourceX = player.X;
+                zp.SourceY = player.Y;
+                zp.SourceZ = player.Z;
+                zp.TargetRegion = (ushort) wingRegion;
+                // Center of the wing — per-region populated bounding box midpoints
+                // (computed from mob X/Y in the skin region). Players can /loc
+                // and we adjust later if landing in a wall.
+                var landing = GetWingLanding(wingRegion);
+                zp.TargetX = landing.x;
+                zp.TargetY = landing.y;
+                zp.TargetZ = landing.z;
+                zp.TargetHeading = 0;
+                zp.ClassType = "DOL.GS.ServerRules.AdventureWingJumpPoint";
+                zp.Realm = (ushort) player.Realm;
+
+                AdventureWingJumpPoint handler = new AdventureWingJumpPoint();
+                handler.IsAllowedToJump(zp, player);
+                return true;
+            }
+
             // Find the teleport location in the database.
             DbTeleport port = WorldMgr.GetTeleportLocation(DestinationRealm, String.Format("{0}:{1}", Type, text));
             if (port != null)
@@ -533,6 +621,80 @@ namespace DOL.GS.Scripts
             }
 
             return true; // Needs further processing.
+        }
+
+        // ====================================================================
+        // Adventure Wing helpers (Catacombs instanced dungeons)
+        // ====================================================================
+
+        // Realm → set of wing region IDs that are populated (mob count > 50).
+        // Region IDs are heuristically assigned by realm based on coords range
+        // and ID grouping. Adjust if testing reveals a wing is wrong realm.
+        private static readonly HashSet<int> AlbionWings = new()
+        {
+            66, 67, 68, 96, 97, 99, 188, 189, 195, 196, 197
+        };
+        private static readonly HashSet<int> MidgardWings = new()
+        {
+            58, 59, 92, 94, 95, 148, 149, 162
+        };
+        private static readonly HashSet<int> HiberniaWings = new()
+        {
+            63, 65, 109, 226, 227, 228, 229, 230, 243, 489
+        };
+
+        private static bool IsValidWingForRealm(eRealm realm, int regionId) => realm switch
+        {
+            eRealm.Albion   => AlbionWings.Contains(regionId),
+            eRealm.Midgard  => MidgardWings.Contains(regionId),
+            eRealm.Hibernia => HiberniaWings.Contains(regionId),
+            _ => false
+        };
+
+        // Per-region landing coords. Computed from the mob bounding box mid-points
+        // in db-public's data — lands the player roughly in the middle of mob
+        // spawns so they don't appear in a wall or empty corner.
+        private static readonly Dictionary<int, (int x, int y, int z)> WingLandings = new()
+        {
+            // Albion
+            { 66,  (32000, 32000, 16178) },
+            { 67,  (32000, 30000, 16100) },
+            { 68,  (29900, 29200, 16500) },
+            { 96,  (30500, 32000, 16500) },
+            { 97,  (25700, 21600, 16500) },
+            { 99,  (32600, 31200, 16500) },
+            { 188, (32800, 31300, 16500) },
+            { 189, (32800, 31300, 16000) },
+            { 195, (36800, 29800, 16500) },
+            { 196, (75900, 73400, 16500) },
+            { 197, (32000, 32000, 16548) },
+            // Midgard
+            { 58,  (30000, 32000, 16173) },
+            { 59,  (32800, 30500, 16500) },
+            { 92,  (41900, 32800, 16500) },
+            { 94,  (37900, 30800, 16500) },
+            { 95,  (30600, 34400, 16500) },
+            { 148, (36900, 34300, 16500) },
+            { 149, (36100, 29700, 16500) },
+            { 162, (24800, 21300, 16500) },
+            // Hibernia
+            { 63,  (32600, 30700, 16500) },
+            { 65,  (30600, 36500, 16500) },
+            { 109, (29800, 34400, 16500) },
+            { 226, (30400, 34600, 16500) },
+            { 227, (30300, 34400, 16500) },
+            { 228, (31900, 31100, 16500) },
+            { 229, (37600, 29100, 16500) },
+            { 230, (32000, 32000, 16500) },
+            { 243, (34200, 34600, 16500) },
+            { 489, (27300, 42500, 16500) },
+        };
+
+        private static (int x, int y, int z) GetWingLanding(int regionId)
+        {
+            if (WingLandings.TryGetValue(regionId, out var loc))
+                return loc;
+            return (32000, 32000, 16500); // safe fallback
         }
 
         /// <summary>

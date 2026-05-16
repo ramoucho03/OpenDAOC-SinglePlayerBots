@@ -14,7 +14,11 @@
       "Read(//tmp/**)",
       "Read(//tmp/dol-dbpublic/src/schema/**)",
       "Bash(awk '{print $NF}')",
-      "Bash(docker compose *)"
+      "Bash(docker compose *)",
+      "WebFetch(domain:sourceforge.net)",
+      "WebFetch(domain:dolserver.sourceforge.net)",
+      "WebFetch(domain:losojos-001-site1.btempurl.com)",
+      "WebFetch(domain:daoc.ndlp.info)"
     ]
   }
 }
