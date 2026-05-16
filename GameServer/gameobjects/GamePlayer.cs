@@ -10103,15 +10103,46 @@ namespace DOL.GS
                 Heading = (ushort) DBCharacter.Direction;
                 CurrentRegionID = (ushort) DBCharacter.Region; // Sets `Region` too.
 
-                if (CurrentRegion == null || CurrentRegion.GetZone(m_x, m_y) == null)
+                if (!IsValidLoginPosition(CurrentRegion, m_x, m_y))
                 {
-                    log.WarnFormat("Invalid region/zone on char load ({0}): x={1} y={2} z={3} reg={4}; moving to bind point.", DBCharacter.Name, X, Y, Z, DBCharacter.Region);
+                    log.WarnFormat("Invalid region/zone on char load ({0}): x={1} y={2} z={3} reg={4}; trying bind point.", DBCharacter.Name, X, Y, Z, DBCharacter.Region);
                     m_x = DBCharacter.BindXpos;
                     m_y = DBCharacter.BindYpos;
                     m_z = DBCharacter.BindZpos;
                     Heading = (ushort) DBCharacter.BindHeading;
                     CurrentRegionID = (ushort) DBCharacter.BindRegion;
+
+                    if (!IsValidLoginPosition(CurrentRegion, m_x, m_y))
+                    {
+                        (ushort capitalRegion, int cx, int cy, int cz) = GetRealmCapitalSpawn((eRealm) DBCharacter.Realm);
+                        log.WarnFormat("Bind point also invalid for {0} (bindReg={1}); falling back to realm capital reg={2}.", DBCharacter.Name, DBCharacter.BindRegion, capitalRegion);
+                        m_x = cx;
+                        m_y = cy;
+                        m_z = cz;
+                        Heading = 0;
+                        CurrentRegionID = capitalRegion;
+                    }
                 }
+            }
+
+            static bool IsValidLoginPosition(Region region, int x, int y)
+            {
+                // An instance region that survived a restart will be a stale id with no live region,
+                // or a fresh instance the player can no longer rejoin. Treat both as invalid.
+                if (region == null || region.IsInstance)
+                    return false;
+
+                return region.GetZone(x, y) != null;
+            }
+
+            static (ushort region, int x, int y, int z) GetRealmCapitalSpawn(eRealm realm)
+            {
+                return realm switch
+                {
+                    eRealm.Midgard  => (101, 31_000, 30_000, 8_700), // Jordheim
+                    eRealm.Hibernia => (201, 32_000, 27_000, 7_700), // Tir na Nog
+                    _               => (10,  33_000, 32_000, 5_000), // Camelot (Albion + fallback)
+                };
             }
 
             void HandleCharacterModel()
