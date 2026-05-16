@@ -20,7 +20,15 @@
       "WebFetch(domain:losojos-001-site1.btempurl.com)",
       "WebFetch(domain:daoc.ndlp.info)",
       "Bash(find /home/ramoucho/OpenDAOC-SinglePlayerBots -maxdepth 4 -iname \"serverconfig.xml\" 2>/dev/null | head -5)",
-      "Read(//home/ramoucho/**)"
+      "Read(//home/ramoucho/**)",
+      "WebFetch(domain:www.opendaoc.com)",
+      "Bash(gh api *)",
+      "PowerShell(gh api repos/OpenDAoC/OpenDAoC-Database --jq '{updated:.updated_at, pushed:.pushed_at, size_kb:.size, default_branch:.default_branch, description:.description}')",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(xargs wc -l)",
+      "Bash(chmod +x c:/Users/Olivier/botdaoc/OpenDAOC-SinglePlayerBots/tools/migrate-world-db.sh)",
+      "Bash(bash -n c:/Users/Olivier/botdaoc/OpenDAOC-SinglePlayerBots/tools/migrate-world-db.sh)"
     ]
   }
 }
