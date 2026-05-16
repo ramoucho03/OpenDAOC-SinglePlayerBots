@@ -556,16 +556,23 @@ namespace DOL.GS.Scripts
                         SayTo(player, "I cannot find adventure wings for your realm.");
                         return false;
                 }
-                SayTo(player, list + "\n\nWhisper one of the wing keywords to enter. " +
-                              "An instance will be created for you or your group.");
+                SayTo(player, list + "\n\nWhisper one of the wing keywords to be transported directly. " +
+                              "These are shared dungeons — beware other adventurers.");
                 return false;
             }
 
-            // Wing entry: parses "wing <regionId>" and triggers the adventure wing
-            // jump-point handler. The handler creates an instance, clones mobs
-            // from the skin region, and moves the player. Landing coords are
-            // chosen from the mob bounding box (center) per region — close enough
-            // for any populated wing since mobs cluster around landing zones.
+            // Wing entry: parses "wing <regionId>" and teleports DIRECTLY to the
+            // skin region (no instance creation).
+            //
+            // Earlier attempt: AdventureWingJumpPoint cloned the region into a
+            // new instance ID (1000+). Result: client landed in "the void"
+            // because it has zone/terrain data for the original Cata regions
+            // but cannot render synthetic instance region IDs (no .dat files).
+            //
+            // Trade-off accepted: zones are SHARED across players (no per-group
+            // isolation). For solo/small-server play this is fine. Proper
+            // instance handling can be revisited later if Skin-aware rendering
+            // is fixed in PacketLib or the client receives the right region.
             if (text.ToLower().StartsWith("wing "))
             {
                 if (!int.TryParse(text.Substring(5), out int wingRegion))
@@ -574,33 +581,22 @@ namespace DOL.GS.Scripts
                     return false;
                 }
 
-                // Realm gating — players whisper a keyword from their own list.
                 if (!IsValidWingForRealm(player.Realm, wingRegion))
                 {
                     SayTo(player, "That adventure wing is not in your realm's territory.");
                     return false;
                 }
 
-                // Build a synthetic ZonePoint for AdventureWingJumpPoint to consume.
-                DbZonePoint zp = new DbZonePoint();
-                zp.SourceRegion = (ushort) player.CurrentRegionID;
-                zp.SourceX = player.X;
-                zp.SourceY = player.Y;
-                zp.SourceZ = player.Z;
-                zp.TargetRegion = (ushort) wingRegion;
-                // Center of the wing — per-region populated bounding box midpoints
-                // (computed from mob X/Y in the skin region). Players can /loc
-                // and we adjust later if landing in a wall.
                 var landing = GetWingLanding(wingRegion);
-                zp.TargetX = landing.x;
-                zp.TargetY = landing.y;
-                zp.TargetZ = landing.z;
-                zp.TargetHeading = 0;
-                zp.ClassType = "DOL.GS.ServerRules.AdventureWingJumpPoint";
-                zp.Realm = (ushort) player.Realm;
-
-                AdventureWingJumpPoint handler = new AdventureWingJumpPoint();
-                handler.IsAllowedToJump(zp, player);
+                DbTeleport teleport = new DbTeleport();
+                teleport.TeleportID = $"Adventure Wing {wingRegion}";
+                teleport.Realm = (int) DestinationRealm;
+                teleport.RegionID = wingRegion;
+                teleport.X = landing.x;
+                teleport.Y = landing.y;
+                teleport.Z = landing.z;
+                teleport.Heading = 0;
+                OnDestinationPicked(player, teleport);
                 return true;
             }
 
