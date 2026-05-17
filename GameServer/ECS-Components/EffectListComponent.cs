@@ -46,6 +46,11 @@ namespace DOL.GS
         {
             if (living is GamePlayer player)
                 return new PlayerEffectListComponent(player);
+            // MimicNPC dispatch — without this our mimics get the base
+            // EffectListComponent and the mimic-specific group window sync
+            // never fires for bots.
+            else if (living is DOL.GS.Scripts.MimicNPC mimic)
+                return new MimicEffectListComponent(mimic);
             else
                 return new EffectListComponent(living);
         }

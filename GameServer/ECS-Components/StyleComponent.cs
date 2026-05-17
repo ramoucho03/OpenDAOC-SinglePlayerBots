@@ -39,7 +39,12 @@ namespace DOL.GS
 
         public static StyleComponent Create(GameLiving owner)
         {
-            if (owner is GameNPC npcOwner)
+            // MimicNPC dispatch must come BEFORE GameNPC. Bots need the
+            // mimic-specific style selection (knows about their class spec
+            // chains, opener/follow-up combos, etc.).
+            if (owner is DOL.GS.Scripts.MimicNPC mimicOwner)
+                return new MimicStyleComponent(mimicOwner);
+            else if (owner is GameNPC npcOwner)
                 return new NpcStyleComponent(npcOwner);
             else if (owner is GamePlayer playerOwner)
                 return new PlayerStyleComponent(playerOwner);

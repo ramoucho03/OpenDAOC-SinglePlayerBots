@@ -450,8 +450,12 @@ namespace DOL.GS.ServerRules
                     return true;
 
                 // Mobs can attack mobs only if they both have a faction or if any is confused.
-                if ((npcDefender.Faction == null || npcAttacker.Faction == null) && !npcDefender.IsConfused && !npcAttacker.IsConfused)
-                    return false;
+                // MimicNPC exception (KDS-KDS pattern): bots are not subject
+                // to the mob-vs-mob faction gate, so a mimic can attack any
+                // hostile NPC and two mimics can fight each other in duels.
+                if (npcAttacker is not DOL.GS.Scripts.MimicNPC && npcDefender is not DOL.GS.Scripts.MimicNPC)
+                    if ((npcDefender.Faction == null || npcAttacker.Faction == null) && !npcDefender.IsConfused && !npcAttacker.IsConfused)
+                        return false;
             }
 
             // Checking for shadowed necromancer, can't be attacked.
@@ -1037,6 +1041,13 @@ namespace DOL.GS.ServerRules
 
         public virtual void OnNpcKilled(GameNPC killedNpc, GameObject killer)
         {
+            // MimicNPC short-circuit (KDS-KDS pattern). Mimics are player-like
+            // bots, not loot piñatas — they shouldn't trigger the standard
+            // NPC XP/loot/faction-change pipeline when killed. Mimic-specific
+            // award logic lives in the mimic brain / Die() override.
+            if (killedNpc is DOL.GS.Scripts.MimicNPC)
+                return;
+
             GameNPC.RewardEligibility rewardEligibility = killedNpc.RewardStatus;
 
             if (rewardEligibility is not GameNPC.RewardEligibility.Eligible)

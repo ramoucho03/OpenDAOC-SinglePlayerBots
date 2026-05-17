@@ -31,7 +31,9 @@ namespace DOL.GS.Spells
             _procSpell.Level = spell.Level; // Inherit the buff's level.
 
             // Scale the proc here, since it cannot be scaled on NPC initialization.
-            if (caster is GameNPC npc)
+            // MimicNPC exception: bots use the player-style spell scaling
+            // (level/spec based), not the NPC level scaling.
+            if (caster is GameNPC npc && caster is not DOL.GS.Scripts.MimicNPC)
                 _procSpell = npc.GetScaledSpell(_procSpell);
         }
 

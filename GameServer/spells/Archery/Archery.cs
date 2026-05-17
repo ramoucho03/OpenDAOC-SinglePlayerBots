@@ -143,7 +143,9 @@ namespace DOL.GS.Spells
 			if (ad.AttackResult != eAttackResult.Missed)
 			{
 				GameNPC npc = target as GameNPC;
-				if (npc != null)
+				// MimicNPC exception: archery vs mimic uses the player damage
+				// formula (no 1.57x NPC boost), since mimics are PvP-targets.
+				if (npc != null && npc is not DOL.GS.Scripts.MimicNPC)
 				{
 					if (npc.Brain != null && (npc.Brain is IControlledBrain) == false)
 					{

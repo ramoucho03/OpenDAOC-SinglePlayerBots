@@ -10901,6 +10901,12 @@ namespace DOL.GS
 
                 foreach (GameNPC npc in player.GetNPCsInRadius(1024))
                 {
+                    // MimicNPC exception (KDS-KDS): bots don't uncover
+                    // stealthed players the way regular mobs do — they
+                    // detect via their own MimicBrain logic.
+                    if (npc is DOL.GS.Scripts.MimicNPC)
+                        continue;
+
                     // Friendly mobs do not uncover stealthed players
                     if (!GameServer.ServerRules.IsAllowedToAttack(npc, player, true))
                         continue;

@@ -172,7 +172,10 @@ namespace DOL.GS
 			set
 			{
 				base.Level = value;
-				SetStats();
+				// MimicNPC exception (KDS-KDS): bots have their own stat calc
+				// (player formula via class spec), not the NPC SetStats path.
+				if (this is not DOL.GS.Scripts.MimicNPC)
+					SetStats();
 
 				if (m_health > MaxHealth)
 					m_health = MaxHealth;
@@ -2679,11 +2682,19 @@ namespace DOL.GS
 
 		public void StartAttackWithMeleeWeapon(GameObject target)
 		{
-			eActiveWeaponSlot newSlot;
+			eActiveWeaponSlot newSlot = ActiveWeaponSlot;
 			DbInventoryItem rightHandWeapon = Inventory.GetItem(eInventorySlot.RightHandWeapon);
 			DbInventoryItem twoHandWeapon = Inventory.GetItem(eInventorySlot.TwoHandWeapon);
 
-			if (twoHandWeapon == null)
+			// MimicNPC weapon slot (KDS-KDS): bots follow their class spec
+			// (Armsman 2H spec → TwoHanded, etc.) instead of the NPC random
+			// 50/50 pick. Without this, mimic 2H specialists flip-flop
+			// between 1H and 2H mid-pull.
+			if (this is DOL.GS.Scripts.MimicNPC mimic && mimic.MimicSpec != null)
+			{
+				newSlot = mimic.MimicSpec.Is2H ? eActiveWeaponSlot.TwoHanded : eActiveWeaponSlot.Standard;
+			}
+			else if (twoHandWeapon == null)
 				newSlot = eActiveWeaponSlot.Standard;
 			else if (rightHandWeapon == null)
 				newSlot = eActiveWeaponSlot.TwoHanded;
@@ -2733,6 +2744,11 @@ namespace DOL.GS
 			set
 			{
 				base.Health = value;
+
+				// MimicNPC exception (KDS-KDS): bots have their own speed
+				// regulation (FSM-driven), not the NPC hurt-slowdown.
+				if (this is DOL.GS.Scripts.MimicNPC)
+					return;
 
 				// Slow NPCs down when they are hurt.
 				if (CurrentSpeed > MaxSpeed)
@@ -2803,7 +2819,10 @@ namespace DOL.GS
 			if (killer is GameNPC pet && pet.Brain is IControlledBrain petBrain)
 				killer = petBrain.GetPlayerOwner();
 
-			if (killer != null)
+			// MimicNPC exception (KDS-KDS): bots produce their own death
+			// messages from MimicNPC.Die override, suppress the generic
+			// "NPC dies!" broadcast.
+			if (killer != null && this is not DOL.GS.Scripts.MimicNPC)
 			{
 				Message.SystemToArea(this, $"{GetName(0, true)} dies!", eChatType.CT_OthersDeath, killer);
 

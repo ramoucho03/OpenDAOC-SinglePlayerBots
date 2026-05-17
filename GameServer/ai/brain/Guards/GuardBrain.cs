@@ -53,6 +53,12 @@ namespace DOL.AI.Brain
 		/// <returns></returns>
 		public override bool CanAggroTarget(GameLiving target)
 		{
+			// MimicNPC exception (KDS-KDS pattern): realm guards treat mimics
+			// as allies even on cross-realm scenarios — guards don't aggro
+			// bots. TODO: revisit when guard-vs-bot PvP is in scope.
+			if (target is DOL.GS.Scripts.MimicNPC)
+				return false;
+
 			return AggroLevel > 0 && GameServer.ServerRules.IsAllowedToAttack(Body, target, true);
 		}
 	}

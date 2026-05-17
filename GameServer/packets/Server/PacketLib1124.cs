@@ -234,7 +234,15 @@ namespace DOL.GS.PacketHandler
 					pak.WriteByte(flags3); // new in 1.71 (region instance ID from StoC_0x20) OR flags 3?
 					pak.WriteShort(0x00); // new in 1.71 unknown
 
-					string name = npc.Name;
+					// MimicNPC visibility patch (KDS-KDS): hostile mimics in
+					// PvP show as "RaceName RealmRank" rather than their bot
+					// name, so players can't trivially distinguish bots from
+					// real opponents in the frontiers.
+					string name;
+					if (npc is DOL.GS.Scripts.MimicNPC mimicNpc && !GameServer.ServerRules.IsSameRealm(m_gameClient.Player, mimicNpc, true))
+						name = mimicNpc.RaceName + " " + GlobalConstants.REALM_RANK_NAMES[(int) mimicNpc.Realm - 1, (int) mimicNpc.Gender - 1, (mimicNpc.RealmLevel / 10)];
+					else
+						name = npc.Name;
 					string guildName = npc.GuildName;
 
 					LanguageDataObject translation = LanguageMgr.GetTranslation(m_gameClient, npc);

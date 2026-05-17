@@ -715,6 +715,29 @@ namespace DOL.GS
 
         private void NpcStartAttack()
         {
+            // MimicNPC ranged-attack-type detection (KDS-KDS). Mimics with
+            // archer abilities active (SureShot/RapidFire/TrueShot) need
+            // their RangedAttackType flagged correctly before the swing,
+            // mirroring the GamePlayer.StartAttack path.
+            if (owner is DOL.GS.Scripts.MimicNPC mimic)
+            {
+                if (mimic.IsSitting)
+                    mimic.Sit(false);
+
+                if (mimic.effectListComponent.ContainsEffectForEffectType(eEffect.SureShot))
+                    mimic.rangeAttackComponent.RangedAttackType = eRangedAttackType.SureShot;
+                else if (mimic.effectListComponent.ContainsEffectForEffectType(eEffect.RapidFire))
+                    mimic.rangeAttackComponent.RangedAttackType = eRangedAttackType.RapidFire;
+                else if (mimic.effectListComponent.ContainsEffectForEffectType(eEffect.TrueShot))
+                    mimic.rangeAttackComponent.RangedAttackType = eRangedAttackType.Long;
+
+                if (mimic.rangeAttackComponent?.RangedAttackType is eRangedAttackType.Critical &&
+                    mimic.Endurance < RangeAttackComponent.CRITICAL_SHOT_ENDURANCE_COST)
+                {
+                    return;
+                }
+            }
+
             GameNPC npc = owner as GameNPC;
             npc.FireAmbientSentence(GameNPC.eAmbientTrigger.fighting, _startAttackTarget);
 
@@ -789,7 +812,20 @@ namespace DOL.GS
                 if (playerOwner.IsAlive && oldAttackState)
                     playerOwner.Out.SendAttackMode(AttackState);
             }
-            else if (owner is GameNPC npcOwner)
+            // MimicNPC post-combat ranged switch (KDS-KDS): mimic archer
+            // classes return to their distance weapon after combat ends so
+            // they're ready for the next pull.
+            else if (owner is DOL.GS.Scripts.MimicNPC mimicOwner && !mimicOwner.MimicBrain.HasAggro)
+            {
+                int classId = mimicOwner.CharacterClass.ID;
+                if (classId == (int) eCharacterClass.Hunter ||
+                    classId == (int) eCharacterClass.Ranger ||
+                    classId == (int) eCharacterClass.Scout)
+                {
+                    mimicOwner.SwitchWeapon(eActiveWeaponSlot.Distance);
+                }
+            }
+            else if (owner is GameNPC npcOwner && owner is not DOL.GS.Scripts.MimicNPC)
             {
                 // Force NPCs to switch back to their ranged weapon if they have any and their aggro list is empty.
                 if (npcOwner.Inventory?.GetItem(eInventorySlot.DistanceWeapon) != null &&
@@ -1483,12 +1519,16 @@ namespace DOL.GS
                 DbInventoryItem rightHand = source.ActiveWeapon;
                 DbInventoryItem leftHand = source.ActiveLeftWeapon;
 
-                if (((rightHand != null && rightHand.Hand == 1) || leftHand == null || (eObjectType) leftHand.Object_Type is not eObjectType.Shield) && source is not GameNPC)
+                // MimicNPC guard chance (KDS-KDS): bots use the player guard
+                // path (real shield required + quality/condition factor), not
+                // the simplified NPC fallback. Without this, mimic tanks
+                // either always-or-never guard regardless of equipment.
+                if (((rightHand != null && rightHand.Hand == 1) || leftHand == null || (eObjectType) leftHand.Object_Type is not eObjectType.Shield) && (source is not GameNPC || source is DOL.GS.Scripts.MimicNPC))
                     continue;
 
                 double guardChance;
 
-                if (source is GameNPC)
+                if (source is GameNPC && source is not DOL.GS.Scripts.MimicNPC)
                     guardChance = source.GetModified(eProperty.BlockChance);
                 else
                     guardChance = source.GetModified(eProperty.BlockChance) * (leftHand.Quality * 0.01) * (leftHand.ConditionPercent * 0.01);

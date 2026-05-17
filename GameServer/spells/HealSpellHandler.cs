@@ -197,7 +197,10 @@ namespace DOL.GS.Spells
 
             foreach (GameLiving attacker in target.attackComponent.AttackerTracker.Attackers)
             {
-                if (attacker is GameNPC npc)
+                // MimicNPC exception: a mimic attacker is treated as a player
+                // for heal-aggro purposes (they don't generate the NPC-style
+                // synthetic AttackData entry below).
+                if (attacker is GameNPC npc && attacker is not DOL.GS.Scripts.MimicNPC)
                 {
                     AttackData ad = new()
                     {

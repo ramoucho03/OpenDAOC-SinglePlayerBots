@@ -58,7 +58,9 @@ namespace DOL.GS
                 Owner.LastAttackTickPvP = GameLoop.GameLoopTime;
 
             // NPCs interrupt with every DoT tick.
-            if (SpellHandler.Caster is GameNPC)
+            // MimicNPC exception: bots use the player DoT interrupt cadence
+            // (only on initial tick), not the per-tick NPC interrupt.
+            if (SpellHandler.Caster is GameNPC && SpellHandler.Caster is not DOL.GS.Scripts.MimicNPC)
                 Owner.StartInterruptTimer(SpellHandler.Caster.SpellInterruptDuration, AttackData.eAttackType.Spell, SpellHandler.Caster);
         }
     }

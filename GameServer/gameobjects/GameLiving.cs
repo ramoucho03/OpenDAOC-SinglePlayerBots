@@ -1558,6 +1558,19 @@ namespace DOL.GS
 					for (int i = 0; i < dProcEffects.Count; i++)
 						(dProcEffects[i].SpellHandler as DefensiveProcSpellHandler).EventHandler(ad);
 				}
+
+				// MimicNPC group awareness (KDS-KDS): notify every mimic in
+				// the defender's group so their AI can react (peel, assist,
+				// retaliate, etc.). Without this, mimic group members ignore
+				// allies under attack.
+				if (Group != null)
+				{
+					foreach (GameLiving groupMember in Group.GetMembersInTheGroup())
+					{
+						if (groupMember is DOL.GS.Scripts.MimicNPC mimic && groupMember != this)
+							(mimic.Brain as DOL.AI.Brain.MimicBrain)?.OnGroupMemberAttacked(ad);
+					}
+				}
 			}
 			else if (ad.IsSpellResisted && ad.Target is GameNPC npc)
 				npc.CancelReturnToSpawnPoint();
@@ -1773,7 +1786,9 @@ namespace DOL.GS
 					// Non-damaging spells that always break mez.
 					removeMez = true;
 				}
-				else if ((ad.IsSpellResisted || this is GameNPC) && ad.SpellHandler is not MesmerizeSpellHandler)
+				// MimicNPC exception (KDS-KDS): bots are subject to mez like
+				// players are, not the NPC auto-remove fallback.
+				else if ((ad.IsSpellResisted || (this is GameNPC && this is not DOL.GS.Scripts.MimicNPC)) && ad.SpellHandler is not MesmerizeSpellHandler)
 					removeMez = true;
 			}
 
@@ -2183,7 +2198,9 @@ namespace DOL.GS
 
 				case eActiveWeaponSlot.TwoHanded:
 				{
-					if (twoHandSlot != null && (twoHandSlot.Hand == 1 || this is GameNPC)) // 2h
+					// MimicNPC exception (KDS-KDS): bots use the player 2H
+					// detection (real Hand field), not the NPC assume-2H fallback.
+					if (twoHandSlot != null && (twoHandSlot.Hand == 1 || (this is GameNPC && this is not DOL.GS.Scripts.MimicNPC))) // 2h
 					{
 						rightHand = leftHand = 0x02;
 						_activeWeapon = twoHandSlot;
@@ -2227,7 +2244,8 @@ namespace DOL.GS
 						rightHand = 0xFF;
 						_activeWeapon = null;
 					}
-					else if (distanceSlot.Hand == 1 || this is GameNPC) // NPC equipment does not have hand so always assume 2 handed bow
+					// MimicNPC exception (KDS-KDS): bots use real Hand field on bows.
+					else if (distanceSlot.Hand == 1 || (this is GameNPC && this is not DOL.GS.Scripts.MimicNPC)) // NPC equipment does not have hand so always assume 2 handed bow
 						rightHand = leftHand = 0x03; // bows use 2 hands, throwing axes 1h
 					else
 						rightHand = 0x03;
@@ -3074,7 +3092,11 @@ namespace DOL.GS
 			
 			if (!this.IsWithinRadius(target, WorldMgr.WHISPER_DISTANCE))
 			{
-				return false;
+				// MimicNPC exception (KDS-KDS): whispers to mimics work at any
+				// range, so /mrole and other in-game mimic commands don't
+				// require positioning next to the bot.
+				if (target is not DOL.GS.Scripts.MimicNPC)
+					return false;
 			}
 			
 			Notify(GameLivingEvent.Whisper, this, new WhisperEventArgs(target, str));

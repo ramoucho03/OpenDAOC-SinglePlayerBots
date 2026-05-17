@@ -18,6 +18,12 @@ namespace DOL.GS
             if (Owner is not GameNPC charmNpc)
                 return;
 
+            // MimicNPC exception (KDS-KDS): bots can't be charmed — they're
+            // player-like and shouldn't have their brain swapped to a
+            // ControlledMobBrain.
+            if (charmNpc is DOL.GS.Scripts.MimicNPC)
+                return;
+
             CharmSpellHandler charmSpellHandler = SpellHandler as CharmSpellHandler;
             ControlledMobBrain newBrain = new(SpellHandler.Caster);
             charmNpc.AddBrain(newBrain);

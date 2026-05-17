@@ -27,7 +27,9 @@ namespace DOL.GS.Spells
 			if (GameServer.ServerRules.IsAllowedToAttack(selectedTarget, Caster, true) == false)
 			{
 				//This spell doesn't work on pets or monsters
-				if (selectedTarget is GameNPC)
+				// MimicNPC exception (KDS-KDS): focus shell IS allowed on
+				// bots — they count as player-like allies for this spell.
+				if (selectedTarget is GameNPC && selectedTarget is not DOL.GS.Scripts.MimicNPC)
 				{
 					MessageToCaster("This spell may not be cast on pets!", eChatType.CT_SpellResisted);
 					return false;

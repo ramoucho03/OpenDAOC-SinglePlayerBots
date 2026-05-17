@@ -56,7 +56,9 @@ namespace DOL.GS
 
         public override void OnStopEffect()
         {
-            if (Owner is not GameNPC npc || npc.Brain is not StandardMobBrain brain)
+            // MimicNPC exception: bots can't be confused (they have their own
+            // FSM, not StandardMobBrain).
+            if (Owner is DOL.GS.Scripts.MimicNPC || Owner is not GameNPC npc || npc.Brain is not StandardMobBrain brain)
                 return;
 
             npc.IsConfused = false;
@@ -65,7 +67,9 @@ namespace DOL.GS
 
         public override void OnEffectPulse()
         {
-            if (Owner is not GameNPC npc || npc.Brain is not StandardMobBrain brain)
+            // MimicNPC exception: bots can't be confused (they have their own
+            // FSM, not StandardMobBrain).
+            if (Owner is DOL.GS.Scripts.MimicNPC || Owner is not GameNPC npc || npc.Brain is not StandardMobBrain brain)
                 return;
 
             List<GameLiving> targetList = (SpellHandler as ConfusionSpellHandler).TargetList;

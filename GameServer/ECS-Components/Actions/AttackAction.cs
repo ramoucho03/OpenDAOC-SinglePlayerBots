@@ -39,7 +39,13 @@ namespace DOL.GS
 
         public static AttackAction Create(GameLiving living)
         {
-            if (living is GameNPC npc)
+            // MimicNPC dispatch must come BEFORE the GameNPC branch since
+            // MimicNPC extends GameNPC. Without this our mimics would silently
+            // use NpcAttackAction, bypassing the mimic-specific combat tick
+            // (style selection, endurance accounting, ranged switching, etc.).
+            if (living is DOL.GS.Scripts.MimicNPC mimicNPC)
+                return new MimicAttackAction(mimicNPC);
+            else if (living is GameNPC npc)
                 return new NpcAttackAction(npc);
             else if (living is GamePlayer player)
                 return new PlayerAttackAction(player);

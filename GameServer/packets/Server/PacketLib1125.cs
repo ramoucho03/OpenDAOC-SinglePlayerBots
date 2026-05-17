@@ -405,7 +405,15 @@ namespace DOL.GS.PacketHandler
 					{
 						if (living == null) continue;
 						pak.WritePascalString(living.Name);
-						pak.WritePascalString(living is GamePlayer ? ((GamePlayer)living).CharacterClass.Name : "NPC");
+						// MimicNPC: report the bot's actual character class
+						// instead of generic "NPC" so the group window shows
+						// "Paladin"/"Wizard"/etc. for bots like for players.
+						string charClassName = "NPC";
+						if (living is GamePlayer gp)
+							charClassName = gp.CharacterClass.Name;
+						else if (living is DOL.GS.Scripts.MimicNPC mn)
+							charClassName = mn.CharacterClass.Name;
+						pak.WritePascalString(charClassName);
 						pak.WriteShort((ushort)living.ObjectID); //or session id?
 						pak.WriteByte(living.Level);
 					}

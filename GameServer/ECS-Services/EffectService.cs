@@ -125,7 +125,10 @@ namespace DOL.GS
             // We normally keep effects active on paused NPCs and let them expire naturally.
             // Concentration effects however should probably be stopped since they keep the effect list component permanently active for no good reason.
             // Checking `IsVisibleToPlayers` should be enough for this purpose.
-            if (caster is GameNPC npcCaster && !npcCaster.IsVisibleToPlayers)
+            // MimicNPC exception (KDS-KDS): mimic concentration effects are
+            // always alive while the bot exists — they shouldn't be culled
+            // just because no real player is in render distance.
+            if (caster is not DOL.GS.Scripts.MimicNPC && caster is GameNPC npcCaster && !npcCaster.IsVisibleToPlayers)
             {
                 spellEffect.End();
                 return;

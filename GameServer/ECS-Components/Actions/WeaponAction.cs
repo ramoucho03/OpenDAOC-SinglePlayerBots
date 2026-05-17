@@ -151,7 +151,10 @@ namespace DOL.GS
                 return 0;
             }
 
-            if (_owner is GameNPC npcOwner)
+            // MimicNPC exception (KDS-KDS): mimics fall through to the
+            // GamePlayer dual-wield path below (uses LeftAxe spec etc.),
+            // not the NPC LeftHandSwingChance table.
+            if (_owner is GameNPC npcOwner && _owner is not DOL.GS.Scripts.MimicNPC)
             {
                 if (_attackWeapon == null || _attackWeapon.SlotPosition is not Slot.RIGHTHAND)
                     return 0;

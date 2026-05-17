@@ -51,7 +51,10 @@ namespace DOL.GS.ServerRules
 				if (attacker is GamePlayer player && player.IsDuelPartner(defender))
 					return true;
 
-				if (npcAttacker != null)
+				// MimicNPC exception (KDS-KDS pattern): bots are excluded
+				// from the realm-mate confused/neutral fallback below — they
+				// follow normal realm rules like real players would.
+				if (npcAttacker != null && npcAttacker is not DOL.GS.Scripts.MimicNPC)
 				{
 					// Allow confused NPCs to attack realm mates.
 					// Pets can't attack their owner however, since attacker == defender.

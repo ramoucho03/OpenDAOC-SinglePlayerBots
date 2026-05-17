@@ -537,7 +537,10 @@ namespace DOL.AI.Brain
                             break;
                         }
 
-                        if (owner is GameNPC npc)
+                        // MimicNPC exception: mimics don't control sub-pet
+                        // chains the same way classic summoner classes do,
+                        // skip the minion-buff cascade for them.
+                        if (owner is GameNPC npc && owner is not DOL.GS.Scripts.MimicNPC)
                         {
                             //Buff other minions
                             foreach (IControlledBrain brain in npc.ControlledNpcList)
