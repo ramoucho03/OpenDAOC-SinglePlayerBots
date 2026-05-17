@@ -22,6 +22,16 @@ services:
       - base-db:/docker-entrypoint-initdb.d
     networks:
       - opendaoc-network
+    healthcheck:
+      # MariaDB stays "starting" until the init scripts in
+      # /docker-entrypoint-initdb.d have run and the server accepts queries.
+      # We probe with a real query so the gameserver only starts when the
+      # 70MB combined.sql import is fully applied.
+      test: ["CMD-SHELL", "mariadb -uroot -pmy-secret-pw -e 'SELECT 1' opendaoc"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
 
   gameserver:
     build:
@@ -35,7 +45,8 @@ services:
       - "10300:10300"
       - "10400:10400"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     environment:
       UID: "1000"
       GID: "1000"
