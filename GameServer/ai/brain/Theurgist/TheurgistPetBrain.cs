@@ -43,7 +43,12 @@ namespace DOL.AI.Brain
 
         private GameLiving FindNextHostileFromOwner()
         {
-            if (Body.Owner is not GameLiving owner || owner.attackComponent == null)
+            // ControlledMobBrain owns the canonical owner getter — Body itself
+            // has no `Owner` member (a recent commit referenced one that
+            // never existed). GetLivingOwner walks the controlled-brain chain
+            // and returns the GamePlayer (or pet-of-pet upstream living).
+            GameLiving owner = GetLivingOwner();
+            if (owner == null || owner.attackComponent == null)
                 return null;
             // Quick scan: owner is in combat, the closest live hostile from
             // its attacker tracker is the natural reassignment target.

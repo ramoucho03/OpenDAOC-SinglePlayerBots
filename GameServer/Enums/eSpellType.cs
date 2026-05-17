@@ -403,6 +403,14 @@ namespace DOL.GS
         HereticDamageSpeedDecrease,
         HereticDamageOverTime,
         HereticSpeedDecrease,
+        // DOLSharp ramp-on-pulse variants of the two Heretic offensive
+        // spell families. The "LostOnPulse" / "LOP" suffix marks the
+        // mechanic where the spell pulses every X seconds, consuming mana,
+        // and ramping damage each tick. The handlers are sub-classes of
+        // the non-LOP versions to share the underlying maths; the ramp
+        // semantics live on the effect side via the existing pulse infra.
+        HereticDoTLostOnPulse,
+        HereticDamageSpeedDecreaseLOP,
         MonsterDisease,
         BLToHit,
         EssenceFlamesProc,

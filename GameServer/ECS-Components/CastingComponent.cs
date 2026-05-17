@@ -340,6 +340,24 @@ namespace DOL.GS
                 }
 
                 SpellHandler newSpellHandler = ScriptMgr.CreateSpellHandler(CastingComponent.Owner, Spell, SpellLine) as SpellHandler;
+
+                // Null defensively: ScriptMgr returns null when a spell type
+                // has no registered handler (or its handler class is abstract,
+                // like the bare ArmorFactorBuff base). Without this guard the
+                // next `.Target` deref NPE'd in CastingService and the player
+                // was kicked to char-select mid-cast. Skip the cast cleanly
+                // instead and warn the operator so the DB or handler can be fixed.
+                if (newSpellHandler == null)
+                {
+                    if (CastingComponent.Owner is GamePlayer p)
+                    {
+                        p.Out.SendMessage("That spell isn't implemented on this server.",
+                            DOL.GS.PacketHandler.eChatType.CT_Spell, DOL.GS.PacketHandler.eChatLoc.CL_SystemWindow);
+                    }
+                    log.Warn($"CastSpellRequest: no SpellHandler for spell '{Spell?.Name}' (Type={Spell?.SpellType}); cast aborted for {CastingComponent.Owner?.Name}");
+                    return;
+                }
+
                 newSpellHandler.Target = Target;
                 newSpellHandler.LosChecker = LosChecker;
                 newSpellHandler.Ability = SpellCastingAbilityHandler;

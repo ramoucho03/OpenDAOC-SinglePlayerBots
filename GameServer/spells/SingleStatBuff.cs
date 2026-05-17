@@ -126,8 +126,14 @@ namespace DOL.GS.Spells
     }
 
     [SpellHandler(eSpellType.ArmorFactorBuff)]
-    public abstract class ArmorFactorBuff(GameLiving caster, Spell spell, SpellLine line) : SingleStatBuff(caster, spell, line)
+    public class ArmorFactorBuff(GameLiving caster, Spell spell, SpellLine line) : SingleStatBuff(caster, spell, line)
     {
+        // Was previously marked `abstract`, which made the class non-
+        // instantiable. DOLSharp ships spells with Type='ArmorFactorBuff'
+        // (bare AF buff, e.g. Heretic Enhancement chants) — the engine could
+        // never construct a handler for them and the caster was kicked to
+        // char-select on the first cast. Concrete here; subclasses still
+        // specialise BuffReceivesSpecBonus / BonusCategory1 for their tier.
         public override bool BuffReceivesSpecBonus => true;
         public override eProperty Property1 => eProperty.ArmorFactor;
     }
