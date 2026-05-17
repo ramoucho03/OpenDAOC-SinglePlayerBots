@@ -35,7 +35,9 @@
       "Bash(gh search *)",
       "WebFetch(domain:camelot.allakhazam.com)",
       "Bash(git log *)",
-      "Bash(powershell -Command \"Select-String -Path 'c:\\\\Users\\\\Olivier\\\\botdaoc\\\\OpenDAOC-SinglePlayerBots\\\\GameServer\\\\packets\\\\Server\\\\PacketLib168.cs' -Pattern 'SendUpdateWeaponAndArmorStats' -Context 50 | Select-Object -First 100\")"
+      "Bash(powershell -Command \"Select-String -Path 'c:\\\\Users\\\\Olivier\\\\botdaoc\\\\OpenDAOC-SinglePlayerBots\\\\GameServer\\\\packets\\\\Server\\\\PacketLib168.cs' -Pattern 'SendUpdateWeaponAndArmorStats' -Context 50 | Select-Object -First 100\")",
+      "Bash(cd \"/c/Users/Olivier/botdaoc/OpenDAOC-SinglePlayerBots/\" && find . -type f -name \"*.cs\" | grep -E \"\\(GameLoop|ECS|GameLiving|GamePlayer|SpellHandler|StandardMob\\)\" | head -30)",
+      "Read(//c/c/Users/Olivier/botdaoc/**)"
     ]
   }
 }
