@@ -26,7 +26,7 @@ namespace DOL.GS.PlayerClass
 	[CharacterClass((int)eCharacterClass.Bainshee, "Bainshee", "Magician")]
 	public class ClassBainshee : ClassMagician
 	{
-		private static readonly string[] AutotrainableSkills = new[] { Specs.Mentalism, Specs.SpectralForce };
+		private static readonly string[] AutotrainableSkills = new[] { Specs.PhantasmalWail, Specs.SpectralForce };
 
 		public ClassBainshee() : base()
 		{
@@ -200,6 +200,6 @@ namespace DOL.GS.PlayerClass
 		{
 			PlayerRace.Celt, PlayerRace.Elf, PlayerRace.Lurikeen,
 		};
+		#endregion
 	}
-	#endregion
 }

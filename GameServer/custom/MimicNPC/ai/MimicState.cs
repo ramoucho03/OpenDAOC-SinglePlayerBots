@@ -349,18 +349,13 @@ namespace DOL.AI.Brain
             // (a second player in the group pulling, a mimic taking aggro
             // from a wandering mob, etc.) and left non-tank bots dormant
             // until the mob actually melee-touched them.
-            //
-            // Bug fix: drop the `!IsHealer` short-circuit. Healers DO need to
-            // transition to AGGRO when the group engages — the AGGRO state
-            // itself routes healer-class bots into their heal cycle instead
-            // of attack actions, so the role-specific behavior is preserved.
-            // Keeping them stuck in FollowLeader meant hybrid classes
-            // (Heretic / Warden / Bard / Friar) that read as "healer" in the
-            // role CSV stayed dormant in combat without ever healing OR
-            // attacking, since heal triggers also need AGGRO to fire reliably.
-            // PreventCombat is the explicit opt-out for bots that should NOT
-            // engage at all.
-            if (!_brain.PreventCombat && _brain.ScanGroupCombat())
+            // Healers stay in FollowLeader on purpose — their heal cycle
+            // runs from this state via the strategy framework, which
+            // continuously polls group HP and casts heals without needing
+            // an AGGRO target. Forcing them into AGGRO breaks the heal
+            // dispatch (AGGRO state expects a combat target the healer
+            // doesn't have).
+            if (!_brain.IsHealer && _brain.ScanGroupCombat())
             {
                 _brain.OnLeaderAggro();
                 _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
