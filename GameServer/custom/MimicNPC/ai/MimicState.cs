@@ -325,7 +325,12 @@ namespace DOL.AI.Brain
 
     public class MimicState_Aggro : MimicState
     {
-        private const int LEAVE_WHEN_OUT_OF_COMBAT_FOR = 10000;
+        // Out-of-combat window before leaving the aggro state. The original 10s
+        // value made bots stand around for 10s after every kill before resuming
+        // follow / roam — players resume in 1-2s. 3s keeps a small grace window
+        // so a follow-up add still picks the same combat state without churning
+        // through ENTER/EXIT.
+        private const int LEAVE_WHEN_OUT_OF_COMBAT_FOR = 3000;
         private long _aggroEndTime;
         private long _checkAggroTime;
 

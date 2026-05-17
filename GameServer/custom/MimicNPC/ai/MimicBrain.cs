@@ -1910,7 +1910,8 @@ namespace DOL.AI.Brain
             if (mg.IncomingPullTarget is not GameNPC pulled || !pulled.IsAlive)
                 return;
 
-            if (mg.CcTargetCount >= MAX_ADDS_TO_CC)
+            int maxAddsToCc = ComputeMaxAddsToCc(mg);
+            if (mg.CcTargetCount >= maxAddsToCc)
                 return;
 
             // The focus mob itself stays the tank's responsibility — never mez it.
@@ -1937,7 +1938,7 @@ namespace DOL.AI.Brain
                     continue;
 
                 mg.AddCcTarget(neighbour);
-                if (mg.CcTargetCount >= MAX_ADDS_TO_CC)
+                if (mg.CcTargetCount >= maxAddsToCc)
                     break;
             }
         }
@@ -1952,11 +1953,35 @@ namespace DOL.AI.Brain
             return false;
         }
 
-        // Picks up to MAX_ADDS_TO_CC hostile mobs from the aggro list (excluding
+        // Picks up to a dynamic cap of hostile mobs from the aggro list (excluding
         // the assist's current focus) and pushes them into the group's CC queue.
         // Targets are sorted by threat (proximity, low HP = easier to finish if mez
         // breaks) so the most dangerous add is mezzed first.
-        private const int MAX_ADDS_TO_CC = 2;
+        //
+        // The cap was a hard 2. With multiple CC casters in the group (e.g. two
+        // Sorcerers + a Bard) the bottleneck was the limit, not the CC bandwidth:
+        // 3 adds in => 1 free add hitting the group. Now the cap scales with the
+        // count of CC-capable group members, clamped to a sane minimum/maximum so
+        // we never accidentally try to mez an entire BAF pull.
+        private const int MAX_ADDS_TO_CC_FLOOR = 2;
+        private const int MAX_ADDS_TO_CC_CEIL = 5;
+
+        private static int ComputeMaxAddsToCc(MimicGroup mg)
+        {
+            Group standardGroup = mg?.MainLeader?.Group ?? mg?.MainAssist?.Group ?? mg?.MainTank?.Group;
+            if (standardGroup == null)
+                return MAX_ADDS_TO_CC_FLOOR;
+
+            int ccCapable = 0;
+            foreach (GameLiving member in standardGroup.GetMembersInTheGroup())
+            {
+                if (member is MimicNPC mn && mn.CanCastCrowdControlSpells)
+                    ccCapable++;
+            }
+            int cap = Math.Max(MAX_ADDS_TO_CC_FLOOR, ccCapable);
+            return Math.Min(MAX_ADDS_TO_CC_CEIL, cap);
+        }
+
         private void PopulateAddsForCC()
         {
             MimicGroup mg = Body.Group?.MimicGroup;
@@ -1965,6 +1990,10 @@ namespace DOL.AI.Brain
                 return;
 
             GameLiving focus = mg.MainAssist?.TargetObject as GameLiving;
+            int maxAddsToCc = ComputeMaxAddsToCc(mg);
+
+            if (mg.CcTargetCount >= maxAddsToCc)
+                return;
 
             // Build candidate list (alive, not the focus target, not already
             // mezzed/rooted, not already queued for CC), then sort: closest first,
@@ -1989,7 +2018,7 @@ namespace DOL.AI.Brain
                 return a.HealthPercent.CompareTo(b.HealthPercent);
             });
 
-            int room = MAX_ADDS_TO_CC - mg.CcTargetCount;
+            int room = maxAddsToCc - mg.CcTargetCount;
             for (int i = 0; i < candidates.Count && room > 0; i++)
             {
                 if (mg.AddCcTarget(candidates[i]))

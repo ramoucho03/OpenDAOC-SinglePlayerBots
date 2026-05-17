@@ -31,6 +31,39 @@ namespace DOL.GS.AutoMigrations
             TryBumpBool("enable_pve_speed",       oldDefault: false, newDefault: true);
             TryBumpBool("enable_zone_bonuses",    oldDefault: false, newDefault: true);
             TryBumpBool("task_give_random_item",  oldDefault: false, newDefault: true);
+
+            // Mimic NPC tuning pass: defaults raised after stress-testing showed the
+            // old values overhealed on trivial damage, throttled pulls too eagerly,
+            // and despawned corpses before a distant rezzer could reach them.
+            TryBumpInt("mimic_heal_threshold",              oldDefault: 85, newDefault: 75);
+            TryBumpInt("mimic_pull_mana_stop_pct",          oldDefault: 30, newDefault: 25);
+            TryBumpInt("mimic_pull_mana_resume_pct",        oldDefault: 35, newDefault: 30);
+            TryBumpInt("bot_rez_wait_no_healer_seconds",    oldDefault: 15, newDefault: 30);
+        }
+
+        private static void TryBumpInt(string key, int oldDefault, int newDefault)
+        {
+            if (oldDefault == newDefault)
+                return;
+            try
+            {
+                var row = GameServer.Database.FindObjectByKey<DbServerProperty>(key);
+                if (row == null)
+                    return;
+                if (!int.TryParse(row.Value, out int current))
+                    return;
+                if (current != oldDefault)
+                    return;
+                row.Value = newDefault.ToString();
+                row.DefaultValue = newDefault.ToString();
+                GameServer.Database.SaveObject(row);
+                if (log.IsInfoEnabled)
+                    log.Info($"PropertyMigrations: auto-bumped {key} {oldDefault} -> {newDefault}.");
+            }
+            catch (Exception ex)
+            {
+                log.Warn($"PropertyMigrations: auto-bump of {key} failed: {ex.Message}");
+            }
         }
 
         private static void TryBumpBool(string key, bool oldDefault, bool newDefault)

@@ -42,11 +42,11 @@ namespace DOL.GS.Scripts
         public static int MIMIC_MAX_MANA_THROTTLE_MS;
 
         [ServerProperty("npc", "mimic_pull_mana_stop_pct",
-            "Puller stops when ANY caster in the group drops below this mana %. Default 30.", 30)]
+            "Puller stops when ANY caster in the group drops below this mana %. Default 25 (was 30 — too eager to throttle).", 25)]
         public static int MIMIC_PULL_MANA_STOP_PCT;
 
         [ServerProperty("npc", "mimic_pull_mana_resume_pct",
-            "Puller resumes only when EVERY caster is back above this mana %. Must be >= stop. Default 35.", 35)]
+            "Puller resumes only when EVERY caster is back above this mana %. Must be >= stop. Default 30 (was 35).", 30)]
         public static int MIMIC_PULL_MANA_RESUME_PCT;
 
         [ServerProperty("npc", "mimic_pull_scan_radius",
@@ -118,7 +118,7 @@ namespace DOL.GS.Scripts
         // generic NPC default (75/37) so healers stay proactive. 0 = use
         // the hard-coded fallback inside MimicGroup.
         [ServerProperty("npc", "mimic_heal_threshold",
-            "Heal % threshold below which mimic healers prioritise healing (default 85, vs npc_heal_threshold=75).", 85)]
+            "Heal % threshold below which mimic healers prioritise healing (default 75, was 85 — overhealing on trivial damage).", 75)]
         public static int MIMIC_HEAL_THRESHOLD;
 
         [ServerProperty("npc", "mimic_emergency_threshold",
@@ -162,7 +162,7 @@ namespace DOL.GS.Scripts
         public static int BOT_REZ_WAIT_SECONDS;
 
         [ServerProperty("npc", "bot_rez_wait_no_healer_seconds",
-            "Seconds a dead bot lingers as a corpse when no group rezzer is available (default 15).", 15)]
+            "Seconds a dead bot lingers as a corpse when no group rezzer is available (default 30, was 15 — too short for distant rezzer).", 30)]
         public static int BOT_REZ_WAIT_NO_HEALER_SECONDS;
 
         [ServerProperty("npc", "bot_rez_timeout_behavior",
