@@ -2026,16 +2026,21 @@ namespace DOL.AI.Brain
                 return;
 
             // Build candidate list (alive, not the focus target, not already
-            // mezzed/rooted, not already queued for CC), then sort: closest first,
-            // tie-break by lowest health-percent so a near-dead add gets cleaned up.
+            // queued for CC), then sort: closest first, tie-break by lowest
+            // health-percent so a near-dead add gets cleaned up.
+            //
+            // Already-mezzed/rooted mobs are included if their effect is about
+            // to expire (<3s remaining), so a CC bot can stage a re-cast and
+            // refresh the lock before the gap. Otherwise they're skipped.
             List<GameLiving> candidates = new();
             foreach (var kv in AggroList)
             {
                 GameLiving c = kv.Key;
                 if (c == null || !c.IsAlive) continue;
                 if (c == focus) continue;
-                if (c.IsMezzed || c.IsRooted) continue;
                 if (mg.ContainsCcTarget(c)) continue;
+                if ((c.IsMezzed || c.IsRooted) && !ShouldRecastCcOn(c))
+                    continue;
                 candidates.Add(c);
             }
 
@@ -2054,6 +2059,34 @@ namespace DOL.AI.Brain
                 if (mg.AddCcTarget(candidates[i]))
                     room--;
             }
+        }
+
+        // Returns true when a mob already mezzed or rooted should be put back
+        // in the CC queue for a pre-emptive recast. We treat any of the soft
+        // CC effects as a candidate and recast if the strongest remaining time
+        // is under CC_RECAST_LEAD_MS.
+        private static bool ShouldRecastCcOn(GameLiving target)
+        {
+            if (target == null)
+                return false;
+
+            // Pick the longest still-active soft-CC effect we know about. If
+            // it's about to expire, the bot can stage a recast.
+            long longestRemaining = 0;
+            void Probe(eEffect effect)
+            {
+                var fx = EffectListService.GetEffectOnTarget(target, effect);
+                if (fx == null) return;
+                long remaining = fx.ExpireTick - GameLoop.GameLoopTime;
+                if (remaining > longestRemaining)
+                    longestRemaining = remaining;
+            }
+
+            Probe(eEffect.Mez);
+            Probe(eEffect.MovementSpeedDebuff);
+            Probe(eEffect.Snare);
+
+            return longestRemaining > 0 && longestRemaining <= CC_RECAST_LEAD_MS;
         }
 
         /// <summary>
@@ -3592,6 +3625,44 @@ namespace DOL.AI.Brain
             return false;
         }
 
+        // Lead time before the existing CC expires when we already start the
+        // recast. 3 s is the standard rule of thumb: long enough to land the
+        // recast under a normal cast time (2.5-3 s for mez/root), short enough
+        // that the duplicate doesn't waste mana.
+        private const int CC_RECAST_LEAD_MS = 3000;
+
+        /// <summary>
+        /// Variant of <see cref="LivingHasEffect"/> that only returns true when
+        /// the target carries the relevant effect AND it still has more than
+        /// <paramref name="minRemainingMs"/> ms before expiring. Used by the CC
+        /// picker so a bot can pre-recast mez/root a few seconds before the
+        /// current effect runs out, matching real-player CC discipline.
+        ///
+        /// Falls back to <see cref="LivingHasEffect"/>'s semantics for spells
+        /// that don't map to a single ECSGameSpellEffect (procs, etc.) so we
+        /// never accidentally double-cast something that is genuinely fresh.
+        /// </summary>
+        public bool LivingHasFreshEffect(GameLiving target, Spell spell, int minRemainingMs)
+        {
+            if (target == null || spell == null)
+                return true;
+
+            if (!LivingHasEffect(target, spell))
+                return false;
+
+            // Probe the actual ECSGameSpellEffect to read its ExpireTick.
+            eEffect spellEffect = EffectHelper.GetEffectFromSpell(spell);
+            if (spellEffect is eEffect.Unknown or eEffect.Pet or eEffect.DirectDamage)
+                return true; // can't compute remaining; treat as fresh
+
+            var active = EffectListService.GetEffectOnTarget(target, spellEffect);
+            if (active == null)
+                return false;
+
+            long remaining = active.ExpireTick - GameLoop.GameLoopTime;
+            return remaining > minRemainingMs;
+        }
+
         /// <summary>
         /// If the bot has a Resurrect spell and there's a dead group member in
         /// range, start casting rez on them. Runs regardless of combat state —
@@ -3728,7 +3799,11 @@ namespace DOL.AI.Brain
 
                     foreach (Spell spell in MimicBody.CrowdControlSpells)
                     {
-                        if (CanCastOffensiveSpell(spell) && !LivingHasEffect(ccTarget, spell))
+                        // Re-cast window: a real CC player recasts mez ~3 s before it
+                        // expires so the mob never gets a free swing in the gap. We
+                        // treat "effect present with > 3 s remaining" as "still mezzed";
+                        // anything shorter is a recast candidate.
+                        if (CanCastOffensiveSpell(spell) && !LivingHasFreshEffect(ccTarget, spell, CC_RECAST_LEAD_MS))
                             spellsToCast.Add(spell);
                     }
 
