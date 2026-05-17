@@ -465,8 +465,24 @@ namespace DOL.AI.Brain
                 if (AggroList.ContainsKey(npc))
                     continue;
 
-                bool targetsGroup = npc.TargetObject is GameLiving npcTarget
-                    && g.IsInTheGroup(npcTarget);
+                // STRICT engagement signal: a mob just having `TargetObject` set
+                // to a group member is NOT enough. Some mobs flag-look at any
+                // player who target-selects them, so the legacy
+                // `npc.TargetObject is GameLiving && IsInTheGroup` check would
+                // pull the group every time the leader clicked a passing hostile.
+                //
+                // We require one of:
+                //  - the mob is currently swinging (AttackState true) on a group member
+                //  - the mob's brain has aggro AND a group member is in its aggro list
+                //  - the mob already has a HARMFUL effect dispatched on a group member
+                //    (DoT/snare/CC landing)
+                bool targetsGroup = false;
+                if (npc.attackComponent?.AttackState == true
+                    && npc.TargetObject is GameLiving tgt
+                    && g.IsInTheGroup(tgt))
+                {
+                    targetsGroup = true;
+                }
 
                 if (!targetsGroup
                     && npc.Brain is StandardMobBrain mobBrain

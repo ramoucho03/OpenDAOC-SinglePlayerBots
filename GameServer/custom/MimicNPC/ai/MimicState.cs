@@ -967,9 +967,23 @@ namespace DOL.AI.Brain
                 GameLiving externalPuller = ResolveExternalPuller(mg);
                 if (externalPuller != null && externalPuller != _brain.Body)
                 {
-                    bool pullerEngaging = (externalPuller.IsCasting
-                                              && externalPuller.castingComponent?.SpellHandler?.Spell?.IsHarmful == true)
-                                          || externalPuller.IsAttacking;
+                    // IsAttacking flips true the instant the auto-attack timer
+                    // starts (before the first swing lands), so a player who
+                    // just target-selects with auto-attack on would promote
+                    // the click into a pull. Use InCombatInLast(2000) instead
+                    // so we only react to *real* engagement (a swing actually
+                    // exchanged in the last 2s). Harmful spell cast still
+                    // counts as engagement.
+                    bool castIsHarmfulNonCc = externalPuller.IsCasting
+                                              && externalPuller.castingComponent?.SpellHandler?.Spell is Spell extSpell
+                                              && extSpell.IsHarmful
+                                              && extSpell.SpellType is not (eSpellType.Mez
+                                                                            or eSpellType.Mesmerize
+                                                                            or eSpellType.Stun
+                                                                            or eSpellType.Amnesia
+                                                                            or eSpellType.SpeedDecrease);
+                    bool pullerEngaging = castIsHarmfulNonCc
+                                          || externalPuller.InCombatInLast(2000);
 
                     if (pullerEngaging && externalPuller.TargetObject is GameLiving pulledTarget
                         && pulledTarget.IsAlive
