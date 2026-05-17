@@ -17,10 +17,12 @@ namespace DOL.GS.Scripts
             // Vampiir uses a 1H weapon; pick at random across the three
             // base damage types. The mimic equipment layer will pick the
             // matching item from inventory.
+            // Hibernia weapon types: Blades (slashing), Piercing, Blunt.
+            // 'Slashing' is the Albion enum name; Hibernia uses 'Blades'.
             int randWeap = Util.Random(2);
             switch (randWeap)
             {
-                case 0: WeaponOneType = eObjectType.Slashing; break;
+                case 0: WeaponOneType = eObjectType.Blades; break;
                 case 1: WeaponOneType = eObjectType.Piercing; break;
                 case 2: WeaponOneType = eObjectType.Blunt; break;
             }
