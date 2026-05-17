@@ -340,6 +340,22 @@ namespace DOL.AI.Brain
         /// Roaming) so combat assist is uniform regardless of where the bot
         /// is when the group engages.
         /// </summary>
+
+        // CC spell types that should NOT trigger group assist when a member starts
+        // casting them. A real CC player mezzes/roots before the engage so the
+        // group can pick targets cleanly; if the group jumps on the CC target as
+        // soon as the cast starts, it just breaks the lock.
+        private static bool IsCrowdControlSpell(Spell spell)
+        {
+            if (spell == null)
+                return false;
+            return spell.SpellType is eSpellType.Mez
+                or eSpellType.Mesmerize
+                or eSpellType.Stun
+                or eSpellType.Amnesia
+                or eSpellType.SpeedDecrease;
+        }
+
         public bool ScanGroupCombat(int maxRange = 0)
         {
             Group g = Body.Group;
@@ -363,19 +379,44 @@ namespace DOL.AI.Brain
                 // group instantly. Tighten to "has actually exchanged blows in
                 // the last 2s" so target-selection alone never triggers the
                 // group follow. Harmful spell-cast still counts as engagement
-                // because casting is an unambiguous commitment.
-                bool engaging = member.InCombatInLast(2000)
-                                || (member.IsCasting
-                                    && member.castingComponent?.SpellHandler?.Spell?.IsHarmful == true);
-                if (engaging
-                    && member.TargetObject is GameLiving target
-                    && target.IsAlive
-                    && target.ObjectState == GameObject.eObjectState.Active
-                    && CanAggroTarget(target)
-                    && Body.IsWithinRadius(target, maxRange))
+                // EXCEPT for CC spells (mez/root/snare/stun/amnesia) — those
+                // are pre-pull tools and the group attacking the target would
+                // immediately break the CC.
+                bool castIsHarmfulNonCc = member.IsCasting
+                                          && member.castingComponent?.SpellHandler?.Spell is Spell mSpell
+                                          && mSpell.IsHarmful
+                                          && !IsCrowdControlSpell(mSpell);
+                bool engaging = member.InCombatInLast(2000) || castIsHarmfulNonCc;
+
+                // Also count engagement by the member's controlled pet (Theurgist
+                // air/cold/earth swarms, Cabalist/Spiritmaster pets, Animist
+                // turrets). Without this the group would idle while a pet caster
+                // is actively melting the target through their pets.
+                GameLiving petBody = (member as GameNPC)?.ControlledBrain?.Body
+                                     ?? (member as GamePlayer)?.ControlledBrain?.Body;
+                bool petEngaging = petBody != null
+                                   && (petBody.InCombatInLast(2000)
+                                       || (petBody.IsCasting
+                                           && petBody.castingComponent?.SpellHandler?.Spell?.IsHarmful == true
+                                           && !IsCrowdControlSpell(petBody.castingComponent.SpellHandler.Spell)));
+                if (petEngaging)
+                    engaging = true;
+
+                // Pick whichever target is actually being engaged on (the member's
+                // target, or the pet's, whichever lines up with the engagement signal).
+                GameLiving engageTarget = null;
+                if (engaging)
                 {
-                    if (!AggroList.ContainsKey(target))
-                        AddToAggroList(target, 1);
+                    if (member.TargetObject is GameLiving mTgt && mTgt.IsAlive && mTgt.ObjectState == GameObject.eObjectState.Active && CanAggroTarget(mTgt))
+                        engageTarget = mTgt;
+                    else if (petBody?.TargetObject is GameLiving pTgt && pTgt.IsAlive && pTgt.ObjectState == GameObject.eObjectState.Active && CanAggroTarget(pTgt))
+                        engageTarget = pTgt;
+                }
+
+                if (engageTarget != null && Body.IsWithinRadius(engageTarget, maxRange))
+                {
+                    if (!AggroList.ContainsKey(engageTarget))
+                        AddToAggroList(engageTarget, 1);
                     found = true;
                 }
 
