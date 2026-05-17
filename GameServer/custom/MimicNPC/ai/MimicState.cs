@@ -1236,11 +1236,26 @@ namespace DOL.AI.Brain
                         mg.SetCampPhase(MimicGroup.eCampPhase.Combat);
                         break;
                     }
-                    if (mg.IncomingPullTarget is GameNPC inc
-                        && inc.IsAlive
-                        && inc.Brain is StandardMobBrain smb && smb.HasAggro)
+                    if (mg.IncomingPullTarget is GameNPC inc && inc.IsAlive)
                     {
-                        mg.SetCampPhase(MimicGroup.eCampPhase.Engaging);
+                        // Trigger Engaging on ANY brain type that has aggro on a
+                        // group member. The legacy check required StandardMobBrain
+                        // (BAF-style) which excluded epic mobs, unique bosses, and
+                        // custom AI brains — those would stay stuck in Pulling
+                        // until the watchdog fired (12s), and never benefit from
+                        // tank intercept positioning or CC pre-mez.
+                        bool incHasAggro = false;
+                        if (inc.Brain is StandardMobBrain smb && smb.HasAggro)
+                            incHasAggro = true;
+                        else if (inc.attackComponent?.AttackState == true)
+                            incHasAggro = true; // any brain currently swinging
+                        else if (inc.TargetObject is GameLiving incTgt
+                                 && incTgt.Group != null
+                                 && incTgt.Group == _brain.Body.Group)
+                            incHasAggro = true; // any brain targeting a group member
+
+                        if (incHasAggro)
+                            mg.SetCampPhase(MimicGroup.eCampPhase.Engaging);
                     }
                     break;
 

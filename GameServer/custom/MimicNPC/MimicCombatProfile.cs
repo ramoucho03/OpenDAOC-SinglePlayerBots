@@ -371,6 +371,9 @@ namespace DOL.GS.Scripts
             // light melee, with chant pressure as primary DPS. Roles match
             // its dual identity: healer + caster + occasional puller.
             Add(Profile(eMimicClass.Heretic, healer | eMimicCombatRole.CasterDps | eMimicCombatRole.Debuffer | eMimicCombatRole.Puller, eMimicCombatRole.CasterDps, eMimicAoePolicy.DamageWhenClustered | eMimicAoePolicy.PbaoeWhenSafe, HealerPve, HealerPvp, 3));
+            // MaulerAlb: Catacombs Albion light-melee hybrid. H2H / Mauler Staff,
+            // self-buffs from Aura/Magnetism/Power Strikes. Aoe via PBAoE shouts.
+            Add(Profile(eMimicClass.MaulerAlb, melee | eMimicCombatRole.MeleeDps, eMimicCombatRole.MeleeDps, eMimicAoePolicy.DamageWhenClustered | eMimicAoePolicy.PbaoeWhenSafe, DpsPve, DpsPvp, 3));
 
             Add(Profile(eMimicClass.Animist, petCaster | eMimicCombatRole.CrowdControl, eMimicCombatRole.PetCaster, eMimicAoePolicy.DamageWhenClustered | eMimicAoePolicy.CrowdControlWhenClustered, CcPve, CcPvp, 3));
             Add(Profile(eMimicClass.Bainshee, caster | eMimicCombatRole.Debuffer, eMimicCombatRole.CasterDps, eMimicAoePolicy.DamageWhenClustered | eMimicAoePolicy.PbaoeWhenSafe, DpsPve, DpsPvp));
@@ -385,7 +388,12 @@ namespace DOL.GS.Scripts
             Add(Profile(eMimicClass.Nightshade, assassin | eMimicCombatRole.CasterDps, eMimicCombatRole.Assassin, eMimicAoePolicy.Never, DpsPve, SupportHunterPvp));
             Add(Profile(eMimicClass.Ranger, archer, eMimicCombatRole.Archer, eMimicAoePolicy.Never, DpsPve, SupportHunterPvp));
             Add(Profile(eMimicClass.Valewalker, melee | eMimicCombatRole.CasterDps | eMimicCombatRole.Debuffer, eMimicCombatRole.MeleeDps, eMimicAoePolicy.DamageWhenClustered, DpsPve, DpsPvp, 3));
+            // Vampiir: Catacombs Hib melee with self-drain DD via VampiiricEmbrace.
+            // Primarily MeleeDps but with caster fallback for drains; no pet.
+            Add(Profile(eMimicClass.Vampiir, melee | eMimicCombatRole.CasterDps, eMimicCombatRole.MeleeDps, eMimicAoePolicy.DamageWhenClustered, DpsPve, DpsPvp, 3));
             Add(Profile(eMimicClass.Warden, healer | eMimicCombatRole.Tank | eMimicCombatRole.MeleeDps, eMimicCombatRole.Support, eMimicAoePolicy.Never, HealerPve, HealerPvp));
+            // MaulerHib: same archetype as MaulerAlb.
+            Add(Profile(eMimicClass.MaulerHib, melee | eMimicCombatRole.MeleeDps, eMimicCombatRole.MeleeDps, eMimicAoePolicy.DamageWhenClustered | eMimicAoePolicy.PbaoeWhenSafe, DpsPve, DpsPvp, 3));
 
             Add(Profile(eMimicClass.Berserker, tankMelee, eMimicCombatRole.MeleeDps, eMimicAoePolicy.Never, TankPve, TankPvp));
             Add(Profile(eMimicClass.Bonedancer, petCaster | eMimicCombatRole.Debuffer, eMimicCombatRole.PetCaster, eMimicAoePolicy.DamageWhenClustered, DpsPve, DpsPvp, 3));
@@ -399,7 +407,12 @@ namespace DOL.GS.Scripts
             Add(Profile(eMimicClass.Spiritmaster, petCaster | eMimicCombatRole.CrowdControl, eMimicCombatRole.PetCaster, eMimicAoePolicy.DamageWhenClustered | eMimicAoePolicy.CrowdControlWhenClustered | eMimicAoePolicy.PbaoeWhenSafe, CcPve, CcPvp));
             Add(Profile(eMimicClass.Thane, tankMelee | eMimicCombatRole.CasterDps, eMimicCombatRole.Tank, eMimicAoePolicy.DamageWhenClustered, TankPve, TankPvp, 3));
             Add(Profile(eMimicClass.Valkyrie, tankMelee | eMimicCombatRole.Support | eMimicCombatRole.Healer, eMimicCombatRole.Tank, eMimicAoePolicy.DamageWhenClustered, TankPve, TankPvp, 3));
+            // Warlock: Catacombs Mid caster with chambers (instant-cast queue).
+            // Heavy DD + DoT + debuff. No pet.
+            Add(Profile(eMimicClass.Warlock, caster | eMimicCombatRole.Debuffer, eMimicCombatRole.CasterDps, eMimicAoePolicy.DamageWhenClustered, DpsPve, DpsPvp, 3));
             Add(Profile(eMimicClass.Warrior, tankMelee, eMimicCombatRole.Tank, eMimicAoePolicy.Never, TankPve, TankPvp));
+            // MaulerMid: same archetype as MaulerAlb.
+            Add(Profile(eMimicClass.MaulerMid, melee | eMimicCombatRole.MeleeDps, eMimicCombatRole.MeleeDps, eMimicAoePolicy.DamageWhenClustered | eMimicAoePolicy.PbaoeWhenSafe, DpsPve, DpsPvp, 3));
 
             return profiles;
         }

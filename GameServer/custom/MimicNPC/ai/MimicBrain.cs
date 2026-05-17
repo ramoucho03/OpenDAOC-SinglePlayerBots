@@ -2706,6 +2706,17 @@ namespace DOL.AI.Brain
             if (Body.TargetObject == null)
                 return;
 
+            // IsAlive guard: stop wasting ticks (and mana from CheckOffensiveSpells
+            // below) on a corpse. Without this, a target that died between two ticks
+            // still triggers a cast attempt + a melee swing attempt before being
+            // reaped from the aggro list on the next CleanUpAggroListAndGet...() pass.
+            if (Body.TargetObject is GameLiving gl && (!gl.IsAlive || gl.ObjectState != GameObject.eObjectState.Active))
+            {
+                Body.TargetObject = null;
+                Body.StopAttack();
+                return;
+            }
+
             if (Body.ControlledBrain != null)
                 Body.ControlledBrain.Attack(Body.TargetObject);
 
@@ -2731,7 +2742,12 @@ namespace DOL.AI.Brain
                     if (quickCast != null)
                         CheckSpells(eCheckSpellType.CrowdControl);
 
-                    // Solo casters flee, grouped casters rely on group to peel
+                    // Solo casters flee outright; grouped casters kite SHORT
+                    // so the tank's peel actually catches up. Previously the
+                    // grouped caster did nothing and ate hits until the tank
+                    // arrived — by then the caster was usually dead because
+                    // CheckMainTankTarget needs the mob's AggroList[tank] to
+                    // beat the mob's AggroList[caster] before retargeting.
                     if (Body.Group == null)
                     {
                         if (TryFlee())
@@ -2739,6 +2755,13 @@ namespace DOL.AI.Brain
 
                         if (TryResumeAfterFlee())
                             return;
+                    }
+                    else
+                    {
+                        // Grouped: take a short kite step (300u) to give the
+                        // tank one extra second to peel, then resume casting
+                        // next tick (interrupt window is short).
+                        TryShortKiteStep(300);
                     }
 
                     return;
@@ -2837,6 +2860,31 @@ namespace DOL.AI.Brain
             int fleeDistance = 2000 - Body.GetDistance(Body.TargetObject);
             Flee(fleeDistance);
 
+            return true;
+        }
+
+        // Grouped-caster kite: take a small step (default 300u) away from the
+        // interrupting target so the tank's peel actually catches up before
+        // the caster eats a full melee combo. Returns false if we can't (no
+        // target / already fleeing / movement blocked).
+        private bool TryShortKiteStep(int distance)
+        {
+            if (Body.TargetObject is not GameLiving threat || !threat.IsAlive)
+                return false;
+            if (IsFleeing || TargetFleePosition != null)
+                return false;
+            if (Body.IsCasting)
+                return false; // don't break our own cast
+
+            // Vector away from the threat.
+            double dx = Body.X - threat.X;
+            double dy = Body.Y - threat.Y;
+            double len = Math.Sqrt(dx * dx + dy * dy);
+            if (len < 1)
+                return false;
+            int dest_x = Body.X + (int)(distance * dx / len);
+            int dest_y = Body.Y + (int)(distance * dy / len);
+            Body.WalkTo(new Point3D(dest_x, dest_y, Body.Z), Body.MaxSpeed);
             return true;
         }
 
