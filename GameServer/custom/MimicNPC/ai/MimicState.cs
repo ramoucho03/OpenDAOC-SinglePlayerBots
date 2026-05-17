@@ -438,12 +438,23 @@ namespace DOL.AI.Brain
             _brain.TargetFleePosition = null;
             _brain.ResetFlanking();
 
-            foreach (ECSPulseEffect pulseEffect in _brain.Body.effectListComponent.GetPulseEffects())
+            // Pulse-effect cleanup wrapped: if End() throws (corrupt spell ref,
+            // disposed handler, race with effect-tick removal), Exit() must
+            // continue running. Otherwise the FSM would stay stuck in AGGRO
+            // with stale aggro list, and the next Enter() never fires.
+            try
             {
-                if (pulseEffect.SpellHandler?.Spell != null &&
-                    pulseEffect.SpellHandler.Spell.UsePulsePower)
-                    pulseEffect.End();
+                foreach (ECSPulseEffect pulseEffect in _brain.Body.effectListComponent.GetPulseEffects())
+                {
+                    if (pulseEffect.SpellHandler?.Spell != null &&
+                        pulseEffect.SpellHandler.Spell.UsePulsePower)
+                    {
+                        try { pulseEffect.End(); }
+                        catch { /* swallow: don't let a single broken pulse stall Exit() */ }
+                    }
+                }
             }
+            catch { /* same for the enumeration itself */ }
 
             _brain.OnExitAggro();
 
@@ -509,6 +520,19 @@ namespace DOL.AI.Brain
 
                     return;
                 }
+            }
+
+            // Mezzed / stunned guard: the bot literally can't act this tick.
+            // Without this gate, CheckHeals / CheckMainCC / AttackMostWanted
+            // would still run their dispatchers (CheckSpells fails internally
+            // but only after work was done), draining CPU and occasionally
+            // re-arming target objects that won't be consumable for seconds.
+            // Skip the action block entirely; aggro decay / exit conditions
+            // were already evaluated above.
+            if (_brain.Body.IsMezzed || _brain.Body.IsStunned)
+            {
+                base.Think();
+                return;
             }
 
             // Rez beats everything else when a group member is down — even in

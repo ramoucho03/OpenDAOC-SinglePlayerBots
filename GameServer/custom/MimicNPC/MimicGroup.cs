@@ -365,6 +365,82 @@ namespace DOL.GS.Scripts
             return true;
         }
 
+        /// <summary>
+        /// Mirror of <see cref="TryPromoteSecondaryTank"/> for the MainCC role.
+        /// When the current MainCC dies, scan the rest of the group for the
+        /// best surviving CC-capable mimic and promote them. Without this the
+        /// dead bot stays MainCC, CcStrategy keeps dispatching mez/root casts
+        /// on a corpse, and adds stay loose.
+        /// </summary>
+        public bool TryPromoteSecondaryCC(GameLiving dying)
+        {
+            if (dying == null || MainCC != dying)
+                return false;
+            if (MainLeader?.Group == null)
+                return false;
+
+            GameLiving best = null;
+            foreach (GameLiving member in MainLeader.Group.GetMembersInTheGroup())
+            {
+                if (member == null || member == dying || !member.IsAlive)
+                    continue;
+                if (member is not MimicNPC m || !m.CanCastCrowdControlSpells)
+                    continue;
+                // First valid match wins — CC roster is small enough that a
+                // class-tier scoring isn't worth the complexity.
+                best = member;
+                break;
+            }
+            if (best == null)
+                return false;
+
+            MainCC = best;
+            SayToGroup(best, "Mimic.Group.CCSet");
+            return true;
+        }
+
+        /// <summary>
+        /// Backup healer flag promotion. When a flagged healer dies, ensure
+        /// at least one other healer-capable mimic in the group has its
+        /// IsHealer flag set. Without this, a group with one Cleric + one
+        /// Druid loses ALL healing when the Cleric dies (the Druid keeps its
+        /// IsHealer=false, so it stays in DPS mode).
+        /// </summary>
+        public bool TryPromoteHealer(GameLiving dying)
+        {
+            if (dying == null || MainLeader?.Group == null)
+                return false;
+            if (dying is not MimicNPC dm || dm.MimicBrain == null || !dm.MimicBrain.IsHealer)
+                return false; // dying wasn't a flagged healer
+
+            foreach (GameLiving member in MainLeader.Group.GetMembersInTheGroup())
+            {
+                if (member == null || member == dying || !member.IsAlive)
+                    continue;
+                if (member is not MimicNPC m || m.MimicBrain == null)
+                    continue;
+                if (!m.CanCastHealSpells && !m.CanCastInstantHealSpells)
+                    continue;
+                if (m.MimicBrain.IsHealer)
+                    return false; // someone else already flagged — nothing to do
+            }
+
+            // No live flagged healer remains — promote first eligible candidate.
+            foreach (GameLiving member in MainLeader.Group.GetMembersInTheGroup())
+            {
+                if (member == null || member == dying || !member.IsAlive)
+                    continue;
+                if (member is not MimicNPC m || m.MimicBrain == null)
+                    continue;
+                if (!m.CanCastHealSpells && !m.CanCastInstantHealSpells)
+                    continue;
+                m.MimicBrain.IsHealer = true;
+                SayToGroup(m, "Mimic.Group.HealerOn");
+                return true;
+            }
+            return false;
+        }
+
         // Higher score = better tank candidate. Real tanks (shield + plate class)
         // outrank Reaver-ish hybrids, which outrank pure melee DPS, which outrank
         // casters/healers. Players are slightly preferred over mimics so a real

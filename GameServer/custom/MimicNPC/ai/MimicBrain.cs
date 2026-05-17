@@ -788,8 +788,16 @@ namespace DOL.AI.Brain
                             {
                                 if (Body.TargetObject is GameLiving target)
                                 {
-                                    if (Body.IsWithinRadius(Body.TargetObject, Body.MeleeAttackRange) &&
-                                        GameServer.ServerRules.IsAllowedToAttack(Body, target, true) || Body.HealthPercent < 75)
+                                    // Parenthesis fix: original was
+                                    //   (inMeleeRange && canAttack) || lowHealth
+                                    // which fired Stag at any 74% HP situation
+                                    // even out of range / not in combat. The
+                                    // intent is "I have a valid target in melee
+                                    // AND (it's a real fight OR I'm in trouble)".
+                                    bool engageOk = Body.IsWithinRadius(Body.TargetObject, Body.MeleeAttackRange)
+                                                    && GameServer.ServerRules.IsAllowedToAttack(Body, target, true);
+                                    bool inTrouble = Body.HealthPercent < 75;
+                                    if (engageOk && (inTrouble || Body.InCombat))
                                     {
                                         ECSGameEffectFactory.Create(new(Body, StagAbilityHandler.DURATION, 1), ab.Level, static (in i, level) => new StagECSGameEffect(i, level));
                                         Body.DisableSkill(ab, 900000);

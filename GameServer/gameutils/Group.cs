@@ -331,6 +331,12 @@ namespace DOL.GS
                 {
                     // Assign a new leader.
                     LivingLeader = _groupMembers.OfType<GamePlayer>().FirstOrDefault() ?? _groupMembers[0];
+                    // Sync MimicGroup so mimics that key off MainLeader (formation,
+                    // assist, follow-target election, chat dedup) don't keep
+                    // referencing the now-departed leader. Without this hook
+                    // the role machine drifted out of sync until the next manual
+                    // /mset cycle.
+                    MimicGroup?.SetLeader(LivingLeader);
                     SendMessageToGroupMembers($"{LivingLeader.Name} is the new group leader.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
                 }
             }
