@@ -3179,7 +3179,32 @@ namespace DOL.AI.Brain
                     && assistTarget.ObjectState == GameObject.eObjectState.Active
                     && CanAggroTarget(assistTarget))
                 {
-                    if (!ShouldAvoidCrowdControlledTarget(assistTarget, eMimicCombatMode.PvE, true))
+                    // Only follow the assist target when the assist is ACTUALLY
+                    // engaging it. Just target-selecting a passing mob isn't an
+                    // engage signal — without these checks the bot would dogpile
+                    // any mob clicked during the post-combat AGGRO decay window.
+                    //
+                    // We accept any of:
+                    //  - assist is auto-attacking that exact target
+                    //  - assist is casting a harmful spell on that exact target
+                    //  - the target is already attacking a group member
+                    //  - we already have meaningful aggro on the target (took/dealt a hit)
+                    bool assistAttackingTarget = mg.MainAssist.IsAttacking
+                                                 && mg.MainAssist.TargetObject == assistTarget;
+                    bool assistCastingHarmfulOnTarget = mg.MainAssist.IsCasting
+                                                       && mg.MainAssist.castingComponent?.SpellHandler?.Spell?.IsHarmful == true
+                                                       && mg.MainAssist.TargetObject == assistTarget;
+                    bool assistTargetEngagedOnGroup = assistTarget.TargetObject is GameLiving aE
+                                                      && Body.Group != null
+                                                      && Body.Group.IsInTheGroup(aE);
+                    bool weHaveAggroOnAssistTarget = AggroList.ContainsKey(assistTarget) && AggroList[assistTarget].Effective > 1;
+
+                    bool assistIsEngaging = assistAttackingTarget
+                                            || assistCastingHarmfulOnTarget
+                                            || assistTargetEngagedOnGroup
+                                            || weHaveAggroOnAssistTarget;
+
+                    if (assistIsEngaging && !ShouldAvoidCrowdControlledTarget(assistTarget, eMimicCombatMode.PvE, true))
                     {
                         // DPS hold-fire: if a mimic tank exists and hasn't established
                         // aggro on this target yet, wait. The bot is already targeting
