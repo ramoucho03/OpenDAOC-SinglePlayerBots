@@ -106,8 +106,22 @@ namespace DOL.GS.Economy
                     break;
                 case "clear":
                 {
-                    int n = EconomyManager.ClearAll();
-                    player.Out.SendMessage($"Economy: cleared {n} listings.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    // Two-step confirmation: typing just '/economy clear' shows a
+                    // preview with the count and requires '/economy clear confirm'
+                    // to actually wipe. Prevents one-keystroke disasters.
+                    bool confirmed = args.Length >= 3 && args[2].Equals("confirm", StringComparison.OrdinalIgnoreCase);
+
+                    if (!confirmed)
+                    {
+                        int n = EconomyManager.TotalListings;
+                        player.Out.SendMessage($"Economy: '/economy clear' will WIPE {n} bot listings.", eChatType.CT_Important, eChatLoc.CL_SystemWindow);
+                        player.Out.SendMessage("Type '/economy clear confirm' within a few seconds to proceed.", eChatType.CT_Important, eChatLoc.CL_SystemWindow);
+                        break;
+                    }
+
+                    int cleared = EconomyManager.ClearAll();
+                    log.Warn($"Economy: /economy clear confirmed by {player.Name} (acct={player.Client?.Account?.Name}, plvl={player.Client?.Account?.PrivLevel}). Wiped {cleared} listings.");
+                    player.Out.SendMessage($"Economy: cleared {cleared} listings.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
                     break;
                 }
                 case "suspend":

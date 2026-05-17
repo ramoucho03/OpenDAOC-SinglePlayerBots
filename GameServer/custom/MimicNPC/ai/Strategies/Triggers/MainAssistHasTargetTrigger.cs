@@ -25,6 +25,19 @@ namespace DOL.GS.Scripts.AI.Strategies.Triggers
             if (!target.IsAlive || target.ObjectState != GameObject.eObjectState.Active)
                 return false;
 
+            // Bug fix: the assist must actually be engaging the target, not
+            // just have it selected. Without this check, a player picking a
+            // mob with left-click (which sets TargetObject) would make every
+            // DPS in the group rush in. Mimic should only assist once the
+            // leader has committed (attacking, casting harmful, or already
+            // in combat — InCombatInLast handles brief gaps between swings).
+            bool assistEngaging = assist.IsAttacking
+                                  || assist.attackComponent.AttackState
+                                  || assist.InCombatInLast(2000)
+                                  || (assist.IsCasting && assist.castingComponent?.SpellHandler?.Spell?.IsHarmful == true);
+            if (!assistEngaging)
+                return false;
+
             return GameServer.ServerRules.IsAllowedToAttack(ctx.Bot, target, true);
         }
     }

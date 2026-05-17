@@ -39,6 +39,16 @@ namespace DOL.GS.Scripts.AI.Strategies.Triggers
             if (ctx.Brain.PreventCombat || ctx.Brain.IsHealer)
                 return false;
 
+            // Bug fix: only force-switch when the assist is genuinely engaging.
+            // A player just left-clicking around to pick a target should not
+            // make every DPS pivot. InCombatInLast handles the brief windup.
+            bool assistEngaging = assist.IsAttacking
+                                  || assist.attackComponent.AttackState
+                                  || assist.InCombatInLast(2000)
+                                  || (assist.IsCasting && assist.castingComponent?.SpellHandler?.Spell?.IsHarmful == true);
+            if (!assistEngaging)
+                return false;
+
             return GameServer.ServerRules.IsAllowedToAttack(ctx.Bot, assistTarget, true);
         }
     }
