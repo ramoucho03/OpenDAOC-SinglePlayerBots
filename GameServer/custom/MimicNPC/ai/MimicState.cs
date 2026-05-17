@@ -230,6 +230,18 @@ namespace DOL.AI.Brain
         private int _followDistance;
         private int _targetFollowDistance => 80 + _brain.Body.GroupIndex * 20;
 
+        // Stuck recovery — record the body's last X/Y and the tick it was
+        // sampled. If the body hasn't moved meaningfully in STUCK_GRACE_MS
+        // while it should still be following, side-step or teleport.
+        private int _lastStuckX;
+        private int _lastStuckY;
+        private long _lastStuckSampleTick;
+        private long _lastRecallTick;
+        private const int STUCK_GRACE_MS = 3000;
+        private const int STUCK_MIN_DELTA_SQ = 60 * 60;        // 60 units = roughly half a step
+        private const int DISTANCE_OVERFLOW = 3500;            // beyond this we teleport
+        private const int RECALL_COOLDOWN_MS = 5000;           // don't spam recalls back-to-back
+
         public MimicState_FollowLeader(MimicBrain brain) : base(brain)
         {
             StateType = eFSMStateType.FOLLOW_THE_LEADER;
@@ -274,6 +286,52 @@ namespace DOL.AI.Brain
 
             if (_leader == null || (_leader != null && _leader.ObjectState != GameObject.eObjectState.Active || !_brain.Body.Group.IsInTheGroup(_leader)))
                 _leader = _brain.Body.Group.LivingLeader;
+
+            // Region/distance recovery: if the leader zoned or wandered way
+            // beyond the visible follow range, teleport on top of them rather
+            // than running into a wall forever. Cooldown prevents back-to-back
+            // recall churn during a long zone-change handshake.
+            if (_leader != null && GameLoop.GameLoopTime - _lastRecallTick > RECALL_COOLDOWN_MS)
+            {
+                bool regionMismatch = _brain.Body.CurrentRegionID != _leader.CurrentRegionID;
+                bool tooFar = _brain.Body.GetDistanceTo(_leader) > DISTANCE_OVERFLOW;
+                if (regionMismatch || tooFar)
+                {
+                    _brain.Body.MoveTo(_leader.CurrentRegionID, _leader.X, _leader.Y, _leader.Z, _leader.Heading);
+                    _lastRecallTick = GameLoop.GameLoopTime;
+                    _lastStuckSampleTick = GameLoop.GameLoopTime; // reset stuck baseline post-recall
+                    _lastStuckX = _brain.Body.X;
+                    _lastStuckY = _brain.Body.Y;
+                    return;
+                }
+            }
+
+            // Stuck recovery: if we should be moving (FollowTarget set, not in
+            // melee range yet) but the body hasn't budged for 3s, side-step.
+            // Avoids the classic "stuck on a wall corner" follow death.
+            if (_leader != null && _brain.Body.FollowTarget == _leader && !_brain.Body.IsWithinRadius(_leader, _followDistance + 100))
+            {
+                int dx = _brain.Body.X - _lastStuckX;
+                int dy = _brain.Body.Y - _lastStuckY;
+                if (dx * dx + dy * dy >= STUCK_MIN_DELTA_SQ)
+                {
+                    _lastStuckX = _brain.Body.X;
+                    _lastStuckY = _brain.Body.Y;
+                    _lastStuckSampleTick = GameLoop.GameLoopTime;
+                }
+                else if (GameLoop.GameLoopTime - _lastStuckSampleTick > STUCK_GRACE_MS)
+                {
+                    // Unstick: nudge perpendicular to the leader bearing by ~150 units.
+                    // The follow goal will re-acquire next tick.
+                    double heading = _brain.Body.GetAngle(_leader) * Math.PI / 180.0;
+                    int sx = _brain.Body.X + (int)(150 * Math.Cos(heading + Math.PI / 2));
+                    int sy = _brain.Body.Y + (int)(150 * Math.Sin(heading + Math.PI / 2));
+                    _brain.Body.WalkTo(new Point3D(sx, sy, _brain.Body.Z), _brain.Body.MaxSpeed);
+                    _lastStuckSampleTick = GameLoop.GameLoopTime;
+                    _lastStuckX = sx;
+                    _lastStuckY = sy;
+                }
+            }
 
             // Sprint mirroring is centralised in MimicBrain.Think() so it runs
             // regardless of FSM state (ROAMING / WAKING_UP / AGGRO chases keep

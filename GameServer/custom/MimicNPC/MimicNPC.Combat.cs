@@ -1061,7 +1061,10 @@ namespace DOL.GS.Scripts
             if (CurrentAreas.Count > 0 && (CurrentAreas[0] is Area.BindArea) == false)
                 location = (CurrentAreas[0] as AbstractArea).Description;
             else
-                location = CurrentZone.Description;
+                // CurrentZone can be null for bots spawned outside any defined zone
+                // (off-grid spawnpoints, instance edge cases). Fallback to region name
+                // so ProcessDeath doesn't NRE on the death message construction.
+                location = CurrentZone?.Description ?? CurrentRegion?.Description ?? "an unknown place";
 
             if (killer == null)
             {
