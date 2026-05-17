@@ -358,16 +358,29 @@ namespace DOL.AI.Brain
                 #endregion
 
                 #region Proactive Tank HoT
-                // Keep the MainTank topped with a HoT/regen whenever the group
-                // is engaged, even if they're at full HP. The MimicGroup tracker
-                // (AlreadyCastingHoT) prevents two healers from spamming the same
-                // HoT every tick, and CheckHealSpell handles the recast delay.
+                // Keep the MainTank topped with a HoT/regen whenever an
+                // encounter is starting or already underway, even if the tank
+                // is at full HP. A real healer pre-stacks the HoT before the
+                // pull lands so the first incoming hits are buffered. We treat
+                // the following as "encounter in progress":
+                //  - tank actually in combat (legacy condition)
+                //  - the group is in the Pulling or Engaging camp phase
+                //  - the group has an IncomingPullTarget set (puller is staging)
+                // The MimicGroup tracker (AlreadyCastingHoT) still prevents two
+                // healers from spamming the same HoT every tick, and CheckHealSpell
+                // handles the recast delay.
+                bool encounterImminent = mGroup != null
+                    && (mGroup.MainTank?.InCombat == true
+                        || mGroup.IncomingPullTarget != null
+                        || mGroup.CampPhase == MimicGroup.eCampPhase.Pulling
+                        || mGroup.CampPhase == MimicGroup.eCampPhase.Engaging
+                        || mGroup.CampPhase == MimicGroup.eCampPhase.Combat);
                 if (spellToCast == null
                     && IsHealer
                     && mGroup != null
                     && mGroup.MainTank != null
                     && mGroup.MainTank.IsAlive
-                    && mGroup.MainTank.InCombat
+                    && encounterImminent
                     && !mGroup.AlreadyCastingHoT)
                 {
                     GameLiving tank = mGroup.MainTank;
