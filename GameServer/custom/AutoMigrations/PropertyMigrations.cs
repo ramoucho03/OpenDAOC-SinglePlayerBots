@@ -35,7 +35,8 @@ namespace DOL.GS.AutoMigrations
             // Mimic NPC tuning pass: defaults raised after stress-testing showed the
             // old values overhealed on trivial damage, throttled pulls too eagerly,
             // and despawned corpses before a distant rezzer could reach them.
-            TryBumpInt("mimic_heal_threshold",              oldDefault: 85, newDefault: 75);
+            TryBumpInt("mimic_heal_threshold",              oldDefault: 85, newDefault: 80);
+            TryBumpInt("mimic_heal_threshold",              oldDefault: 75, newDefault: 80);
             TryBumpInt("mimic_pull_mana_stop_pct",          oldDefault: 30, newDefault: 25);
             TryBumpInt("mimic_pull_mana_resume_pct",        oldDefault: 35, newDefault: 30);
             TryBumpInt("bot_rez_wait_no_healer_seconds",    oldDefault: 15, newDefault: 30);

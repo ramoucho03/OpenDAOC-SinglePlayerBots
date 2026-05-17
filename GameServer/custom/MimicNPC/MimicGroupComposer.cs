@@ -207,12 +207,18 @@ namespace DOL.GS.Scripts
             if (mg.MainTank != null && mg.MainTank.IsAlive && mg.MainAssist != mg.MainTank)
                 mg.SetMainAssist(mg.MainTank);
 
-            // Make sure a healer-flagged mimic exists in mixed groups.
-            bool anyHealer = mimics.Any(m => m.MimicBrain != null && m.MimicBrain.IsHealer);
-            if (!anyHealer)
+            // Flag every healer-capable mimic as IsHealer in camp mode. The
+            // previous "FirstOrDefault if !anyHealer" left additional healer
+            // classes (e.g. a 2nd Cleric, a Druid + Bard combo) doing melee/
+            // caster DPS instead of healing, which is how groups die on
+            // ordinary mobs. In camp mode we want every healer-class bot
+            // pulling pure heal duty — DPS is what the tank, melee bots and
+            // nukers are there for.
+            foreach (MimicNPC healer in mimics)
             {
-                MimicNPC healer = mimics.FirstOrDefault(m => m.IsAlive && IsHealerClass(m));
-                if (healer?.MimicBrain != null)
+                if (healer?.MimicBrain == null) continue;
+                if (!IsHealerClass(healer)) continue;
+                if (!healer.MimicBrain.IsHealer)
                     healer.MimicBrain.IsHealer = true;
             }
         }

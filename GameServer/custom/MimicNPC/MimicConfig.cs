@@ -118,7 +118,7 @@ namespace DOL.GS.Scripts
         // generic NPC default (75/37) so healers stay proactive. 0 = use
         // the hard-coded fallback inside MimicGroup.
         [ServerProperty("npc", "mimic_heal_threshold",
-            "Heal % threshold below which mimic healers prioritise healing (default 75, was 85 — overhealing on trivial damage).", 75)]
+            "Heal % threshold below which mimic healers prioritise healing (default 80; previously 75 caused groups to die on normal mobs because heals started too late).", 80)]
         public static int MIMIC_HEAL_THRESHOLD;
 
         [ServerProperty("npc", "mimic_emergency_threshold",

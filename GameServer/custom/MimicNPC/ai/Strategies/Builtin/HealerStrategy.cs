@@ -76,24 +76,28 @@ namespace DOL.GS.Scripts.AI.Strategies.Builtin
                 cooldownMs: 1500,
                 exclusive: true);
 
-            // Below-threshold heals: the bulk of heal traffic. Slightly
-            // longer cooldown than critical since the situation isn't
-            // immediately life-threatening.
+            // Below-threshold heals: the bulk of heal traffic. Cadence
+            // 200ms (was 400) so the healer stays on top of incoming damage
+            // — groups were dying on plain mobs because the cycle waited
+            // 400ms between heal attempts, letting the tank tick down two
+            // big swings between any two heal cycles.
             yield return new BotTriggerActionBinding(
                 new GroupMemberHealthLowTrigger(low),
                 new RunHealCycleAction(),
                 priority: 85,
-                cooldownMs: 400,
+                cooldownMs: 200,
                 exclusive: true);
 
             // Combat maintenance: this is what makes proactive tank HoT/regen
             // actually happen while the tank is still healthy. CheckHeals is
             // cheap when no spell is needed and still owns all dedupe logic.
+            // Cadence 300ms (was 500) so HoT refresh / mana monitoring stays
+            // tighter when nobody is in immediate trouble yet.
             yield return new BotTriggerActionBinding(
                 new HasAggroTrigger(true),
                 new RunHealCycleAction(),
                 priority: 82,
-                cooldownMs: 500,
+                cooldownMs: 300,
                 exclusive: true);
         }
     }
