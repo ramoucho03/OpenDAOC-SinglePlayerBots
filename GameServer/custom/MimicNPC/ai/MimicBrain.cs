@@ -357,7 +357,14 @@ namespace DOL.AI.Brain
                     continue;
 
                 // (1) Member is actively engaging a hostile of their own.
-                bool engaging = member.IsAttacking
+                // Note: `IsAttacking` flips to true the moment the auto-attack
+                // *timer* starts, even before the first swing — so a player who
+                // just target-selects with auto-attack on would pull the whole
+                // group instantly. Tighten to "has actually exchanged blows in
+                // the last 2s" so target-selection alone never triggers the
+                // group follow. Harmful spell-cast still counts as engagement
+                // because casting is an unambiguous commitment.
+                bool engaging = member.InCombatInLast(2000)
                                 || (member.IsCasting
                                     && member.castingComponent?.SpellHandler?.Spell?.IsHarmful == true);
                 if (engaging
