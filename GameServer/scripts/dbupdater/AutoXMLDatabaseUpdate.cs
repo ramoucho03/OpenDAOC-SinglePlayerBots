@@ -126,21 +126,26 @@ namespace DOL.GS.DatabaseUpdate
 				var rec = GetAutoXMLUpdateRecordFromCollection(records, relativeID, entry.Value);
 				var wasNull = rec.FileHash == null;
 				
-				// New or Outdated File - need to be applied !				
+				// New or Outdated File - need to be applied !
 				if (wasNull || !rec.FileHash.Equals(entry.Value))
 				{
-					if (CheckXMLPackageAndApply(entry.Key, replace))
-					{
-						rec.LoadResult = "SUCCESS";
-					}
-					else
-					{
-						rec.LoadResult = "FAILURE";
-					}
-					
-					rec.FileHash = entry.Value;
+					bool success = CheckXMLPackageAndApply(entry.Key, replace);
+					rec.LoadResult = success ? "SUCCESS" : "FAILURE";
+
+					// Only persist the new hash on success; otherwise keep the
+					// previous hash so the next server start retries the file.
+					// Without this guard a transient DB blip would silently
+					// burn the XML package — the apply is skipped on every
+					// subsequent boot because the stored hash matches the file.
+					if (success)
+						rec.FileHash = entry.Value;
+
 					if (wasNull)
 					{
+						// New record: still write it so we don't recompute
+						// SUCCESS/FAILURE state from scratch each boot. The
+						// hash stays at its initial null/empty value if the
+						// first apply failed, so the retry path still kicks in.
 						GameServer.Database.AddObject(rec);
 					}
 					else

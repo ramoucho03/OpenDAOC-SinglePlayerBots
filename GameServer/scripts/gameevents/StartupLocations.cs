@@ -65,19 +65,19 @@ namespace DOL.GS.GameEvents
 		{
 			// Check Args
 			var chArgs = args as CharacterEventArgs;
-			
+
 			if (chArgs == null)
 				return;
-			
+
 			DbCoreCharacter ch = chArgs.Character;
-			
+
 			try
 			{
-				
+
 				var availableLocation = GetAllStartupLocationForCharacter(ch, chArgs.GameClient.Version);
 
 				StartupLocation dbStartupLocation = null;
-				
+
 				// get the first entry according to Tutorial Enabling.
 				foreach (var location in availableLocation)
 				{
@@ -87,8 +87,18 @@ namespace DOL.GS.GameEvents
 
 				if (dbStartupLocation == null)
 				{
-					log.WarnFormat("startup location not found: account={0}; char name={1}; region={2}; realm={3}; class={4} ({5}); race={6} ({7}); version={8}",
-						ch.AccountName, ch.Name, ch.Region, ch.Realm, ch.Class, (eCharacterClass) ch.Class, ch.Race, (eRace)ch.Race, chArgs.GameClient.Version);
+					// Hard fallback so the character ALWAYS has a valid spawn.
+					// Without this, a missing row (e.g. extension class on a
+					// world DB that hasn't applied the per-class XML rows) left
+					// Xpos/Ypos/Zpos/Region = 0, putting the player in "no zone"
+					// at the next login and forcing the operator to fix the row
+					// manually.
+					ApplyRealmCapitalFallback(ch);
+					BindCharacter(ch);
+
+					if (log.IsWarnEnabled)
+						log.WarnFormat("StartupLocation not found, applied realm-capital fallback: account={0}; char name={1}; region={2}; realm={3}; class={4} ({5}); race={6} ({7}); version={8}",
+							ch.AccountName, ch.Name, ch.Region, ch.Realm, ch.Class, (eCharacterClass) ch.Class, ch.Race, (eRace)ch.Race, chArgs.GameClient.Version);
 				}
 				else
 				{
@@ -105,6 +115,65 @@ namespace DOL.GS.GameEvents
 				if (log.IsErrorEnabled)
 					log.ErrorFormat("StartupLocations script: error changing location. account={0}; char name={1}; region={2}; realm={3}; class={4} ({5}); race={6} ({7}); version={8}; {9}",
 						ch.AccountName, ch.Name, ch.Region, ch.Realm, ch.Class, (eCharacterClass) ch.Class, ch.Race, (eRace)ch.Race, chArgs.GameClient.Version, e);
+
+				// Even on exception (e.g. corrupt DB row) make sure the character has
+				// SOMETHING usable rather than being stranded at (0,0,0).
+				if (ch.Xpos == 0 && ch.Ypos == 0 && ch.Zpos == 0)
+				{
+					try
+					{
+						ApplyRealmCapitalFallback(ch);
+						BindCharacter(ch);
+					}
+					catch { /* last-resort */ }
+				}
+			}
+		}
+
+		/// <summary>
+		/// Sets the character to a known-valid spawn near the realm's level-1 town.
+		/// Coordinates mirror the realm-only fallback rows shipped in
+		/// StartupLocation.xml; they are duplicated here so creation never relies
+		/// on a DB row being present (which is exactly what was missing for new
+		/// extension classes on fresh DB imports).
+		/// </summary>
+		public static void ApplyRealmCapitalFallback(DbCoreCharacter ch)
+		{
+			switch ((eRealm)ch.Realm)
+			{
+				case eRealm.Albion:
+					// Cotswold area (Black Mountains South, region 1).
+					ch.Xpos = 560217;
+					ch.Ypos = 510635;
+					ch.Zpos = 2392;
+					ch.Direction = 2980;
+					ch.Region = 1;
+					break;
+				case eRealm.Midgard:
+					// Mularn (Vale of Mularn, region 100).
+					ch.Xpos = 802869;
+					ch.Ypos = 726016;
+					ch.Zpos = 4699;
+					ch.Direction = 1399;
+					ch.Region = 100;
+					break;
+				case eRealm.Hibernia:
+					// Mag Mell (Lough Derg, region 200).
+					ch.Xpos = 347279;
+					ch.Ypos = 489090;
+					ch.Zpos = 5286;
+					ch.Direction = 2332;
+					ch.Region = 200;
+					break;
+				default:
+					// Unknown realm — default to Albion so the player at least
+					// loads somewhere instead of being stuck in nowhere.
+					ch.Xpos = 560217;
+					ch.Ypos = 510635;
+					ch.Zpos = 2392;
+					ch.Direction = 2980;
+					ch.Region = 1;
+					break;
 			}
 		}
 
@@ -115,21 +184,35 @@ namespace DOL.GS.GameEvents
 		{
 			// Check Args
 			var chArgs = args as CharacterEventArgs;
-			
+
 			if (chArgs == null)
 				return;
-			
+
 			DbCoreCharacter ch = chArgs.Character;
-			
+
 			// check if location looks ok.
 			if (ch.Xpos == 0 && ch.Ypos == 0 && ch.Zpos == 0)
 			{
-				// This character needs to be fixed !
+				// Try the normal CharacterCreation lookup first; if that still
+				// returns no row (the original bug — extension class with no
+				// matching StartupLocation), the realm-capital fallback inside
+				// CharacterCreation guarantees valid coords this time.
 				CharacterCreation(ev, sender, args);
+
+				// Last-resort defense: if for any reason CharacterCreation
+				// failed to populate coords, apply the realm-capital fallback
+				// directly here. Without this a buggy creation event handler
+				// could leave the character permanently stuck.
+				if (ch.Xpos == 0 && ch.Ypos == 0 && ch.Zpos == 0)
+				{
+					ApplyRealmCapitalFallback(ch);
+					BindCharacter(ch);
+				}
+
 				GameServer.Database.SaveObject(ch);
 				return;
 			}
-			
+
 			// check if bind looks ok.
 			if (ch.BindXpos == 0 && ch.BindYpos == 0 && ch.BindZpos == 0)
 			{
