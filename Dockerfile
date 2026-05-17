@@ -34,6 +34,34 @@ RUN cat *.sql > combined.sql
 WORKDIR /build
 COPY . .
 
+# DOLSharp world rebuild — applied AFTER the OpenDAoC baseline.
+#
+# OpenDAoC's combined.sql ships the CREATE TABLE statements and a 1.65 era
+# data set. The tools/dol_rebuild/ folder (generated from the Dawn of Light
+# db-public dump) carries the full post-Catacombs world content we want as
+# the canonical source: ~146k mob spawns, all spells / styles / chants for
+# Catacombs+ classes (Heretic, Warlock, Vampiir, Mauler), 13k+ loot
+# templates, full keep components, 16k localised strings, etc.
+#
+# Order:
+#   1. OpenDAoC combined.sql  -> CREATE TABLE + 1.65 baseline data
+#   2. 01_wipe.sql            -> TRUNCATE all world-content tables
+#   3. 02_..44_*.sql          -> Bulk INSERT IGNORE from DOLSharp
+#
+# Player/progress tables are never touched (see KEEP_TABLES in
+# tools/gen_full_rebuild.py for the exhaustive list).
+RUN if [ -d /build/tools/dol_rebuild ] && ls /build/tools/dol_rebuild/*.sql >/dev/null 2>&1; then \
+      echo "Appending DOLSharp world rebuild to combined.sql..." \
+      && for f in /build/tools/dol_rebuild/0*_*.sql /build/tools/dol_rebuild/[1-9]*_*.sql; do \
+           [ -f "$f" ] || continue ; \
+           printf '\n-- %s\n' "$(basename "$f")" >> /tmp/opendaoc-db/opendaoc-db-core/combined.sql ; \
+           cat "$f" >> /tmp/opendaoc-db/opendaoc-db-core/combined.sql ; \
+         done \
+      && wc -l /tmp/opendaoc-db/opendaoc-db-core/combined.sql ; \
+    else \
+      echo "tools/dol_rebuild not present; baseline OpenDAoC content kept as-is." ; \
+    fi
+
 # CoreServer.csproj declares <Content Include="config/serverconfig.xml"> with
 # CopyToOutputDirectory=Always, so the build fails MSB3030 if that file isn't
 # present. .dockerignore deliberately excludes the host's serverconfig.xml
