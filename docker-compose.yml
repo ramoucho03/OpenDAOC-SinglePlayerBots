@@ -172,7 +172,7 @@ services:
       GID: "1000"
       AUTO_ACCOUNT_CREATION: "True"
       CHEAT_LOGGER_NAME: "cheats"
-      CPU_USE: "8"
+      CPU_USE: "12"
       DB_AUTOSAVE: "True"
       DB_AUTOSAVE_INTERVAL: "10"
       DB_CONNECTION_STRING: "server=db;port=3306;database=opendaoc;userid=root;password=my-secret-pw;treattinyasboolean=true"
@@ -206,9 +206,20 @@ services:
       DOTNET_TieredPGO: "1"
       DOTNET_ReadyToRun: "1"
       # Pre-allocate worker threads so the pool doesn't slow-start under burst load
-      # (login waves, big group encounters, etc.). Tune these to your VM cores.
-      DOTNET_ThreadPool_ForceMinWorkerThreads: "32"
-      DOTNET_ThreadPool_ForceMaxWorkerThreads: "256"
+      # (login waves, big group encounters, etc.). Tuned for a 12 vCPU host:
+      # 64 = ~5× vCPU for the always-warm pool, 512 absorbs Mimic AI bursts.
+      DOTNET_ThreadPool_ForceMinWorkerThreads: "64"
+      DOTNET_ThreadPool_ForceMaxWorkerThreads: "512"
+      # I/O completion pool gets the same treatment so socket sends don't queue
+      # behind the worker pool on login waves.
+      DOTNET_ThreadPool_ForceMinIOCompletionThreads: "64"
+      DOTNET_ThreadPool_ForceMaxIOCompletionThreads: "512"
+      # Server GC heap-per-CPU: 12 parallel heaps = ~12× faster GC pauses for
+      # the high-allocation game loop. Implicit with gcServer=1 already, but
+      # making it explicit documents the topology. Don't pin to specific cores
+      # (GCHeapAffinitizeRanges) — Docker's cgroup scheduler manages CPU
+      # placement and pinning can fight it.
+      DOTNET_GCHeapCount: "12"
       # Bot AI scaling — see ServerProperty pvp_frontier_population_per_realm too.
       # The game loop runs at 30 TPS by default (game_loop_tick_rate ServerProperty).
     networks:

@@ -89,6 +89,15 @@ namespace DOL.GS.GameEvents
 				{
 					log.WarnFormat("startup location not found: account={0}; char name={1}; region={2}; realm={3}; class={4} ({5}); race={6} ({7}); version={8}",
 						ch.AccountName, ch.Name, ch.Region, ch.Realm, ch.Class, (eCharacterClass) ch.Class, ch.Race, (eRace)ch.Race, chArgs.GameClient.Version);
+
+					// Fallback: rather than leave the char with Xpos=Ypos=Zpos=Region=0
+					// (which spawns them in the void → client closes the
+					// connection → "0 bytes received" disconnect, see Heretic
+					// regression), use a generic realm-capital spawn so they
+					// can at least enter the world. Operator can /jump them
+					// later. Coords match Camelot / Jordheim / Tir na Nog.
+					ApplyRealmCapitalFallback(ch);
+					BindCharacter(ch);
 				}
 				else
 				{
@@ -162,6 +171,44 @@ namespace DOL.GS.GameEvents
 				return null;
 			}
 				
+		}
+
+		/// <summary>
+		/// Places the character at the realm capital when no specific startup
+		/// location matches. Saves a brand-new character from spawning at
+		/// (0,0,0) region 0, which makes the client immediately disconnect
+		/// once it receives the position packet. The operator can still
+		/// /jump them to a more accurate spot afterwards, but at least the
+		/// player can log in.
+		/// </summary>
+		private static void ApplyRealmCapitalFallback(DbCoreCharacter ch)
+		{
+			switch ((eRealm)ch.Realm)
+			{
+				case eRealm.Albion:    // Camelot — King's Crossing area
+					ch.Region = 10;
+					ch.Xpos = 33000; ch.Ypos = 32000; ch.Zpos = 5000;
+					ch.Direction = 0;
+					break;
+				case eRealm.Midgard:   // Jordheim — Castle entrance
+					ch.Region = 101;
+					ch.Xpos = 31000; ch.Ypos = 30000; ch.Zpos = 8700;
+					ch.Direction = 0;
+					break;
+				case eRealm.Hibernia:  // Tir na Nog — central square
+					ch.Region = 201;
+					ch.Xpos = 32000; ch.Ypos = 27000; ch.Zpos = 7700;
+					ch.Direction = 0;
+					break;
+				default:               // No matching realm — drop them in Camelot
+					ch.Region = 10;
+					ch.Xpos = 33000; ch.Ypos = 32000; ch.Zpos = 5000;
+					ch.Direction = 0;
+					break;
+			}
+
+			if (log.IsInfoEnabled)
+				log.Info($"StartupLocations: applied realm-capital fallback for {ch.Name} (realm={ch.Realm}) → region={ch.Region} ({ch.Xpos},{ch.Ypos},{ch.Zpos}). Add a startuplocation row to fix.");
 		}
 
 		/// <summary>
