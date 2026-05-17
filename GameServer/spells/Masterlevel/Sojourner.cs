@@ -253,6 +253,8 @@ namespace DOL.GS.Spells
             if (attackedByEnemy != null)
                 ad = attackedByEnemy.AttackData;
 
+            if (ad == null) return;
+
             double absorbPercent = 100;
             int damageAbsorbed = (int)(0.01 * absorbPercent * (ad.Damage + ad.CriticalDamage));
             int spellAbsorbed = (int)(0.01 * absorbPercent * Spell.Damage);
@@ -346,6 +348,8 @@ namespace DOL.GS.Spells
             AttackData ad = null;
             if (attackedByEnemy != null)
                 ad = attackedByEnemy.AttackData;
+
+            if (ad == null) return;
 
             if (ad.Attacker is GamePlayer)
             {

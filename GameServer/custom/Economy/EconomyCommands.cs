@@ -1,7 +1,9 @@
 using System;
+using System.Reflection;
 using System.Threading.Tasks;
 using DOL.GS.Commands;
 using DOL.GS.PacketHandler;
+using DOL.Logging;
 
 namespace DOL.GS.Economy
 {
@@ -17,6 +19,38 @@ namespace DOL.GS.Economy
         "/economy resume - resume periodic rotations.")]
     public class EconomyCommand : AbstractCommandHandler, ICommandHandler
     {
+        private static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
+
+        // Wraps a background command so an exception in ForceTopUp / ManualRotate is
+        // logged (instead of becoming an unobserved task exception) and the operator
+        // sees a clear failure message when still online. Without this, a thrown
+        // exception was silently swallowed and the player just never received the
+        // completion message.
+        private static void RunBackgroundCommand(GamePlayer player, string label, Func<string> work)
+        {
+            Task.Run(() =>
+            {
+                string result;
+                try { result = work(); }
+                catch (Exception ex)
+                {
+                    log.Error($"Economy {label} failed.", ex);
+                    if (player?.Client?.IsPlaying == true)
+                    {
+                        try { player.Out.SendMessage($"Economy: {label} failed: {ex.Message}", eChatType.CT_Important, eChatLoc.CL_SystemWindow); }
+                        catch { /* player may have logged out mid-send */ }
+                    }
+                    return;
+                }
+
+                if (player?.Client?.IsPlaying == true)
+                {
+                    try { player.Out.SendMessage(result, eChatType.CT_System, eChatLoc.CL_SystemWindow); }
+                    catch { /* player may have logged out mid-send */ }
+                }
+            });
+        }
+
         public void OnCommand(GameClient client, string[] args)
         {
             GamePlayer player = client.Player;
@@ -56,20 +90,18 @@ namespace DOL.GS.Economy
                 }
                 case "topup":
                     player.Out.SendMessage("Economy: topping up...", eChatType.CT_System, eChatLoc.CL_SystemWindow);
-                    Task.Run(() =>
+                    RunBackgroundCommand(player, "top-up", () =>
                     {
                         int added = EconomyManager.ForceTopUp();
-                        try { player.Out.SendMessage($"Economy: top-up complete. {added} listings added (total={EconomyManager.TotalListings}).", eChatType.CT_System, eChatLoc.CL_SystemWindow); }
-                        catch { /* player may have logged out */ }
+                        return $"Economy: top-up complete. {added} listings added (total={EconomyManager.TotalListings}).";
                     });
                     break;
                 case "refresh":
                     player.Out.SendMessage("Economy: rotation kicked.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
-                    Task.Run(() =>
+                    RunBackgroundCommand(player, "refresh", () =>
                     {
-                        int result = EconomyManager.ManualRotate();
-                        try { player.Out.SendMessage($"Economy: rotation done. Total={EconomyManager.TotalListings} (rotated={result}).", eChatType.CT_System, eChatLoc.CL_SystemWindow); }
-                        catch { }
+                        int rotated = EconomyManager.ManualRotate();
+                        return $"Economy: rotation done. Total={EconomyManager.TotalListings} (rotated={rotated}).";
                     });
                     break;
                 case "clear":

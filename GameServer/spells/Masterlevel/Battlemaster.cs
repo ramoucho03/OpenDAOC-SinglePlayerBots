@@ -100,7 +100,7 @@ namespace DOL.GS.Spells
             if (effect.Owner is GamePlayer)
             {
                 GamePlayer player = effect.Owner as GamePlayer;
-				if (player.EffectList.GetOfType<ChargeEffect>() == null && player != null)
+				if (player != null && player.EffectList.GetOfType<ChargeEffect>() == null)
                 {
                     effect.Owner.BuffBonusMultCategory1.Set((int)eProperty.MaxSpeed, effect, 0);
                     player.Client.Out.SendUpdateMaxSpeed();

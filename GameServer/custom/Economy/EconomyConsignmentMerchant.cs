@@ -383,7 +383,11 @@ namespace DOL.GS.Economy
         // NOT enqueue a delete here - that would race the player's update.
         public override bool OnRemoveItem(GamePlayer player, DbInventoryItem item, int previousSlot)
         {
+            if (item == null)
+                return false;
+
             bool waitForAddBatch = false;
+            bool handled = false;
 
             int idx = previousSlot - FirstDbSlot;
             if ((uint) idx < SLOT_COUNT)
@@ -392,6 +396,7 @@ namespace DOL.GS.Economy
                 {
                     if (_items[idx] == item)
                     {
+                        handled = true;
                         _items[idx] = null;
                         int pos = _occupied.IndexOf(idx);
                         if (pos >= 0)
@@ -432,6 +437,12 @@ namespace DOL.GS.Economy
                     }
                 }
             }
+
+            // Only mutate the item if it actually belonged to this merchant slot. Without
+            // this guard, a stray callback for an unrelated item would silently zero its
+            // sell price and clear its owner lot.
+            if (!handled)
+                return false;
 
             if (waitForAddBatch)
                 _addBatchIdle.Wait(TimeSpan.FromSeconds(EconomyManager.ADD_BATCH_WAIT_SECONDS));

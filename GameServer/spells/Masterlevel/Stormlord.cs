@@ -250,7 +250,7 @@ namespace DOL.GS.Spells
             dbs.Icon = 7258;
             dbs.ClientEffect = 7258;
             dbs.Damage = spell.Damage;
-            dbs.DamageType = (int)spell.Damage;
+            dbs.DamageType = (int)spell.DamageType;
             dbs.Target = eSpellTarget.ENEMY.ToString();
             dbs.Radius = 0;
             dbs.Type = eSpellType.StormDexQuickDebuff.ToString();

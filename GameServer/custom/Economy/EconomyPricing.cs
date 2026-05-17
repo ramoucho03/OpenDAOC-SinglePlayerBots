@@ -22,18 +22,21 @@ namespace DOL.GS.Economy
             int rolledMul = Util.Random(minMul, maxMul);
             finalPrice *= rolledMul / 100.0;
 
-            // BP mode: SellPrice is consumed as BountyPoints by ConsignmentState. Divide by
-            // the configured gold->BP equivalence (RENT_BOUNTY_POINT_TO_GOLD is "copper per BP",
-            // so default 10000 = 1 BP per gold). Floor applies in both modes.
-            int floor = Math.Max(1, EconomyConfig.ECONOMY_PRICE_FLOOR_COPPER);
+            // Apply the copper floor BEFORE the BP conversion so the floor is interpreted
+            // in copper (its declared unit). Then post-divide for BP mode, with a final
+            // floor of 1 BP so trivially cheap items don't round to 0 (ConsignmentState
+            // refuses 0-price buys).
+            int copperFloor = Math.Max(1, EconomyConfig.ECONOMY_PRICE_FLOOR_COPPER);
+            if (finalPrice < copperFloor)
+                finalPrice = copperFloor;
+
             if (ServerProperties.Properties.CONSIGNMENT_USE_BP)
             {
                 long bpDivisor = Math.Max(1, ServerProperties.Properties.RENT_BOUNTY_POINT_TO_GOLD);
                 finalPrice /= bpDivisor;
+                if (finalPrice < 1)
+                    finalPrice = 1;
             }
-
-            if (finalPrice < floor)
-                finalPrice = floor;
 
             if (finalPrice > int.MaxValue - 1)
                 finalPrice = int.MaxValue - 1;

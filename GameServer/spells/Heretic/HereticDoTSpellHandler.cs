@@ -11,6 +11,12 @@ namespace DOL.GS.Spells
 		{
 			m_caster.Mana -= PowerCost(target);
 			base.FinishSpellCast(target);
+
+			// Lost-on-Pulse: register the move/cast/attack/death break hooks. Without
+			// this, the channel only broke through per-pulse polling of IsIncapacitated
+			// (every Frequency ms) and pure movement between pulses would not break it.
+			if (Spell.Pulse != 0 && Spell.Frequency > 0)
+				BeginEffect();
 		}
 
 		public override double CalculateDamageVarianceOffsetFromLevelDifference(GameLiving caster, GameLiving target)
@@ -62,7 +68,13 @@ namespace DOL.GS.Spells
 				m_caster.TargetObject is not GameLiving ||
 				effect.Owner != (m_caster.TargetObject as GameLiving))
 			{
-				effect.Cancel(false);
+				// RemoveEffect() (not raw Cancel) so the BeginEffect event handlers are
+				// unregistered — otherwise the same handler stays subscribed across
+				// re-casts and triggers spurious "you lose concentration" on later moves.
+				if (Spell.Pulse != 0 && Spell.Frequency > 0)
+					RemoveEffect();
+				else
+					effect.Cancel(false);
 				return;
 			}
 

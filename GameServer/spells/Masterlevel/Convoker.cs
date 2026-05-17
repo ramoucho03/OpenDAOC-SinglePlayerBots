@@ -571,7 +571,10 @@ namespace DOL.GS.Spells
 
 		public override void OnEffectStart(GameSpellEffect effect)
 		{
+			if (m_player == null || m_player.ControlledBrain == null)
+				return;
 			m_living = m_player.ControlledBrain.Body;
+			if (m_living == null) return;
 			m_living.Level += 20;
 			m_living.BaseBuffBonusCategory[eProperty.MeleeDamage] += 275;
 			m_living.BaseBuffBonusCategory[eProperty.ArmorAbsorption] += 75;
@@ -581,6 +584,8 @@ namespace DOL.GS.Spells
 
 		public override int OnEffectExpires(GameSpellEffect effect, bool noMessages)
 		{
+			if (m_living == null)
+				return base.OnEffectExpires(effect, noMessages);
 			m_living.Level -= 20;
 			m_living.BaseBuffBonusCategory[eProperty.MeleeDamage] -= 275;
 			m_living.BaseBuffBonusCategory[eProperty.ArmorAbsorption] -= 75;

@@ -49,40 +49,41 @@ namespace DOL.GS.Spells
             if (ad.AttackResult != eAttackResult.HitUnstyled && ad.AttackResult != eAttackResult.HitStyle)
                 return;
 
-            int baseChance = 0;
+            // Use the spell-defined proc chance (stored as percent * 100 in Frequency).
+            int baseChance = Spell.Frequency / 100;
+
             if (ad.AttackType == AttackData.eAttackType.Ranged)
             {
-                baseChance = (int)(Spell.Frequency * .0001);
+                // Ranged attacks use a reduced chance.
+                baseChance = Math.Max(1, baseChance / 2);
             }
-            else if (ad.IsMeleeAttack)
+            else if (ad.IsMeleeAttack && sender is GamePlayer player)
             {
-                baseChance = ((int)Spell.Frequency);
-                if (sender is GamePlayer)
-                {
-                    GamePlayer player = (GamePlayer)sender;
-                    DbInventoryItem leftWeapon = player.ActiveLeftWeapon;
-                    // if we can use left weapon, we have currently a weapon in left hand and we still have endurance,
-                    // we can assume that we are using the two weapons.
-                    if (player.attackComponent.CanUseLefthandedWeapon && leftWeapon != null && leftWeapon.Object_Type != (int)eObjectType.Shield)
-                    {
-                        baseChance /= 2;
-                    }
-                }
+                DbInventoryItem leftWeapon = player.ActiveLeftWeapon;
+
+                // When dual wielding (non-shield offhand), halve the chance per swing.
+                if (player.attackComponent.CanUseLefthandedWeapon && leftWeapon != null && leftWeapon.Object_Type != (int)eObjectType.Shield)
+                    baseChance = Math.Max(1, baseChance / 2);
             }
 
-            if (Util.Chance(15))
-            {
-                Spell m_procSpell = SkillBase.GetSpellByID((int)Spell.Value);
-                ISpellHandler handler = ScriptMgr.CreateSpellHandler((GameLiving)sender, m_procSpell, SkillBase.GetSpellLine(GlobalSpellsLines.Reserved_Spells));
-                if (handler != null)
-                {
-                    if (m_procSpell.Target == eSpellTarget.ENEMY)
-                        handler.StartSpell(ad.Target);
-                    else if (m_procSpell.Target == eSpellTarget.SELF)
-                        handler.StartSpell(ad.Attacker);
-                }
-            }
+            if (baseChance <= 0 || !Util.Chance(baseChance))
+                return;
 
+            Spell m_procSpell = SkillBase.GetSpellByID((int)Spell.Value);
+
+            if (m_procSpell == null)
+                return;
+
+            SpellLine reservedLine = SkillBase.GetSpellLine(GlobalSpellsLines.Reserved_Spells);
+            ISpellHandler handler = ScriptMgr.CreateSpellHandler((GameLiving)sender, m_procSpell, reservedLine);
+
+            if (handler == null)
+                return;
+
+            if (m_procSpell.Target == eSpellTarget.ENEMY)
+                handler.StartSpell(ad.Target);
+            else
+                handler.StartSpell(ad.Attacker);
         }
 
         // constructor

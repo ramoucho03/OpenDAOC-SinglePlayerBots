@@ -4356,7 +4356,7 @@ namespace DOL.GS
             }
 
             // Get Champion Experience too
-            // GainChampionExperience(expTotal);
+            GainChampionExperience(expTotal, arguments.XPSource);
 
             if (IsLevelSecondStage)
             {
@@ -12982,18 +12982,12 @@ namespace DOL.GS
         /// <param name="experience">Amount of Experience</param>
         public virtual void GainChampionExperience(long experience, eXPSource source)
         {
-            if (ChampionExperience >= 320000)
-            {
-                ChampionExperience = 320000;
-                return;
-            }
-
             // Do not gain experience:
             // - if champion not activated
             // - if champion max level reached
             // - if experience is negative
             // - if praying at your grave
-            if (!Champion || ChampionLevel == CL_MAX_LEVEL || experience <= 0 || IsPraying)
+            if (!Champion || ChampionLevel >= CL_MAX_LEVEL || experience <= 0 || IsPraying)
                 return;
 
             if (source != eXPSource.GM && source != eXPSource.Quest)
@@ -13011,11 +13005,20 @@ namespace DOL.GS
                 }
             }
 
+            if (experience <= 0)
+                return;
+
             System.Globalization.NumberFormatInfo format = System.Globalization.NumberFormatInfo.InvariantInfo;
             Out.SendMessage("You get " + experience.ToString("N0", format) + " champion experience points.", eChatType.CT_Important, eChatLoc.CL_SystemWindow);
 
             ChampionExperience += experience;
             Out.SendUpdatePoints();
+
+            // Auto level-up so players don't have to walk back to the King NPC just to
+            // claim CL training points after every kill. Loop in case a single gain
+            // crosses multiple level thresholds (e.g. quest reward at low CL).
+            while (ChampionLevel < CL_MAX_LEVEL && ChampionExperience >= ChampionExperienceForNextLevel)
+                ChampionLevelUp();
         }
 
         /// <summary>

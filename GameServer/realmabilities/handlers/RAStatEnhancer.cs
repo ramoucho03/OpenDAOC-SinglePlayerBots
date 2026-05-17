@@ -114,6 +114,12 @@ namespace DOL.GS.RealmAbilities
 			if (newLevel == 0)
 				newLevel = Level;
 
+			if (m_activeLiving == null)
+			{
+				log.Warn("OnLevelChange called on " + Name + " before it was activated.");
+				return;
+			}
+
 			m_activeLiving.AbilityBonus[m_property] += GetAmountForLevel(newLevel) - GetAmountForLevel(oldLevel);
 			SendUpdates(m_activeLiving);
 		}

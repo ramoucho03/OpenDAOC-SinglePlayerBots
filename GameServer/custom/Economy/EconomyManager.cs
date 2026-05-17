@@ -247,20 +247,42 @@ namespace DOL.GS.Economy
                     return;
                 }
 
-                SpawnMerchants();
+                bool initSucceeded = false;
+                try
+                {
+                    SpawnMerchants();
 
-                int reattached = 0;
-                if (EconomyConfig.ECONOMY_PERSIST)
-                    reattached = ReloadFromCache();
+                    int reattached = 0;
+                    if (EconomyConfig.ECONOMY_PERSIST)
+                        reattached = ReloadFromCache();
 
-                _cts = new CancellationTokenSource();
-                _worker = Task.Run(() => WorkerLoop(_cts.Token));
-                if (EconomyConfig.ECONOMY_PERSIST)
-                    _flusher = Task.Run(() => FlushLoop(_cts.Token));
-                _initialized = true;
+                    _cts = new CancellationTokenSource();
+                    _worker = Task.Run(() => WorkerLoop(_cts.Token));
+                    if (EconomyConfig.ECONOMY_PERSIST)
+                        _flusher = Task.Run(() => FlushLoop(_cts.Token));
+                    _initialized = true;
+                    initSucceeded = true;
 
-                if (reattached > 0 && log.IsInfoEnabled)
-                    log.Info($"Economy: re-attached {reattached} persisted listings from MarketCache.");
+                    if (reattached > 0 && log.IsInfoEnabled)
+                        log.Info($"Economy: re-attached {reattached} persisted listings from MarketCache.");
+                }
+                finally
+                {
+                    // Unwind partial state so a later retry doesn't double-spawn merchants
+                    // or double-count listings via ReloadFromCache + AttachExistingListing.
+                    if (!initSucceeded)
+                    {
+                        try { _cts?.Cancel(); } catch { }
+                        _cts?.Dispose();
+                        _cts = null;
+                        _worker = null;
+                        _flusher = null;
+                        _merchants = Array.Empty<EconomyConsignmentMerchant>();
+                        _byLot = new Dictionary<int, EconomyConsignmentMerchant>();
+                        ResetListingCounts();
+                        _initialized = false;
+                    }
+                }
             }
 
             if (log.IsInfoEnabled)
@@ -351,6 +373,10 @@ namespace DOL.GS.Economy
             _merchants = Array.Empty<EconomyConsignmentMerchant>();
             _byLot = new Dictionary<int, EconomyConsignmentMerchant>();
             ResetListingCounts();
+
+            // Reset suspend state so an operator's /economy suspend doesn't carry over
+            // into a subsequent re-Initialize within the same process.
+            _suspended = false;
 
             // Reset the player-listings snapshot too so a subsequent Initialize doesn't
             // serve stale entries from the previous run.
@@ -667,21 +693,29 @@ namespace DOL.GS.Economy
             // Big batches are chunked so the very first DoFlush after a fresh-server
             // initial population (which accumulates ~10k items into _pendingAdds before
             // the flusher's first tick) doesn't hit the DB with a single huge transaction.
-            FlushChunked(allAdds, isAdd: true);
-            FlushChunked(allDels, isAdd: false);
-
-            // Phase 3: complete the add batch and pick up "raced" rows that were popped
-            // or transferred to a player while their AddObject was running. Items left
-            // in our slots are kept; ones that left in-memory state with OwnerID still
-            // ours get deleted now (in a single follow-up call).
+            // try/finally guarantees CompleteAddBatch runs even if the AddObject throws —
+            // otherwise _inFlightAdds stays populated and _addBatchIdle stays Reset(),
+            // causing every subsequent OnRemoveItem on that merchant to block for 30 s.
             List<DbInventoryItem> followUpDeletes = null;
-            for (int i = 0; i < snapshot.Length; i++)
+            try
             {
-                var leftovers = snapshot[i].CompleteAddBatch();
-                if (leftovers != null && leftovers.Count > 0)
+                FlushChunked(allAdds, isAdd: true);
+                FlushChunked(allDels, isAdd: false);
+            }
+            finally
+            {
+                // Phase 3: complete the add batch and pick up "raced" rows that were popped
+                // or transferred to a player while their AddObject was running. Items left
+                // in our slots are kept; ones that left in-memory state with OwnerID still
+                // ours get deleted now (in a single follow-up call).
+                for (int i = 0; i < snapshot.Length; i++)
                 {
-                    followUpDeletes ??= new List<DbInventoryItem>(leftovers.Count);
-                    followUpDeletes.AddRange(leftovers);
+                    var leftovers = snapshot[i].CompleteAddBatch();
+                    if (leftovers != null && leftovers.Count > 0)
+                    {
+                        followUpDeletes ??= new List<DbInventoryItem>(leftovers.Count);
+                        followUpDeletes.AddRange(leftovers);
+                    }
                 }
             }
 
@@ -804,7 +838,9 @@ namespace DOL.GS.Economy
 
             lock (_playerListingsCacheLock)
             {
-                if (nowSec - _playerListingsCacheUtcSec < ttl && _playerListingsCache.Length > 0)
+                // Validity is TTL-only. The previous Length>0 guard forced a full MarketCache
+                // walk every tick on a server with zero player listings (the common case).
+                if (_playerListingsCacheUtcSec != 0 && nowSec - _playerListingsCacheUtcSec < ttl)
                     return _playerListingsCache;
             }
 

@@ -124,6 +124,9 @@ namespace DOL.GS.RealmAbilities
 		{
 			GameLiving living = caster.TargetObject as GameLiving;
 
+			if (living == null)
+				return 0;
+
 			foreach (GamePlayer i_player in caster.GetPlayersInRadius(WorldMgr.INFO_DISTANCE))
 			{
 				if (i_player == caster)
