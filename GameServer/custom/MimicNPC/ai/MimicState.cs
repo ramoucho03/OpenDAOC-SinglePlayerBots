@@ -392,6 +392,16 @@ namespace DOL.AI.Brain
         private long _aggroEndTime;
         private long _checkAggroTime;
 
+        // Stuck-in-combat recovery: a melee mob blocked on a wall in AGGRO state
+        // would otherwise stand still flailing at empty air. Sample position each
+        // tick; if the body hasn't moved >= COMBAT_STUCK_MIN_DELTA_SQ within
+        // COMBAT_STUCK_GRACE_MS while trying to reach an out-of-melee target, side-step.
+        private int _lastCombatStuckX;
+        private int _lastCombatStuckY;
+        private long _lastCombatStuckSampleTick;
+        private const int COMBAT_STUCK_GRACE_MS = 2500;
+        private const int COMBAT_STUCK_MIN_DELTA_SQ = 50 * 50;
+
         public MimicState_Aggro(MimicBrain brain) : base(brain)
         {
             StateType = eFSMStateType.AGGRO;
@@ -403,6 +413,9 @@ namespace DOL.AI.Brain
 
             _aggroEndTime = GameLoop.GameLoopTime + LEAVE_WHEN_OUT_OF_COMBAT_FOR;
             _checkAggroTime = GameLoop.GameLoopTime;
+            _lastCombatStuckX = _brain.Body.X;
+            _lastCombatStuckY = _brain.Body.Y;
+            _lastCombatStuckSampleTick = GameLoop.GameLoopTime;
 
             _brain.OnEnterAggro();
 
@@ -518,6 +531,36 @@ namespace DOL.AI.Brain
 
             if (_brain.HasAggro && _brain.Body.TargetObject == null && !_brain.Body.IsMoving)
                 _aggroEndTime = Math.Min(_aggroEndTime, GameLoop.GameLoopTime + 5000);
+
+            // Combat stuck recovery: if the bot is in AGGRO with a target it
+            // can't reach (out of melee range) and hasn't moved meaningfully
+            // for 2.5s, side-step perpendicular to the target bearing. Without
+            // this, a melee bot wedged against a wall while chasing keeps
+            // failing the swing range check forever, producing 0 DPS.
+            if (_brain.Body.TargetObject is GameLiving combatTgt
+                && combatTgt.IsAlive
+                && !_brain.Body.IsWithinRadius(combatTgt, _brain.Body.attackComponent.AttackRange + 32))
+            {
+                int dx = _brain.Body.X - _lastCombatStuckX;
+                int dy = _brain.Body.Y - _lastCombatStuckY;
+                long now = GameLoop.GameLoopTime;
+                if (dx * dx + dy * dy >= COMBAT_STUCK_MIN_DELTA_SQ)
+                {
+                    _lastCombatStuckX = _brain.Body.X;
+                    _lastCombatStuckY = _brain.Body.Y;
+                    _lastCombatStuckSampleTick = now;
+                }
+                else if (now - _lastCombatStuckSampleTick > COMBAT_STUCK_GRACE_MS)
+                {
+                    double heading = _brain.Body.GetAngle(combatTgt) * Math.PI / 180.0;
+                    int sx = _brain.Body.X + (int)(120 * Math.Cos(heading + Math.PI / 2));
+                    int sy = _brain.Body.Y + (int)(120 * Math.Sin(heading + Math.PI / 2));
+                    _brain.Body.WalkTo(new Point3D(sx, sy, _brain.Body.Z), _brain.Body.MaxSpeed);
+                    _lastCombatStuckSampleTick = now;
+                    _lastCombatStuckX = sx;
+                    _lastCombatStuckY = sy;
+                }
+            }
 
             base.Think();
         }

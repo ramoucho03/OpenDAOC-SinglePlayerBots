@@ -41,25 +41,10 @@ namespace DOL.GS.Scripts.AI.Strategies.Builtin
                 cooldownMs: 30_000,
                 exclusive: false);
 
-            yield return new BotTriggerActionBinding(
-                new ManaBelowTrigger(20),
-                new LocalizedGroupSayAction("say-low-mana",
-                    "Mimic.Chat.LowMana.1",
-                    "Mimic.Chat.LowMana.2",
-                    "Mimic.Chat.LowMana.3"),
-                priority: 40,
-                cooldownMs: 60_000,
-                exclusive: false);
-
-            yield return new BotTriggerActionBinding(
-                new EnduranceBelowTrigger(20),
-                new LocalizedGroupSayAction("say-low-endurance",
-                    "Mimic.Chat.LowEnd.1",
-                    "Mimic.Chat.LowEnd.2",
-                    "Mimic.Chat.LowEnd.3"),
-                priority: 30,
-                cooldownMs: 60_000,
-                exclusive: false);
+            // LowMana / LowEndurance bindings removed: they're personal-state
+            // chatter with no actionable group implication (the affected bot
+            // already throttles its own casts/styles). Translation keys are
+            // kept in the language files for /msay manual use.
 
             // Self-afflicted: bot is mezzed/diseased/poisoned and wants
             // a cure. High-ish priority because a CC'd bot is dead weight
@@ -75,7 +60,10 @@ namespace DOL.GS.Scripts.AI.Strategies.Builtin
                 cooldownMs: 8_000,
                 exclusive: false);
 
-            // Idle banter: long cooldown (5 min) so it stays charming, not noisy.
+            // Idle banter: long cooldown (10 min) so it stays charming, not noisy.
+            // Was 5 min — at scale (12 bots × 1 banter / 5 min) the group chat
+            // got too saturated with flavour lines and drowned out actionable
+            // callouts. Doubling the floor makes it rare-but-present.
             yield return new BotTriggerActionBinding(
                 new OutOfCombatRestedTrigger(),
                 new LocalizedGroupSayAction("say-banter",
@@ -86,7 +74,7 @@ namespace DOL.GS.Scripts.AI.Strategies.Builtin
                     "Mimic.Chat.Banter.5",
                     "Mimic.Chat.Banter.6"),
                 priority: 10,
-                cooldownMs: 300_000,
+                cooldownMs: 600_000,
                 exclusive: false);
 
             // Puller announcement: tied to MainPuller + IsPulling. Long cooldown
@@ -118,22 +106,14 @@ namespace DOL.GS.Scripts.AI.Strategies.Builtin
                 cooldownMs: 12_000,
                 exclusive: false);
 
-            // Tank engage callout — fires when the main tank takes a hit and
-            // settles into combat. Cooldown matches a typical fight length.
-            yield return new BotTriggerActionBinding(
-                new TankEngagedTrigger(),
-                new LocalizedGroupSayAction("say-tank-engage",
-                    "Mimic.Chat.TankEngage.1",
-                    "Mimic.Chat.TankEngage.2",
-                    "Mimic.Chat.TankEngage.3"),
-                priority: 50,
-                cooldownMs: 45_000,
-                exclusive: false);
+            // Tank engage chat callout removed: redundant with LeaderStrategy's
+            // say-leader-engage on the same encounter trigger — keeping both
+            // produced two near-simultaneous "I'm in combat" lines per pull,
+            // a noticeable noise multiplier in chat with no extra information.
+            // The visual emote below stays (it's silent).
 
             // Visual immersion: bang on shield when settling into a tank
-            // engage. Same trigger as the chat callout above; shorter
-            // cooldown so the emote can punctuate every 30 s while the
-            // chat callout stays at 45 s.
+            // engage. Silent, no chat noise.
             yield return new BotTriggerActionBinding(
                 new TankEngagedTrigger(),
                 new EmoteAction("emote-tank-engage", eEmote.BangOnShield),
