@@ -1615,9 +1615,13 @@ namespace DOL.AI.Brain
 
             if (pullSpell == null)
             {
-                // Last resort: walk up and melee the mob to pull. Better than nothing.
+                // Last resort: melee body-pull. Real players walk up, land one hit,
+                // then sprint back to camp so the mob follows them home alone rather
+                // than ambushing whoever was standing still. Without that retreat the
+                // puller stays in melee and any BAF add joins on top of them.
                 Body.StartAttack(target);
                 CommitPullStart(mg, target);
+                StartBodyPullRetreat(target);
                 return;
             }
 
@@ -1654,6 +1658,32 @@ namespace DOL.AI.Brain
                 CheckOffensiveSpells(pullSpell);
 
             CommitPullStart(mg, target);
+        }
+
+        // Body-pull retreat: schedule a one-shot timer that stops the melee
+        // swing and moves the puller back to the camp point. Without this, the
+        // melee body-pull keeps swinging on the mob in place and any BAF add
+        // chains to the puller standing there alone.
+        private void StartBodyPullRetreat(GameLiving target)
+        {
+            MimicGroup mg = Body.Group?.MimicGroup;
+            Point3D camp = mg?.CampPoint;
+            if (camp == null)
+                return;
+
+            // 1.5s gives the first auto-swing time to land and tag the mob
+            // before we drop attack and head home.
+            new ECSGameTimer(Body, _ =>
+            {
+                if (Body == null || !Body.IsAlive || target == null || !target.IsAlive)
+                    return 0;
+
+                if (Body.IsAttacking)
+                    Body.StopAttack();
+
+                Body.WalkTo(camp, Body.MaxSpeed);
+                return 0;
+            }).Start(1500);
         }
 
         /// <summary>
