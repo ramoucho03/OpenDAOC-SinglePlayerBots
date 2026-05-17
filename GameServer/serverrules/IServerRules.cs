@@ -190,6 +190,9 @@ namespace DOL.GS.ServerRules
 		/// <returns>specialization in object or 0</returns>
 		int GetObjectSpecLevel(GamePlayer player, eObjectType objectType);
 
+		// MimicNPC overload — IGamePlayer covers GamePlayer + MimicNPC bots.
+		int GetObjectSpecLevel(DOL.GS.Scripts.IGamePlayer player, eObjectType objectType);
+
 		/// <summary>
 		/// Get object specialization level based on server type
 		/// </summary>
@@ -197,6 +200,9 @@ namespace DOL.GS.ServerRules
 		/// <param name="objectType">object type</param>
 		/// <returns>specialization in object or 0</returns>
 		int GetObjectBaseSpecLevel(GamePlayer player, eObjectType objectType);
+
+		// MimicNPC overload — IGamePlayer covers GamePlayer + MimicNPC bots.
+		int GetObjectBaseSpecLevel(DOL.GS.Scripts.IGamePlayer player, eObjectType objectType);
 
 		/// <summary>
 		/// Invoked on NPC death and deals out

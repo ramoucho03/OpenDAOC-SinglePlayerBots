@@ -38,6 +38,15 @@ namespace DOL.GS
             }
         }
 
+        // MimicNPC module extension. Mimic pray logic reads/writes the stored
+        // XP directly rather than going through Consume()+Delete() — exposes
+        // the same field upstream uses internally.
+        public long XPValue
+        {
+            get => _xpValue;
+            set => _xpValue = value;
+        }
+
         public long Consume()
         {
             long xpValue = _xpValue;

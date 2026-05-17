@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Olivier\\\\botdaoc\\\\OpenDAOC-SinglePlayerBots\\\\GameServer\\\\custom\\\\MimicNPC\\\\\" -Recurse -Name | head -50)",
+      "Bash(dotnet build *)",
+      "Bash(dir /B)",
+      "Bash(dotnet test *)",
+      "Bash(docker buildx *)",
+      "Bash(docker version *)",
+      "Bash(docker build *)",
+      "WebSearch",
+      "WebFetch(domain:eden-daoc.net)",
+      "WebFetch(domain:github.com)",
+      "Read(//tmp/**)",
+      "Read(//tmp/dol-dbpublic/src/schema/**)",
+      "Bash(awk '{print $NF}')",
+      "Bash(docker compose *)",
+      "WebFetch(domain:sourceforge.net)",
+      "WebFetch(domain:dolserver.sourceforge.net)",
+      "WebFetch(domain:losojos-001-site1.btempurl.com)",
+      "WebFetch(domain:daoc.ndlp.info)",
+      "Bash(find /home/ramoucho/OpenDAOC-SinglePlayerBots -maxdepth 4 -iname \"serverconfig.xml\" 2>/dev/null | head -5)",
+      "Read(//home/ramoucho/**)",
+      "WebFetch(domain:www.opendaoc.com)",
+      "Bash(gh api *)",
+      "PowerShell(gh api repos/OpenDAoC/OpenDAoC-Database --jq '{updated:.updated_at, pushed:.pushed_at, size_kb:.size, default_branch:.default_branch, description:.description}')",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(xargs wc -l)",
+      "Bash(chmod +x c:/Users/Olivier/botdaoc/OpenDAOC-SinglePlayerBots/tools/migrate-world-db.sh)",
+      "Bash(bash -n c:/Users/Olivier/botdaoc/OpenDAOC-SinglePlayerBots/tools/migrate-world-db.sh)",
+      "Bash(awk 'NR<7651 || NR>8156' GameServer/custom/MimicNPC/MimicNPC.cs)",
+      "Bash(awk 'NR<6105 || NR>7310' GameServer/custom/MimicNPC/MimicNPC.cs)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Olivier\\\\botdaoc\\\\OpenDAOC-SinglePlayerBots\\\\GameServer\\\\gameutils\" -Directory -Filter \"*rontier*\" -ErrorAction SilentlyContinue)",
+      "Bash(gh search *)",
+      "WebFetch(domain:camelot.allakhazam.com)",
+      "Bash(git log *)",
+      "Bash(powershell -Command \"Select-String -Path 'c:\\\\Users\\\\Olivier\\\\botdaoc\\\\OpenDAOC-SinglePlayerBots\\\\GameServer\\\\packets\\\\Server\\\\PacketLib168.cs' -Pattern 'SendUpdateWeaponAndArmorStats' -Context 50 | Select-Object -First 100\")",
+      "Bash(cd \"/c/Users/Olivier/botdaoc/OpenDAOC-SinglePlayerBots/\" && find . -type f -name \"*.cs\" | grep -E \"\\(GameLoop|ECS|GameLiving|GamePlayer|SpellHandler|StandardMob\\)\" | head -30)",
+      "Read(//c/c/Users/Olivier/botdaoc/**)"
+    ]
+  }
+}

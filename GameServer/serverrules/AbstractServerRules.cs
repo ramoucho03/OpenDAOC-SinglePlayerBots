@@ -900,6 +900,12 @@ namespace DOL.GS.ServerRules
         /// <returns>specialization in object or 0</returns>
         public virtual int GetObjectSpecLevel(GamePlayer player, eObjectType objectType)
         {
+            return GetObjectSpecLevel((DOL.GS.Scripts.IGamePlayer) player, objectType);
+        }
+
+        // MimicNPC overload. Same logic, widened to IGamePlayer so bots can use it.
+        public virtual int GetObjectSpecLevel(DOL.GS.Scripts.IGamePlayer player, eObjectType objectType)
+        {
             int res = 0;
 
             foreach (eObjectType obj in GetCompatibleObjectTypes(objectType))
@@ -918,6 +924,12 @@ namespace DOL.GS.ServerRules
         /// <param name="objectType">object type</param>
         /// <returns>specialization in object or 0</returns>
         public virtual int GetObjectBaseSpecLevel(GamePlayer player, eObjectType objectType)
+        {
+            return GetObjectBaseSpecLevel((DOL.GS.Scripts.IGamePlayer) player, objectType);
+        }
+
+        // MimicNPC overload. Same logic, widened to IGamePlayer.
+        public virtual int GetObjectBaseSpecLevel(DOL.GS.Scripts.IGamePlayer player, eObjectType objectType)
         {
             int res = 0;
 

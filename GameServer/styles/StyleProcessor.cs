@@ -489,6 +489,14 @@ namespace DOL.GS.Styles
 			return true;
 		}
 
+		// MimicNPC overload: mimics use the same style/endurance pipeline but
+		// aren't GamePlayer. No client message — just the boolean check.
+		public static bool CheckEnduranceCost(GameLiving living, DbInventoryItem weapon, Style style)
+		{
+			int enduranceCost = CalculateEnduranceCost(living, style, weapon.SPD_ABS);
+			return living.Endurance >= enduranceCost;
+		}
+
 		public static bool ApplyEnduranceCost(GamePlayer player, DbInventoryItem weapon, Style style, bool missed)
 		{
 			int enduranceCost = CalculateEnduranceCost(player, style, weapon.SPD_ABS);

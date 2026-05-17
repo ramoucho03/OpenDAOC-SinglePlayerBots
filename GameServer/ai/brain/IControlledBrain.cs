@@ -79,5 +79,10 @@ namespace DOL.AI.Brain
         GameLiving GetLivingOwner();
         void SetAggressionState(eAggressionState state);
         bool IsMainPet { get; set; }
+
+        // MimicNPC module extension. Returns the owning IGamePlayer (real
+        // player or MimicNPC bot). Default implementation falls back to the
+        // GamePlayer owner, brains controlled by mimics override this.
+        DOL.GS.Scripts.IGamePlayer GetIPlayerOwner() => GetPlayerOwner() as DOL.GS.Scripts.IGamePlayer;
 	}
 }

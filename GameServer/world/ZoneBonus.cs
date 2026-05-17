@@ -5,7 +5,10 @@ namespace DOL.GS
 {
     public class ZoneBonus
     {
-        public static int GetXPBonus(GamePlayer player)
+        public static int GetXPBonus(GamePlayer player) => GetXPBonus((GameLiving) player);
+
+        // MimicNPC overload — only reads CurrentZone, which is on GameLiving.
+        public static int GetXPBonus(GameLiving player)
         {
             return player.CurrentZone.BonusExperience;
         }

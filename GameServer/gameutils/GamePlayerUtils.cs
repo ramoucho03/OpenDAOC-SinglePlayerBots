@@ -410,7 +410,10 @@ namespace DOL.GS
         }
         #endregion
 
-        public static List<(SpellLine, List<Skill>)> UpdateUsableListSpells(GamePlayer player, List<(SpellLine, List<Skill>)> usableListSpells)
+        // Widened to IGamePlayer so MimicNPC bots can reuse the same skill
+        // computation; the body only needs Spec / Ability access plus a
+        // GameLiving cast for the per-spec spell-line lookups.
+        public static List<(SpellLine, List<Skill>)> UpdateUsableListSpells(DOL.GS.Scripts.IGamePlayer player, List<(SpellLine, List<Skill>)> usableListSpells)
         {
             // Map existing tuples by SpellLine ID so we can preserve SpellLine objects where appropriate.
             Dictionary<int, (SpellLine, List<Skill>)> existingMap = new(usableListSpells.Count);
@@ -431,9 +434,9 @@ namespace DOL.GS
                 if (spec.HybridSpellList)
                     continue;
 
-                var spellsMap = spec.GetLinesSpellsForLiving(player);
+                var spellsMap = spec.GetLinesSpellsForLiving((GameLiving)player);
 
-                foreach (SpellLine sl in spec.GetSpellLinesForLiving(player))
+                foreach (SpellLine sl in spec.GetSpellLinesForLiving((GameLiving)player))
                 {
                     // Do not reuse the inner List<Skill>; callers may still be reading previous snapshots.
                     List<Skill> innerList = new();
@@ -463,7 +466,7 @@ namespace DOL.GS
             return usableListSpells;
         }
 
-        public static List<(Skill, Skill)> UpdateUsableSkills(GamePlayer player, List<(Skill, Skill)> usableSkills)
+        public static List<(Skill, Skill)> UpdateUsableSkills(DOL.GS.Scripts.IGamePlayer player, List<(Skill, Skill)> usableSkills)
         {
             int count = usableSkills.Count;
 
@@ -524,7 +527,7 @@ namespace DOL.GS
                 foreach (Specialization spec in specs)
                 {
                     if (spec.HybridSpellList)
-                        hybridSpellLists.Add((spec, spec.GetLinesSpellsForLiving(player)));
+                        hybridSpellLists.Add((spec, spec.GetLinesSpellsForLiving((GameLiving)player)));
 
                     if (!spec.Trainable)
                         continue;
@@ -538,7 +541,7 @@ namespace DOL.GS
                 // Abilities.
                 foreach (Specialization spec in specs)
                 {
-                    foreach (Ability ability in spec.GetAbilitiesForLiving(player))
+                    foreach (Ability ability in spec.GetAbilitiesForLiving((GameLiving)player))
                     {
                         // Retrieve the actual ability from the player to preserve any customizations.
                         Ability ab = player.GetAbility(ability.KeyName) ?? ability;
@@ -599,7 +602,7 @@ namespace DOL.GS
                 // Styles.
                 foreach (Specialization spec in specs)
                 {
-                    foreach (Style style in spec.GetStylesForLiving(player))
+                    foreach (Style style in spec.GetStylesForLiving((GameLiving)player))
                     {
                         if (idMap.TryGetValue(SkillKey.GetKey(style), out int index))
                             UpdateAt(usableSkills, visited, index, style, spec);

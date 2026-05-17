@@ -22,7 +22,10 @@ namespace DOL.GS
         private static string _statsResurrect;
         private static readonly Lock _globalStatsLock = new();
 
-        private GamePlayer _player;
+        // Widened from GamePlayer to GameLiving so MimicNPC bots can own a
+        // PlayerStatistics too (mimics implement IGamePlayer, not GamePlayer).
+        // Only Name is read; all other state stays on this class.
+        private GameLiving _player;
         private DateTime _loginTime;
         public uint TotalRealmPointsEarned { get; private set; }
         public uint RealmPointsEarnedFromKills { get; private set; }
@@ -34,7 +37,9 @@ namespace DOL.GS
         public uint ResurrectionsPerformed { get; private set; }
         private readonly Lock _playerStatsLock = new();
 
-        public PlayerStatistics(GamePlayer player)
+        public PlayerStatistics(GamePlayer player) : this((GameLiving) player) { }
+
+        public PlayerStatistics(GameLiving player)
         {
             _player = player;
             _loginTime = DateTime.Now;

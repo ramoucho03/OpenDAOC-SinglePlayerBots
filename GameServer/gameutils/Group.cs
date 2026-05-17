@@ -23,6 +23,11 @@ namespace DOL.GS
         private readonly Lock _groupMembersLock = new();
         private AbstractMission _mission;
 
+        // MimicNPC module extension. Per-Group state used by the mimic AI
+        // (roles, camp point, con-level filter, etc.). Lazily attached by the
+        // mimic system; null on vanilla groups.
+        public DOL.GS.Scripts.MimicGroup MimicGroup;
+
         public byte MemberCount
         {
             get
@@ -97,6 +102,25 @@ namespace DOL.GS
             }
 
             return temp;
+        }
+
+        // MimicNPC module extension. Returns both real GamePlayers and MimicNPC
+        // bots (anything implementing IGamePlayer) so the mimic AI can treat
+        // them uniformly when iterating group members.
+        public List<DOL.GS.Scripts.IGamePlayer> GetIPlayersInTheGroup()
+        {
+            var list = new List<DOL.GS.Scripts.IGamePlayer>();
+
+            lock (_groupMembersLock)
+            {
+                foreach (GameLiving groupMember in _groupMembers)
+                {
+                    if (groupMember is DOL.GS.Scripts.IGamePlayer ip)
+                        list.Add(ip);
+                }
+            }
+
+            return list;
         }
 
         public bool AddMember(GameLiving living)

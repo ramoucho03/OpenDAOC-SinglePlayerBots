@@ -135,6 +135,10 @@ namespace DOL.GS
 		IList<string> GetAutotrainableSkills();
 		bool HasAdvancedFromBaseClass();
 		void Init(GamePlayer player);
+		// MimicNPC module overload. Mimics implement IGamePlayer but are not
+		// GamePlayer; CharacterClassBase provides a default impl that no-ops
+		// for non-player owners (Player field stays null on mimics).
+		void Init(DOL.GS.Scripts.IGamePlayer player) => Init(player as GamePlayer);
 		void SetControlledBrain(IControlledBrain controlledBrain);
 		void CommandNpcRelease();
 		void OnPetReleased();

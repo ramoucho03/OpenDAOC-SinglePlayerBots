@@ -66,11 +66,16 @@ namespace DOL.GS
 		/// </summary>
 		/// <param name="player"></param>
 		void OnEquipped(GamePlayer player);
+		// MimicNPC overload — default forwards to the GamePlayer path when the
+		// owner happens to be a real player, otherwise no-ops. Concrete items
+		// that care about mimic owners can override this.
+		void OnEquipped(GameLiving owner) { if (owner is GamePlayer p) OnEquipped(p); }
 		/// <summary>
 		/// This item is being un-equipped
 		/// </summary>
 		/// <param name="player"></param>
 		void OnUnEquipped(GamePlayer player);
+		void OnUnEquipped(GameLiving owner) { if (owner is GamePlayer p) OnUnEquipped(p); }
 		/// <summary>
 		/// This item has struck a target
 		/// </summary>

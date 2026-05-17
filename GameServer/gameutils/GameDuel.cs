@@ -19,6 +19,19 @@ namespace DOL.GS
             Target = target;
         }
 
+        // MimicNPC overload. Used by the mimic-vs-mimic duel system in
+        // DuelMasterNPC; Starter/Target stay null because mimics aren't
+        // GamePlayers — their AI handles their own Start/Stop directly via
+        // MimicNPC.OnDuelStart/OnDuelStop, this object just marks the pair.
+        public DOL.GS.Scripts.MimicNPC MimicStarter { get; }
+        public DOL.GS.Scripts.MimicNPC MimicTarget { get; }
+
+        public GameDuel(DOL.GS.Scripts.MimicNPC starter, DOL.GS.Scripts.MimicNPC target)
+        {
+            MimicStarter = starter;
+            MimicTarget = target;
+        }
+
         public GamePlayer GetPartnerOf(GameLiving living)
         {
             if (living is GameNPC npc && npc.Brain is ControlledMobBrain brain)
@@ -29,6 +42,13 @@ namespace DOL.GS
 
         public void Start()
         {
+            if (MimicStarter != null && MimicTarget != null)
+            {
+                MimicStarter.OnDuelStart(this);
+                MimicTarget.OnDuelStart(this);
+                return;
+            }
+
             HandlePlayer(Starter, this);
             HandlePlayer(Target, this);
 

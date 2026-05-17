@@ -24,7 +24,10 @@ services:
       - opendaoc-network
 
   gameserver:
-    image: ghcr.io/opendaoc/opendaoc-core:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: opendaoc-singleplayerbots:local
     container_name: opendaoc-server
     stdin_open: true
     tty: true

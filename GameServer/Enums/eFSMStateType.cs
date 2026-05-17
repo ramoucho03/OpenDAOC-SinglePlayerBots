@@ -8,6 +8,12 @@
         ROAMING,
         RETURN_TO_SPAWN,
         PATROLLING,
-        PASSIVE
+        PASSIVE,
+        // MimicNPC module extensions
+        CAMP,
+        FOLLOW_THE_LEADER,
+        DUEL,
+        DEAD,
+        CITY_IDLE
     }
 }

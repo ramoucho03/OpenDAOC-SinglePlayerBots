@@ -93,6 +93,19 @@ namespace DOL.GS
 			set { m_mezzed = value; }
 		}
 
+		// MimicNPC module extension. A living is "rooted" when an active
+		// movement-speed debuff effectively pins them in place (a snare with
+		// Value == 99 is treated as a root in the standard mob AI; see
+		// StandardMobState.cs).
+		public bool IsRooted
+		{
+			get
+			{
+				var effect = EffectListService.GetEffectOnTarget(this, eEffect.MovementSpeedDebuff);
+				return effect?.SpellHandler?.Spell?.Value == 99;
+			}
+		}
+
 		protected bool m_disarmed = false;
 		protected long m_disarmedTime = 0;
 
