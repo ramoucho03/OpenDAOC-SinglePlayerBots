@@ -157,6 +157,12 @@ namespace DOL.GS
 		{
 			get
 			{
+				// MimicNPC safety: Player is null for bots (CharacterClassBase
+				// only tracks real GamePlayers). Fall back to the raw key so
+				// any profession lookup from a mimic-owned class returns a
+				// sane untranslated string instead of NPE.
+				if (Player == null)
+					return m_profession;
 				return LanguageMgr.TryTranslateOrDefault(Player, m_profession, m_profession);
 			}
 		}

@@ -508,6 +508,20 @@ namespace DOL.GS.Styles
 			return true;
 		}
 
+		// MimicNPC overload. Mirror of the GamePlayer path, widened so a mimic
+		// pays endurance for style swings the same way a real player does.
+		// Without this overload, mimics would spam styles cost-free.
+		public static bool ApplyEnduranceCost(GameLiving living, DbInventoryItem weapon, Style style, bool missed)
+		{
+			int enduranceCost = CalculateEnduranceCost(living, style, weapon.SPD_ABS);
+
+			if (missed)
+				enduranceCost /= 2;
+
+			living.Endurance -= enduranceCost;
+			return true;
+		}
+
 		/// <summary>
 		/// Returns whether player has correct weapon
 		/// active for particular style

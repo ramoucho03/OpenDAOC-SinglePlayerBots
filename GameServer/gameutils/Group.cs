@@ -24,9 +24,32 @@ namespace DOL.GS
         private AbstractMission _mission;
 
         // MimicNPC module extension. Per-Group state used by the mimic AI
-        // (roles, camp point, con-level filter, etc.). Lazily attached by the
-        // mimic system; null on vanilla groups.
-        public DOL.GS.Scripts.MimicGroup MimicGroup;
+        // (roles, camp point, con-level filter, etc.). Lazily allocated on
+        // first read so the mimic code can dereference MimicGroup.X safely
+        // even on groups that were created by vanilla player code paths.
+        private DOL.GS.Scripts.MimicGroup _mimicGroup;
+        private readonly Lock _mimicGroupLock = new();
+        public DOL.GS.Scripts.MimicGroup MimicGroup
+        {
+            get
+            {
+                if (_mimicGroup == null)
+                {
+                    lock (_mimicGroupLock)
+                    {
+                        _mimicGroup ??= new DOL.GS.Scripts.MimicGroup(LivingLeader);
+                    }
+                }
+                return _mimicGroup;
+            }
+            set
+            {
+                lock (_mimicGroupLock)
+                {
+                    _mimicGroup = value;
+                }
+            }
+        }
 
         public byte MemberCount
         {

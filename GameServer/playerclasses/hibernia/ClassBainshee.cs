@@ -62,6 +62,11 @@ namespace DOL.GS.PlayerClass
 		{
 			base.Init(player);
 
+			// MimicNPC safety: owner is null when initialized for a bot.
+			// Wraith transform is a player-only mechanic; mimics never enter it.
+			if (player == null)
+				return;
+
 			m_wraithTimerAction = new ECSGameTimer(player, new ECSGameTimer.ECSTimerCallback(_ =>
 			{
 				if (player.CharacterClass is ClassBainshee bainshee)

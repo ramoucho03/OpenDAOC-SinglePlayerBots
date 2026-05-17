@@ -24,6 +24,10 @@ namespace DOL.GS.PlayerClass
         {
             base.Init(player);
 
+            // MimicNPC safety: Player is null when owner is a bot.
+            if (Player == null)
+                return;
+
             if (Player.HasShadeModel)
                 player.Shade(false);
         }
