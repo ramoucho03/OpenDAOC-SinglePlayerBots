@@ -1,16 +1,11 @@
--- stylexspell: merge from DOLSharp (443 candidate rows)
--- Strategy: stage in _tmp_stylexspell, then copy only rows whose natural key
--- (StyleID, SpellID, ClassID) does not already exist in stylexspell.
--- Existing customisations stay untouched.
+-- stylexspell: INSERT IGNORE merge from DOLSharp (443 candidate rows).
+-- INSERT IGNORE silently skips rows that would violate any UNIQUE/PK
+-- constraint — so the operator's existing rows stay intact and only
+-- genuinely-new content is added.
 
 SET FOREIGN_KEY_CHECKS=0;
-START TRANSACTION;
 
-DROP TABLE IF EXISTS _tmp_stylexspell;
-CREATE TABLE _tmp_stylexspell LIKE stylexspell;
-
--- Load DOLSharp rows into the staging table.
-INSERT INTO _tmp_stylexspell (`StyleXSpell_ID`, `SpellID`, `ClassID`, `StyleID`, `Chance`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO stylexspell (`StyleXSpell_ID`, `SpellID`, `ClassID`, `StyleID`, `Chance`, `LastTimeRowUpdated`) VALUES
   ('-87190432690890u346mn', 20006, 0, 290, 100, '2000-01-01 00:00:00'),
   ('002c33ba-596b-4bd4-b521-ec3c2775a961', 7353, 0, 309, 100, '2000-01-01 00:00:00'),
   ('00890fd5-b2af-4cf9-af02-a7b342b2ef23', 20052, 0, 182, 100, '2000-01-01 00:00:00'),
@@ -211,7 +206,7 @@ INSERT INTO _tmp_stylexspell (`StyleXSpell_ID`, `SpellID`, `ClassID`, `StyleID`,
   ('b039e1d9-a101-412d-90d1-9c19bf26bf1e', 43579, 21, 185, 100, '2000-01-01 00:00:00'),
   ('b26fc7d8-cb08-4703-aef8-232ee74005f8', 20006, 0, 306, 100, '2000-01-01 00:00:00'),
   ('b2799be2-46ae-4b53-ac98-85dd414f9878', 20012, 0, 347, 100, '2000-01-01 00:00:00');
-INSERT INTO _tmp_stylexspell (`StyleXSpell_ID`, `SpellID`, `ClassID`, `StyleID`, `Chance`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO stylexspell (`StyleXSpell_ID`, `SpellID`, `ClassID`, `StyleID`, `Chance`, `LastTimeRowUpdated`) VALUES
   ('b30c1d9a-8c94-4d1c-beb0-436e09b6500e', 20035, 0, 333, 100, '2000-01-01 00:00:00'),
   ('b6235d6c-ed94-4242-9920-98277dd3d73b', 20012, 0, 111, 100, '2000-01-01 00:00:00'),
   ('b6c38116-15a9-4f5e-9060-512016365806', 20056, 0, 171, 100, '2000-01-01 00:00:00'),
@@ -412,7 +407,7 @@ INSERT INTO _tmp_stylexspell (`StyleXSpell_ID`, `SpellID`, `ClassID`, `StyleID`,
   ('mauler_mid_maulerstaff_xSubterfuge', 7354, 61, 501, 100, '2000-01-01 00:00:00'),
   ('mauler_mid_maulerstaff_xTemperedStrike', 50702, 61, 510, 100, '2000-01-01 00:00:00'),
   ('mauler_mid_maulerstaff_xWindingBlow', 20069, 61, 504, 100, '2000-01-01 00:00:00');
-INSERT INTO _tmp_stylexspell (`StyleXSpell_ID`, `SpellID`, `ClassID`, `StyleID`, `Chance`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO stylexspell (`StyleXSpell_ID`, `SpellID`, `ClassID`, `StyleID`, `Chance`, `LastTimeRowUpdated`) VALUES
   ('MidLevel2Bleed', 20006, 0, 530, 100, '2000-01-01 00:00:00'),
   ('MidLevel2HammerBleed', 20006, 0, 531, 100, '2000-01-01 00:00:00'),
   ('onslaughtbleed', 25678, 0, 462, 100, '2000-01-01 00:00:00'),
@@ -457,13 +452,7 @@ INSERT INTO _tmp_stylexspell (`StyleXSpell_ID`, `SpellID`, `ClassID`, `StyleID`,
   ('vengeanceslow', 20083, 0, 463, 100, '2000-01-01 00:00:00'),
   ('xgdfgfd', 20084, 0, 365, 100, '2000-01-01 00:00:00');
 
--- Merge: keep customisations — only insert rows whose (StyleID, SpellID, ClassID) is new.
-INSERT INTO stylexspell (`StyleXSpell_ID`, `SpellID`, `ClassID`, `StyleID`, `Chance`, `LastTimeRowUpdated`) SELECT `StyleXSpell_ID`, `SpellID`, `ClassID`, `StyleID`, `Chance`, `LastTimeRowUpdated` FROM _tmp_stylexspell
-WHERE NOT EXISTS (SELECT 1 FROM stylexspell WHERE stylexspell.`StyleID` = _tmp_stylexspell.`StyleID` AND stylexspell.`SpellID` = _tmp_stylexspell.`SpellID` AND stylexspell.`ClassID` = _tmp_stylexspell.`ClassID`);
-
-DROP TABLE _tmp_stylexspell;
-
-COMMIT;
 SET FOREIGN_KEY_CHECKS=1;
 
--- Done. Inserted only rows that were not already present.
+-- Rows that would have collided with existing data were silently skipped.
+-- Run `SELECT COUNT(*) FROM stylexspell;` afterwards to see the new total.

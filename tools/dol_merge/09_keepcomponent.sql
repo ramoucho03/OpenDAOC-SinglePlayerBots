@@ -1,16 +1,11 @@
--- keepcomponent: merge from DOLSharp (2086 candidate rows)
--- Strategy: stage in _tmp_keepcomponent, then copy only rows whose natural key
--- (KeepID, X, Y) does not already exist in keepcomponent.
--- Existing customisations stay untouched.
+-- keepcomponent: INSERT IGNORE merge from DOLSharp (2086 candidate rows).
+-- INSERT IGNORE silently skips rows that would violate any UNIQUE/PK
+-- constraint — so the operator's existing rows stay intact and only
+-- genuinely-new content is added.
 
 SET FOREIGN_KEY_CHECKS=0;
-START TRANSACTION;
 
-DROP TABLE IF EXISTS _tmp_keepcomponent;
-CREATE TABLE _tmp_keepcomponent LIKE keepcomponent;
-
--- Load DOLSharp rows into the staging table.
-INSERT INTO _tmp_keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health`, `Skin`, `KeepID`, `ID`, `CreateInfo`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health`, `Skin`, `KeepID`, `ID`, `CreateInfo`, `LastTimeRowUpdated`) VALUES
   ('00030ab4-e2f8-4137-a0ea-ae81e617d5c8', 6, 1, 3, 39200, 1, 101, 8, '', '2000-01-01 00:00:00'),
   ('009822bc-22ba-48a0-be1d-50bc1345ebdc', 10, 2, 2, 30000, 4, 646, 11, '', '2000-01-01 00:00:00'),
   ('00b2f664-ddd5-4246-86ba-aa50eb56c25d', 253, 253, 3, 31200, 10, 132, 13, '', '2000-01-01 00:00:00'),
@@ -211,7 +206,7 @@ INSERT INTO _tmp_keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health
   ('28rc9192-auyw-2qhy-ympu-nltdrwzrq302', -5, -2, 3, 40000, 26, 106, 6, '', '2015-05-08 07:53:17'),
   ('28s21103-yr96-hcdx-u3rv-tkor03yjk384', 16, 10, 2, 40000, 27, 55, 12, '', '2015-05-04 12:06:34'),
   ('29412fe2-05df-4990-8a3f-d622d0842763', 253, 3, 2, 30000, 9, 902, 14, '', '2000-01-01 00:00:00');
-INSERT INTO _tmp_keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health`, `Skin`, `KeepID`, `ID`, `CreateInfo`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health`, `Skin`, `KeepID`, `ID`, `CreateInfo`, `LastTimeRowUpdated`) VALUES
   ('29c1bf94-4090-420f-afce-003dbb053652', 249, 251, 1, 30000, 9, 390, 5, '', '2000-01-01 00:00:00'),
   ('29e9386f-cd71-4713-a75c-55fbbd754298', 6, 9, 2, 39200, 2, 100, 15, '', '2000-01-01 00:00:00'),
   ('2a2ac280-17e0-431e-98f9-4f4f5dcf0322', 3, 3, 2, 30000, 9, 387, 15, '', '2000-01-01 00:00:00'),
@@ -412,7 +407,7 @@ INSERT INTO _tmp_keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health
   ('4c3cu162-e5pm-hg8f-6pm4-8nb0iidov268', 4, -7, 0, 40000, 25, 51, 2, '', '2015-05-04 12:06:46'),
   ('4c43cf7f-ba21-4135-9d20-6b512ce1baa3', 249, 252, 1, 49000, 9, 105, 5, '', '2000-01-01 00:00:00'),
   ('4c5c26aa-1071-4c0c-8bc8-64a58dbe3342', 6, 250, 3, 33600, 17, 78, 22, '', '2000-01-01 00:00:00');
-INSERT INTO _tmp_keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health`, `Skin`, `KeepID`, `ID`, `CreateInfo`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health`, `Skin`, `KeepID`, `ID`, `CreateInfo`, `LastTimeRowUpdated`) VALUES
   ('4c62caf9-98b5-4484-a296-299d5ce615a8', 250, 246, 0, 51000, 3, 106, 5, '', '2000-01-01 00:00:00'),
   ('4ca04298-81fb-41c3-b5b3-4d90ba684a75', 5, -2, 0, 10000, 4, 4000, 7, '', '2000-01-01 00:00:00'),
   ('4cae11cd-e79e-4e29-a8b4-cc73d3fe3cbd', 249, 13, 1, 37600, 4, 52, 19, '', '2000-01-01 00:00:00'),
@@ -613,7 +608,7 @@ INSERT INTO _tmp_keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health
   ('70114c24-ca4a-4857-9bed-99d52863dcda', 250, 12, 1, 31200, 4, 132, 17, '', '2000-01-01 00:00:00'),
   ('7012fa12-453a-4d11-b9b3-73d5470d1ded', 249, 6, 0, 40000, 20, 102, 22, '', '2000-01-01 00:00:00'),
   ('701620a5-e52a-43c7-9145-a7ecdc08bba5', 6, 3, 2, 30000, 9, 893, 13, '', '2000-01-01 00:00:00');
-INSERT INTO _tmp_keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health`, `Skin`, `KeepID`, `ID`, `CreateInfo`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health`, `Skin`, `KeepID`, `ID`, `CreateInfo`, `LastTimeRowUpdated`) VALUES
   ('7035dae7-a971-47e7-81e4-0d13bc572d92', 248, 252, 1, 51000, 9, 106, 8, '', '2000-01-01 00:00:00'),
   ('7051c812-5bda-4e0f-bcbd-0375a6784689', 9, 254, 3, 27200, 9, 131, 10, '', '2000-01-01 00:00:00'),
   ('7054b013-bad9-496f-a7c0-820826af7ba9', -3, -7, 0, 40000, 9, 203, 9, '', '2000-01-01 00:00:00'),
@@ -814,7 +809,7 @@ INSERT INTO _tmp_keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health
   ('8vyq1100-h6uw-w21m-4vv5-yubx8c77o789', -11, 5, 1, 30000, 22, 78, 6, '', '2000-01-01 00:00:00'),
   ('8x8k1133-qkmr-tav6-698h-u2g3ddhnr718', -7, 5, 1, 30000, 28, 130, 8, '', '2000-01-01 00:00:00'),
   ('8x9md117-kke6-w94m-xd5d-zry50ec80873', 7, -6, 3, 30000, 29, 77, 3, '', '2000-01-01 00:00:00');
-INSERT INTO _tmp_keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health`, `Skin`, `KeepID`, `ID`, `CreateInfo`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health`, `Skin`, `KeepID`, `ID`, `CreateInfo`, `LastTimeRowUpdated`) VALUES
   ('8z6yv192-1yqu-fsfw-8ur3-9xrmqpmf4200', -4, 6, 0, 30000, 31, 1103, 0, '', '2000-01-01 00:00:00'),
   ('900ae3f6-5164-45d0-880f-a9fd7753c2a7', 253, 8, 2, 36800, 9, 51, 16, '', '2000-01-01 00:00:00'),
   ('902e539e-8d98-4fd0-978f-3284e80f83c7', 250, 2, 1, 55000, 7, 56, 10, '', '2000-01-01 00:00:00'),
@@ -1015,7 +1010,7 @@ INSERT INTO _tmp_keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health
   ('ALBBG2-cee4-4191-b34a-da75dad539b3', 250, 10, 1, 30000, 27, 382, 1, '', '2000-01-01 00:00:00'),
   ('ALBBG2-e63e-4484-a116-99f0a0d1c2ea', 253, 7, 2, 30000, 21, 382, 10, '', '2000-01-01 00:00:00'),
   ('ALBBG2-f647-4e17-8aca-9d4b95c09901', 247, 3, 1, 30000, 23, 382, 5, '', '2000-01-01 00:00:00');
-INSERT INTO _tmp_keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health`, `Skin`, `KeepID`, `ID`, `CreateInfo`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health`, `Skin`, `KeepID`, `ID`, `CreateInfo`, `LastTimeRowUpdated`) VALUES
   ('ALBBG3-2433-47fc-b994-f83cba268146', 6, 7, 2, 30000, 21, 383, 11, '', '2000-01-01 00:00:00'),
   ('ALBBG3-2f6d-4dd5-b2ed-fbabdbeb8f71', 254, 253, 0, 30000, 24, 383, 0, '', '2000-01-01 00:00:00'),
   ('ALBBG3-543a-49bd-b28b-6166285a883b', 7, 247, 3, 30000, 27, 383, 3, '', '2000-01-01 00:00:00'),
@@ -1216,7 +1211,7 @@ INSERT INTO _tmp_keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health
   ('c1a16e34-9475-4cb6-a37c-80987adb7f07', 7, 252, 3, 30000, 7, 383, 7, '', '2000-01-01 00:00:00'),
   ('c1eb3a6e-9f1b-4a30-839a-d4ecda211da7', 7, 8, 3, 36000, 8, 50, 13, '', '2000-01-01 00:00:00'),
   ('c1f36825-61f5-42cb-b03c-cf8f706562a5', 250, 7, 2, 38400, 5, 76, 17, '', '2000-01-01 00:00:00');
-INSERT INTO _tmp_keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health`, `Skin`, `KeepID`, `ID`, `CreateInfo`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health`, `Skin`, `KeepID`, `ID`, `CreateInfo`, `LastTimeRowUpdated`) VALUES
   ('c1w9r166-n318-tev7-uhdd-ij3yyzowb609', 1, -3, 0, 30000, 24, 129, 0, '', '2000-01-01 00:00:00'),
   ('c21a4cc5-b8b5-494b-9ea8-5e6516f1b768', 249, 6, 0, 34400, 20, 77, 22, '', '2000-01-01 00:00:00'),
   ('c2bafcf0-90f5-4a9b-9085-e7a4e58d98e2', 6, 3, 2, 30000, 9, 899, 13, '', '2000-01-01 00:00:00'),
@@ -1417,7 +1412,7 @@ INSERT INTO _tmp_keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health
   ('e906bea3-9213-4d1f-a8dc-0e97dca37ea7', 250, 5, 1, 30000, 4, 387, 12, '', '2000-01-01 00:00:00'),
   ('e90a2ea8-ec34-4b2b-959a-a71f268450a7', -5, 7, 2, 40000, 2, 205, 26, '', '2000-01-01 00:00:00'),
   ('e9559613-7ae8-4fcc-b135-586d8ac89d95', 1, -5, 2, 40000, 10, 205, 2, '', '2000-01-01 00:00:00');
-INSERT INTO _tmp_keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health`, `Skin`, `KeepID`, `ID`, `CreateInfo`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health`, `Skin`, `KeepID`, `ID`, `CreateInfo`, `LastTimeRowUpdated`) VALUES
   ('e956ae0e-29ae-4710-837c-1a47a75ddac6', 3, 10, 2, 36000, 9, 50, 17, '', '2000-01-01 00:00:00'),
   ('e9b11289-a36f-41a8-8990-5df6adcc841a', 0, 8, 2, 38400, 1, 53, 12, '', '2000-01-01 00:00:00'),
   ('ea52ee14-dd52-4a0e-858e-9e24550066f9', 250, 254, 1, 30000, 7, 644, 8, '', '2000-01-01 00:00:00'),
@@ -1618,7 +1613,7 @@ INSERT INTO _tmp_keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health
   ('HIBBG4-2f6d-4dd5-b2ed-fbabdbeb8f71', 254, 253, 0, 30000, 24, 203, 0, '', '2000-01-01 00:00:00'),
   ('HIBBG4-543a-49bd-b28b-6166285a883b', 7, 247, 3, 30000, 27, 203, 3, '', '2000-01-01 00:00:00'),
   ('HIBBG4-73b1-428c-af18-abba94c3c221', 10, 254, 3, 30000, 23, 203, 6, '', '2000-01-01 00:00:00');
-INSERT INTO _tmp_keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health`, `Skin`, `KeepID`, `ID`, `CreateInfo`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health`, `Skin`, `KeepID`, `ID`, `CreateInfo`, `LastTimeRowUpdated`) VALUES
   ('HIBBG4-757f-4aaf-8d37-2018f2977b03', 3, 4, 2, 30000, 29, 203, 9, '', '2000-01-01 00:00:00'),
   ('HIBBG4-8015-4cb6-bf4c-d03663b3e2be', 251, 250, 0, 30000, 21, 203, 7, '', '2000-01-01 00:00:00'),
   ('HIBBG4-b75c-4431-ad1b-3a661838c742', 244, 253, 0, 30000, 27, 203, 4, '', '2000-01-01 00:00:00'),
@@ -1819,7 +1814,7 @@ INSERT INTO _tmp_keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health
   ('MIDBG2-f647-4e17-8aca-9d4b95c09901', 247, 3, 1, 30000, 23, 638, 5, '', '2000-01-01 00:00:00'),
   ('MIDBG3-2433-47fc-b994-f83cba268146', 6, 7, 2, 30000, 21, 639, 11, '', '2000-01-01 00:00:00'),
   ('MIDBG3-2f6d-4dd5-b2ed-fbabdbeb8f71', 254, 253, 0, 30000, 24, 639, 0, '', '2000-01-01 00:00:00');
-INSERT INTO _tmp_keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health`, `Skin`, `KeepID`, `ID`, `CreateInfo`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health`, `Skin`, `KeepID`, `ID`, `CreateInfo`, `LastTimeRowUpdated`) VALUES
   ('MIDBG3-543a-49bd-b28b-6166285a883b', 7, 247, 3, 30000, 27, 639, 3, '', '2000-01-01 00:00:00'),
   ('MIDBG3-73b1-428c-af18-abba94c3c221', 10, 254, 3, 30000, 23, 639, 6, '', '2000-01-01 00:00:00'),
   ('MIDBG3-757f-4aaf-8d37-2018f2977b03', 3, 4, 2, 30000, 29, 639, 9, '', '2000-01-01 00:00:00'),
@@ -2020,7 +2015,7 @@ INSERT INTO _tmp_keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health
   ('uvrbr143-3guu-bhwy-n8kh-m7rp9pz20274', 7, -6, 3, 40000, 29, 52, 3, '', '2015-05-04 12:06:42'),
   ('uwxu9105-sdqp-kts7-rmhy-fjdqdg16j637', -12, -3, 0, 30000, 27, 129, 3, '', '2000-01-01 00:00:00'),
   ('v4p7w129-drat-bu4h-g5qe-3ua2u4ckc974', -4, 6, 0, 40000, 31, 567, 0, '', '2015-05-04 12:15:12');
-INSERT INTO _tmp_keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health`, `Skin`, `KeepID`, `ID`, `CreateInfo`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health`, `Skin`, `KeepID`, `ID`, `CreateInfo`, `LastTimeRowUpdated`) VALUES
   ('v7rn4112-uenx-e198-f9u3-pn4rilpuf942', -9, 10, 2, 30000, 25, 81, 18, '', '2000-01-01 00:00:00'),
   ('v84vg117-t8nq-unbd-zxsn-em76kee03837', -6, 15, 1, 30000, 27, 102, 11, '', '2000-01-01 00:00:00'),
   ('vduhb166-e96p-kqwa-kqne-uzjc5590c530', 0, 5, 2, 30000, 21, 125, 8, '', '2000-01-01 00:00:00'),
@@ -2108,13 +2103,7 @@ INSERT INTO _tmp_keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health
   ('zvh28179-vygg-ufxz-egvs-m66jn6fxk469', 13, 10, 2, 40000, 27, 105, 9, '', '2015-05-08 07:53:17'),
   ('zx49v120-cdwn-e2ez-9b6c-l33y7be62454', -4, 6, 0, 30000, 31, 616, 0, '', '2000-01-01 00:00:00');
 
--- Merge: keep customisations — only insert rows whose (KeepID, X, Y) is new.
-INSERT INTO keepcomponent (`KeepComponent_ID`, `X`, `Y`, `Heading`, `Health`, `Skin`, `KeepID`, `ID`, `CreateInfo`, `LastTimeRowUpdated`) SELECT `KeepComponent_ID`, `X`, `Y`, `Heading`, `Health`, `Skin`, `KeepID`, `ID`, `CreateInfo`, `LastTimeRowUpdated` FROM _tmp_keepcomponent
-WHERE NOT EXISTS (SELECT 1 FROM keepcomponent WHERE keepcomponent.`KeepID` = _tmp_keepcomponent.`KeepID` AND keepcomponent.`X` = _tmp_keepcomponent.`X` AND keepcomponent.`Y` = _tmp_keepcomponent.`Y`);
-
-DROP TABLE _tmp_keepcomponent;
-
-COMMIT;
 SET FOREIGN_KEY_CHECKS=1;
 
--- Done. Inserted only rows that were not already present.
+-- Rows that would have collided with existing data were silently skipped.
+-- Run `SELECT COUNT(*) FROM keepcomponent;` afterwards to see the new total.

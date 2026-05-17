@@ -1,16 +1,11 @@
--- keep: merge from DOLSharp (151 candidate rows)
--- Strategy: stage in _tmp_keep, then copy only rows whose natural key
--- (KeepID) does not already exist in keep.
--- Existing customisations stay untouched.
+-- keep: INSERT IGNORE merge from DOLSharp (151 candidate rows).
+-- INSERT IGNORE silently skips rows that would violate any UNIQUE/PK
+-- constraint — so the operator's existing rows stay intact and only
+-- genuinely-new content is added.
 
 SET FOREIGN_KEY_CHECKS=0;
-START TRANSACTION;
 
-DROP TABLE IF EXISTS _tmp_keep;
-CREATE TABLE _tmp_keep LIKE keep;
-
--- Load DOLSharp rows into the staging table.
-INSERT INTO _tmp_keep (`Keep_ID`, `KeepID`, `Name`, `Region`, `X`, `Y`, `Z`, `Heading`, `Realm`, `Level`, `ClaimedGuildName`, `AlbionDifficultyLevel`, `MidgardDifficultyLevel`, `HiberniaDifficultyLevel`, `OriginalRealm`, `KeepType`, `BaseLevel`, `SkinType`, `CreateInfo`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO keep (`Keep_ID`, `KeepID`, `Name`, `Region`, `X`, `Y`, `Z`, `Heading`, `Realm`, `Level`, `ClaimedGuildName`, `AlbionDifficultyLevel`, `MidgardDifficultyLevel`, `HiberniaDifficultyLevel`, `OriginalRealm`, `KeepType`, `BaseLevel`, `SkinType`, `CreateInfo`, `LastTimeRowUpdated`) VALUES
   ('CathalAPK', 1, 'Albion Portal Keep', 165, 583575, 584548, 4896, 1988, 1, 0, '', 0, 0, 0, 1, 0, 100, 0, '', '2000-01-01 00:00:00'),
   ('CathalMPK', 2, 'Midgard Portal Keep', 165, 574386, 538221, 4832, 571, 2, 0, '', 0, 0, 0, 2, 0, 100, 0, '', '2000-01-01 00:00:00'),
   ('CathalHPK', 3, 'Hibernia Portal Keep', 165, 536186, 584836, 5800, 1791, 3, 0, '', 0, 0, 0, 3, 0, 100, 0, '', '2000-01-01 00:00:00'),
@@ -163,13 +158,7 @@ INSERT INTO _tmp_keep (`Keep_ID`, `KeepID`, `Name`, `Region`, `X`, `Y`, `Z`, `He
   ('1668', 1668, 'Molvik Hibernian Tower', 241, 565590, 544849, 5368, 230, 2, 4, '', 1, 1, 1, 3, 0, 39, 0, '', '2000-01-01 00:00:00'),
   ('1670', 1670, 'Hibernia Leirvik Tower', 242, 295728, 307441, 11080, 1667, 2, 4, '', 1, 1, 1, 3, 0, 50, 0, '', '2000-01-01 00:00:00');
 
--- Merge: keep customisations — only insert rows whose (KeepID) is new.
-INSERT INTO keep (`Keep_ID`, `KeepID`, `Name`, `Region`, `X`, `Y`, `Z`, `Heading`, `Realm`, `Level`, `ClaimedGuildName`, `AlbionDifficultyLevel`, `MidgardDifficultyLevel`, `HiberniaDifficultyLevel`, `OriginalRealm`, `KeepType`, `BaseLevel`, `SkinType`, `CreateInfo`, `LastTimeRowUpdated`) SELECT `Keep_ID`, `KeepID`, `Name`, `Region`, `X`, `Y`, `Z`, `Heading`, `Realm`, `Level`, `ClaimedGuildName`, `AlbionDifficultyLevel`, `MidgardDifficultyLevel`, `HiberniaDifficultyLevel`, `OriginalRealm`, `KeepType`, `BaseLevel`, `SkinType`, `CreateInfo`, `LastTimeRowUpdated` FROM _tmp_keep
-WHERE NOT EXISTS (SELECT 1 FROM keep WHERE keep.`KeepID` = _tmp_keep.`KeepID`);
-
-DROP TABLE _tmp_keep;
-
-COMMIT;
 SET FOREIGN_KEY_CHECKS=1;
 
--- Done. Inserted only rows that were not already present.
+-- Rows that would have collided with existing data were silently skipped.
+-- Run `SELECT COUNT(*) FROM keep;` afterwards to see the new total.

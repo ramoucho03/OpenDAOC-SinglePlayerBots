@@ -1,16 +1,11 @@
--- linexspell: merge from DOLSharp (5883 candidate rows)
--- Strategy: stage in _tmp_linexspell, then copy only rows whose natural key
--- (LineName, SpellID, Level) does not already exist in linexspell.
--- Existing customisations stay untouched.
+-- linexspell: INSERT IGNORE merge from DOLSharp (5883 candidate rows).
+-- INSERT IGNORE silently skips rows that would violate any UNIQUE/PK
+-- constraint — so the operator's existing rows stay intact and only
+-- genuinely-new content is added.
 
 SET FOREIGN_KEY_CHECKS=0;
-START TRANSACTION;
 
-DROP TABLE IF EXISTS _tmp_linexspell;
-CREATE TABLE _tmp_linexspell LIKE linexspell;
-
--- Load DOLSharp rows into the staging table.
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('000a6a50-4015-4b93-852d-b4d634c445c1', 'Path of Air', 402, 9, 'Theurgist', '2000-01-01 00:00:00'),
   ('000ed0d7-4d76-4f79-81cd-cc89a8672cf1', 'Nurture Warden Spec', 5143, 43, 'Warden', '2000-01-01 00:00:00'),
   ('00142538-b0b6-49f4-9c3f-cc7b7d9a53cd', 'Subterranean Spec', 3485, 1, 'Shaman', '2000-01-01 00:00:00'),
@@ -211,7 +206,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('0612c8a0-883b-42bd-929a-Warlock76', 'Cursing', 12011, 50, 'Warlock', '2000-01-01 00:00:00'),
   ('0612c8a0-883b-42bd-929a-Warlock77', 'Cursing', 12015, 4, 'Warlock', '2000-01-01 00:00:00'),
   ('0612c8a0-883b-42bd-929a-Warlock78', 'Cursing', 12016, 7, 'Warlock', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('0612c8a0-883b-42bd-929a-Warlock79', 'Cursing', 12017, 10, 'Warlock', '2000-01-01 00:00:00'),
   ('0612c8a0-883b-42bd-929a-Warlock8', 'Witchcraft', 12102, 3, 'Warlock', '2000-01-01 00:00:00'),
   ('0612c8a0-883b-42bd-929a-Warlock80', 'Cursing', 12018, 13, 'Warlock', '2000-01-01 00:00:00'),
@@ -412,7 +407,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('1234-1234-1234f', 'Phantasmal Wail', 13628, 23, 'Bainshee', '2000-01-01 00:00:00'),
   ('1234-1234-1234g', 'Phantasmal Wail', 13629, 28, 'Bainshee', '2000-01-01 00:00:00'),
   ('1234-1234-1234h', 'Phantasmal Wail', 13630, 37, 'Bainshee', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('1234-1234-1234i', 'Phantasmal Wail', 13631, 43, 'Bainshee', '2000-01-01 00:00:00'),
   ('1234-1234-1234j', 'Phantasmal Wail', 13601, 1, 'Bainshee', '2000-01-01 00:00:00'),
   ('1234-1234-1234k', 'Phantasmal Wail', 13602, 8, 'Bainshee', '2000-01-01 00:00:00'),
@@ -613,7 +608,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('1ba0dc57-8990-4560-9ce1-f6445c8351a5', 'Nurture Warden Spec', 5113, 14, 'Warden', '2000-01-01 00:00:00'),
   ('1bbbe17e-ad58-4b2c-9813-0a0c9306d35d', 'Bone Guardians', 10076, 13, 'Bonedancer', '2000-01-01 00:00:00'),
   ('1bc6b290-7461-4998-a993-201cdfc6053f', 'Arboreal Mastery', 11141, 20, 'ANIMIST_1360', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('1bd182ad-9aed-4fbe-821d-6ba4dbf37040', 'Savagery', 10528, 33, 'Savage', '2000-01-01 00:00:00'),
   ('1bf97533-51b4-43db-8523-e7c2e34a439b', 'Chants', 1073, 40, 'Paladin', '2000-01-01 00:00:00'),
   ('1c037d75-05bb-408e-964c-2bdd80353241', 'Rebirth (Cleric)', 1352, 8, 'Cleric', '2000-01-01 00:00:00'),
@@ -814,7 +809,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('29333587-2ccd-4cca-9e60-e7850ae5745b', 'Dementia', 13171, 10, 'Vampiir', '2000-01-01 00:00:00'),
   ('2935b973-5d34-46e0-af27-9cfa0230c628', 'Matter', 505, 14, 'Sorcerer', '2000-01-01 00:00:00'),
   ('295a51d0-4fc6-499b-883d-2b7be56ab676', 'Druid Nature Spec', 5275, 25, 'Druid', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('296196af-7cdc-4c5e-aed5-c64e695f5e3f', 'Rejuvenation', 1304, 8, 'Cleric', '2000-01-01 00:00:00'),
   ('2965b464-1b3c-4c40-9959-26d7ca77047b', 'Heretic Rejuvenation Spec', 14057, 19, 'Heretic', '2000-01-01 00:00:00'),
   ('2974cd2a-94bb-4631-8a7c-2689a800bd89', 'Void Mastery', 4575, 35, 'Eldritch', '2000-01-01 00:00:00'),
@@ -1015,7 +1010,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('36b84e47-3dcd-40d5-8d53-32e8c3886153', 'Nightshade', 5508, 28, 'Nightshade', '2000-01-01 00:00:00'),
   ('36bdd836-0ef3-400e-a62d-0c7ac0a6444e', 'Soulrending', 9649, 50, 'Reaver', '2000-01-01 00:00:00'),
   ('36bf90e4-eaf8-4a17-a8be-6afe36bf4209', 'Verdant Path', 11548, 42, 'ANIMIST_1360', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('36d6a92b-c705-469f-a5c7-4316d2c116ed', 'Rebirth (Cleric)', 1412, 26, 'Cleric', '2000-01-01 00:00:00'),
   ('36f6afab-9089-4423-8523-4ca454388c7e', 'Shaman Mend Spec', 3115, 27, 'Shaman', '2000-01-01 00:00:00'),
   ('36n3563nj73', 'Rebirth (Cleric)', 14383, 46, '', '2000-01-01 00:00:00'),
@@ -1217,7 +1212,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('457f666f-3ecf-4a3d-b0d4-18221e174fdf', 'Spirit Animation', 804, 20, 'Cabalist', '2000-01-01 00:00:00'),
   ('45883b87-05e0-4d28-8101-2cb23b627674', 'Creeping Path', 11346, 20, 'ANIMIST_1360', '2000-01-01 00:00:00'),
   ('459ae50d-0e70-42a8-9d8a-c711eada3478', 'Calefaction', 56, 33, 'Wizard', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('45ca1982-cddc-4a8f-8cba-cb83f2c41922', 'Combat Style Effects', 20058, 0, '', '2000-01-01 00:00:00'),
   ('45d131da-bb1b-471a-baa5-cd7266352110', 'Savagery', 10509, 19, 'Savage', '2000-01-01 00:00:00'),
   ('45DD Spirit', 'Combat Style Effects', 50879, 44, '', '2000-01-01 00:00:00'),
@@ -1418,7 +1413,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('52d3726f-34a4-489b-8c7e-272c4a81cfbb', 'Rebirth (Cleric)', 1443, 30, 'Cleric', '2000-01-01 00:00:00'),
   ('52e3098d-2686-41dd-aa93-2a583175ee00', 'Soulrending', 9612, 4, 'Reaver', '2000-01-01 00:00:00'),
   ('52e85841-d97b-4a8d-8678-5534e01f4474', 'Instruments', 1182, 15, 'Minstrel', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('52f16e63-e41f-4dc6-acc8-ce1a80555ebd', 'Combat Style Effects', 20033, 0, '', '2000-01-01 00:00:00'),
   ('52f2e31e-42ba-4f8d-9144-707c303c67a4', 'Soulrending', 9613, 8, 'Reaver', '2000-01-01 00:00:00'),
   ('52f7e90d-4764-4ffb-803a-42c1679501b3', 'Instruments', 1114, 19, 'Minstrel', '2000-01-01 00:00:00'),
@@ -1619,7 +1614,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('5vc62v36532653265326', 'Rebirth (Cleric)', 14381, 36, '', '2000-01-01 00:00:00'),
   ('60083366-5cb6-481d-9c61-2cf2a655b12f', 'Shadow Mastery', 13035, 7, 'Vampiir', '2000-01-01 00:00:00'),
   ('601580fb-74a7-4881-8993-5c49fc358d2d', 'Shadow Mastery', 13016, 15, 'Vampiir', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('601da5f1-1cb8-49b5-b2b0-f66daea7e8f0', 'Valewalker Arb Path Spec', 11230, 30, 'Valewalker', '2000-01-01 00:00:00'),
   ('60206fdf-db50-4a09-9fdd-aa7fb9f4ed1e', 'Creeping Path Spec', 11469, 45, 'ANIMIST_1360', '2000-01-01 00:00:00'),
   ('6039f075-0754-4988-b89c-84458fa33327', 'Instruments', 1181, 5, 'Minstrel', '2000-01-01 00:00:00'),
@@ -1820,7 +1815,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('6d8dfa95-eba2-4492-9143-bba2c7cd2e94', 'Mind Twisting', 936, 24, 'Sorcerer', '2000-01-01 00:00:00'),
   ('6dacdad0-b339-41a7-aa27-a83dcb3d7231', 'Empowering', 4484, 24, 'Enchanter', '2000-01-01 00:00:00'),
   ('6db268fa-e276-458a-9e76-d1a6588f9934', 'Bone Warriors', 10205, 41, 'Bonedancer', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('6dc20e42-af77-4e97-83ab-d2e9d31a5d0e', 'Enhancement', 1452, 7, 'Cleric', '2000-01-01 00:00:00'),
   ('6dcbacf4-dbd9-4f59-9a33-0f9c6050d2d6', 'Bone Army', 10101, 2, 'Bonedancer', '2000-01-01 00:00:00'),
   ('6e1da51e-0ab8-4b6f-aaf7-7a0b761e5355', 'Shaman Mend Spec', 3121, 15, 'Shaman', '2000-01-01 00:00:00'),
@@ -2021,7 +2016,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('7bbc276e-efd2-4c86-ba21-25a5afdf426c', 'Savagery', 10516, 31, 'Savage', '2000-01-01 00:00:00'),
   ('7bc5a412-b128-456e-97ba-84c98bed4ed1', 'Valewalker Arb Path Spec', 11237, 13, 'Valewalker', '2000-01-01 00:00:00'),
   ('7bcff709-ea05-407f-9bb3-a644101632f0', 'Pacification', 3308, 43, 'Healer', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('7bf804d6-c705-4489-bea5-adfb0a5e7580', 'Pyromancy', 375, 25, 'Wizard', '2000-01-01 00:00:00'),
   ('7c15a542-e98d-4f75-b850-9c6322536c18', 'Spirit Dimming', 2631, 22, 'Spirit Master', '2000-01-01 00:00:00'),
   ('7c2ee994-7ffd-41be-9b0a-a0cb284e2dd0', 'Battlesongs', 3623, 34, 'Skald', '2000-01-01 00:00:00'),
@@ -2222,7 +2217,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('873460878fhgdfh987897', 'Combat Style Effects', 20088, 0, '', '2000-01-01 00:00:00'),
   ('873599fb-8f90-4d1b-bb0d-09cfe27b9931', 'Valor', 5446, 40, 'Champion', '2000-01-01 00:00:00'),
   ('87478f90-f123-4fb6-a382-96398f6ff909', 'Spirit Animation', 831, 4, 'Cabalist', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('875237ab-d0ee-4cd7-ad06-dcb6a1599341', 'Path of Ice', 175, 30, 'Wizard', '2000-01-01 00:00:00'),
   ('87796845-0f73-4ea1-86b1-7f8096fc7bd8', 'Valor', 5442, 10, 'Champion', '2000-01-01 00:00:00'),
   ('8784e41b-2ee1-47de-a73c-2dfcb467701f', 'Refrigeration', 259, 50, 'Theurgist', '2000-01-01 00:00:00'),
@@ -2423,7 +2418,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('954caff1-8fe1-4a8a-a218-06208d5b4fbc', 'Potions', 31030, 40, '', '2000-01-01 00:00:00'),
   ('9555468e-249e-443d-bf76-9366fd55c853', 'Darkness', 2512, 50, 'Spirit Master', '2000-01-01 00:00:00'),
   ('95689df3-3789-4599-aa13-035199f3533c', 'Valor', 5447, 50, 'Champion', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('9584769f-45f3-4427-91b7-383cb110b32c', 'Instruments', 1141, 4, 'Minstrel', '2000-01-01 00:00:00'),
   ('95955bf3-c6fc-45d4-aa9d-384879c1f222', 'Mentalism', 4609, 36, 'Mentalist', '2000-01-01 00:00:00'),
   ('959ac21c-d679-4f7b-bf58-943c97148cf3', 'Mind Twisting', 905, 27, 'Sorcerer', '2000-01-01 00:00:00'),
@@ -2624,7 +2619,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('a4286ae7-18a7-4345-83b8-36ef3e3107d4', 'Matter Manipulation', 582, 24, 'Cabalist', '2000-01-01 00:00:00'),
   ('a4362e43-edeb-4597-8fdc-15a2299b6c47', 'Stormcalling', 45790, 43, 'Thane_197', '2000-01-01 00:00:00'),
   ('a45aa862-0dc7-4684-86d9-ce09acd88ca9', 'Body Destruction', 656, 10, 'Sorcerer', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('a45afc20-fdbf-4e87-9aa3-d25286edc49a', 'Guardian Angel', 1546, 48, 'Cleric', '2000-01-01 00:00:00'),
   ('a45c1881-4b0e-42ec-acd6-31da4a3d5a94', 'Item Effects', 32116, 40, '', '2000-01-01 00:00:00'),
   ('a45c1881-4b0e-498c-acd6-31da4a3d5a94', 'Item Effects', 32120, 43, '', '2000-01-01 00:00:00'),
@@ -2825,7 +2820,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('aeea7fd2-2d5b-46c8-a313-c6dfe819d558', 'Rejuvenation', 1310, 37, 'Cleric', '2000-01-01 00:00:00'),
   ('aef27915-9f44-4923-81f4-dde950c23916', 'Pyromancy', 356, 17, 'Wizard', '2000-01-01 00:00:00'),
   ('af010cd3-d26d-41f4-9890-f2ae2807fdb6', 'Regrowth Druid Spec', 4892, 30, 'Druid', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('af0641d7-edf5-4329-915b-2ef06a5bbfb7', 'Subterranean Spec', 3482, 47, 'Shaman', '2000-01-01 00:00:00'),
   ('af157bca-2418-4fcd-a3ad-b0ce19d519c6', 'Summoning', 2812, 8, 'Spirit Master', '2000-01-01 00:00:00'),
   ('af28eb4c-779e-4320-a617-a4f067f6bac0', 'Shadow Mastery', 13010, 48, 'Vampiir', '2000-01-01 00:00:00'),
@@ -3026,7 +3021,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('b20598d3-4638-4d73-aad5-cf0190f43c40', 'Bone Mystics', 10021, 1, 'Bonedancer', '2000-01-01 00:00:00'),
   ('b224b4b5-b6ce-472e-87f3-d84284690d26', 'Soulrending', 9671, 18, 'Reaver', '2000-01-01 00:00:00'),
   ('b235cffa-7d96-4715-ad9e-107c96df22ba', 'Shaman Augmentation Spec', 3272, 6, 'Shaman', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('b23d677e-021d-473a-ab30-d52795f4d159', 'Regrowth Druid Spec', 4853, 11, 'Druid', '2000-01-01 00:00:00'),
   ('b256c7c3-bc05-49d4-a6b1-c060dd186fa0', 'Soulrending', 9625, 31, 'Reaver', '2000-01-01 00:00:00'),
   ('b25997e1-5e93-427c-925b-8ad48b305d0c', 'Stormcalling', 45770, 14, 'Thane_197', '2000-01-01 00:00:00'),
@@ -3227,7 +3222,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('bb5e4414-cfbb-4e54-9fab-142e41671c5f', 'Mind Twisting', 904, 20, 'Sorcerer', '2000-01-01 00:00:00'),
   ('bb79bf26-b971-49bb-8b62-2994d3420c37', 'Nightshade', 5518, 48, 'Nightshade', '2000-01-01 00:00:00'),
   ('bb7aae44-cfe9-48eb-ad47-c98e448da019', 'Liquifaction', 225, 21, 'Wizard', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('bba33afe-711d-473c-a28a-85b46a326650', 'Heretic Enhancement Spec', 14213, 27, 'Heretic', '2000-01-01 00:00:00'),
   ('bbac6309-3475-43a8-a430-5e70184637fd', 'Druid Nurture Spec', 5079, 31, 'Druid', '2000-01-01 00:00:00'),
   ('bbc423aa-9cbd-4f63-80a0-15565a2c1310', 'Shaman Mend Spec', 3117, 43, 'Shaman', '2000-01-01 00:00:00'),
@@ -3428,7 +3423,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('c6c08947-788e-48df-b1a1-5f520feda455', 'Dementia', 13133, 35, 'Vampiir', '2000-01-01 00:00:00'),
   ('c6cfd8d5-ab02-41cb-b044-82c19439e67c', 'Pyromancy', 366, 24, 'Wizard', '2000-01-01 00:00:00'),
   ('c6dbced8-1ea7-46b2-911d-b97f82e6a534', 'Instruments', 1154, 27, 'Minstrel', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('c6e0eee3-3fa8-4dff-9396-d374205bf6bc', 'Guardian Angel', 1582, 47, 'Cleric', '2000-01-01 00:00:00'),
   ('c6ed1097-acd1-49ce-b927-de746725f64c', 'Matter', 508, 38, 'Sorcerer', '2000-01-01 00:00:00'),
   ('c6f22ea9-49a2-44c3-84a1-e21591bb0c6f', 'Disorientation', 774, 49, 'Sorcerer', '2000-01-01 00:00:00'),
@@ -3629,7 +3624,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('championlevel_elementalist6', 'Champion Abilities', 33104, 50, 'ChampionsLevels', '2000-01-01 00:00:00'),
   ('championlevel_elementalist7', 'Champion Abilities', 33105, 50, 'ChampionsLevels', '2000-01-01 00:00:00'),
   ('championlevel_elementalist8', 'Champion Abilities', 33106, 50, 'ChampionsLevels', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('championlevel_elementalist9', 'Champion Abilities', 33107, 50, 'ChampionsLevels', '2000-01-01 00:00:00'),
   ('championlevel_grove1', 'Champion Abilities', 33133, 50, 'ChampionsLevels', '2000-01-01 00:00:00'),
   ('championlevel_grove10', 'Champion Abilities', 33142, 50, 'ChampionsLevels', '2000-01-01 00:00:00'),
@@ -3830,7 +3825,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('d1a7fbb9-8735-46f8-a765-61ee4b519bcf', 'Rejuvenation', 1337, 27, 'Cleric', '2000-01-01 00:00:00'),
   ('d1b988ca-5935-40c9-9b72-5f90e4d5b6f6', 'Savagery', 10520, 14, 'Savage', '2000-01-01 00:00:00'),
   ('d1d522f5-c756-4f50-8597-7eaeeb7fad36', 'Telekinesis', 601, 1, 'Sorcerer', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('d1d59b2a-846e-4977-b494-ed20c09f4ae4', 'Combat Style Effects', 20007, 0, '', '2000-01-01 00:00:00'),
   ('d1dbda17-14ed-44d6-bc8e-4f8d805c082b', 'Shaman Augmentation Spec', 3266, 26, 'Shaman', '2000-01-01 00:00:00'),
   ('d1ef05ac-cd9f-4b25-aa61-2d9ba379b081', 'Healer Mending Spec', 3075, 15, 'Healer', '2000-01-01 00:00:00'),
@@ -4031,7 +4026,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('DiminishingWail-Bainshee16', 'Ethereal Shriek', 13627, 16, 'Freyad_DB', '2000-01-01 00:00:00'),
   ('DiminishingYell-Bainshee3', 'Ethereal Shriek', 13625, 3, 'Freyad_DB', '2000-01-01 00:00:00'),
   ('disciple_column1_row1', 'Champion Disciple 1', 33116, 1, 'NEWCLSYSTEM', '2014-10-26 15:23:16');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('disciple_column1_row2', 'Champion Disciple 1', 33117, 2, 'NEWCLSYSTEM', '2014-10-26 15:23:16'),
   ('disciple_column1_row3', 'Champion Disciple 1', 33118, 3, 'NEWCLSYSTEM', '2014-10-26 15:23:16'),
   ('disciple_column1_row4', 'Champion Disciple 1', 33119, 4, 'NEWCLSYSTEM', '2014-10-26 15:23:16'),
@@ -4232,7 +4227,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('eb9fecdc-83e4-4e9f-abf3-7e3ba9d8bc77', 'Enhancement', 1456, 41, 'Cleric', '2000-01-01 00:00:00'),
   ('ebe9cb18-b0e1-41ff-87cf-3ab621e6b78b', 'Spirit Suppression', 2775, 24, 'Spirit Master', '2000-01-01 00:00:00'),
   ('ebed463b-ce6f-44cc-91cc-01cb5b0e7273', 'Instruments', 1116, 31, 'Minstrel', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('ec043689-887d-48eb-bffe-4750c2a7c000', 'Bone Warriors', 10163, 30, 'Bonedancer', '2000-01-01 00:00:00'),
   ('ec0d34d7-8d70-4db2-abec-b1a0aa43416c', 'Healer Mending Spec', 3084, 43, 'Healer', '2000-01-01 00:00:00'),
   ('ec1b827c-2692-41d0-a7d8-40bbdb503575', 'Stormcalling', 3544, 10, 'Thane_197', '2000-01-01 00:00:00'),
@@ -4433,7 +4428,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('f6b62f23-aa4d-40fc-9054-f10ce28c3822', 'Shadow Control', 4171, 4, 'Eldritch', '2000-01-01 00:00:00'),
   ('f6b9590f-44eb-4511-9b80-0dacfd9c6f6c', 'Beastcraft', 3580, 35, 'Hunter', '2000-01-01 00:00:00'),
   ('f700a98a-1721-4163-bcdf-b101635067ca', 'Nurture Warden Spec', 5117, 46, 'Warden', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('f70d7366-8868-46eb-a8fd-a4b5c46717ff', 'Mentalism', 4613, 8, 'Mentalist', '2000-01-01 00:00:00'),
   ('f71d7da2-0498-4ac5-841a-6ed56f955623', 'Bedazzling', 4263, 8, 'Enchanter', '2000-01-01 00:00:00'),
   ('f71f9e63-c66d-4dc5-9f09-cbd314d31337', 'Friar Enhancement Spec', 1714, 32, 'Friar', '2000-01-01 00:00:00'),
@@ -4634,7 +4629,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('fffb6369-9a9e-4f6e-b7d6-Banshee58', 'Spectral Guard', 13575, 6, 'Bainshee', '2000-01-01 00:00:00'),
   ('fffb6369-9a9e-4f6e-b7d6-Banshee59', 'Spectral Guard', 13576, 12, 'Bainshee', '2000-01-01 00:00:00'),
   ('fffb6369-9a9e-4f6e-b7d6-Banshee6', 'Spectral Force', 13504, 9, 'Bainshee', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('fffb6369-9a9e-4f6e-b7d6-Banshee60', 'Spectral Guard', 13577, 18, 'Bainshee', '2000-01-01 00:00:00'),
   ('fffb6369-9a9e-4f6e-b7d6-Banshee61', 'Spectral Guard', 13578, 24, 'Bainshee', '2000-01-01 00:00:00'),
   ('fffb6369-9a9e-4f6e-b7d6-Banshee62', 'Spectral Guard', 13579, 31, 'Bainshee', '2000-01-01 00:00:00'),
@@ -4835,7 +4830,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('kadzxcbfa1', 'Combat Style Effects', 20052, 0, '', '2000-01-01 00:00:00'),
   ('kjnadsfngq8w4thh', 'Combat Style Effects', 20077, 0, '', '2000-01-01 00:00:00'),
   ('kjnajknsg8u[', 'Combat Style Effects', 20015, 0, '', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('kljas897g7asd8g908', 'Holism', 990, 37, 'Mentalist', '2000-01-01 00:00:00'),
   ('LabEffectsABSDebuff', 'Item Effects', 14276, 49, '', '2000-01-01 00:00:00'),
   ('LabEffectsDebuff', 'Item Effects', 14365, 49, '', '2000-01-01 00:00:00'),
@@ -5036,7 +5031,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('MaulerPulsePBAoESnare8', 'Magnetism', 10628, 40, 'Mauler', '2000-01-01 00:00:00'),
   ('MaulerPulsePBAoESnare9', 'Magnetism', 10629, 50, 'Mauler', '2000-01-01 00:00:00'),
   ('MaulerSilence1', 'Power Strikes', 10587, 25, 'Mauler', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('MaulerSilence2', 'Power Strikes', 10588, 35, 'Mauler', '2000-01-01 00:00:00'),
   ('MaulerSilence3', 'Power Strikes', 10589, 45, 'Mauler', '2000-01-01 00:00:00'),
   ('MaulerSnareMaintained30', 'Magnetism', 47990, 30, '', '2000-01-01 00:00:00'),
@@ -5237,7 +5232,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('n2235qg', 'Combat Style Effects', 19, 0, 'Wizard', '2000-01-01 00:00:00'),
   ('n347bv74576-c234-c234234', 'Potions', 65111, 40, '', '2000-01-01 00:00:00'),
   ('n65625v35x14513515', 'Regrowth Warden Spec', 143999, 40, 'Warden', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('nadosfg[987qw84thon', 'Combat Style Effects', 20014, 0, '', '2000-01-01 00:00:00'),
   ('naturalist_column1_row1', 'Champion Naturalist 1', 33039, 1, 'NEWCLSYSTEM', '2014-10-26 15:23:16'),
   ('naturalist_column1_row2', 'Champion Naturalist 1', 33040, 2, 'NEWCLSYSTEM', '2014-10-26 15:23:16'),
@@ -5438,7 +5433,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('NecroSpecPowerTransfer28', 'Deathsight Spec', 9126, 28, 'Necromancer', '2000-01-01 00:00:00'),
   ('NecroSpecPowerTransfer35', 'Deathsight Spec', 9127, 35, 'Necromancer', '2000-01-01 00:00:00'),
   ('NecroSpecPowerTransfer4', 'Deathsight Spec', 9121, 4, 'Necromancer', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('NecroSpecPowerTransfer45', 'Deathsight Spec', 9128, 45, 'Necromancer', '2000-01-01 00:00:00'),
   ('NecroSpecPowerTransfer8', 'Deathsight Spec', 9122, 8, 'Necromancer', '2000-01-01 00:00:00'),
   ('NecroSpecStrConBuff14', 'Painworking Spec', 9332, 14, 'Necromancer', '2000-01-01 00:00:00'),
@@ -5639,7 +5634,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('SkaldAbs1', 'Battlesongs', 63362, 30, '', '2000-01-01 00:00:00'),
   ('SkaldAbs2', 'Battlesongs', 63363, 40, '', '2000-01-01 00:00:00'),
   ('SkaldAbs3', 'Battlesongs', 63364, 50, '', '2000-01-01 00:00:00');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('SkaldFatigue1', 'Battlesongs', 63358, 12, '', '2000-01-01 00:00:00'),
   ('SkaldFatigue2', 'Battlesongs', 63359, 22, '', '2000-01-01 00:00:00'),
   ('SkaldFatigue3', 'Battlesongs', 63360, 32, '', '2000-01-01 00:00:00'),
@@ -5840,7 +5835,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('viking_column2_row4', 'Champion Viking 2', 45006, 4, 'NEWCLSYSTEM', '2014-10-26 15:23:16'),
   ('viking_column2_row5', 'Champion Viking 2', 45007, 5, 'NEWCLSYSTEM', '2014-10-26 15:23:16'),
   ('viking_column3-4_row4', 'Champion Viking 3', 45008, 4, 'NEWCLSYSTEM', '2014-10-26 15:23:16');
-INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) VALUES
   ('viking_column3-4_row5', 'Champion Viking 3', 45009, 5, 'NEWCLSYSTEM', '2014-10-26 15:23:16'),
   ('viking_column4_row4', 'Champion Viking 4', 45008, 4, 'NEWCLSYSTEM', '2014-10-26 15:23:16'),
   ('viking_column4_row5', 'Champion Viking 4', 45009, 5, 'NEWCLSYSTEM', '2014-10-26 15:23:16'),
@@ -5925,13 +5920,7 @@ INSERT INTO _tmp_linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `P
   ('yadvadv1', 'Combat Style Effects', 20010, 0, '', '2000-01-01 00:00:00'),
   ('zombie_potion', 'Potions', 1555, 0, '', '2000-01-01 00:00:00');
 
--- Merge: keep customisations — only insert rows whose (LineName, SpellID, Level) is new.
-INSERT INTO linexspell (`LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated`) SELECT `LineXSpell_ID`, `LineName`, `SpellID`, `Level`, `PackageID`, `LastTimeRowUpdated` FROM _tmp_linexspell
-WHERE NOT EXISTS (SELECT 1 FROM linexspell WHERE linexspell.`LineName` = _tmp_linexspell.`LineName` AND linexspell.`SpellID` = _tmp_linexspell.`SpellID` AND linexspell.`Level` = _tmp_linexspell.`Level`);
-
-DROP TABLE _tmp_linexspell;
-
-COMMIT;
 SET FOREIGN_KEY_CHECKS=1;
 
--- Done. Inserted only rows that were not already present.
+-- Rows that would have collided with existing data were silently skipped.
+-- Run `SELECT COUNT(*) FROM linexspell;` afterwards to see the new total.

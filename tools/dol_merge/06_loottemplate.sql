@@ -1,16 +1,11 @@
--- loottemplate: merge from DOLSharp (15256 candidate rows)
--- Strategy: stage in _tmp_loottemplate, then copy only rows whose natural key
--- (TemplateName, ItemTemplateID) does not already exist in loottemplate.
--- Existing customisations stay untouched.
+-- loottemplate: INSERT IGNORE merge from DOLSharp (15256 candidate rows).
+-- INSERT IGNORE silently skips rows that would violate any UNIQUE/PK
+-- constraint — so the operator's existing rows stay intact and only
+-- genuinely-new content is added.
 
 SET FOREIGN_KEY_CHECKS=0;
-START TRANSACTION;
 
-DROP TABLE IF EXISTS _tmp_loottemplate;
-CREATE TABLE _tmp_loottemplate LIKE loottemplate;
-
--- Load DOLSharp rows into the staging table.
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   (' Peallaidh_Hide', 'peallaidh', 'Peallaidh_Hide', 20, 0, '2000-01-01 00:00:00'),
   ('00009baa-02d2-4d2b-8723-30b92afe9158', 'anger sprite', 'Elven_Gossamer_Gloves', 15, 1, '2018-01-30 18:44:31'),
   ('0009faa3-54cd-42cb-9e02-4f2a2cb424b0', 'forest giant', 'Forester''s_Leggings', 20, 0, '2000-01-01 00:00:00'),
@@ -211,7 +206,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('06c0df8c-6c59-43b4-b116-1a887db0ceae', 'tribune', 'Tribunus_Staff_of_the_Damned4', 20, 0, '2000-01-01 00:00:00'),
   ('06c3fc04-f1d1-41c6-a50e-2f83c58728a2', 'dragonsworn warden', 'broken_dragonsworn_weapons', 25, 0, '2000-01-01 00:00:00'),
   ('06c5625b-1457-4651-802b-bc47e9036e55', 'cailleach guard', 'shimmeringcailiondarLeggings', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('06c90592-ca62-4a54-9c33-55dd0f7907f5', 'Colivus', 'Rawhide_Slightly_Torn_Sleeves_alb', 40, 0, '2000-01-01 00:00:00'),
   ('06cce00d-8e7a-4897-8298-0a2b17675c62', 'mummy hag', 'Old_Silk_Cap', 35, 0, '2000-01-01 00:00:00'),
   ('06d91543-d10e-4efd-acff-ec20011634a6', 'deep goblin', 'Chrome_Diopside', 20, 0, '2000-01-01 00:00:00'),
@@ -412,7 +407,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('0e4b8192-58d8-440a-85e8-65756f5ace4b', 'glimmer orist', 'Shimmering_Odyllic_Cap', 20, 0, '2000-01-01 00:00:00'),
   ('0e51a876-f052-4e3f-b794-b8dcfcfc1acb', 'Arawnite Warrior', 'Fortifying_Flail', 15, 1, '2018-02-01 01:25:30'),
   ('0e54e893-ceb9-43d5-826d-3cc8968c29cf', 'fallen warrior', 'Worn_Asterite_Mattock', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('0e6734f7-26b4-4e27-807e-23961dac1eb1', 'fire flower', 'Fire_Charred_Gloves', 20, 0, '2000-01-01 00:00:00'),
   ('0e703439-05a3-49e3-92e6-2393374fee58', 'badh', 'Arcane_Belt', 15, 1, '2018-02-01 23:16:13'),
   ('0e800689-2806-4bfa-afd8-b9d07474db8b', 'stonecrush excavator', 'Ring_of_Granite_Enhancement', 20, 0, '2000-01-01 00:00:00'),
@@ -613,7 +608,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('1516c5c4-6327-4d20-84e2-d198aa25debc', 'frat', '3_Worn_Jewel_Dusted_Boots', 20, 0, '2000-01-01 00:00:00'),
   ('151a2d59-7baa-49cd-b163-2e3c8ac3ece0', 'cursed mora', 'Mora_Staff_of_Darkness', 20, 0, '2000-01-01 00:00:00'),
   ('151a5bc6-d648-4f8f-ac53-b84add5075a4', 'koalinth warder', 'Watery_Shell_Flecked_Helm', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('153860ba-3cc4-4b2c-8776-1b87826e0b8b', 'grove nymph', 'NightbledGloves', 40, 0, '2000-01-01 00:00:00'),
   ('1539464a-86e8-48c8-8aeb-c84aaabbe1a4', 'amadan touched', 'Ring_of_Undead_Might', 20, 0, '2000-01-01 00:00:00'),
   ('153f5b51-4d3e-409a-b606-bc071d96b516', 'goblin', 'Goblin_Goldminer_Coif', 40, 0, '2000-01-01 00:00:00'),
@@ -814,7 +809,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('1c7c1435-8e22-4989-b044-fee878d5ceca', 'gale', 'Beaded_Silk_Bracelet', 20, 0, '2000-01-01 00:00:00'),
   ('1c872999-1d9f-4518-ba9a-fc720e334704', 'arachite krigare', 'Weighted_Asterite_Hammer', 15, 1, '2018-01-31 11:45:01'),
   ('1ca3bfc0-2fc9-47be-b1db-a83e8ce0733e', 'lesser telamon', 'deathsightperfectionbracer', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('1cbd0085-e60a-4f70-920d-805c839e6e50', 'troglodyte', 'Ghostly_Truesilver_Gloves', 20, 0, '2000-01-01 00:00:00'),
   ('1cc58269-0fb9-4ca7-a8ce-a609f1c40659', 'pit spraggon', 'Runic_Spraggon_Sleeves', 20, 0, '2000-01-01 00:00:00'),
   ('1cc8305b-3c8c-4a6c-953a-b942a69ac4ac', 'vigilant soul', 'Bracer_of_Dauntless_Courage', 20, 0, '2000-01-01 00:00:00'),
@@ -1015,7 +1010,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('23839870-4f6b-4ef6-a00d-e608bf1c3435', 'elinkueth', 'Magma_Imbued_Cloak', 20, 1, '2000-01-01 00:00:00'),
   ('2389057f-35fc-41a9-a076-f0eaf9257150', 'salisbury giant', 'Skull_of_AerAmbor', 20, 0, '2000-01-01 00:00:00'),
   ('23890a7c-9277-4aa2-95d6-21e499ea6f21', 'kul', 'Shimmering_Stonesoul_Staff', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('238b9d05-acfb-47ca-9a6e-d04ad5f6042f', 'chillsome wight', 'Chillsome_Icebound_Legs', 20, 0, '2000-01-01 00:00:00'),
   ('23a293ee-cd18-442f-8e83-55ae8904f5b5', 'boggart', 'Edgebender_Dress_Robe', 20, 0, '2000-01-01 00:00:00'),
   ('23af5744-adf9-4fa0-add3-7b00d3688a8d', 'backwoods marodor', 'Marodor_Gem', 15, 1, '2018-02-01 23:08:17'),
@@ -1216,7 +1211,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('2aca76e2-bb48-4bd1-88b0-6289b71ed102', 'dunter', 'delugedkelpsleeves', 20, 0, '2000-01-01 00:00:00'),
   ('2ad3d028-edfb-4aac-ba81-e6351a72ff22', 'alfrigg', 'Alfriggs_Dwarf-Smasher', 20, 0, '2000-01-01 00:00:00'),
   ('2adcc365-d306-4d12-89a0-da64dfb2da30', 'borimo', 'Greater_Rune_Inscribed_Robe', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('2adf40c8-9479-4120-beb0-31fb0420d9ca', 'skeletal legionnaire', 'BloodiedLeatherSleeves', 20, 0, '2000-01-01 00:00:00'),
   ('2ae2cc8a-532b-4e54-adf6-8cb79bfd7ab1', 'sumisura the cursed', 'Cursed_Ring_of_the_Spirits', 20, 0, '2000-01-01 00:00:00'),
   ('2af7e602-84f5-4b8c-9f59-6aa4e3f72259', 'windswept wraith', '2_awrap_ring', 15, 0, '2000-01-01 00:00:00'),
@@ -1417,7 +1412,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('31f3e18f-848f-453d-97ad-96a70b7f6f27', 'farmer', 'glowingmithrilbuildinghammer', 20, 0, '2000-01-01 00:00:00'),
   ('3205db13-b1c2-4132-aea7-598218514baf', 'trammer', '3_Worn_Jewel_Pierced_Helm', 20, 0, '2000-01-01 00:00:00'),
   ('320f491c-4503-4aa1-9611-42bb7808d55b', 'undead drudger', 'Flawed_Staff_of_the_Underhill', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('3215da50-0481-442e-9c5f-d43933071cbb', 'koalinth spectator', 'Damp_Shell_Flecked_Boots', 20, 0, '2000-01-01 00:00:00'),
   ('322665d8-2260-4265-923a-970ca95e204f', 'lair overseer', 'Ursine_Forged_Scale_Coif', 20, 0, '2000-01-01 00:00:00'),
   ('32421249-8d50-4b02-a7c0-e8caa9804d2b', 'collared gemgetter', 'Loyalist_Scalemail_Sleeves', 20, 0, '2000-01-01 00:00:00'),
@@ -1618,7 +1613,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('399fedd2-1631-4aaa-b69c-6885bb9c18ef', 'arachite impaler', 'teal_leather_dye', 5, 1, '2018-01-30 23:06:47'),
   ('39b9ee6e-20c1-4a46-9ed0-55a3290431ec', 'djupt vivunder', '2_TBC_2hHammer', 20, 0, '2000-01-01 00:00:00'),
   ('39be8d36-b7b7-4d3b-92fd-c4f5b0e3be5b', 'moheran distorter', 'Beaded_Silk_Bracelet', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('39c7f4b4-e576-4567-8be9-147ff03bb6a4', 'svartalf arbetare', '2_LCS_Boots', 20, 0, '2000-01-01 00:00:00'),
   ('39ce5f3a-b2dd-4a62-9249-d3f2f95c3214', 'goblin crawler', 'Hob_Hunter_Cap', 20, 0, '2000-01-01 00:00:00'),
   ('39d7a02c-b7ad-4d2e-bddf-fb07eb12d5d2', 'fire ant worker', 'Bow_of_Flames', 20, 0, '2000-01-01 00:00:00'),
@@ -1819,7 +1814,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('40b8846e-9420-43f7-a40b-d0f3a6a582d1', 'bocan', 'Smoldering_Scale_Sleeves', 20, 0, '2000-01-01 00:00:00'),
   ('40ba8d3e-b06d-4d15-bbd5-bbe5c0c6aa90', 'dragonsworn theurgist', 'broken_dragonsworn_weapons', 25, 0, '2000-01-01 00:00:00'),
   ('40bce655-f174-4f01-baa7-512f06defb9c', 'far dorocha', 'Mischievious_Greenbriar_Sleeves', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('40bda406-ab2e-4b6a-86ec-70469024bdf7', 'dragonsworn reaver', '1Dragonsworn_Bladed_Whip', 20, 1, '2000-01-01 00:00:00'),
   ('40c77bcd-f101-494e-b5ea-5ae73a0916ab', 'hagbui runemaster', 'Hagbui_Runecarver''s_Staff', 20, 0, '2000-01-01 00:00:00'),
   ('40cbc53a-0bbc-4197-b63c-43aa637eda11', 'pooka', 'Horse_Mane_Bracelet', 20, 0, '2000-01-01 00:00:00'),
@@ -2020,7 +2015,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('48b6a141-6197-4a23-8056-d5ea17106070', 'ghostly siabra', 'Adept_Craftsman_Pendant', 40, 0, '2000-01-01 00:00:00'),
   ('48bc9058-31b6-4659-8260-71f77495a52e', 'wildling', 'blazing_hauberk', 40, 0, '2000-01-01 00:00:00'),
   ('48ca9010-9f61-4f0a-8b70-615614895e05', 'werewolf scruff', '2_lycanc_necklace', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('48d1a5a7-c1aa-4f41-aeca-911120db0465', 'spraggon springer', 'Earthen_Woven_Root_Gloves', 20, 0, '2000-01-01 00:00:00'),
   ('48d56466-5699-4c19-b08d-888d95629c81', 'ursine thrall', 'Lustrous_Faded_Spiderweave_Vest', 20, 0, '2000-01-01 00:00:00'),
   ('48dcc351-29da-4d12-9523-62fad5e8feba', 'ekyps gunstling', 'Crafted_Darksteel_Vest', 20, 0, '2000-01-01 00:00:00'),
@@ -2221,7 +2216,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('4f962778-e743-41cb-8f29-bbe140a44207', 'crippled jotun', 'Ivory_Beaded_Brooch', 20, 0, '2000-01-01 00:00:00'),
   ('4fa1fe46-925a-45b1-876b-e168246978a7', 'soultorn hibernian brehon', 'EmeraldSeal', 100, 0, '2000-01-01 00:00:00'),
   ('4fa8d134-6819-41e0-bf36-b271d0cdbe98', 'curmudgeon harvester', 'Patched_Hide_Sleeves', 40, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('4fbe88fb-029e-4feb-b484-17c35a505fca', 'coerced groover', 'Shimmering_Reinforced_Truemail_Boots', 20, 0, '2000-01-01 00:00:00'),
   ('4fcddf1c-560a-4808-914a-2862f994f901', 'salisbury giant', 'HeadSlicer', 20, 0, '2000-01-01 00:00:00'),
   ('4fcfa412-03e8-4785-8791-fb0822e9c58a', 'abysmal', 'Small_Heatstone_Protector', 20, 0, '2000-01-01 00:00:00'),
@@ -2422,7 +2417,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('573e156a-2b72-49dc-b53b-1b4e6bda8899', 'clay jotun', 'Midgard_Runed_Clay_War_Shield', 20, 0, '2000-01-01 00:00:00'),
   ('573f7b39-095e-4366-8085-5ad6e964d433', 'tomte guard', 'Light_Red_Leather_Dye', 15, 0, '2000-01-01 00:00:00'),
   ('57430615-1cda-44e9-ad55-6485d91ec800', 'tomte protector', 'Runed_Hollow_Bone_Bracer', 35, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('5756fed5-3011-4c34-b5de-da9335ec5dcb', 'vigilant soul', 'Smoking_Sable_Protector', 20, 0, '2000-01-01 00:00:00'),
   ('576750d2-78cd-49fe-8967-20ab46292682', 'skeletal centurion', 'BloodstainedCloak', 20, 0, '2000-01-01 00:00:00'),
   ('578324f0-0a22-484c-9722-5c8ef4653f6c', 'keltoi banisher', 'Vindicator''s_Helm', 20, 0, '2000-01-01 00:00:00'),
@@ -2623,7 +2618,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('5d50eed4-24c4-4317-af3f-ce64510f7327', 'snowdon grim', 'Glittering_Arcanite_Sleeves', 20, 0, '2000-01-01 00:00:00'),
   ('5d51e5b3-400e-4448-aec3-c9d67c6dd3b6', 'goblin', 'Goblin-Forged_Plate_Vambraces', 40, 0, '2000-01-01 00:00:00'),
   ('5d5e19ab-3a32-414f-99f7-f940074cd31c', 'arachite priest', 'Svartalf_Crafted_Necklace', 15, 1, '2018-01-31 11:54:59');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('5d64822e-8d64-4b31-a59e-d2369de3e6a6', 'mountain mephit', 'Mantle_of_Regalia', 20, 0, '2000-01-01 00:00:00'),
   ('5d6c7211-f38a-4a83-9a59-e92c697c37b5', 'forgotten promise', 'ElvenRing', 40, 0, '2000-01-01 00:00:00'),
   ('5d709280-2e67-404f-a840-7e49c44181b6', 'irewood greenbark', 'Petrified_Staff_of_Destruction1', 20, 0, '2000-01-01 00:00:00'),
@@ -2824,7 +2819,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('647d93ca-dc25-48dc-a79d-5a05ae52a1a3', 'waterlogged corpse', 'Ring_of_the_Quickening', 40, 0, '2000-01-01 00:00:00'),
   ('647f03ab-b67c-4e4e-9fb3-ed1465aff8d4', 'deamhan aeir', 'Essence_of_Deamhan_Aeir', 20, 0, '2000-01-01 00:00:00'),
   ('647fb2c2-384a-4cae-9c81-9b47d1d8b3df', 'cailleach guard', 'shimmeringcailiondarvambraces', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('648120f0-8f5b-4a57-a788-afd3c2735290', 'pyrotasm', 'Enkindled_Gloves', 20, 0, '2000-01-01 00:00:00'),
   ('648afe10-8c26-469c-a3f4-7a1a24110a5d', 'cruachan warrior', 'Speedy_Daingean_Sleeves', 20, 0, '2000-01-01 00:00:00'),
   ('64a50c34-4ba1-4784-a8bb-084a3d40b340', 'filidh', 'ShieldOfUln', 40, 0, '2000-01-01 00:00:00'),
@@ -3025,7 +3020,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('6b0d1381-80ce-41dc-84da-b34c768efb3a', 'celtic lich', 'Shimmering_Helm_of_the_Baleful_Dead', 20, 0, '2000-01-01 00:00:00'),
   ('6b106064-0471-4f86-8e56-44c6ce1dddf7', 'rock sprite', 'Shining_Dried_Root_Reinforced_Vest', 20, 0, '2000-01-01 00:00:00'),
   ('6b11f4bf-6ea3-4d09-8cd9-f3618778b8b5', 'ellyll villager', 'Shimmering_Ellyll_Hammer', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('6b12f239-f75f-4eea-8221-60cd54c88a91', 'skeletal high priestess', 'Shimmering_Robes_of_Ghostly_Light', 20, 0, '2000-01-01 00:00:00'),
   ('6b2af123-d481-4a65-a3a5-bcfbd556fce0', 'Danaoin fisherman', 'brilliantvoidwroughtpainstaff', 20, 0, '2000-01-01 00:00:00'),
   ('6b2c91ea-a15b-46f1-ab1b-dc64764b768a', 'faz', '2_LL_Gloves', 20, 0, '2000-01-01 00:00:00'),
@@ -3226,7 +3221,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('714e714f-0a01-4eb5-922a-b9360f26c293', 'svartalf sorcerer', 'Svartalf_Padded_Gloves', 20, 0, '2000-01-01 00:00:00'),
   ('71666494-a4ce-4f70-88ca-fb41f090c3c7', 'living entombed', 'Old_Staff_of_Elements', 35, 0, '2000-01-01 00:00:00'),
   ('7168bf63-3ff1-4b57-8a7b-e75de0b7c2c2', 'lesser banshee', 'Glowing_Darkened_Spirit_Vest', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('716a7624-66fe-46cc-ab1b-a8058c5e46fe', 'koalinth wrestler', 'Damp_Shell_Flecked_Pants', 20, 0, '2000-01-01 00:00:00'),
   ('716a961e-a62e-4b6f-b9d1-a3302fd4875a', 'skeletal centurion', 'BandOfPiousMight', 15, 0, '2000-01-01 00:00:00'),
   ('71826543-11ce-47b6-bd14-24722e74935f', 'deeplurk manslayer', '2_SSO_Jewel', 20, 0, '2000-01-01 00:00:00'),
@@ -3427,7 +3422,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('77baebd3-e87e-4594-9db7-3c044a972f8f', 'ruckus', 'Earthen_Woven_Root_Pants', 20, 0, '2000-01-01 00:00:00'),
   ('77de9a88-9ab5-47c5-b1be-13343d3ff217', 'drakulv axehand', 'Shimmering_Helm_of_the_Bloodwolf', 20, 0, '2000-01-01 00:00:00'),
   ('77e56304-4550-4635-b13d-0fbebdadde04', 'megalithic terror', 'Shimmering_Leggings_of_Eternal_Midnight', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('77ebdccb-646c-4aff-82ae-cb956699af88', 'moor boogey', 'Tattered_Glowing_Spiderweave_Pants', 20, 0, '2000-01-01 00:00:00'),
   ('77f5aaf5-e822-4c42-bbc2-510f820de89b', 'Danaoin fisherman', 'brilliantflamewroughtservantstaff', 20, 0, '2000-01-01 00:00:00'),
   ('77fcde30-98c3-4e39-8810-38ad4f256a77', 'glimmer warshade', 'Masterful_Moonglade_Gauntlets', 20, 0, '2000-01-01 00:00:00'),
@@ -3628,7 +3623,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('7f1e6bf7-08e8-442d-b7e3-7ccf9d07d74f', 'Bonk', 'huntsmans_cloak', 40, 1, '2000-01-01 00:00:00'),
   ('7f240161-582c-4680-9eb7-d7c70a6ab549', 'Ulga', 'War_Rager''s_Axe', 35, 0, '2000-01-01 00:00:00'),
   ('7f33ec0c-7a8c-4cb1-ab00-576ab00db30e', 'dark fire', 'Runic_Ravenbone_Gauntlets', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('7f54ccf5-bdb8-4943-9606-51e2b22c4ce2', 'tomte guard', 'Light_Blue_Enamel', 15, 0, '2000-01-01 00:00:00'),
   ('7f5a8042-d93c-41d1-8f80-8c5d3db0b56e', 'High Lord Athulf', '2_LCoC_Necklace', 20, 0, '2000-01-01 00:00:00'),
   ('7f5dd9de-ebb9-4008-9f06-3d90d53229c2', 'goblin apprentice', 'Silken_Hob_Hunter_Robe', 20, 0, '2000-01-01 00:00:00'),
@@ -3829,7 +3824,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('862d1df6-dbe0-4978-bcc1-9e8b9d7cf105', 'cursed spirit', 'Bone-handled_Claw', 20, 0, '2000-01-01 00:00:00'),
   ('8635e687-4471-4f8a-820c-ee33b3a14f23', 'ekyps gunstling', '2_CdC_Bow', 20, 0, '2000-01-01 00:00:00'),
   ('8655cf5f-f059-4b64-9b20-e883c39b12d8', 'Eraliwyr', 'necklace_of_the_elements', 15, 1, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('8656cc12-9071-4a95-a6c6-1146ee7f99be', 'mummy hag', 'Old_Noble''s_Helm', 35, 0, '2000-01-01 00:00:00'),
   ('865a3c3d-8bf6-49fa-b7d9-a77033e2b7a4', 'tylwyth teg huntress', 'Speedy_Cymric_Leather_Gloves', 20, 0, '2000-01-01 00:00:00'),
   ('865f0024-ecc6-40d0-a5dc-300881ebada8', 'vendo yowler', 'Troll-skin_Bracer', 20, 0, '2000-01-01 00:00:00'),
@@ -4030,7 +4025,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('8cbc69cf-7e6d-4650-9019-5bd398937d6b', 'tribune', 'Resplendent_Ring', 20, 0, '2000-01-01 00:00:00'),
   ('8cbef6f1-0939-4a20-afec-c0ad2991741c', 'lady grimalf', 'Snoflake_Woven_Cloak', 20, 0, '2000-01-01 00:00:00'),
   ('8cbf8ce3-170c-4597-86d4-df60ec9022d5', 'svartalf thrall', 'Brilliant_Weighted_Asterite_Runed_Staff', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('8ced618c-ed3a-45f7-9e83-6a140cb037ab', 'weewere', 'Shadow_Walkers_Great_Bow', 20, 0, '2000-01-01 00:00:00'),
   ('8cfbb2a3-8cb9-49a6-957f-239de28d0868', 'glimmer orist', 'Dealrach_Liathghorm_Spear', 20, 0, '2000-01-01 00:00:00'),
   ('8cfc961c-7855-4684-96bd-b9ccc872a6bd', 'townsman', 'bloodstainedhelm', 20, 0, '2000-01-01 00:00:00'),
@@ -4231,7 +4226,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('934f91ff-2341-42f0-8cc6-9b99797272ed', 'tomb sentry', 'Bone-handled_Hammer', 20, 0, '2000-01-01 00:00:00'),
   ('93520ade-4613-4d84-95b8-41a9a92c50d2', 'mora rider', 'Jeweled_Bracer', 20, 0, '2000-01-01 00:00:00'),
   ('9359bc9a-aec2-4f02-9bba-1d5bca85f0e1', 'megalithic terror', 'Leggings_of_the_Baleful_Dead', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('935ed89c-d2b3-4c25-bd63-165a4543a20a', 'danaoin priest', 'brilliantclergymansshield', 20, 0, '2000-01-01 00:00:00'),
   ('9360f315-c0b2-4323-938d-e373781ecba3', 'water sprite', 'Watershed_Boots', 35, 0, '2000-01-01 00:00:00'),
   ('93620998-de72-4f87-833e-6d5f3132ba81', 'rattling skeleton', 'Firesteel', 40, 0, '2000-01-01 00:00:00'),
@@ -4432,7 +4427,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99951552', 'echo of qebehsenuef', 'Qebehsenuefs_Leggings_of_Dread', 15, 0, '2000-01-01 00:00:00'),
   ('99951553', 'hydrar-trained shriller', 'Sleek_Slimy_Shriller_Belt', 15, 0, '2000-01-01 00:00:00'),
   ('99951554', 'queen kula', 'Barbed_Ice_Queen_Crown', 35, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99951555', 'taur guardian', 'Bane_of_Battler,_2_of_3', 15, 0, '2000-01-01 00:00:00'),
   ('99951556', 'mau', 'Mau_Mane_Hair', 15, 0, '2000-01-01 00:00:00'),
   ('99951557', 'darkfang', 'Darkfangs_Cracked_Helm', 15, 0, '2000-01-01 00:00:00'),
@@ -4633,7 +4628,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99951760', 'drakulv executioner', 'Flame_Wrought_Belt', 15, 0, '2000-01-01 00:00:00'),
   ('99951761', 'savage koalinith matriarch', 'Cloak_of_Misery', 15, 0, '2000-01-01 00:00:00'),
   ('99951762', 'gorf', 'Gorf''s_Linked_Collar', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99951763', 'gebbo', 'Gebbos_Bubble_Bauble', 15, 0, '2000-01-01 00:00:00'),
   ('99951764', 'maldahar the glimmer prince', 'Warshadow_Staff_of_the_Void', 5, 0, '2000-01-01 00:00:00'),
   ('99951765', 'fornfrusenen shard', 'Brittlebone_Vest', 15, 0, '2000-01-01 00:00:00'),
@@ -4834,7 +4829,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99951971', 'borjad', 'Borjads_Spear', 15, 0, '2000-01-01 00:00:00'),
   ('99951972', 'typhon', 'Duskwood_Flamespark_Staff', 15, 0, '2000-01-01 00:00:00'),
   ('99951973', 'lesser janni', 'Tribute_to_Adauron,_1_of_3', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99951974', 'avalonian apparition', 'Shadowwalker_Choker', 15, 0, '2000-01-01 00:00:00'),
   ('99951975', 'myling', 'Ancestral_Ring', 15, 0, '2000-01-01 00:00:00'),
   ('99951976', 'glimmer geist', 'Calignous_Shroud', 15, 0, '2000-01-01 00:00:00'),
@@ -5035,7 +5030,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99952179', 'chimera', 'Crystalized_Vest_of_Casuistry', 15, 0, '2000-01-01 00:00:00'),
   ('99952180', 'olmagion', 'Arcanium_Stone_Bone_Cleaver', 15, 0, '2000-01-01 00:00:00'),
   ('99952181', 'casta', 'Arcanium_Spear_of_Demise', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99952182', 'glimmer deathwatcher', 'Ancient_Pure_Mercury', 10, 0, '2000-01-01 00:00:00'),
   ('99952183', 'golestandt', 'Fallen_Soldier''s_Rage', 15, 0, '2000-01-01 00:00:00'),
   ('99952184', 'jomandur', 'Arcanium_Featherweight_Battle_Spear', 15, 0, '2000-01-01 00:00:00'),
@@ -5236,7 +5231,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99952389', 'naxos traveller', 'Adness_Letter,_3_of_3', 15, 0, '2000-01-01 00:00:00'),
   ('99952390', 'corryna', 'Spider_Silk_Choker', 15, 0, '2000-01-01 00:00:00'),
   ('99952391', 'golestandt', 'Fine_Steel_Long_Sword_Alb', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99952392', 'icelord agmundr', 'Tuscarian_Clan_Crown', 35, 0, '2000-01-01 00:00:00'),
   ('99952393', 'cyclops apostates', 'King_Kiron''s_Note,_3_of_3', 15, 0, '2000-01-01 00:00:00'),
   ('99952394', 'julesh', 'Cloak_of_Watchfulness', 15, 0, '2000-01-01 00:00:00'),
@@ -5437,7 +5432,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99952641', 'spirit of miner klin', 'Miner_Klins_Forgotten_Gem', 15, 0, '2000-01-01 00:00:00'),
   ('99952642', 'raving cabal leader', 'Otherworld_Espionage_Plated_Helm', 15, 0, '2000-01-01 00:00:00'),
   ('99952643', 'charn', 'Charn''s_Churlish_Sword', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99952644', 'tenebrious entity', 'Golden_Weapon_Enamel', 35, 0, '2000-01-01 00:00:00'),
   ('99952645', 'sobekite khu komo', 'Speedy_Jewel', 15, 0, '2000-01-01 00:00:00'),
   ('99952646', 'sunkaio', 'Duskwood_Cinder', 15, 0, '2000-01-01 00:00:00'),
@@ -5638,7 +5633,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99952855', 'eramai', 'Arcanium_Spiked_Flail_of_the_Zenith', 15, 0, '2000-01-01 00:00:00'),
   ('99952856', 'weno''iak the enlightened', 'Wenoiak_Belt', 15, 0, '2000-01-01 00:00:00'),
   ('99952857', 'lesser zephyr', 'Wind_Swept_Leaves', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99952858', 'precocious cniogcrag', 'Migthy_Spiked_Club', 15, 0, '2000-01-01 00:00:00'),
   ('99952859', 'ankhkare', 'Arcanium_Corroded_Sword', 15, 0, '2000-01-01 00:00:00'),
   ('99952860', 'vazul', 'Arcanium_Slag_Befouled_Leggings1', 15, 0, '2000-01-01 00:00:00'),
@@ -5839,7 +5834,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99953072', 'blackhand', 'Blackhands_Gorer', 15, 0, '2000-01-01 00:00:00'),
   ('99953073', 'drakulv executioner', 'Ancient_Lich_Tooth', 15, 0, '2000-01-01 00:00:00'),
   ('99953074', 'katorii', 'Katoriis_Soul_Ring', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99953075', 'skyros swiftfin', 'Healer''s_Notes,_3_of_3', 15, 0, '2000-01-01 00:00:00'),
   ('99953076', 'glimmer deathwatcher', '3_Shimmering_Burnished_Shanshee_Gloves', 15, 0, '2000-01-01 00:00:00'),
   ('99953077', 'antioos', 'Duskwood_Melodic_Flute1', 15, 0, '2000-01-01 00:00:00'),
@@ -6040,7 +6035,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99953284', 'vask', 'Drakoran_Skin_Whip', 10, 0, '2000-01-01 00:00:00'),
   ('99953285', 'the phoenix', 'Silksteel_Legs_of_the_Transcendent', 15, 0, '2000-01-01 00:00:00'),
   ('99953286', 'cursed one', 'Cursed_Crypt_Longbow', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99953287', 'shadow reaver', 'Arcanium_Hissing_Runed_Hauberk1', 15, 0, '2000-01-01 00:00:00'),
   ('99953288', 'draco', 'Silksteel_Astral_Robe_of_Virulence', 15, 0, '2000-01-01 00:00:00'),
   ('99953289', 'landrine', 'Duskwood_Desert_Bullhorn_Bow1', 15, 0, '2000-01-01 00:00:00'),
@@ -6241,7 +6236,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99953498', 'glug', 'Glugs_Trusty_Shield', 15, 0, '2000-01-01 00:00:00'),
   ('99953499', 'rassa', 'Arcanium_Golden_Shield2', 15, 0, '2000-01-01 00:00:00'),
   ('99953500', 'battler', 'Arcanium_Smoldering_Ember_Sleeves1', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99953501', 'glimmer kryl', 'Inntinn_Bioran', 15, 0, '2000-01-01 00:00:00'),
   ('99953502', 'cyclops agreus', 'Carved_Tablet,_2_of_3', 15, 0, '2000-01-01 00:00:00'),
   ('99953503', 'high astralist ehrmynoch', 'Astralist_Elemental_Robe', 15, 0, '2000-01-01 00:00:00'),
@@ -6442,7 +6437,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99953709', 'kierac the destroyer', 'Ravaging_Chaos_Boots', 15, 0, '2000-01-01 00:00:00'),
   ('99953710', 'norsob the annihilator', 'Radical_Annihilation_Gauntlets', 15, 0, '2000-01-01 00:00:00'),
   ('99953711', 'corrupt primal of water', 'Primal_Water_Crusher', 50, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99953712', 'olcasar tracker', 'respec_single', 5, 0, '2000-01-01 00:00:00'),
   ('99953713', 'olcasar geomancer', 'Shadowed_Blackthorn_Bracer', 50, 0, '2000-01-01 00:00:00'),
   ('99953715', 'olcasgean', 'Olcasgean_Bark', 50, 0, '2000-01-01 00:00:00'),
@@ -6643,7 +6638,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99953993', 'diver ray', 'Diver_Ray_Barb', 15, 0, '2000-01-01 00:00:00'),
   ('99953994', 'Maldagor the Glimmer Duke', 'Warshadow_Sleeves', 10, 0, '2000-01-01 00:00:00'),
   ('99953995', 'lios', 'Transient_Souls_Sword', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99953996', 'captain-commander leyn', 'Maleficent_Darkspire_Silvery_Vambraces', 15, 0, '2000-01-01 00:00:00'),
   ('99953997', 'hugi', 'Shimmering_Hoarfrost_Leggings', 15, 0, '2000-01-01 00:00:00'),
   ('99953998', 'High Lord Oro', 'DiamondSeal', 70, 0, '2000-01-01 00:00:00'),
@@ -6844,7 +6839,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99954199', 'bane of hope', 'Azure_Crown_of_Notes', 35, 0, '2000-01-01 00:00:00'),
   ('99954200', 'volurgon psytinel', 'Tartaros''_Gift,_2_of_3', 15, 0, '2000-01-01 00:00:00'),
   ('99954201', 'drakulv executioner', 'Ancient_Necrotic_Brain_Fluid', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99954202', 'lich lord sanguis', 'Staff_of_Matter_and_Body', 35, 0, '2000-01-01 00:00:00'),
   ('99954203', 'apologet nesnuir', 'Shimmering_Nesnuirs_Spiked_Axe', 15, 0, '2000-01-01 00:00:00'),
   ('99954204', 'jekeel', 'Jekeels_Staff_of_Focus', 15, 0, '2000-01-01 00:00:00'),
@@ -7045,7 +7040,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99954405', 'naxos tidal trooper', 'Egg_of_Youth,_Scroll_1_of_3', 15, 0, '2000-01-01 00:00:00'),
   ('99954406', 'aberta', 'Malevolent_Darkspire_Drum', 15, 0, '2000-01-01 00:00:00'),
   ('99954407', 'medusa', 'Silksteel_Petrified_Vest', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99954408', 'melos protector', 'Arbiter_Papers,_2_of_3', 15, 0, '2000-01-01 00:00:00'),
   ('99954409', 'glacier giant', 'Frigid_Glacier_Skin2', 15, 0, '2000-01-01 00:00:00'),
   ('99954410', 'behrooz the jinni', 'Arcanite_Aerial_Defender', 15, 0, '2000-01-01 00:00:00'),
@@ -7246,7 +7241,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99954619', 'dian', 'Malevolent_Darkspire_Mighty_Beads', 15, 0, '2000-01-01 00:00:00'),
   ('99954620', 'chimera', 'Silksteel_Vest_of_Aberrations', 15, 0, '2000-01-01 00:00:00'),
   ('99954621', 'armsmaster chenzira', 'Arcanium_Scaly_Block_Shield', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99954622', 'golestandt', 'Shimmering_Ircon_Bound_Chain_Sleeves', 15, 0, '2000-01-01 00:00:00'),
   ('99954623', 'smithy olivan', 'Hammer_of_the_Smith', 15, 0, '2000-01-01 00:00:00'),
   ('99954624', 'cyclops teuchester', 'A_Love_Story,_part_1_of_3', 15, 0, '2000-01-01 00:00:00'),
@@ -7447,7 +7442,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99954822', 'council nokkvi', 'Tuscarian_Nifl-tethered_Staff', 35, 0, '2000-01-01 00:00:00'),
   ('99954823', 'warlord dorinakka', 'Azure_Arcanium_Crusher', 35, 0, '2000-01-01 00:00:00'),
   ('99954824', 'medusa', 'Silksteel_Robe_of_Demise1', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99954825', 'grand summoner govannon', 'Summoners_Silken_Shawl1', 15, 0, '2000-01-01 00:00:00'),
   ('99954826', 'norag', 'Bright_Shiny_Tooth_of_Norag', 15, 0, '2000-01-01 00:00:00'),
   ('99954827', 'feuding shaitan', 'Regarding_Shades,_2_of_3', 15, 0, '2000-01-01 00:00:00'),
@@ -7648,7 +7643,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99955026', 'khrin', 'Khrin''s_Claw', 15, 0, '2000-01-01 00:00:00'),
   ('99955027', 'crahghk thundermaw', 'Queen''s_Bracer_of_Extension', 15, 0, '2000-01-01 00:00:00'),
   ('99955028', 'lich lord ilron', 'Sable_Warlocks_Gloves', 35, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99955029', 'chan', 'Tempered_Centaur-Hide_Sleeves', 15, 0, '2000-01-01 00:00:00'),
   ('99955030', 'precocious cniogcrag', 'Edgebender_Spiked_Club', 15, 0, '2000-01-01 00:00:00'),
   ('99955031', 'moktar', 'Bence''s_Letter,_3_of_3', 15, 0, '2000-01-01 00:00:00'),
@@ -7849,7 +7844,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99955235', 'orey-eyed oghamist', 'Orey_Eyed_Healthy_Ring', 15, 0, '2000-01-01 00:00:00'),
   ('99955236', 'warlord dorinakka', 'Livid_Deceiver''s_Gauntlets', 35, 0, '2000-01-01 00:00:00'),
   ('99955237', 'sunkaio', 'Willful_Briny_Coral_Gloves', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99955238', 'melancholy fairy queen', 'Cloak_of_Delusions', 5, 0, '2000-01-01 00:00:00'),
   ('99955239', 'nitaleg', 'Slime_Studded_Protector', 15, 0, '2000-01-01 00:00:00'),
   ('99955240', 'unok', 'Shimmering_Unoks_Chain_Leggings', 15, 0, '2000-01-01 00:00:00'),
@@ -8050,7 +8045,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99955435', 'durval', 'Shimmering_Durvals_Staff_of_Blindness', 15, 0, '2000-01-01 00:00:00'),
   ('99955436', 'sobekite khem komo', 'Staff_of_God,_Parchment_3_of_3', 15, 0, '2000-01-01 00:00:00'),
   ('99955437', 'shadow in the trees', 'Pelt_of_Shadow_in_the_Trees', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99955438', 'colossal', 'Exhaustive_Energybender_Blighted_Desert_Boots', 15, 0, '2000-01-01 00:00:00'),
   ('99955439', 'guardian earthmender', 'Reactive_Harm_Turning_Tincture', 15, 0, '2000-01-01 00:00:00'),
   ('99955440', 'the phoenix', 'Arcanite_Legs_of_the_Vanquisher', 15, 0, '2000-01-01 00:00:00'),
@@ -8251,7 +8246,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99955636', 'sadri the traitor', 'Arcanite_Traitors_Scythe', 15, 0, '2000-01-01 00:00:00'),
   ('99955637', 'hallea', 'Arcanium_Neriad_Sharkskin_Vest1', 15, 0, '2000-01-01 00:00:00'),
   ('99955638', 'mordred', 'Maleficent_Darkspire_Barbed_Leggings', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99955639', 'glimmer venlar', 'Shimmering_Heroic_Burnished_Shanshee_Coif', 15, 0, '2000-01-01 00:00:00'),
   ('99955640', 'myling', 'Willful_Jewel', 15, 0, '2000-01-01 00:00:00'),
   ('99955641', 'maldahar the glimmer prince', '3_Shimmering_Burnished_Shanshee_Gloves', 15, 0, '2000-01-01 00:00:00'),
@@ -8452,7 +8447,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99955840', 'skyros dreadnaught', 'Arcanium_Skyross_Fork', 15, 0, '2000-01-01 00:00:00'),
   ('99955841', 'julesh', 'Juleshs_Dancing_Lute', 15, 0, '2000-01-01 00:00:00'),
   ('99955842', 'magi nhuli', 'Malevolent_Darkspire_Bow', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99955843', 'setian', 'Juleas_Story,_part_2_of_3', 15, 0, '2000-01-01 00:00:00'),
   ('99955844', 'diminished fade', 'Tattered_Rawhide_Helm', 15, 0, '2000-01-01 00:00:00'),
   ('99955845', 'the high earth caller', 'Lordly_Otherworld_Jewel', 15, 0, '2000-01-01 00:00:00'),
@@ -8653,7 +8648,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99956044', 'shraogh', 'Arcanite_Shraoghs_Bones_Boots', 15, 0, '2000-01-01 00:00:00'),
   ('99956045', 'tendril weed', 'Edgebender_Harvest_Scythe', 15, 0, '2000-01-01 00:00:00'),
   ('99956046', 'taur arieos', 'Mighty_Runed_Parrying_Dagger', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99956047', 'shraogh', 'Silksteel_Shraoghs_Skin_Boots2', 15, 0, '2000-01-01 00:00:00'),
   ('99956048', 'myling', 'Matterbender_Pendant', 15, 0, '2000-01-01 00:00:00'),
   ('99956049', 'sobekhotep', 'Arcanium_Sobekhoteps_Sleeves1', 15, 0, '2000-01-01 00:00:00'),
@@ -8854,7 +8849,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99956250', 'nosdoden', 'Speedy_Starkaskood_Jerkin', 15, 0, '2000-01-01 00:00:00'),
   ('99956251', 'pixie imp', 'TatteredWoolenQuiltedCap', 15, 0, '2000-01-01 00:00:00'),
   ('99956252', 'kertom', 'Arcanium_Great_Sword_of_the_Gale', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99956253', 'jotun outcast', 'Shimmering_Runic_manslayer', 15, 0, '2000-01-01 00:00:00'),
   ('99956254', 'ammut', 'Arcanite_Shield_of_Silent_Oblivion', 15, 0, '2000-01-01 00:00:00'),
   ('99956255', 'lydsyg', 'Skuggande_Ephemeral_Wing', 15, 0, '2000-01-01 00:00:00'),
@@ -9055,7 +9050,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99956455', 'gangrenous mass', 'Decimator_Jewel', 15, 0, '2000-01-01 00:00:00'),
   ('99956457', 'Cuuldurach the Glimmer King', 'Cloth_Cap_Hib', 25, 0, '2000-01-01 00:00:00'),
   ('99956459', 'Cuuldurach the Glimmer King', '3_Destroyer_of_Dreams', 25, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99956460', 'council hord', 'respec_single', 5, 0, '2000-01-01 00:00:00'),
   ('99956461', 'Cuuldurach the Glimmer King', '3_Shimmering_Iridescent_Sylph_Leggings', 25, 0, '2000-01-01 00:00:00'),
   ('99956462', 'Maldagor the Glimmer Duke', 'Warshadow_Leggings', 10, 0, '2000-01-01 00:00:00'),
@@ -9256,7 +9251,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99956663', 'lesser zephyr', 'Glowing_Zephyr_Gem', 15, 0, '2000-01-01 00:00:00'),
   ('99956664', 'blood mage', 'Cobalt_Weapon_Enamel', 35, 0, '2000-01-01 00:00:00'),
   ('99956665', 'iggy', 'Deep_Forge_Flute', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99956666', 'yellowed skeleton', 'Lustrous_Bladeblocker_Bastard_Sword', 15, 0, '2000-01-01 00:00:00'),
   ('99956667', 'martikhOra''s', 'Duskwood_Staff_of_Dissolution', 15, 0, '2000-01-01 00:00:00'),
   ('99956668', 'anubite zetzaui', 'Spear''s_History,_part_2_of_3', 15, 0, '2000-01-01 00:00:00'),
@@ -9457,7 +9452,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99956868', 'granite giant outlooker', 'Shimmering_Bow_of_the_Stonewatch', 15, 0, '2000-01-01 00:00:00'),
   ('99956869', 'huleros champion', 'Huleros_Champion_Remains', 15, 0, '2000-01-01 00:00:00'),
   ('99956870', 'fornfrusenen shard', 'Lord_of_Niflheim_Staff', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99956871', 'cyclops apostates', 'A_Love_Story,_part_2_of_3', 15, 0, '2000-01-01 00:00:00'),
   ('99956872', 'Raumarik Revenant', '2_sesofr_staff', 15, 0, '2000-01-01 00:00:00'),
   ('99956873', 'talvor', 'Talvors_Staff_of_Summoning', 15, 0, '2000-01-01 00:00:00'),
@@ -9658,7 +9653,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99957073', 'hurionthex', 'Shadowed_Blackthorn_Mace', 15, 0, '2000-01-01 00:00:00'),
   ('99957074', 'sunkaio', 'Duskwood_Cinder1', 15, 0, '2000-01-01 00:00:00'),
   ('99957075', 'sobekite khu rager', 'Spear_of_kings,_piece_3_of_3', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99957076', 'corrupt primal of earth', 'Primal_Great_Shard', 15, 0, '2000-01-01 00:00:00'),
   ('99957077', 'queen moriath', 'Moriaths_Jaded_Necklace', 15, 0, '2000-01-01 00:00:00'),
   ('99957078', 'blue lady', 'Cerulescent_Discord_Hammer', 15, 0, '2000-01-01 00:00:00'),
@@ -9859,7 +9854,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99957279', 'sobekite pulverizer', 'Dianna_Letter,_3_of_3', 15, 0, '2000-01-01 00:00:00'),
   ('99957280', 'sobekite khu komo', 'Speedy_Runed_Coral_Hauberk1', 15, 0, '2000-01-01 00:00:00'),
   ('99957281', 'eramai', 'Arcanium_Trident_of_the_Zenith', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99957282', 'strangler', 'Worn_Strangler_Cord', 15, 0, '2000-01-01 00:00:00'),
   ('99957283', 'hrimthursa icetouch', 'Dragon-shadow_Hammer', 35, 0, '2000-01-01 00:00:00'),
   ('99957284', 'aithos', 'Arcanium_Fiery_Cleaver', 15, 0, '2000-01-01 00:00:00'),
@@ -10060,7 +10055,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99957482', 'sunkaio', 'Duskwood_Ember2', 15, 0, '2000-01-01 00:00:00'),
   ('99957483', 'medusa', 'Arcanium_Vest_of_Demise', 15, 0, '2000-01-01 00:00:00'),
   ('99957484', 'sebak', 'Arcanium_Desert_Venom_Hammer', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99957485', 'famine', 'Blackthorn_Ring', 15, 0, '2000-01-01 00:00:00'),
   ('99957486', 'jolock the hermit', 'Circlet_of_the_Desolate_Kobold', 15, 0, '2000-01-01 00:00:00'),
   ('99957487', 'cyclops apostates', 'Carved_Tablet,_1_of_3', 15, 0, '2000-01-01 00:00:00'),
@@ -10261,7 +10256,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99957688', 'anathemic salamander', 'Duskwood_Salamander_Skin_Drum1', 15, 0, '2000-01-01 00:00:00'),
   ('99957689', 'dagar', 'Shimmering_Dagars_Composite_Bow', 15, 0, '2000-01-01 00:00:00'),
   ('99957690', 'knight''sguard valen', 'Meandering_Dreams_Mace', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99957691', 'slaireff', 'Chain_Sleeves_of_the_Shackled_Soul', 15, 0, '2000-01-01 00:00:00'),
   ('99957692', 'hagbui herald', '2_SDS_Cloak', 15, 0, '2000-01-01 00:00:00'),
   ('99957693', 'trapmaster hoglas', 'Villianous_Darkspire_Velvet_Boots', 15, 0, '2000-01-01 00:00:00'),
@@ -10462,7 +10457,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99957894', 'avriel guardian', 'Arcanite_Needle', 15, 0, '2000-01-01 00:00:00'),
   ('99957895', 'megaloceros fawn', 'Megaloceros_Fawn_Claw', 15, 0, '2000-01-01 00:00:00'),
   ('99957896', 'sobekite wizard', 'Dianna_Letter,_1_of_3', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99957897', 'taur skopos', 'Story_of_Malice,_1_of_3', 15, 0, '2000-01-01 00:00:00'),
   ('99957898', 'setian desert scout', 'Nailah''s_Diary,_page_3_of_3', 10, 0, '2000-01-01 00:00:00'),
   ('99957900', 'skyros sea mage', 'Oglidarshs_Scrolls,_3_of_3', 15, 0, '2000-01-01 00:00:00'),
@@ -10663,7 +10658,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99958097', 'uaimh lairmaster', 'Verdant_Sword', 15, 0, '2000-01-01 00:00:00'),
   ('99958098', 'fist of the shar', 'Battle-born_Afterlife_Gloves', 15, 0, '2000-01-01 00:00:00'),
   ('99958099', 'mordred', 'Maleficent_Darkspire_Barbed_Vest', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99958100', 'naxos skulker', 'Bellona''s_Diary,_page_3_of_3', 15, 0, '2000-01-01 00:00:00'),
   ('99958101', 'drakoran leech', 'Drakoran_Leech_Hand', 15, 0, '2000-01-01 00:00:00'),
   ('99958102', 'magi nhuli', 'Villianous_Darkspire_Great_Sword', 15, 0, '2000-01-01 00:00:00'),
@@ -10864,7 +10859,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99958299', 'chisisi', 'Bold_Gladiator_Cloak', 15, 0, '2000-01-01 00:00:00'),
   ('99958300', 'pookie', 'Cloak_of_Concealment', 10, 0, '2000-01-01 00:00:00'),
   ('99958301', 'wretch of winter', '2_iwh_1hhammer', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99958302', 'lord tholos', 'Arcanium_Lightning_Etched_Studded_Vest', 15, 0, '2000-01-01 00:00:00'),
   ('99958303', 'maldahar the glimmer prince', 'Fiosrach_Sgath_Bracer', 15, 0, '2000-01-01 00:00:00'),
   ('99958304', 'council otrygg', 'respec_single', 5, 0, '2000-01-01 00:00:00'),
@@ -11065,7 +11060,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('99958499', 'Beliathan', 'Beliathans_Cleaver', 2, 0, '2000-01-01 00:00:00'),
   ('99958500', 'Beliathan', 'Beliathans_Revenge', 2, 0, '2000-01-01 00:00:00'),
   ('99958502', 'Beliathan', 'Wormskin_Wrap', 2, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('99958503', 'Beliathan', 'Wormskin_Wrap1', 2, 0, '2000-01-01 00:00:00'),
   ('99958504', 'Beliathan', 'Wormskin_Wrap2', 2, 0, '2000-01-01 00:00:00'),
   ('99958505', 'Prince Abdin', 'Brimstone_Shield_of_Chaos2', 2, 0, '2000-01-01 00:00:00'),
@@ -11266,7 +11261,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('9b13dedf-8efe-4de4-848b-b3c87442ff52', 'cave trow trollkarl', 'Runic_Bewitched_Ember', 20, 0, '2000-01-01 00:00:00'),
   ('9b185cbf-707c-48ff-a6cc-f0a2eb3ab5c2', 'svartalf thrall', '2_SFSS_Jerkin', 20, 0, '2000-01-01 00:00:00'),
   ('9b1de782-6974-4201-81ca-6858ae97449a', 'desukva', 'Shimmering_Blue_Diamond_Cursing_Staff', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('9b25ee77-81b3-4e0f-95bc-1202470546da', 'soot harvester', 'Refined_Silver_Necklace', 20, 0, '2000-01-01 00:00:00'),
   ('9b27c773-f9fb-4548-872a-2b885a0a5e18', 'nodin', 'Runic_Giant-bone_Crown', 20, 0, '2000-01-01 00:00:00'),
   ('9b29a85d-510a-4580-a91b-def18f37a5c7', 'arachite grymherre', 'Svartalf_Crafted_Ring', 15, 1, '2018-01-30 19:49:41'),
@@ -11467,7 +11462,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('a16c0cb3-8883-4716-987d-2d81c11ccd53', 'keltoi spiritualist', 'Insurgent''s_Sleeves', 20, 0, '2000-01-01 00:00:00'),
   ('a16cf2a1-1a5b-4016-b2db-e2a706e9eba5', 'Haunting Gloom', 'OldSledge', 40, 1, '2019-04-12 21:49:38'),
   ('a1700ba6-4887-4aa1-9a36-0846551b272b', 'cave trow trollkarl', '2_SRE_Staff', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('a1717fbf-f136-4663-a252-a010bf097f67', 'wolfaur pragmatic', '2_VSoDE_Staff', 20, 0, '2000-01-01 00:00:00'),
   ('a171d7cb-563f-4a33-9dbf-1c4955d24642', 'Lord Gifttand', '2_GnG_Coif', 20, 0, '2000-01-01 00:00:00'),
   ('a172496b-9085-4da5-9815-19caff5a0ad0', 'wind ghoul', 'Sturdy_Leather_Belt', 40, 0, '2000-01-01 00:00:00'),
@@ -11668,7 +11663,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('a8189936-def1-4bb7-b4b9-de20204b59cb', 'priest thaxtix', 'Lashed_Web_Hauberk', 20, 0, '2000-01-01 00:00:00'),
   ('a81b1cd8-5228-46f2-8c4f-7642bba09271', 'glimmer kelegur', 'Mystical_Moonglade_Boots', 20, 0, '2000-01-01 00:00:00'),
   ('a81bdf6e-a133-47ab-96e7-6a38220c38f9', 'Earl Zh''alzhak', 'Perfected Armor Pattern', 10, 1, '2018-01-14 18:06:35');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('a81c9d95-d2f7-4445-9436-fd7ed41d4df5', 'goblin watcher', 'Goblin-forged_Chain_of_Strength', 20, 0, '2000-01-01 00:00:00'),
   ('a825b361-7d4f-47f8-9e03-cdad018179b1', 'shepherd', 'deathassumptionnecklace', 20, 0, '2000-01-01 00:00:00'),
   ('a83a0783-93ca-4fab-a9a7-0645d9b33eb0', 'tylwyth teg huntress', 'Luminous_Whirling_Short_Sword', 20, 0, '2000-01-01 00:00:00'),
@@ -11869,7 +11864,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('ae3fb308-bec0-49b8-b256-55cd953e34e6', 'deeplurk manslayer', 'Shimmering_Twilight_Soul_Searer', 20, 0, '2000-01-01 00:00:00'),
   ('ae5b9ee4-5d9c-49ce-a6c0-344883026061', 'werewolf churl', '2_VSoSUM_Staff', 20, 0, '2000-01-01 00:00:00'),
   ('ae5cd4bd-b1da-4688-861b-bd8a6140de25', 'collared gemgetter', 'Loyalist''s_Scalemail_Helm', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('ae79b3cb-92db-4892-8d67-60b5e8fca96a', 'river beetle', 'Long_Thorned_Tree_Knot', 20, 0, '2000-01-01 00:00:00'),
   ('ae7e1589-5568-42a2-88bd-3bcf5052f5e4', 'small skeletal centurion', 'BladeOfEthericMist', 20, 0, '2000-01-01 00:00:00'),
   ('ae876619-ff79-44c6-994e-b1c33c312dd8', 'bounty hunter', 'Studded_Furlined_Arms', 20, 0, '2000-01-01 00:00:00'),
@@ -12070,7 +12065,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('b213c8f5-9c68-4bb4-b339-18cbea36c9ab', 'arawnite shamaness', 'Shining_Arawnite_Deathmail', 15, 1, '2018-02-01 01:20:51'),
   ('b21646a5-ae03-4adc-b519-e9f62f7305ed', 'fear dearc', 'Voidbound_Focus_Invoker_Staff', 20, 0, '2000-01-01 00:00:00'),
   ('b224534f-1992-460d-a4aa-ea00b16f0d14', 'banshee', 'Ancient_Mirror', 20, 2, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('b23816c7-54fe-4285-bb44-3e33ee4b2cdd', 'Eraliwyr', 'mentalist_belt', 15, 1, '2000-01-01 00:00:00'),
   ('b245b19b-b5ca-486e-9438-2a20d7faf2d9', 'ellyll windchaser', 'Ellyll_Sword', 20, 0, '2000-01-01 00:00:00'),
   ('b24626246', 'large skeleton', 'FencersRapier', 40, 0, '2000-01-01 00:00:00'),
@@ -12271,7 +12266,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('b8358b76-21f0-40d3-9a48-179aa749cd87', 'arachite vaktn', 'Svartalf_Crafted_Ring', 15, 1, '2018-02-01 00:45:08'),
   ('b83c24c8-d291-4b7d-ae76-a92b6707ae10', 'pookha', 'Robes_of_Regalia', 20, 0, '2000-01-01 00:00:00'),
   ('b840e0d8-b30d-4237-80fa-53ce4ebe8215', 'weewere', 'Bracer_of_the_Triumvirate', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('b84c701a-19d7-4aaa-bc07-8cee62d6e800', 'undead retainer', 'Faded_Leggings_of_the_Dejected', 20, 0, '2000-01-01 00:00:00'),
   ('b867fdae-3062-4c44-aa5c-5c2f02aedb13', 'soul harvester', 'Chrome_Diopside', 20, 0, '2000-01-01 00:00:00'),
   ('b86ba043-d966-4a02-9441-f6dc5e26558f', 'goblin imperator', 'Woebegone_Miner_Boots', 20, 0, '2000-01-01 00:00:00'),
@@ -12472,7 +12467,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('bdf54d23-2e01-4e5c-a5c3-4e81a32adb15', 'clay jotun runner', 'Runed_Hollow_Clay_Jerkin', 20, 0, '2000-01-01 00:00:00'),
   ('bdfff62e-5ac9-4fce-bb6f-888da51935ee', 'mora dancer', 'Gold_Stitched_Pants', 20, 0, '2000-01-01 00:00:00'),
   ('be0374a4-e79a-4b26-a128-3360a1241d79', 'quicksand', 'JoylessAbsolution', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('be08f27b-8e2d-4145-a3f7-6d182db5c5e9', 'Danaoin farmer', 'mangusbattlestaff', 20, 0, '2000-01-01 00:00:00'),
   ('be0b102d-0fea-4993-8fc4-7c0f090f4f45', 'river ant', 'Ring_of_Surefooting', 40, 0, '2000-01-01 00:00:00'),
   ('be125fbd-c707-452b-8600-cb9310a27f6a', 'forest giant', 'Bright_Heatbender_Rapier', 20, 0, '2000-01-01 00:00:00'),
@@ -12673,7 +12668,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('c392ec66-1b71-4cd2-8bfe-6af964846f00', 'sacrificial soul', 'Bracer_of_Shaved_Bone', 20, 0, '2000-01-01 00:00:00'),
   ('c39e2a9c-8ddf-4f6b-8e66-a997ea641805', 'abysmal', 'Shimmering_Imbued_Unseelie_Leggings', 20, 0, '2000-01-01 00:00:00'),
   ('c3aca2ca-2b6c-4fd1-85d0-0d66368ed82c', 'arachite krigare', 'Dull_Asterite_Sword', 15, 1, '2018-01-31 11:33:58');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('c3c31d71-f3c3-4ee9-b2b3-7dff8187f229', 'dramacus', 'Earthen_Woven_Root_Gloves', 20, 0, '2000-01-01 00:00:00'),
   ('c3cce5a7-7eeb-4ff6-94df-cf8ad2a8a9a9', 'arnulv', 'Wulfen_Night_Fang', 20, 0, '2000-01-01 00:00:00'),
   ('c3e18689-32fb-48b1-901e-5e5e1c596e43', 'coerced groover', 'Ghostly_Truesilver_Phantom_Boots', 20, 0, '2000-01-01 00:00:00'),
@@ -12874,7 +12869,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('cac89496-c8a2-400a-bcf5-f25c62e4d06b', 'muryan', 'PittedStaffOfTheBlazingInferno', 20, 0, '2000-01-01 00:00:00'),
   ('cacae58a-8492-4cbf-b19d-62efbe0ecab3', 'brownie rover', 'PulsingRuby', 35, 0, '2000-01-01 00:00:00'),
   ('cad95bb7-f019-4107-90c4-8ba81e0141ea', 'pooka', 'Eagle_Talon_Amulet', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('cad9a38b-943f-44a7-b7ad-8bb131875d2d', 'Chthonic Knight Haag', 'DiamondSeal', 100, 5, '2018-01-26 22:45:59'),
   ('cadc3e1c-5c43-49ae-9747-36446b446dbe', 'savage wyvern', '2_ibb_belt', 20, 0, '2000-01-01 00:00:00'),
   ('cae92850-a6d7-4536-8b9f-f925a1ce5315', 'Danin', '2_RS_Hauberk', 20, 0, '2000-01-01 00:00:00'),
@@ -13075,7 +13070,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('d0cd347a-f06d-48b6-8222-597f008c68a3', 'ekyps gunstling', 'Braided_Darksteel_Leggings', 20, 0, '2000-01-01 00:00:00'),
   ('d0cd72ed-3900-40ea-a0a8-197684df1f05', 'arachite shadowslinker', 'Svartalf_Crafted_Necklace', 15, 1, '2018-01-31 17:17:06'),
   ('d0cf6483-c8eb-483e-a807-5608c43a4001', 'throatripper', 'Hoarde_Hammer', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('d0d92e7d-e603-4ebc-bbee-ce3afeb14694', 'aughisky', 'Patch_of_Aughisky_Hide', 20, 0, '2000-01-01 00:00:00'),
   ('d0e25d15-1eae-4b43-9322-0bc917e4c0ab', 'celtic lich', 'Gauntlets_of_the_Baleful_Dead', 20, 0, '2000-01-01 00:00:00'),
   ('d0e82fe8-7a8e-443f-9702-1d1159702946', 'dragonsworn wizard', 'broken_dragonsworn_weapons', 25, 0, '2000-01-01 00:00:00'),
@@ -13276,7 +13271,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('d6b7a705-6ad4-4cbf-b419-dadeb2b0d783', 'clay jotun guard', 'Runed_Hollow_Clay_Leggings', 20, 0, '2000-01-01 00:00:00'),
   ('d6ca426a-0651-49a5-ae66-e7786a835cb3', 'burr', 'Drakulv_Mightcaller', 20, 0, '2000-01-01 00:00:00'),
   ('d6d72a55-6a4b-4a64-8ffc-336ed5aff403', 'Danaoin farmer', 'cloakoftheseveredsoul', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('d6d959bf-40b4-44ac-b68b-f971cdb752be', 'ekyps gunstling', 'Twisted_Darksteel_Ring', 20, 0, '2000-01-01 00:00:00'),
   ('d6dd93ba-a3fe-4fa9-90d4-b47b9b91b778', 'timberland badger', 'Badger_Stomach', 20, 0, '2000-01-01 00:00:00'),
   ('d6de65ae-1d96-42c0-a0e7-c91c2a39d5f2', 'tomb creeper', 'Summoned_Jewel_New', 35, 0, '2000-01-01 00:00:00'),
@@ -13477,7 +13472,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('db8e360d-d94b-43e9-8ef0-3317c7405d71', 'kez', 'Shimmering_Feather_Light_Granite_Hammer', 20, 0, '2000-01-01 00:00:00'),
   ('db91bae1-c42c-4584-bcd5-3c2dd8ec79f5', 'Duke Harboris', 'Perfected Armor Pattern', 80, 1, '2018-01-26 22:51:53'),
   ('db9c22c6-3a1c-487f-a45e-1f08b061e915', 'draugr warrior', 'Bone-handled_Claw', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('db9c9808-4ba8-454c-86a2-2c977647dd5c', 'werewolf scruff', 'Lycanthropic_Necklace', 20, 0, '2000-01-01 00:00:00'),
   ('dba32c66-d0eb-4f63-9900-8616f64def36', 'pit spraggon', 'Dried_Molded_Scale_Boots', 20, 0, '2000-01-01 00:00:00'),
   ('dbabf90d-a949-4a5b-a145-2da31ee35d46', 'granite giant gatherer', 'Flesh_Stretched_Riddle_Staff', 20, 0, '2000-01-01 00:00:00'),
@@ -13678,7 +13673,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('e215e998-2280-48af-b998-7a38d243e759', 'decaying tomb raider', 'Cloak_of_the_Blackheart', 20, 0, '2000-01-01 00:00:00'),
   ('e21c757a-9f78-43b4-9b9f-3ce7e7f21567', 'ghoul footman', 'Ghoul_Knight_Helm', 20, 0, '2000-01-01 00:00:00'),
   ('e21fda55-edeb-4ebb-89e1-5a284f73f65d', 'juliy the jester', 'Juliys_Blade', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('e221784f-cff1-4f44-9db5-2fb2abfed4c8', 'wood-eater soldier', 'Ring_of_Surefooting', 40, 0, '2000-01-01 00:00:00'),
   ('e2270747-0604-43bd-98dc-3f13b8dccd5c', 'frit', '3_Worn_Jewel_Pierced_Gloves', 20, 0, '2000-01-01 00:00:00'),
   ('e238a228-ba61-4ab9-ad59-22096c63adfb', 'abysmal', 'Shimmering_Bladed_Guardian_Vest', 20, 0, '2000-01-01 00:00:00'),
@@ -13879,7 +13874,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('e7e7b5a9-a9cb-4ce3-82ff-68e5baf85f61', 'duegar tjuv', '2_SFSS_Gloves', 20, 0, '2000-01-01 00:00:00'),
   ('e7f24956-b91e-404d-8ce5-70546a8bb3da', 'weewere', 'Small_Heatstone_Protector', 20, 0, '2000-01-01 00:00:00'),
   ('e80152d7-f2cf-4153-902d-94dd1ab0a37d', 'spindel silkster', '2_SHC_Bracer', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('e81a54a3-cf89-436f-a7f7-2138204b2a78', 'greater zephyr', 'Eluvium_Belt', 20, 0, '2000-01-01 00:00:00'),
   ('e820bbc0-4380-4ccc-85f2-3e520a6b6d22', 'puny skeleton', 'TatteredRawhideLeatherSleeves', 40, 0, '2000-01-01 00:00:00'),
   ('e820e284-314d-4156-b17c-9eb961778f80', 'empyrean elder', 'Elder''s_Staff_of_Thought', 20, 0, '2000-01-01 00:00:00'),
@@ -14080,7 +14075,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('ee58f1a4-9ff5-42ac-83c0-d66994d48486', 'pawper', 'Bear_Mask', 20, 0, '2000-01-01 00:00:00'),
   ('ee642771-1f95-4211-8a38-e1170c8ff255', 'drowned soul', 'Tattered_Woolen_Padded_Sleeves', 20, 0, '2000-01-01 00:00:00'),
   ('ee6c4bb6-13b9-4e0e-8e85-9e67d75fa27a', 'rat boy', 'Woolen_Torn_Boots', 40, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('ee6d3554-41d8-40a1-9357-ee4fa9db44f1', 'farmer', 'twistedbracerofpain', 20, 0, '2000-01-01 00:00:00'),
   ('ee753157-424b-4bab-b17a-d84d0e29d702', 'forgotten promise', 'Hauberk_of_the_Forlorn', 40, 0, '2000-01-01 00:00:00'),
   ('ee7c8c00-5538-4676-9335-ce92823cec84', 'tomte zealot', 'Bright_Mephitic_Leather_Sleeves', 20, 0, '2000-01-01 00:00:00'),
@@ -14281,7 +14276,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('f4074d7f-1cd9-43a1-a354-a4771154b31a', 'undead filidh', 'Gornax_Bracers', 40, 0, '2000-01-01 00:00:00'),
   ('f40a4d1a-b91e-4c9b-b0e8-e73d991a9748', 'geirolf', 'Wulfen_Luminary_Hauberk', 20, 0, '2000-01-01 00:00:00'),
   ('f42d1e37-0a18-4b83-a3d2-baf97513cd86', 'wicked cythraul', 'Magus_Battlestaff', 15, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('f42d3bfe-e6ff-42df-9b7a-48075dac9f9f', 'cyhraeth', 'Ancient_Pure_Mercury', 15, 2, '2000-01-01 00:00:00'),
   ('f42edc4f-6dc6-4bcb-9d18-066518a51803', 'malevolent disciple', 'BrightForestRunnersBoots', 35, 0, '2000-01-01 00:00:00'),
   ('f440a3d1-2e42-4fd7-a85b-4e7e8ac4b364', 'shepherd', 'staffofdeliverance', 20, 0, '2000-01-01 00:00:00'),
@@ -14482,7 +14477,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('f9b1994c-3791-4fe2-9f30-7e36dbef3b5d', 'drakulv protector', 'Shimmering_Golden_Alloy_Bastard_Sword', 20, 0, '2000-01-01 00:00:00'),
   ('f9b3bbc1-9dff-4081-89fd-5c2a36866c6b', 'murkman', 'Lavish_Necklace', 20, 0, '2000-01-01 00:00:00'),
   ('f9bbc501-5882-4115-a4dd-01c86d4c2378', 'megalith wight', 'Lute_of_Haunting_Melody', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('f9bcbec0-fd69-4851-a32e-6fe88555e874', 'ellyll champion', 'Ellyll_Lute', 20, 0, '2000-01-01 00:00:00'),
   ('f9c99697-01b3-42c2-916c-7743d8a09d70', 'glimmer ardent', 'Entwined_Silken_Strand', 20, 0, '2000-01-01 00:00:00'),
   ('f9ca7c07-b126-4f15-9859-8445a07a975f', 'pygmy goblin', 'bandedcoralLeggings', 20, 0, '2000-01-01 00:00:00'),
@@ -14683,7 +14678,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('ff74374e-5da6-4d22-8afc-b97e25b22c5f', 'keltoi novitiate', 'Dusk-walker''s_Hauberk', 20, 0, '2000-01-01 00:00:00'),
   ('ff95669d-ddb8-4155-aa61-47b636d60cb7', 'ghostly midgard invader', 'Fortifying_Spiked_Wreath', 20, 0, '2000-01-01 00:00:00'),
   ('ff9864fc-3988-43ca-a0fd-8bbfa48c669d', 'tomte guard', 'Valorbound_Spear', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('ffa6ee3d-8f92-41ec-9948-3031d052ab5a', 'huldu outcast', 'Tattered_Rawhide_Mjuklaedar_Gloves', 40, 0, '2000-01-01 00:00:00'),
   ('ffadaa35-bfdd-4c08-be3c-2d513fb2193c', 'abysmal', 'Sable_Drakescale_Leggings', 20, 0, '2000-01-01 00:00:00'),
   ('ffb374f4-48e7-4cfc-84e5-07bb3f4c4563', 'danaoin fisherman', 'Ancient_Crushed_Focus_Stone', 20, 2, '2000-01-01 00:00:00'),
@@ -14884,7 +14879,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('knottedwoodring', 'hamadryad', 'Knotted_Wood_Ring', 20, 0, '2000-01-01 00:00:00'),
   ('LA_MB', 'legendary afanc', 'Malevolent_Breastplate', 20, 0, '2000-01-01 00:00:00'),
   ('lbsl-vix', 'Vixitr', 'Lustrous_Braided_Silksteel_Leggings', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('legs-forlorn-gloom', 'haunting gloom', 'Leggings_of_the_Forlorn', 40, 0, '2000-01-01 00:00:00'),
   ('Ljoridkorith_Bloodbound_Book', 'Ljoridkorith', 'Bloodbound_Book', 25, 1, '2000-01-01 00:00:00'),
   ('Ljoridkorith_Flame_Wrought_Cloak', 'Ljoridkorith', 'Flame_Wrought_Cloak', 25, 1, '2000-01-01 00:00:00'),
@@ -15085,7 +15080,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('tpp-cutthroat', 'tomte cutthroat', 'Tomte_Padded_Pants', 40, 0, '2000-01-01 00:00:00'),
   ('tpp-shaman', 'tomte shaman', 'Tomte_Padded_Pants', 40, 0, '2000-01-01 00:00:00'),
   ('Trip_String', 'Svartalf Foister', 'Trip_String', 20, 0, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('troll-skinbracer-vendoreaver', 'vendo reaver', 'Troll-skin_Bracer', 20, 0, '2000-01-01 00:00:00'),
   ('trs-lair-patrol', 'lair patrol', 'Tomte_Rune_Staff', 40, 0, '2000-01-01 00:00:00'),
   ('TR_TWHL', 'throatripper', 'TatteredWolfHideLeggings', 20, 0, '2000-01-01 00:00:00'),
@@ -15286,7 +15281,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('_iasentinthiasentinthMystical Moonglade Vest', 'iasentinth', 'Mystical Moonglade Vest', 5, 1, '2000-01-01 00:00:00'),
   ('_iasentinthiasentinthMystical_Moonglade_Boots', 'iasentinth', 'Mystical_Moonglade_Boots', 5, 1, '2000-01-01 00:00:00'),
   ('_iasentinthiasentinthPotent_Deathwatcher_Chain', 'iasentinth', 'Potent_Deathwatcher_Chain', 5, 1, '2000-01-01 00:00:00');
-INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) VALUES
   ('_iasentinthiasentinthSeolc Cap of Enchantment', 'iasentinth', 'Seolc Cap of Enchantment', 5, 1, '2000-01-01 00:00:00'),
   ('_iasentinthiasentinthSeolc Cap of Mentalism', 'iasentinth', 'Seolc Cap of Mentalism', 5, 1, '2000-01-01 00:00:00'),
   ('_iasentinthiasentinthSeolc Cap of Shrieking', 'iasentinth', 'Seolc Cap of Shrieking', 5, 1, '2000-01-01 00:00:00'),
@@ -15344,13 +15339,7 @@ INSERT INTO _tmp_loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateI
   ('_NeureksathWarshadow_Bracer', 'Neureksath', 'Warshadow_Bracer', 5, 1, '2000-01-01 00:00:00'),
   ('_NeureksathWarshadow_Staff_of_Mentalism', 'Neureksath', 'Warshadow_Staff_of_Mentalism', 5, 1, '2000-01-01 00:00:00');
 
--- Merge: keep customisations — only insert rows whose (TemplateName, ItemTemplateID) is new.
-INSERT INTO loottemplate (`LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated`) SELECT `LootTemplate_ID`, `TemplateName`, `ItemTemplateID`, `Chance`, `Count`, `LastTimeRowUpdated` FROM _tmp_loottemplate
-WHERE NOT EXISTS (SELECT 1 FROM loottemplate WHERE loottemplate.`TemplateName` = _tmp_loottemplate.`TemplateName` AND loottemplate.`ItemTemplateID` = _tmp_loottemplate.`ItemTemplateID`);
-
-DROP TABLE _tmp_loottemplate;
-
-COMMIT;
 SET FOREIGN_KEY_CHECKS=1;
 
--- Done. Inserted only rows that were not already present.
+-- Rows that would have collided with existing data were silently skipped.
+-- Run `SELECT COUNT(*) FROM loottemplate;` afterwards to see the new total.

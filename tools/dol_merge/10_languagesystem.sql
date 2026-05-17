@@ -1,16 +1,11 @@
--- languagesystem: merge from DOLSharp (15985 candidate rows)
--- Strategy: stage in _tmp_languagesystem, then copy only rows whose natural key
--- (TranslationId, Language) does not already exist in languagesystem.
--- Existing customisations stay untouched.
+-- languagesystem: INSERT IGNORE merge from DOLSharp (15985 candidate rows).
+-- INSERT IGNORE silently skips rows that would violate any UNIQUE/PK
+-- constraint — so the operator's existing rows stay intact and only
+-- genuinely-new content is added.
 
 SET FOREIGN_KEY_CHECKS=0;
-START TRANSACTION;
 
-DROP TABLE IF EXISTS _tmp_languagesystem;
-CREATE TABLE _tmp_languagesystem LIKE languagesystem;
-
--- Load DOLSharp rows into the staging table.
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('0004e9ea-ec03-4493-8169-407eea1eb87b', 'Mid.GreetingsThane.Description.Specialization.Axe', 'EN', 'Axe is a basic weaponry skill. Each point you place into it will increase your damage with axe. At different levels of training you will acquire combat styles. These styles will be unique to axe. What else can I tell you about? [Swords], [Hammer], [Axe], [shield], [Stormcalling] or are you [done]?', 'Grenlock''s Sound Quests', '2015-07-16 06:43:54'),
   ('000997f9-991e-43ae-a60a-1b43c9909f89', 'Scripts.Players.Region.Message', 'EN', '[Region] {0}: {1}', '', '2015-07-16 06:44:01'),
   ('000bf754-9853-4de2-9643-a70739a77566', 'Scripts.Players.Advice.AdvicersOn', 'EN', 'There are {0} advisors online!', '', '2015-07-16 06:43:51'),
@@ -211,7 +206,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('039bc944-a02b-4b30-8b2d-e47ae86b2632', 'SkillBase.RegisterPropertyNames.Piety', 'DE', 'Fr??????????????????mmigkeit', '', '2015-07-16 06:43:58'),
   ('03a2d022-b7e5-4c7c-88d1-04d022c18e81', 'PlayerClass.Bonedancer.GetTitle.20', 'FR', 'Chercheur d''Ossements', '', '2015-07-16 06:43:56'),
   ('03a81f07-8b74-49da-9934-50e6fbef265f', 'Effects.BodyguardEffect.YouAreNoLongerBGX', 'EN', 'You are no longer Bodyguarding {0}.', '', '2015-07-16 06:43:52');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('03aaa8fc-e8bd-42df-bab4-052cd4eddc9c', 'Scripts.Player.Guild.Help.GuildForm', 'EN', '''/gc form <Name>'' to create a new guilde with all player of group', '', '2015-07-16 06:43:52'),
   ('03b43e9a-0110-4350-a05a-e83e5d0d93ba', 'PlayerClass.Cabalist.GetTitle.40', 'EN', 'Master Spiritist', '', '2015-07-16 06:43:51'),
   ('03b8a9c4-375f-4673-bf8e-98902cb0d610', 'Scripts.Player.Guild.BuffRealmPoints', 'EN', 'Your guild will now gain 5% bonus to realm points for 24 hours!', '', '2015-07-16 06:43:56'),
@@ -412,7 +407,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('06eef5e5-d022-4cad-aadf-e579b3f8ff0a', 'BedazzlingAuraAbility.AddEffectsInfo.Info5', 'DE', 'Zauberzeit: Sofort', '', '2015-07-16 06:43:54'),
   ('06f7ad9e-a7a8-48c7-b249-fc1b99feeb15', 'GamePlayer.OnLevelUp.YouGetSpec', 'FR', 'Vous obtenez {0} points de sp??????????????????cialisation ?????????????????? d??????????????????penser pour ce niveau!', '', '2015-07-16 06:43:52'),
   ('0700a130-00cc-4753-b258-e501964afc7f', 'JuggernautAbility.AddEffectsInfo.Info2', 'DE', 'Stufe 2: Dauer: 1:00 Minute', '', '2015-07-16 06:43:55');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('07012c7e-3fe7-455a-a559-77fbf754f7c0', 'Zone.ScreenDescription.ShaftsoftheTenebrae', 'FR', 'Le Puit des Tenebrae', '', '2015-07-16 06:44:11'),
   ('070b7129-c679-4a50-b60c-aacdb81d7bc1', 'GameKeepGuard.GetPronoun.Him', 'DE', 'ihm', '', '2015-07-16 06:44:01'),
   ('070d2599-4503-454d-b179-a367091c446f', 'Mid.StolenEggs.FinishQuest.Text1', 'EN', 'You recieve {0} as a reward.', '', '2015-07-16 06:43:52'),
@@ -613,7 +608,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('0a114b47-d474-483f-b66a-5236427fa37f', 'PlayerClass.Vampiir.GetTitle.50', 'FR', 'Pr??????????????????dateur Nocturne', '', '2015-07-16 06:43:58'),
   ('0a14605e-649d-4038-b1b0-0629328e147c', 'Zone.Description.theDeep', 'FR', 'La Faille', '', '2015-07-16 06:44:11'),
   ('0a15e255-59a6-42f6-a61d-245e23e217e4', 'GamePlayer.RefreshSpec.TargetEvaded', 'EN', 'This style is best used after your target''s last attack is evaded.', '', '2015-07-16 06:43:54');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('0a1f5b3a-3f3a-4958-8423-f51d27143ef9', 'PlayerClass.Profession.GuildofShadows', 'DE', 'Schattenbruderschaft', '', '2015-07-16 06:44:00'),
   ('0a2807b1-f573-452a-8083-c1285f1e3590', 'Hib.GreetingsWarden.Description.Specialization.Regrowth', 'EN', 'The regrowth spell line contains your self fatigue regeneration buff as well as your major healing abilities and group heal over time spells. Each train you place in this line will increase the amount of health you can heal for. What else can I tell you about [Regrowth], [Nurture], [Blades], [Blunt] or[shield]? Or are you [done]?', '', '2015-07-16 06:43:59'),
   ('0a2d60ae-75f1-4ce0-9607-b50ef96a51aa', 'Hib.ImportantDelivery.TalkToAethic.CaseErrand', 'DE', 'Auftrag', '', '2015-07-16 06:43:52'),
@@ -814,7 +809,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('0d56ceb5-9d62-4d40-b67d-e743ba5edc71', 'GamePlayer.PickupObject.LootDoesntBelongYou', 'DE', 'Die Beute geh??????????????????rt Euch nicht - also Finger weg!', '', '2015-07-16 06:43:50'),
   ('0d57e3dc-3fda-4232-be74-7cb7cc013145', 'Mid.TheBirthdayGift.QuestTitle', 'DE', 'Das Geburtstagsgeschenk', '', '2015-07-16 06:43:54'),
   ('0d58d433-e2f5-4722-b239-780e73d8ab1b', 'Scripts.Players.Anonymous.Off', 'DE', 'Anonymer Modus AUS.', '', '2015-07-16 06:43:52');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('0d5bb512-707e-43fe-b003-0206ccd2bff7', 'GamePlayer.Bind.MustWait', 'FR', 'Vous devez attendre {0} secondes de plus avant de vous lier ?????????????????? nouveau !', '', '2015-07-16 06:43:59'),
   ('0d5eb570-1f3e-4128-87b6-9b9a986b5bc0', 'Scripts.Player.Guild.BannerNotAfford', 'FR', 'Vous avez besoin de 50,000 points de m??????????????????rite pour acheter une banni??????????????????re de guilde!', '', '2015-07-16 06:43:55'),
   ('0d61827c-a69b-4017-955b-fad0262bb7b1', 'Enchanter.Interact.Text1', 'DE', 'Quarz', '', '2015-07-16 06:43:58'),
@@ -1015,7 +1010,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('107b192a-877d-4674-a2bf-2a44c1a292c8', 'Quests.Albion.AFewRepairs.BriceYarley.Problem', 'FR', 'We Yarleys raise these giant rooters which we bring to markets all across Albion. Perhaps you have tried some of our sausages at Ye Mug in Camelot? Well anyway we do a pretty good business here and the hours aren''t too bad. It is a satisfying life but one that does not leave much time for {0} of magic or swordplay.', '', '2015-07-16 06:44:01'),
   ('107ee27f-a249-4730-ace4-72b290b08af6', 'Scripts.Blacksmith.NotEnoughMoney', 'FR', 'Vous n''avez pas assez d''argent.', '', '2015-07-16 06:44:00'),
   ('10817f2b-1428-4d1d-aecb-0a71f049bf4c', 'GamePlayer.GetExamineMessages.OtherGuildMember', 'FR', 'Vous observez {0}. {1} est membre de la guilde: {2}.', '', '2015-07-16 06:43:55');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('10866eca-e788-4593-9bc8-2507aa67794a', 'SkillBase.RegisterPropertyNames.Hammer', 'FR', 'Marteau', '', '2015-07-16 06:43:54'),
   ('1087579f-94c4-4299-b870-28f8a3e0e578', 'Scripts.Player.Guild.Help.GuildEmail', 'EN', '''/gc email <contact@guildpage.com>'' is an additional line set by the leader that can be displayed in a /gc info command, as well as on the Herald.', '', '2015-07-16 06:43:54'),
   ('108b84be-7e27-4e1b-bfc4-def0ef22a273', 'GMCommands.Jump.Usage.ToPlayerName', 'DE', '/jump to <PlayerName or MobName>', '', '2015-07-16 06:43:56'),
@@ -1216,7 +1211,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('13a1467b-81cc-4646-a207-e31a312da69d', 'GamePlayer.Pray.CantPrayNow', 'FR', 'Vous ne pouvez pas prier maintenant !', '', '2015-07-16 06:44:01'),
   ('13ac0481-86bf-476b-b463-0942671f6011', 'PlayerClass.Bard.GetTitle.50', 'DE', 'Meister-Liedflechter', '', '2015-07-16 06:43:57'),
   ('13ac50d8-845b-4ebd-8cf5-5e61fa38eeb4', 'ChildsPlay.TalkToCharles.Text5', 'EN', 'Hmm. Give me a minute. I know just the thing. The guards keep talking about a big, scary statue in the demon dungeon beyond the limits of town. I dare you to go in and touch it, and come back out without getting eaten by a monster! What do you say?', '', '2015-07-16 06:43:51');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('13ad22a8-bbe0-4209-a475-e10132e57d5c', 'Money.GetString.Text6', 'EN', 'copper,', '', '2015-07-16 06:43:54'),
   ('13ad80a5-0d28-46f4-a662-6e7a1f27f252', 'Zone.ScreenDescription.IsleofGlass', 'DE', 'Glasinsel', '', '2015-07-16 06:44:06'),
   ('13b58b49-0f77-4909-b297-ae031a413140', 'Effects.TripleWieldEffect.Name', 'EN', 'Triple Wield', '', '2015-07-16 06:43:54'),
@@ -1417,7 +1412,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('16d993be-4d89-4afd-a495-e6f77e3276df', 'GameMerchant.OnPlayerBuy.BoughtPieces2', 'CZ', 'Prave jsi koupil {0} kusu {1} za {2} {3}.', '', '2015-07-16 06:44:03'),
   ('16db77d2-7ef5-4aff-b7cf-a650bff7813d', 'Hibernia.Arbiter.WhisperReceive.Case9', 'EN', 'aid', '', '2015-07-16 06:43:56'),
   ('16e0d727-60eb-459f-8285-69cb9b856e3f', 'SkillBase.RegisterPropertyNames.FireMagic', 'FR', 'Voie du Feu', '', '2015-07-16 06:43:58');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('16e4d880-0007-4263-8f63-a3328198d827', 'GamePlayer.Attack.AlreadyDead', 'CZ', '{0} Je jiz mrtvy!', '', '2015-07-16 06:44:03'),
   ('16e68983-faeb-4c9d-9b15-9da237adfbb0', 'Skill.Ability.Guard.CancelTargetNull', 'EN', 'You are no longer guarding anyone.', '', '2015-07-16 06:44:07'),
   ('16e8ad8e-fa14-4028-ad35-84fe0e9a2167', 'Scripts.Player.Guild.MemberRemoved', 'DE', '{0} hat {1} aus der Gilde entlassen.', '', '2015-07-16 06:43:53'),
@@ -1618,7 +1613,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('19da5d96-c993-44f2-99ae-5a445425cff5', 'Alb.WhenGoodBrowniesGoBad.Init.Text4', 'EN', 'Brownie Blood', '', '2015-07-16 06:43:55'),
   ('19de5fad-c871-402c-9776-80df24afad8d', 'GMCommands.Keep.AddTeleport.StoneAdded', 'EN', 'Teleport Stone added!', '', '2015-07-16 06:43:57'),
   ('19e46d46-3925-42a5-bcb6-cd0532f115eb', 'DetailDisplayHandler.WritePoisonInfo.ProcAbility', 'FR', 'Effet offensif:', '', '2015-07-16 06:43:54');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('19ea4a51-c8c5-4bfb-8daa-9583a69b6a81', 'Hib.GreetingsBlademaster.Description.Weapon1', 'EN', 'standard sword', '', '2015-07-16 06:43:57'),
   ('19f56224-ade2-40a6-933c-91b037d53efd', 'PlayerClass.Mauler.GetTitle.50', 'DE', 'Meistermalmer', '', '2015-07-16 06:44:02'),
   ('19fda4a4-4d82-469c-83ff-3f59bc988f6d', 'GamePlayer.SayReceive.FalseLanguage', 'IT', '{0} dice qualcosa in un linguaggio che non comprendi.', '', '2015-07-16 06:43:52'),
@@ -1819,7 +1814,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('1ce1b1e8-913c-40a8-8897-4ba0801acb49', 'Crafting.GainCraftingSkillPoints.RaiseSpellcraft', 'FR', 'Vous devez voir votre entra??????????????????neur pour augmenter votre niveau en Alchimie!', '', '2015-07-16 06:43:51'),
   ('1cf10df3-206b-4346-bdbc-662592900bb9', 'GamePlayer.Die.ReleaseToReturn', 'IT', 'Sei stato ucciso.  Digita ''/release'' per ritornare al tuo ultimo punto di rinascita.', '', '2015-07-16 06:43:59'),
   ('1cfbf2be-1cb8-4733-a62a-67f6190c4cdd', 'PlayerClass.Mercenary.GetTitle.5', 'EN', 'Strong-Arm', '', '2015-07-16 06:43:58');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('1cfff867-7dbc-43f9-98de-d17b4905eefd', 'SendMasterLevelWindow.Uncomplete.ML7.Step9', 'FR', 'Une force myst??????????????????rieuse bloque votre chemin ! Ce d??????????????????fi est r??????????????????serv?????????????????? ?????????????????? un groupe de combat.', '', '2015-07-16 06:44:00'),
   ('1d0284f0-b834-402d-9db3-03a9a8ca4f7e', 'PlayerClass.Theurgist.GetTitle.10', 'EN', 'Journeyman Theurgist', '', '2015-07-16 06:43:59'),
   ('1d0aa0db-395b-4ba6-b945-b1baf0f6d2c0', 'GamePlayer.Shade.AlreadyShade', 'CZ', 'Uz je z tebe stin!', '', '2015-07-16 06:44:04'),
@@ -2020,7 +2015,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('20063530-5620-4359-a1ed-467dc5227b45', 'Scripts.Players.Duel.TargetAlreadyConsidering', 'IT', '{0} sta gia'' considerando un duello.', '', '2015-07-16 06:43:51'),
   ('2008afc1-5330-4b1e-b80d-5e4a7ad78def', 'DetailDisplayHandler.WriteHorseInfo.Speed2', 'IT', '(+45% velocita'')', '', '2015-07-16 06:43:59'),
   ('20105f36-2a34-43c9-a60d-a727f4b6787e', 'GamePlayer.RealmTitle.Hibernia.RR1.Male', 'EN', 'Savant', '', '2015-07-28 13:52:24');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('201384d9-ffa4-4c8e-bf96-c37eb0367c1c', 'Zone.ScreenDescription.Constantine''sSound', 'DE', 'Constantines Insel', '', '2015-07-16 06:44:05'),
   ('201949bb-9d07-411a-abbb-fac7fa27c20d', 'GameGuard.Albion.StartAttackSay', 'FR', 'Allez en enfer, D?mon!', '', '2015-07-16 06:43:57'),
   ('201aefbc-4796-481b-bd8e-b225d4c2b700', 'Zone.ScreenDescription.HammerHugak''sSmithy', 'EN', 'Hammer Hugak''s Smithy', '', '2015-07-16 06:43:58'),
@@ -2221,7 +2216,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('236af39c-5491-444f-9f24-90a27250eae6', 'GamePlayer.RealmTitle.Albion.RR4.Female', 'DE', 'Greifenritterin', '', '2015-07-28 13:52:23'),
   ('236e581b-4bf3-48a3-bdf1-a29e90793a58', 'SkillBase.RegisterPropertyNames.Blades', 'EN', 'Blades', '', '2015-07-16 06:43:53'),
   ('2370fafe-6494-410e-b3b0-8f9c79306039', 'GamePlayer.OnItemEquipped.WieldLeftHand', 'CZ', 'Vzal sis {0} do leve ruky.', '', '2015-07-16 06:44:03');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('23720fab-84f8-4582-a998-80748437328f', 'GMCommands.Merchant.Articles.Add.PageAndSlotInvalid', 'EN', 'Page number ({0}) must be from 0 to {1} and slot ({2}) must be from 0 to {3}.', '', '2015-07-16 06:44:01'),
   ('23742e50-f78a-4fcb-b9ce-f1a8971c327b', 'SkillBase.RegisterPropertyNames.Valor', 'FR', 'Vaillance', '', '2015-07-16 06:43:57'),
   ('23755bfb-dfdd-42e6-bf09-5714c77db174', 'Zone.ScreenDescription.SpraggonDen', 'DE', 'Spraggonnest', '', '2015-07-16 06:44:06'),
@@ -2422,7 +2417,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('2676d4c5-29d4-4660-8fe4-5f5142fefdfe', 'GMCommands.Merchant.Type.Changed', 'EN', 'Merchant type changed to {0}.', '', '2015-07-16 06:44:00'),
   ('26783b82-fdc8-4074-bbe2-7acfed5940b2', 'MysticCrystalLoreAbility.AddEffectsInfo.Info2', 'FR', 'Level 2: Value: 60%', '', '2015-07-16 06:43:58'),
   ('26799e63-c159-416d-a099-22e911ce9b05', 'DoorRequestHandler.OnTick.TooFarAway', 'IT', 'La {0} e'' troppo lontana!', '', '2015-07-16 06:43:59');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('2679ba4f-54ea-4888-afda-8eac77a3a226', 'Scripts.Player.Guild.BannerNotRvR', 'FR', 'You need to be in an RvR zone to summon a guild banner!', '', '2015-07-16 06:43:52'),
   ('267b05c1-f010-446d-bf3c-376850e2290f', 'Alb.ToReachTheBreach.CheckPlayerAbortQuest.Text2', 'DE', 'Quest "{0}" abgebrochen. Ihr k??????????????????nnt jeder Zeit wieder beginnen.', '', '2015-07-16 06:44:01'),
   ('26801866-b3be-4986-b595-63350ceffbb2', 'GamePlayer.RealmTitle.Albion.RR7.Male', 'EN', 'Alerion Knight', '', '2015-07-28 13:52:24'),
@@ -2623,7 +2618,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('29b8a483-0c69-44e0-afdc-73d12e4d7044', 'Repair.ProceedSiegeWeapon.FailRepair', 'EN', 'You fail to repair the {0}!', '', '2015-07-16 06:43:55'),
   ('29c0a913-5e7e-449d-92fb-12a36e7cf2f5', 'Crafting.Name.Jewelcraft', 'EN', 'Jewelcraft', '', '2015-07-16 06:43:52'),
   ('29c0ebc0-9e7e-4bc3-a4b0-5cbf1cb66663', 'GMCommands.KeepGuard.Create.GuardAdded', 'DE', 'Guard added!', '', '2015-07-16 06:43:55');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('29c2f4a1-04f6-4ac9-b15b-ffd21057f5d2', 'SpellCrafting.ShowSpellCraftingInfos.Losing', 'EN', '{0}% of losing item during SC.', '', '2015-07-16 06:43:56'),
   ('29c32143-66fd-47e9-bbf6-549cfccb9753', 'Effects.BerserkEffect.GoBerserkerFrenzy', 'IT', 'Vai nella modalit?????????????????? frenesia del berserker!', '', '2015-07-16 06:43:57'),
   ('29c56bb0-4e65-4b15-af29-c9dd366db4e4', 'Zone.Description.Mid30Dungeon', 'FR', 'Donjon 30 (Mid)', '', '2015-07-16 06:44:10'),
@@ -2824,7 +2819,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('2cdaf38b-f12e-446f-a3ca-4b6054fbbe21', 'PlayerClass.Warrior.GetTitle.20', 'DE', 'Veteran', '', '2015-07-16 06:44:00'),
   ('2cdb10e7-1692-472b-9bc1-a92c1e5712bc', 'Alb.Friar.GuildGift.Conclusion.Text2', 'EN', 'Please return to me when the time has come for you.', '', '2015-07-16 06:43:51'),
   ('2cdce751-0193-47e1-8f99-aa80d4d60400', 'Effects.StealthEffect.Name', 'FR', 'Furtivit??????????????????', '', '2015-07-16 06:43:55');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('2cdf59f5-fc65-4269-99e8-cb3857061a26', 'GMCommands.Keep.FastCreate.KeepCreated', 'EN', 'You have created a keep.', '', '2015-07-16 06:43:50'),
   ('2ce65ee3-917c-492c-99e6-e757b118d075', 'DetailDisplayHandler.WriteHorseInfo.Summon', 'EN', 'Click this icon in your quickbar to summon (or dismount) your horse.', '', '2015-07-16 06:43:54'),
   ('2cecdbd6-ddbf-4975-8b11-90b0619ebb50', 'GamePlayer.RealmTitle.Midgard.RR9.Male', 'EN', 'Stormur Herra', '', '2015-07-28 13:52:24'),
@@ -3025,7 +3020,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('2ff0a5fd-0c8f-4d62-a30e-9847c0bac5fe', 'Scripts.Players.Chatgroup.Help.Leave', 'DE', '/cg leave - Ihr verlasst die Chatgruppe.', '', '2015-07-16 06:43:52'),
   ('2ff0b5f9-b5a9-452b-a82a-57940dbeb2bb', 'Scripts.Players.Chatgroup.Help.Remove', 'DE', '/cg remove <Name> - Wirft einen Spieler aus der Chatgruppe. (Nur Leiter)', '', '2015-07-16 06:43:51'),
   ('2ff1b7fd-7b17-4615-9bd9-82f4fd8c981a', 'GMCommands.Door.Usage.Remove', 'EN', '''/door remove <IdPorta>'' Id deve essere della porta selezionata dal pachetto', '', '2015-07-16 06:43:50');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('2ff4e0c9-ff56-4251-81f2-fdec2dc8a48f', 'GamePlayer.RealmTitle.Hibernia.RR2.Female', 'DE', 'Cosantoir', '', '2015-07-28 13:52:23'),
   ('2ff57136-0865-42cf-96c0-c1e83bed2900', 'SecondWindAbility.AddEffectsInfo.Info5', 'DE', 'Zauberzeit: Sofort', '', '2015-07-16 06:43:55'),
   ('2ffabeae-6c5c-426b-9a7f-c2f675409f02', 'GamePlayer.GetExamineMessages.YouExamine', 'EN', 'You examine {0}.', '', '2015-07-16 06:43:51'),
@@ -3226,7 +3221,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('32febab9-18c1-4133-93e4-f4f8e504b205', 'Scripts.Player.Housing.OutdoorBannersAdded', 'DE', 'Die Gildenbanner an Eurem Haus wurden ver??????????????????ndert.', '', '2015-07-16 06:44:00'),
   ('3300c732-0966-48a4-baf8-174e823c3503', 'PlayerClass.Ranger.GetTitle.45', 'EN', 'Master Marksman', '', '2015-07-16 06:43:52'),
   ('33013ef4-2bb3-4234-bf9b-e707028dea14', 'Alb.NoHopeForTheHopeful.Init.Text2', 'FR', 'Recruit''s Mighty Bracer', '', '2015-07-16 06:43:52');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('330ba44c-4bcf-4cd8-a31a-8324ab66c110', 'System.LanguagesName.EN', 'EN', 'English', '', '2015-07-16 06:44:07'),
   ('330d62b4-a503-4bc0-bc83-683124e624f8', 'Scripts.Player.Housing.HookPointNot', 'FR', 'Ce n''est pas un objet utilisable sur les ancrages!', '', '2015-07-16 06:44:00'),
   ('330ec80c-ef0c-4b56-89e3-bc0d9cf996e3', 'Hib.GreetingsHero.Description.Weapon1', 'EN', 'standard sword', '', '2015-07-16 06:43:59'),
@@ -3427,7 +3422,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('361498da-e9dd-4ef4-9c2c-196359cfeabe', 'Scripts.Player.Guild.AllianceNoGMSelected', 'FR', 'Vous devez choisir un Ma??????????????????tre de guilde que vous voulez inviter.', '', '2015-07-16 06:43:58'),
   ('36224ab2-fc97-46f5-bf81-a8f112bf85ed', 'AlchemistsMaster.AcceptedByOrderName', 'FR', 'Alchimistes', '', '2015-07-16 06:44:09'),
   ('3627430d-40dd-444c-a1d3-e2d3dce13546', 'GamePlayer.GainRealmPoints.ReachedRank', 'EN', '{0} reached realm rank {1:#L#} in {2}!', '', '2015-07-16 06:44:01');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('3628bd2e-474d-44cc-926b-72dd4aa7d1e9', 'VaultKeeper.RightClick', 'FR', '[Right click to display a vault window]', '', '2015-07-16 06:43:58'),
   ('36298806-d431-47ab-94c1-632c750693be', 'DetailDisplayHandler.WriteClassicWeaponInfos.ClampDPS', 'FR', '- {0} DPS R??????????????????el', '', '2015-07-16 06:43:52'),
   ('362e07cd-de9a-4721-bfe3-38f96f3d50ab', 'Alb.GreetingsArmsman.Init.Text1', 'EN', 'standard dagger', 'Constantine''s Sound Quests', '2015-07-16 06:44:02'),
@@ -3628,7 +3623,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('3963ecb5-79ae-4c57-b31b-266b994d3dae', 'Zone.Description.GreenGlades', 'EN', 'Green Glades', '', '2015-07-16 06:44:01'),
   ('39680b15-f508-4ab4-bc41-de5343b2abb8', 'SkillBase.RegisterPropertyNames.Deathsight', 'EN', 'Deathsight', '', '2015-07-16 06:43:53'),
   ('39681f24-2fed-460a-8d84-b1166adc3ef3', 'Zone.ScreenDescription.Lios''sEternalRest', 'FR', 'Le Repos Eternel de Lios', '', '2015-07-16 06:44:10');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('396fef88-2a1f-4ef0-b7ba-d1b8683cea0e', 'Zone.Description.AvalonIsle', 'FR', 'Ile d''Avalon', '', '2015-07-16 06:44:10'),
   ('3970cf9c-7caf-442c-996c-a4ceb53ba2e7', 'PlayerInitRequestHandler.OfficerMessage', 'DE', 'Offiziersnachricht: {0}', '', '2015-07-16 06:43:59'),
   ('397239e6-1d13-4b66-8373-5c23e1e1a7d1', 'CraftersTitle.Grandmaster', 'EN', 'Grandmaster {0}', '', '2015-07-16 06:43:56'),
@@ -3829,7 +3824,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('3cd64dd6-3fde-47b2-9e0c-6e59eb88dcda', 'Hib.ImportantDelivery.TalkToAddrir.Greetings', 'EN', 'Greetings my young recruit. I am Addrir and I am here to help you find your way around this vast realm. In the process, you will be able to earn weapons, armor, coin and even some levels. I will start your training by asking you a simple [question].', '', '2015-07-16 06:44:00'),
   ('3cd7d3bc-9cdf-4645-b081-304babc1ecd5', 'Scripts.Players.Assist.NoRealmMember', 'DE', '{0} ist kein Mitglied Eures Reiches!', '', '2015-07-16 06:44:07'),
   ('3cdf91e1-9480-45dd-89d5-2ba831a5fcde', 'Zone.ScreenDescription.Hibernia''sUndergroundForest', 'EN', 'Underground Forest', '', '2015-07-16 06:43:50');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('3ce40835-6887-47c0-a5c0-52869414ce43', 'Scripts.Player.Boat.Unsummoned', 'DE', 'Euer {0} verschwindet in Eurem Rucksack.', '', '2015-07-16 06:44:02'),
   ('3ce57b03-a968-4015-8bd6-eb615c66c14c', 'PlayerClass.Warrior.GetTitle.30', 'EN', 'Elite Skirmisher', '', '2015-07-16 06:43:53'),
   ('3ceba5e0-79fd-46af-8f9b-33f6364af2e2', 'Skill.Ability.SureShot.CannotUseDead', 'EN', 'You can''t switch to sure shot when dead!', '', '2015-07-16 06:44:07'),
@@ -4030,7 +4025,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('404a2bec-f7b2-4352-bd9e-1ddb3393d7ea', 'SendMasterLevelWindow.Uncomplete.ML2.Step10', 'FR', 'Un imposteur a vol?????????????????? l''Ankh de Vie, lui accordant l''immortalit?????????????????? tant qu''il r??????????????????side dans le Temple du Sob??????????????????kite Eternel. Ce d??????????????????fi est r??????????????????serv?????????????????? ?????????????????? un groupe de combat.', '', '2015-07-16 06:43:56'),
   ('404b9775-b944-4945-a413-626165c18cd6', 'Effects.DelveInfo.MinutesRemaining', 'DE', '- es bleiben noch {0}: {1} Minuten ??brig.', '', '2015-07-16 06:44:04'),
   ('404d3a3e-7dc6-431f-b081-83eae56a20ee', 'StyleProcessor.ExecuteStyle.PerformsPerfectly', 'EN', 'Your {0} performs its {1} perfectly.{2}', '', '2015-07-16 06:43:54');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('40505b2f-f329-4966-8d42-e1c8cdf11d37', 'StyleProcessor.ExecuteStyle.StyleNameBackstab', 'DE', 'Backstab', '', '2015-07-16 06:43:56'),
   ('405315fb-7256-4198-8409-2472d7b5ed0c', 'Alb.ToReachTheBreach.Summary', 'EN', 'Find the entrance to the Demon''s Breach. Return to Lady Grynoch once you''ve visited the Breach.', '', '2015-07-16 06:44:00'),
   ('405450c5-93cf-46ad-acdd-2643b5b234c4', 'Hib.GreetingsMaulerHib.Description.Specialization.PowerStrikes', 'EN', 'Power Strikes are a range of power and endurance sapping abilities. Included with them are small damage spells and combat debuffs. What else can I tell you about [Mauler Staff], [Fist Wraps], [Aura Manipulation], [Magnetism] and [Power Strikes], or are you [done]?', '', '2015-07-16 06:43:58'),
@@ -4231,7 +4226,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('43a42813-c56d-46e5-82b8-2cd6cb7edb03', 'GamePlayer.RealmTitle.Female.EmeraldRidere', 'DE', 'Smaragdreiterin', '', '2015-07-16 06:44:01'),
   ('43a8acba-6f16-462d-b0e3-947ff2fa65f9', 'MaulerHibTrainer.WhisperReceive.Text2', 'EN', 'You get a gift by Laresh.', '', '2015-07-16 06:43:56'),
   ('43ab4eaf-647b-4bd8-8ab5-e6aaeefeeeef', 'Hib.ImportantDelivery.TalkToFreagus.CaseReward', 'EN', 'reward', '', '2015-07-16 06:44:01');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('43b0553d-4238-404b-bbb5-4f98db9d0585', 'GamePlayer.RealmTitle.Female.Vicomtessa', 'EN', 'Vicomtessa', '', '2015-07-16 06:43:50'),
   ('43c38651-8b8e-4566-88a6-93f9df394c44', 'GMCommands.Announce.WindowAnnounce', 'FR', 'Annonce de {0}', '', '2015-07-16 06:43:54'),
   ('43c39060-cb18-4dac-a7f5-4d31b967a339', 'Scripts.Player.Boat.NotOwnBoat', 'DE', 'Ihr besitzt kein eigenes Boot.', '', '2015-07-16 06:43:53'),
@@ -4432,7 +4427,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('472dffa8-cff6-41f1-a9c2-71047e34b692', 'Zone.Description.Arachnid''sLabyrinth', 'DE', 'in Arachnids Labyrinth', '', '2015-07-16 06:44:05'),
   ('473201f1-3cab-4dd0-9035-5df3a1a8f325', 'Alb.GreetingsMaulerAlb.QuestTitle', 'EN', 'Greetings Mauler', 'Constantine''s Sound Quests', '2015-07-16 06:44:02'),
   ('473364d8-e01d-470a-822b-e065b90313da', 'Alb.GreetingsReaver.CheckPlayerAbortQuest.Text1', 'EN', 'Very well then, remember you can come to me at any time to ask about your specializations if you need.', 'Constantine''s Sound Quests', '2015-07-16 06:44:02');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('47349dc8-f309-49c2-be22-94050dea05c5', 'Zone.ScreenDescription.TheHallofReawakening', 'FR', 'La Chambre du R?veil', '', '2015-07-16 06:44:11'),
   ('47379b32-de37-49d5-a5d2-0dc233d996d6', 'Scripts.Players.Boot.NoHouseError', 'DE', 'Ihr besitzt kein Haus!', '', '2015-07-16 06:43:58'),
   ('473dc0e6-873e-4649-b7bf-76b031800402', 'Scripts.Players.Battlegroup.PasswordChanged', 'DE', 'Ihr habt das Passwort der Kampfgruppe ge??????????????????ndert in: {0}.', '', '2015-07-16 06:43:58'),
@@ -4633,7 +4628,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('4a3a4fa7-cbc1-48e5-9953-3f5598bc140d', 'Effects.GameSpellEffect.CantRemoveEffect', 'DE', 'Ihr k??nnt diesen Effekt nicht entfernen!', '', '2015-07-16 06:44:04'),
   ('4a4d0d16-d444-4b76-9e06-83b40f266dca', 'Alb.ToReachTheBreach.Init.Text3', 'FR', 'Recruit''s Pious Belt', '', '2015-07-16 06:43:55'),
   ('4a4e423e-fa43-4ecc-b1a8-e82f8c9d7f8c', 'SkillBase.RegisterPropertyNames.ColdMagicFocus', 'DE', 'K??????????????????ltemagie', '', '2015-07-16 06:43:59');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('4a54869c-eb64-4d78-862a-b15952f4ef1a', 'PlayerClass.Thane.GetTitle.10', 'FR', 'Initi?????????????????? de la Temp??????????????????te', '', '2015-07-16 06:44:01'),
   ('4a5571d3-daca-4dff-845d-412c38be07ed', 'BainsheeTrainer.Interact.Text2', 'DE', '', '', '2015-07-16 06:44:05'),
   ('4a566e9e-e533-4cb5-943c-443c6367f241', 'GMCommands.Merchant.Create.Created', 'DE', 'Merchant created: OID={0}', '', '2015-07-16 06:43:53'),
@@ -4834,7 +4829,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('4d470607-964b-4a7f-9314-ddfac8d2919e', 'PlayerClass.Profession.TempleofIronFist', 'DE', 'Tempel der Eisenfaust', '', '2015-07-16 06:43:56'),
   ('4d53ee37-af53-40d3-8e18-179884138bfa', 'GameObjects.CommanderPet.WR.Const.2HandedSword', 'EN', 'two handed sword', '', '2015-07-16 06:43:54'),
   ('4d647a28-b819-4748-8531-6cdc466bb394', 'GMCommands.Merchant.CommandOverview', 'DE', 'Type /merchant for command overview', '', '2015-07-16 06:43:54');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('4d7019b1-c0ac-4104-8494-d9cb84c5bafa', 'Zone.Description.AlltaFearann', 'DE', 'in Allta Fearann', '', '2015-07-16 06:44:05'),
   ('4d843d1b-df3f-43bb-9e32-33b74a2779b8', 'StyleProcessor.ExecuteStyle.BackStrike', 'DE', 'Ihr f??????????????????hrt einen kritischen Schlag auf den R??????????????????cken Eures Zieles aus.', '', '2015-07-16 06:43:55'),
   ('4d87d5ef-fbac-4f67-8ab3-79e5d6adcb1b', 'StyleProcessor.TryToUseStyle.NoLongerPreparing', 'DE', 'Ihr bereitet den Kampfstil "{0}" nicht mehr vor!', '', '2015-07-16 06:43:56'),
@@ -5035,7 +5030,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('50bfa703-e5f7-4b39-8754-f25fdc8153ce', 'Skill.Ability.CannotUseInCombat', 'DE', 'Ihr befindet Euch gerade im Kampf und k??nnt deshalb diese F??higkeit nicht anwenden!', '', '2015-07-16 06:44:04'),
   ('50c3b3d1-2a44-4a81-97cf-54342e57d5d3', 'PlayerClass.Scout.GetTitle.25', 'DE', 'Kundschafter', '', '2015-07-16 06:43:56'),
   ('50c4076e-dcc0-4553-8247-ec0fb26b216c', 'ConcentrationAbility.AddEffectsInfo.Info1', 'EN', 'Level 1: Value: 25%', '', '2015-07-16 06:43:56');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('50c4ed83-f6f7-4835-be32-d4b18afdeee6', 'ArmorCraftingMaster.InitialEntersentence', 'EN', 'Would you like to join the Order of [Armorcrafters]? As a crafter of armor, you can expect to create armor of various types, from studded leather to chain mail armor. While you will excel in armor crafting and have good skills in tailoring and weapon craft, you can expect great difficulty in fletching. A well-trained armor crafter also has a small bit of skill to perform siege crafting should it be of need.', '', '2015-07-16 06:43:53'),
   ('50c71bde-6ecd-47f3-8df5-f2441cb08e9e', 'GamePlayer.RealmTitle.Male.EagleKnight', 'EN', 'Eagle Knight', '', '2015-07-16 06:44:01'),
   ('50d23560-2529-466f-a3ad-8ec46e53f3a6', 'Scripts.Player.Guild.PromotedOther', 'FR', '{0} est promu(e) au rang {1}.', '', '2015-07-16 06:44:01'),
@@ -5236,7 +5231,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('54033497-bf72-42e6-977c-7e7e8cbcd3ea', 'Scripts.Player.Guild.Help.GuildBuff', 'EN', '''/gc buff <artifact, crafting, rps, bps, xp or mlxp>'' sets the guild buff', '', '2015-07-16 06:43:52'),
   ('54081f50-8d27-439d-9788-07c22d530091', 'Scripts.Player.Guild.GuildLevelReq', 'DE', 'Eure Gilde ist nicht befugt, diesen Befehl auszuf??????????????????hren.', '', '2015-07-16 06:43:56'),
   ('54089e4f-73da-4943-a611-1ff7886f6c4e', 'EnchanterTrainer.Interact.Text3', 'EN', '', '', '2015-07-16 06:44:08');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('541213a2-85fb-4854-b2f1-9c3debd8e0ad', 'Alb.ANewHeroesWelcome.Conclusion.Text1', 'DE', 'Danke, {0}.', '', '2015-07-16 06:43:56'),
   ('5414074f-2b3b-43a9-acda-5a6dcc7a3347', 'PlayerClass.Skald.GetTitle.45', 'EN', 'Lord of Eldas', '', '2015-07-16 06:43:56'),
   ('54141fa9-92de-490c-a90f-a8dabdf614c7', 'PlayerClass.Mentalist.GetTitle.35', 'EN', 'Possessor', '', '2015-07-16 06:43:52'),
@@ -5437,7 +5432,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('578880ba-a4b4-4b48-9d3e-57862810b329', 'GameTrainer.PromotePlayer.Upgraded', 'FR', 'vous avez ??????????????????t?????????????????? promu(e) ?????????????????? la classe de {0} !', '', '2015-07-16 06:43:51'),
   ('57891d2f-8d5f-48c7-b8ba-dc0c494ba4ed', 'GamePlayer.RefreshSpec.TargetHits', 'ES', 'Este estilo de combate esta mejor usado cuando tu objetivo te golpea.', '', '2015-07-16 06:44:08'),
   ('578d2bc0-1b23-4f9e-a0bd-a505f0376d1c', 'Alb.GreetingsNecromancer.CheckPlayerAbortQuest.Text1', 'EN', 'Very well then, remember you can come to me at any time to ask about your specializations if you need.', 'Constantine''s Sound Quests', '2015-07-16 06:44:02');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('57901143-9836-46b6-8c5a-ae9b9a114b7e', 'PlayerClass.Spiritmaster.GetTitle.10', 'EN', 'Practitioner', '', '2015-07-16 06:43:53'),
   ('5797bf2d-f552-44e5-b28f-db18cb991e32', 'SkillBase.RegisterPropertyNames.AllSkills', 'EN', 'All Skills', '', '2015-07-16 06:44:00'),
   ('579eb974-12cd-493c-929a-99488d5ac7fc', 'Scripts.Player.Boat.UnknownCommand', 'EN', 'That is not a valid boat command. /boat for help.', '', '2015-07-16 06:43:59'),
@@ -5638,7 +5633,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('5acdd11e-edbe-4052-a302-88c8ab1a40b7', 'Scripts.Player.Guild.InfoGuild', 'DE', 'Guildeninfo f??????????????????r {0}:', '', '2015-07-16 06:43:59'),
   ('5aceca3c-1f4b-4891-86c8-dac1a9539c5d', 'Alb.DredgeUpAPledge.CheckPlayerAbortQuest.Text1', 'FR', 'Bon, allez maintenant allez l??????????????????-bas et finissez votre travail!', '', '2015-07-16 06:43:59'),
   ('5ad1fd09-3c62-4b8a-96d6-0a3019312d98', 'SkillBase.RegisterPropertyNames.ArrowRecovery', 'EN', 'Arrow Recovery', '', '2015-07-16 06:43:54');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('5ad3a7fc-d8fb-4691-97de-7079f57985cc', 'Mid.MaulerInvasion.Talk7', 'EN', 'You will not regret your decision! Now, if you haven''t seen them, the black mauler cubs can be found in a few places. There are some northwest of here, in the field just past Barkeep Nognar''s bar. You''ll also find some in the trees southeast of here as well as in the field west of here. Bring me the pelts of two of the cubs and I shall pay you for them.', '', '2015-07-16 06:43:58'),
   ('5ad5013a-7e0c-4a16-89e8-20c092ead38e', 'PlayerClass.Bonedancer.GetTitle.20', 'DE', 'Bodgars Gehilfe', '', '2015-07-16 06:43:56'),
   ('5ad58e22-4dac-4411-859a-0bf67a27fdc6', 'Mid.MaulerInvasion.QuestTitle', 'DE', 'Malmerinvasion', '', '2015-07-16 06:43:55'),
@@ -5839,7 +5834,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('5e0792b3-88cc-4a64-946f-b8f29953aedc', 'GamePlayer.ItemBonusName.Bonus17', 'EN', 'Slash resistance', '', '2015-07-16 06:44:00'),
   ('5e093560-a86d-42c1-be80-719c5ff5b5ea', 'AdvancedCraftingSkill.IsAllowedToCombine.ProblemCombine', 'DE', 'Diese Tinktur muss noch konfiguriert werden. Schreibt dies bitte in den Bugreport!', '', '2015-07-16 06:44:04'),
   ('5e0d8efc-5fca-453e-bfc6-197503480eb5', 'Hib.WingsOfTheIsle.Jessica3', 'EN', 'Yes, I lost it the last time I was out on the island. I think I was playing in the light house before my father came and rushed me away. That was the day the invaders came. If you''d like you could ride my wyvern to the island?', '', '2015-07-16 06:43:50');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('5e0f4bdb-ab98-4c12-906b-db15119a6676', 'PlayerClass.Theurgist.GetTitle.15', 'EN', 'Summoner', '', '2015-07-16 06:44:01'),
   ('5e14eccd-9bcc-45d3-adca-a455d5b1c51d', 'AdrenalineRushAbility.AddEffectsInfo.Info4', 'EN', '', '', '2015-07-16 06:44:07'),
   ('5e1a18a6-a8bb-4dcf-a8cb-79d2b1f7f1f8', 'SkillBase.RegisterPropertyNames.DeathservantFocus', 'DE', 'Todesdiener', '', '2015-07-16 06:44:00'),
@@ -6040,7 +6035,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('615b6536-2ebc-462f-b66b-92bc346b8766', 'Zone.ScreenDescription.TheBeastmaster''sDen', 'FR', 'L''Antre du Belluaire', '', '2015-07-16 06:44:11'),
   ('615c46aa-066d-4679-991e-44a6cb945dfb', 'Alb.GreetingsPaladin.Conclusion.Text1', 'EN', 'Excellent, {0}! You''ve done very well. ', 'Constantine''s Sound Quests', '2015-07-16 06:44:02'),
   ('616336a6-cb36-4b78-94b6-3e7977607a87', 'SummonCommanderPet.DelveInfo.Text1', 'EN', 'Function: summon', '', '2015-07-16 06:44:00');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('61641ab5-fc47-4579-9e5a-8dd38b5e9d4a', 'GamePlayer.Pray.SelectGrave', 'ES', 'Selecciona tu tumba para rezar!', '', '2015-07-16 06:44:08'),
   ('6166a65d-03c3-4c9f-a43a-803f5c0b746a', 'GamePlayer.OnLevelUp.StatRaise', 'CZ', 'Tvoje vlastnosti se zvysily!', '', '2015-07-16 06:44:03'),
   ('61690bf0-d56f-4ab7-aa6b-303b9b2af8a5', 'Scripts.Player.Housing.LotTargeted', 'FR', 'Vous s??????????????????lectionnez le lot num??????????????????ro {0}.', '', '2015-07-16 06:43:59'),
@@ -6241,7 +6236,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('6489816f-0b50-4bed-8d6c-f0b2940d0f1c', 'RealmAbility..CheckPreconditions.Combat', 'EN', 'You have been in combat recently and cannot use this ability!', '', '2015-07-16 06:44:00'),
   ('648b5038-9924-4f4f-b621-f1b94a19462a', 'HousingPlaceItemHandler.40objects', 'CZ', 'Uz jsi umistil 40 objektu. Nemuzes vic.', '', '2015-07-16 06:44:04'),
   ('648b9bad-a826-4177-9a2c-4d19254c96f4', 'Scripts.Players.Realm.HibKeeps', 'ES', 'Puestos avanzados de Hibernia', '', '2015-07-16 06:44:08');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('648c9546-f4f4-4fd4-97f2-a03407ed59ec', 'Crafting.Name.Alchemy', 'FR', 'Alchimie', '', '2015-07-16 06:43:57'),
   ('649d4d3d-7d07-4c83-bc91-ad9d93d4d434', 'Scripts.Players.Appeal.ToCancelYourAppeal', 'DE', 'Eure Anfrage k??nnt Ihr mit dem Befehl "/checkappeal cancel" zur??ck ziehen.', '', '2015-07-16 06:44:07'),
   ('64a027f2-7861-476a-83db-2758158b8f03', 'PlayerClass.Paladin.GetTitle.50', 'EN', 'Templar', '', '2015-07-16 06:43:54'),
@@ -6442,7 +6437,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('67c8a1a5-45ca-4f6a-b7cb-17889573c026', 'Alb.GreetingsReaver.Conclusion.Text2', 'EN', 'Now with your new knowledge chose your weapon wisely.', 'Constantine''s Sound Quests', '2015-07-16 06:44:02'),
   ('67cc3236-15c1-493e-bfcf-aa2b2ed02277', 'Zone.ScreenDescription.Krondon', 'EN', 'Krondon', '', '2015-07-16 06:43:54'),
   ('67d7b2d1-2717-4202-a4f1-4e1f4c25224f', 'MasteryofConcentrationAbility.AddEffectsInfo.Info4', 'EN', '', '', '2015-07-16 06:44:08');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('67dc27a2-6b9b-4979-bc09-7ac5f903a5b9', 'Scripts.Player.Guild.Help.GuildQuit', 'DE', '/gc quit - die aktuelle Gilde verlassen', '', '2015-07-16 06:43:51'),
   ('67ddbf7a-01cf-42de-b43d-b2ba2943ed2d', 'Titles.CL.Level2', 'IT', 'Enforcer', '', '2015-07-16 06:43:50'),
   ('67deb8ab-0ee7-4178-88fb-98f7417da238', 'BedazzlingAuraAbility.AddEffectsInfo.Info5', 'EN', '', '', '2015-07-16 06:44:07'),
@@ -6643,7 +6638,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('6b0a8853-182f-45c1-880e-3ceca93b8ceb', 'DetailDisplayHandler.WriteMagicalBonuses.StrikeArmor', 'EN', '- Spell has a chance of casting when enemy strikes at this armor.', '', '2015-07-16 06:43:52'),
   ('6b0dc13b-96ec-4d9c-baa8-518e41bf8535', 'Alb.RecruitingNothingButTrouble.CheckPlayerAbortQuest.Text2', 'EN', 'Aborting Quest {0}. You can start over again if you want.', '', '2015-07-16 06:44:00'),
   ('6b0f8997-6679-40a6-9b68-7a810d924c17', 'Scripts.Player.Guild.AllianceNoGMSelected', 'EN', 'You must select a GM of guild you want to invite.', '', '2015-07-16 06:43:58');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('6b115da1-4d52-430f-8217-495ae444bf80', 'PlayerClass.Name.Spiritmaster', 'EN', 'Spiritmaster', '', '2015-07-16 06:43:51'),
   ('6b139746-7ac2-4e75-be11-bd2aaca285d0', 'GamePlayer.RealmTitle.Defender', 'EN', 'Defender', '', '2015-07-16 06:44:01'),
   ('6b16ac86-fccf-4947-8eeb-33f4eaa8bf37', 'Scripts.Player.Boat.NotInWater', 'FR', 'Vous devez ??????????????????tre dans l''eau pour invoquer votre navire !', '', '2015-07-16 06:43:54'),
@@ -6844,7 +6839,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('6e57c184-887d-4866-9a0c-17319d3e9a53', 'GamePlayer.ItemBonusName.Bonus5', 'DE', 'Intelligenz', '', '2015-07-16 06:43:54'),
   ('6e58ac8a-0396-40ad-b527-09ba5733651a', 'HousingDecorationRotate.Rotated', 'IT', 'La decorazione interna e'' stata ruotata da {0} a {1} gradi.', '', '2015-07-16 06:43:58'),
   ('6e5eb42f-02eb-452f-a40c-6e107400191b', 'SkillBase.RegisterPropertyNames.Power', 'DE', 'Magiekraft', '', '2015-07-16 06:43:52');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('6e60a01a-9058-4954-b40f-cc2a45d3d659', 'Hib.ImportantDelivery.TalkToAethic.Errand', 'DE', 'Ich brauche Euch, um diese Kiste mit Gem??????????????????se zu Freagus nach Ardee zu bringen. Ich bin sicher, dass Ihr geeignet seid f??????????????????r diese Aufgabe. Nehmt dieses Pferdeticket und gebt es Stallmeister Truichon. Und nun beeilt Euch, bevor dieses Gem??????????????????se verdirbt.', '', '2015-07-16 06:43:52'),
   ('6e648379-7988-4a9f-8d87-9033ee5f1907', 'AdminCommands.plvl.Usage.SingleAccount', 'NL', '/plvl singleaccount <commando> [Accountnaam]', '', '2015-07-16 06:44:12'),
   ('6e65ec32-4977-43b6-9c71-dc6d72fc14fa', 'GamePlayer.ItemBonusName.Bonus9', 'EN', 'Power', '', '2015-07-16 06:43:56'),
@@ -7045,7 +7040,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('714bbaf1-4ab5-4250-aa5b-a8517840d8db', 'GMCommands.Merchant.Usage.Articles.Add', 'DE', '''/merchant articles add <itemTemplateID> <pageNumber> [slot]'' to add an item to the merchant articles list template;', '', '2015-07-16 06:43:54'),
   ('714cd841-21e9-4341-b947-6daf9efe4267', 'Zone.ScreenDescription.BurialGrounds', 'DE', 'Grabkammern', '', '2015-07-16 06:44:05'),
   ('714ec49b-59a0-44ef-bd0e-41331884fda1', 'SendMasterLevelWindow.Complete.ML3.Step3', 'EN', '[Termin??????????????????] Casta a ??????????????????t?????????????????? vaincue, un autre pouvoir runique est d??????????????????sormais ?????????????????? vous !', '', '2015-07-16 06:43:51');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('714ec702-3e1d-4542-91f9-511562cee3d2', 'Titles.Kills.Dragon.DragonSlayer', 'EN', 'Dragon Slayer', '', '2015-07-16 06:44:00'),
   ('7153559b-bc02-47ca-a806-09c41c210f18', 'Alb.TombWithAView.Init.Text3', 'FR', 'Recruit''s Studded Boots', '', '2015-07-16 06:44:01'),
   ('715c169e-4439-40ba-a831-832b531b65b5', 'Scripts.Players.Afk.Off', 'IT', 'Non sei piu'' segnalato come AFK.', '', '2015-07-16 06:43:54'),
@@ -7246,7 +7241,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('7479b28c-b6cf-4483-9326-a8843337acbb', 'Scripts.Player.Guild.InfoOMotd', 'FR', 'Message des officiers : {0}', '', '2015-07-16 06:43:51'),
   ('748a9235-4652-4019-890f-005f01f26b10', 'Alb.WhenBloodSpeaks.Summary', 'EN', 'Master Kless needs spriggarn blood to use in a spell that will help determine if they are under a malevolent influence.  Kill two of them, and return to him with their blood.', '', '2015-07-16 06:43:58'),
   ('748a962f-4e64-4f1a-80f2-c2745ba40152', 'House.SendHouseInfo.Rug2Color', 'FR', '-Couleur 2: {0}', '', '2015-07-16 06:43:51');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('74928e80-b8b9-435b-8542-6fb440eb2807', 'CraftLevelToCraftTitle.Journeyman', 'DE', 'Niedergelassener Handwerker', '', '2015-07-16 06:43:53'),
   ('749a5c67-8bb0-4d38-8ed1-d15a5d9c39da', 'PlayerClass.Name.Eldritch', 'DE', 'Eldritch', '', '2015-07-16 06:43:53'),
   ('749a7011-2068-401e-a20f-54d5fcd5cd92', 'Zone.Description.SobekiteEternal', 'EN', 'Sobekite Eternal', '', '2015-07-16 06:44:00'),
@@ -7447,7 +7442,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('77c0d39f-77e3-4621-b0c8-d6bd91e2f28f', 'SendMasterLevelWindow.Uncomplete.ML7.Step2', 'DE', 'You can learn all there is to know of your opponent through combat, but time multiplies when there are four. It is not for you to end the feud, but you can''t move on until they have all seen you as a threat. This is a group encounter.', '', '2015-07-16 06:44:00'),
   ('77c6e9ae-3ae3-4dda-8091-2e9c85a466e8', 'Alb.GreetingsFriar.Description1', 'EN', 'Ah, {0}, the church welcomes you. I can tell you about your specializations. [Rejuvenation], [Enhancements], [Staff] let me know when you are [done].', 'Constantine''s Sound Quests', '2015-07-16 06:44:02'),
   ('77cae301-509c-4c9c-a249-273e7fecb638', 'Titles.Claim.Frontier.FrontierChallenger', 'DE', 'Aufstrebender Burgherr', '', '2015-07-16 06:43:57');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('77cb6bd7-bfab-4c68-9e68-88a170f731b8', 'DetailDisplayHandler.HandlePacket.TargetBlocks', 'IT', 'Il bersaglio blocca', '', '2015-07-16 06:43:54'),
   ('77d2c0fa-531a-4482-9b7d-fc0dfaeed93a', 'PlayerInitRequestHandler.SaferLocation', 'IT', 'Quest''area non e'' attualmente sicura e stai per essere trasportato in un luogo piu'' sicuro.', '', '2015-07-16 06:44:00'),
   ('77d474c4-d5d8-4095-ba77-b1ede0803931', 'GameKeepGuard.GetExamineMessages.Balancing', 'FR', '{0} has keep balancing level ({1})', '', '2015-07-16 06:43:57'),
@@ -7648,7 +7643,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('7ad25908-ec88-432f-a42c-153948dc7d8c', 'GamePlayer.Shade.NoLongerShade', 'EN', 'You are no longer a shade!', '', '2015-07-16 06:43:57'),
   ('7ad4edb5-7226-4299-8c41-9545ec802155', 'GamePlayer.PickupObject.YourLootShare', 'DE', 'Euer Anteil an der Beute ist [{0}].', '', '2015-07-16 06:43:50'),
   ('7ad504ac-bd81-4390-bb6c-4c702b8884ee', 'Healer.HealerDialogResponse.Text4', 'DE', 'Ihr braucht {0} um {1} Konstitutionspunkte wieder herzustellen.', '', '2015-07-16 06:43:51');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('7ad5616c-7112-4813-81fa-570e73458235', 'Alb.Cleric.GuildGift.Rewards.Init.Text4', 'EN', 'arch mace of the adept', '', '2015-07-16 06:43:55'),
   ('7ad68168-72b7-4388-9391-3ad8f1435d96', 'GamePlayer.OnLevelUp.YouRaise', 'IT', 'Il tuo livello sale a {0}!', '', '2015-07-16 06:43:57'),
   ('7ae3e573-1357-480b-91e9-68da1f54a663', 'Hib.GreetingsHero.Description.Specialization.Parry', 'EN', 'Parry is purely defensive skill. Each point you place into this specialization will allow you to parry an enemies'' blows more frequently. Some styles in the weaponry specializations are based off of you parrying. What else can I tell you about [Piercing], [Blades], [Blunt], [Large Weapon], [Celtic Spear], [Shield], or [Parry] or are you [done].', '', '2015-07-16 06:43:56'),
@@ -7849,7 +7844,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('7e04279c-b2e4-42b8-835b-d6197afa174d', 'Alb.WhenBloodSpeaks.Init.Text3', 'DE', 'Rekruten-Nietenbeinlinge', '', '2015-07-16 06:43:52'),
   ('7e057800-3613-49d9-b187-824350df150a', 'ZoneBonus.AdditionalCoin', 'EN', 'You gain additional coins for adventuring in this zone!', '', '2015-07-16 06:44:01'),
   ('7e0ade67-a9a9-49ba-968e-5182d399727e', 'PlayerClass.Shaman.GetTitle.35', 'EN', 'Ymir''s Monitor', '', '2015-07-16 06:44:01');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('7e0e2511-71bc-4697-8325-5af8f7beff4d', 'Skill.Ability.Stealth.CannotUseInCombat', 'EN', 'You''ve been in combat recently and can''t hide yet!', '', '2015-07-16 06:44:07'),
   ('7e1445ff-90f6-4d2a-82ff-1dff9aeedc4d', 'Effects.TripleWieldEffect.XMBExtraDamageToYou', 'IT', '{0} arma magica ti fa {1} danni addizionali!', '', '2015-07-16 06:43:55'),
   ('7e1630bd-4c5f-47c4-b832-515203316d2d', 'Zone.Description.MountCollory', 'EN', 'Mount Collory', '', '2015-07-16 06:44:01'),
@@ -8050,7 +8045,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('811f006a-7d8a-453a-9cb7-2f39c6d5fbfd', 'Zone.ScreenDescription.Aberillan', 'EN', 'Aberillan', '', '2015-07-16 06:44:00'),
   ('8121c363-0547-4c05-a55b-9327f7f8de9f', 'GamePlayer.Attack.HitsYour', 'DE', '{0} trifft {1} mit {2}{3} Schaden!', '', '2015-07-16 06:43:58'),
   ('81293da5-a94b-48a4-af24-4d98332361b7', 'SkillBase.RegisterPropertyNames.Acuity', 'DE', 'Sinnessch??????????????????rfe', '', '2015-07-16 06:44:01');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('813130d9-995f-4575-ab9f-d566033ea513', 'Alb.Armsman.GuildGift.Rewards.Init.Text24', 'EN', 'spiked hammer of the tyro', '', '2015-07-16 06:43:50'),
   ('8131573b-7227-4527-9864-ab92b5536af5', 'Quests.Albion.AFewRepairs.AbortQuest.Ok', 'FR', 'Good, now go out there and finish your work!', '', '2015-07-16 06:43:59'),
   ('8131cdea-1da4-4c8f-bd66-9b1b742895df', 'Scripts.Players.Afk.On', 'DE', 'AFK eingeschaltet.', '', '2015-07-16 06:43:58'),
@@ -8251,7 +8246,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('8420da24-759e-486a-9a8e-681d9dbb2ff1', 'Hib.GreetingsEnchanter.Description.Specialization.Sun', 'EN', 'Your way of the sun line contains a variety of combat speed debuffs as well as a single target damage spells. The combat speed debuffs vary from instant, short duration instant and area effect instant. What else can I tell you about? Way of the [Sun], Way of the [Moon], [Enchantment] or are you [done]?', '', '2015-07-16 06:43:51'),
   ('8420fe0b-9b24-4a0d-a670-d29f81317a66', 'GameObjects.CommanderPet.HailMaster.SummonerMale', 'DE', 'Beschw?rer', '', '2015-07-16 06:43:58'),
   ('8422e3ab-caef-4956-b0c1-b08af59d5e7f', 'Zone.ScreenDescription.SilvermineMts.', 'EN', 'Silvermine Mts.', '', '2015-07-16 06:44:00');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('84358cc7-539e-473d-bd95-6702a7c29cf8', 'ChildsPlay.TalkToCharles.CaseText2', 'EN', 'join', '', '2015-07-16 06:43:50'),
   ('8437d102-bbb0-42ad-8933-167cc62596b7', 'Scripts.Player.Boat.InviteNoSelf', 'DE', 'Ihr k??????????????????nnt Euch nicht selbst einladen!', '', '2015-07-16 06:43:50'),
   ('8438d1f8-fed7-47c9-a092-c2c35842919a', 'PlayerInitRequestHandler.LevelCap', 'EN', 'You have exceeded the level cap of this battleground!', '', '2015-07-16 06:43:57'),
@@ -8452,7 +8447,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('86e4a3a6-bd70-4bea-aed4-d377398aeb3d', 'Zone.Description.MountCollory', 'DE', 'am Berg Collory', '', '2015-07-16 06:44:06'),
   ('86e71391-e915-4af7-a9ba-4e8bb2d6a98a', 'SkillBase.RegisterPropertyNames.MeleeDamage', 'FR', 'Bonus aux d??????????????????gats de m??????????????????l??????????????????e', '', '2015-07-16 06:43:59'),
   ('86e9d89d-e164-4670-953e-16a72f2bce5d', 'GameMerchant.GetExamineMessages.RightClick', 'CZ', '[Pravy klik pro otevreni okna s obchodovanim]', '', '2015-07-16 06:44:03');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('86e9e163-4c41-4751-84c5-d1b2e7bbdd01', 'ChildsPlay.TalkToCharles.Text1', 'DE', 'Hallo, {0}. Bist du es je m??????????????????de geworden, dasselbe Spiel immer wieder zu spielen? Genauso ist es hier. Die Erwachsenen sagen, alles was wir tun k??????????????????nnen, ist hier sitzen und ''Wahrheit oder Wagemut'' spielen. Sicher war es am Anfang lustig, doch den meisten von uns wurde langweilig und Raymond ist zu feige, sich auf irgendeine der [Mutproben] einzulassen, die ich mir f??????????????????r ihn ausdenke.', '', '2015-07-16 06:44:00'),
   ('86f49e49-ac0c-4408-b82e-11d4f82cbf39', 'SkillBase.RegisterPropertyNames.Crossbows', 'FR', 'Arbal??????????????????tes', '', '2015-07-16 06:43:54'),
   ('86f9893e-0407-4bd7-a74a-adabb3148d09', 'GamePlayer.PlayerRace.Male.Briton', 'FR', 'Breton', '', '2015-07-16 06:44:09'),
@@ -8653,7 +8648,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('8a31cc60-68c1-41ee-89da-14525e15cabc', 'Alb.Armsman.GuildGift.Rewards.Init.Text27', 'EN', 'war pick of the adept', '', '2015-07-16 06:43:55'),
   ('8a32931a-c982-480d-a931-24b8ae2b9c5d', 'Effects.ProtectEffect.YouProtectingY', 'DE', 'Ihr besch??tzt nun {0}.', '', '2015-07-16 06:44:04'),
   ('8a3c56c8-1315-4b5d-9914-300fae236733', 'GamePlayer.RealmTitle.Male.AlerionKnight', 'DE', 'Alerionritter', '', '2015-07-16 06:43:54');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('8a3d8824-3098-46e2-a881-6f8045a2133e', 'GamePlayer.ItemBonusName.Bonus4', 'FR', 'Vivacit??????????????????', '', '2015-07-16 06:43:57'),
   ('8a44b28f-c393-4c0c-aa02-520fb49276f1', 'SendMasterLevelWindow.Uncomplete.ML4.Step8', 'EN', 'The blood of Daehien still flows in the Land of Atum! This is a battlegroup encounter.', '', '2015-07-16 06:43:59'),
   ('8a563af4-350d-4d8a-a6de-71a786193ba9', 'GamePlayer.SayReceive.FalseLanguage', 'FR', '{0} dit quelque chose dans une langue que vous ne comprenez pas.', '', '2015-07-16 06:43:52'),
@@ -8854,7 +8849,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('8d8304cd-da84-4840-8ec2-03bd015c9246', 'Scripts.Recharger.RechargerDialogResponse.GiveMoney', 'EN', 'You give to {0} {1}.', '', '2015-07-16 06:43:55'),
   ('8d86ebca-f2f0-479b-a969-fbd80c8f94e0', 'GameObjects.CommanderPet.WR.Const.2HandedAxe', 'FR', 'two handed axe', '', '2015-07-16 06:43:56'),
   ('8d895628-d4c7-4c5e-b33c-20c8fc491794', 'GameObject.Interact.TooFarAway', 'IT', 'Sei troppo lontano per interagire con {0}.', '', '2015-07-16 06:43:56');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('8d8be616-7c9e-49db-a9e4-129a90891da1', 'Crafting.CheckTool.SpellcraftKit', 'FR', 'Kit d''arcanisme', '', '2015-07-16 06:43:56'),
   ('8d8f317d-a8f7-4848-bab8-e1602660de7c', 'Zone.Description.ShaftsoftheTenebrae', 'DE', 'in Shafts of the Tenebrae', '', '2015-07-16 06:44:06'),
   ('8d947e51-6ed5-4cf1-bea4-fa72797b2965', 'Healer.Interact.Text2', 'FR', 'Cela vous co??tera {0} pour restaurez vos points de constitution. Acceptez vous?', '', '2015-07-16 06:44:11'),
@@ -9055,7 +9050,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('90afa0db-616e-4a8a-b8dd-7faec16784f8', 'PlayerClass.Savage.GetTitle.25', 'EN', 'Defender of Kelgor', '', '2015-07-16 06:43:59'),
   ('90b0f867-cb14-4da4-ae60-9a3f6614b421', 'GameLiving.Pronoun.Male.Objective', 'EN', 'him', '', '2015-07-16 06:44:00'),
   ('90b4ceba-e18b-48e0-9346-36aef52de0fe', 'Zone.ScreenDescription.GreenGlades', 'DE', 'Gr?ne Lichtungen', '', '2015-07-16 06:44:05');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('90b56c9a-5093-4c2d-88e0-7d69d42bdd9f', 'DetailDisplayHandler.HandlePacket.YouEvade', 'FR', 'Vous esquivez', '', '2015-07-16 06:43:59'),
   ('90b80331-5b54-44e6-96f1-03b8e6278e00', 'SkillBase.RegisterPropertyNames.PainworkingFocus', 'FR', 'Focus : Dolor Inflictus', '', '2015-07-16 06:43:55'),
   ('90bdeccc-c2f9-49c0-a960-b034578f88cb', 'GamePlayer.RealmTitle.Male.Tiarna', 'EN', 'Tiarna', '', '2015-07-16 06:43:57'),
@@ -9256,7 +9251,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('9398961b-57ad-4421-b14d-0ed7f72e11d1', 'MaulerHibTrainer.Interact.Text4', 'DE', '', '', '2015-07-16 06:44:05'),
   ('93a1f64f-a670-449e-b999-0eb188546438', 'Scripts.Player.Boat.AlreadyOnBoat', 'FR', 'Ce joueur est d??????????????????j?????????????????? sur le bateau!', '', '2015-07-16 06:43:58'),
   ('93a434ca-b8a1-4923-b518-7582dbca2c35', 'HorseEmote.graze.ToOthers', 'EN', '-', '', '2015-07-16 06:43:51');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('93a685dd-5f92-4dcc-b695-1a403184892b', 'Scripts.Players.Chatgroup.Help.Invite', 'EN', '/cg invite [playername] - Invites the specified player to the chat group', '', '2015-07-16 06:43:54'),
   ('93a8e17d-b911-4def-a968-65f9388dd8d5', 'Effects.GameSpellEffect.CantRemoveEffect', 'FR', 'Vous ne pouvez pas annuler cet effet!', '', '2015-07-16 06:44:00'),
   ('93ad68bc-5dc5-42f1-941e-ef3ea7f7ea16', 'PlayerClass.Schamane.GetTitle.5', 'DE', 'Schamaneneleve', '', '2015-07-16 06:44:05'),
@@ -9457,7 +9452,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('96ad07d9-51d9-41c7-b77d-d1d54f53a491', 'PlayerClass.Friar.GetTitle.50', 'EN', 'Chaplain Primus', '', '2015-07-16 06:43:57'),
   ('96b207ec-8161-4ffd-83ba-f3ce1092594b', 'Alb.GreetingsCabalist.Description', 'EN', 'Speak with Magus Krynam about your specializations.', 'Constantine''s Sound Quests', '2015-07-16 06:44:02'),
   ('96b6bfa4-59e6-4b10-824f-493e01d6f7a1', 'GamePlayer.Spell.NotImplemented', 'EN', '{0} ({1}) not implemented yet on this server.', '', '2015-07-16 06:43:56');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('96c2d90a-fd36-43e0-95c1-19ac9e32406b', 'Mid.GreetingsThane.Conclusion.Text2', 'EN', 'Now with your new gained knowledge chose your weapon wisely.', 'Grenlock''s Sound Quests', '2015-07-16 06:43:50'),
   ('96c5780a-04d9-494e-89fa-8d26f5231840', 'PlayerStatistic.PvE.KillsDragon', 'FR', 'Nombre de Dragons tu??????????????????s', '', '2015-07-16 06:43:51'),
   ('96c881f0-1d4d-4144-9c8d-3f81aaec29fa', 'PlayerClass.Champion.GetTitle.40', 'EN', 'Consul', '', '2015-07-16 06:44:00'),
@@ -9658,7 +9653,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('99ced0a6-140e-4534-8a17-c6c948d3534e', 'GMCommands.AddBind.Usage', 'DE', '/addbind [radius=750]', '', '2015-07-16 06:43:57'),
   ('99d514a3-259e-4b1d-a7c8-f26d0d3d3f86', 'Hib.MagicalBacklash.CheckPlayerAbortQuest.Text1', 'DE', 'Gut, macht also weiter und beendet Eure Aufgabe!', '', '2015-07-16 06:43:59'),
   ('99dd1c9e-12e1-418d-8426-7c4cd1f6afa5', 'SetGuardName.NordicHunter', 'DE', 'Nordmann-J??????????????????ger', '', '2015-07-16 06:43:50');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('99dd2d7b-9dd5-4942-a7f6-c0c7d956cb9a', 'Albion.Arbiter.WhisperReceive.Text2', 'EN', 'Aye, this tablet and its magic, they are the only source of knowledge we have on the trials and the planes. We''re trying to translate it, and we have found some other tablets and scrolls that tell us a bit about this [place].', '', '2015-07-16 06:44:02'),
   ('99e23a75-c13a-4718-9512-0b8e4145f72b', 'GamePlayer.PlayerRace.Male.Valkyn', 'DE', 'Valkyn', '', '2015-07-16 06:44:01'),
   ('99e93555-7a99-4b77-8097-ebdb1772b8e6', 'Titles.Claim.Frontier.FrontierChallenger', 'IT', 'Frontier Challenger', '', '2015-07-16 06:43:57'),
@@ -9859,7 +9854,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('9cf16c2e-048d-4ada-9906-cc1dc5a0d8ef', 'Alb.Sorcerer.GuildGift.CheckPlayerAbortQuest.Text2', 'EN', 'Aborting Quest {0}. You can start over again if you want.', '', '2015-07-16 06:44:01'),
   ('9cf5727b-9086-4145-856b-cba654313c3d', 'SkillBase.RegisterPropertyNames.WindMagicFocus', 'FR', 'Focus : Voie de l''Air', '', '2015-07-16 06:43:50'),
   ('9cfa763b-4dba-4a61-87b2-c655e5054b96', 'Alb.GreetingsMinstrel.Description.Thrust', 'EN', 'Thrust is a basic weaponry skill. Each point you place into it will increase your damage with a thrusting weapon. At different levels of training you will acquire combat styles. These styles will be unique to thrusting weapons. What else can I tell you about? [Stealth], [Slash], [Thrust], [Instruments], or are you [done]?', 'Constantine''s Sound Quests', '2015-07-16 06:44:02');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('9cfaa5e6-c258-4340-816d-a0842ce459f0', 'Effects.ProtectEffect.ProtectByName', 'FR', '{0} est prot??????????????????g?????????????????? par {1}', '', '2015-07-16 06:43:57'),
   ('9d056c13-b2bb-457a-a325-25a41ccf2eef', 'GamePlayer.RealmTitle.Male.Cosantoir', 'FR', 'Cosantoir', '', '2015-07-16 06:44:09'),
   ('9d090483-902d-4d89-b248-ce8d5e913dcb', 'Zone.ScreenDescription.VigilantRock', 'FR', 'Le Roc Vigilant', '', '2015-07-16 06:44:10'),
@@ -10060,7 +10055,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('a047550d-1852-472e-a6f1-bb6028de92d2', 'Zone.ScreenDescription.HalfOrcCommandPost', 'DE', 'Halbork-Kommandoposten', '', '2015-07-16 06:44:05'),
   ('a0480f7d-d68a-411d-ae8a-a0e3db9e45b4', 'DelveInfo.Range', 'FR', 'Port?e: {0}', '', '2015-07-16 06:43:55'),
   ('a04a8dfc-c4e3-4907-857c-a90ebfc7458e', 'GamePlayer.RealmTitle.Female.Banbharun', 'EN', 'Banbharun', '', '2015-07-16 06:43:57');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('a04b0618-2685-4c8c-8ba2-75eba7523899', 'Mid.StolenEggs.TalkToDalikor.OfferQuest', 'EN', 'Will you find out where the griffin egg has gone?', '', '2015-07-16 06:43:59'),
   ('a04e71ae-a3c9-4c71-a7df-a26610f1a627', 'Zone.ScreenDescription.CursedTomb			Cursed Tomb', 'DE', 'Verfluchtes Grabmal', '', '2015-07-16 06:44:05'),
   ('a0518a1d-ca9e-4c6a-b1f0-387552ed9ed7', 'PlayerClass.Name.Savage', 'EN', 'Savage', '', '2015-07-16 06:43:54'),
@@ -10261,7 +10256,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('a2efbc1b-0aab-454d-9359-562b0d48a36d', 'Effects.GuardEffect.XIsNowGuardingYouBut', 'FR', '{0} vous garde maintenant, mais vous devez rester proche.', '', '2015-07-16 06:44:01'),
   ('a2f2cd3b-dc5c-421a-ad09-d971c0c8d7fb', 'PlayerStatistic.PvE.KillsLegion', 'IT', 'Legion Uccisi', '', '2015-07-16 06:43:52'),
   ('a2fa3c32-5714-476c-aa59-021ce972718d', 'GameMerchant.OnPlayerBuy.BoughtPieces', 'DE', 'Ihr habt gerade {0} {1} f??????????????????r {2} gekauft.', '', '2015-07-16 06:43:51');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('a2fb9bc5-9d9b-485c-8a5c-270a80a0fdff', 'GamePlayer.UseSlot.StopCallingMount', 'FR', 'Vous arr??????????????????tez d''appeler votre monture.', '', '2015-07-16 06:43:59'),
   ('a3028448-265e-49e1-ab3d-f8a88d210d55', 'GamePlayer.GainExperience.YouGet', 'DE', 'Ihr erhaltet {0} Erfahrungspunkte.', '', '2015-07-16 06:43:58'),
   ('a305c571-22b9-4233-b23f-ae042a077fd1', 'Mid.StolenEggs.TalkToHyndla.Talk3', 'DE', 'Das mir genannte Gebiet war nicht klar umrissen, aber ich kann Euch ein allgemeines nennen. Reist zun?chst gen Haggerfel. Dort angekommen, richtet Euch auf der Stra?e nordnord?stlich, vorbei an den zwei [Baumst?mpfen], die zu Eurer Rechten liegen.', '', '2015-07-16 06:43:53'),
@@ -10462,7 +10457,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('a5f7916d-86c8-4462-b132-97e8ee35b160', 'GameLiving.Pronoun.Female.Possessive', 'EN', 'her', '', '2015-07-16 06:43:55'),
   ('a5f857e9-a908-4eb7-9c99-7e95f203dc91', 'Scripts.Players.Chatgroup.NotPublic', 'DE', 'Das ist keine ??????????????????ffentliche Chat-Gruppe.', '', '2015-07-16 06:43:55'),
   ('a5f9b5f8-1b23-40b0-b587-06b50f003ddf', 'BasicCraftingMaster.GuildOrder', 'EN', 'Basic Crafters', '', '2015-07-16 06:43:55');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('a5fd7a04-8769-453b-8bdc-e96df9fa1c8c', 'PlayerClass.Sorcerer.GetTitle.35', 'EN', 'Entrancer', '', '2015-07-16 06:43:51'),
   ('a5fda282-8402-4644-89b6-5cb9e263bf31', 'Zone.Description.HibLaunch', 'DE', 'in Hib Start', '', '2015-07-16 06:44:06'),
   ('a602f322-7a49-4446-bb66-933e06b532a0', 'Hib.GreetingsChampion.Description.Specialization.LargeWeapon', 'EN', 'Large Weapon is an advanced weaponry skill. Each point you place into it will increase your damage with a large weapon. At different levels of training you will acquire combat styles. These styles will be unique to large weapons. What else can I tell you about? [Piercing], [Blades], [Blunt], [Large Weapon], [Valor], [Shield], [Parry] or are you [done].', '', '2015-07-16 06:43:52'),
@@ -10663,7 +10658,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('a8ca26d6-fc9c-4e95-a4de-113808f435f2', 'DetailDisplayHandler.HandlePacket.MustBeInBattleGroup', 'FR', 'Vous devez ??????????????????tre dans un groupe de combat.', '', '2015-07-16 06:44:00'),
   ('a8ce6c99-bdb3-4c5d-83a4-341ea9648469', 'SendMasterLevelWindow.Uncomplete.ML4.Step5', 'DE', 'The Jann of the Land of Atum whirl among the dunes! This is a battlegroup encounter.', '', '2015-07-16 06:44:01'),
   ('a8cf2012-b069-4b1a-9b3f-d9c87307d5d6', 'Titles.CL.Level5', 'FR', 'Pourfendeur du Mal', '', '2015-07-16 06:43:53');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('a8d6ff64-2cc2-4b60-9299-4829b747e7cd', 'SkillBase.RegisterPropertyNames.PieceAblative', 'DE', '- Piece Ablative: {0}% (Nur PvM)', '', '2015-07-16 06:43:56'),
   ('a8d803a6-621b-4952-a247-c48aacb7e05a', 'Zone.Description.CathalValley', 'EN', 'Cathal Valley', '', '2015-07-16 06:43:57'),
   ('a8d8df32-09df-428b-89c8-f0ab27c7baa4', 'GameMerchant.GetExamineMessages.YouExamine', 'CZ', 'Prozkoumavas {0}. {1} je {2} a je to obchodnik.', '', '2015-07-16 06:44:03'),
@@ -10864,7 +10859,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('abf6810d-5daa-4f60-9381-c6669bfeccff', 'House.SendHouseInfo.Lockbox', 'EN', 'Lockbox: {0}', '', '2015-07-16 06:43:58'),
   ('abfd32ac-41d6-4419-a39f-eebe28c78068', 'Mid.GreetingsWarrior.Description.Weapon1', 'EN', 'standard sword', 'Grenlock''s Sound Quests', '2015-07-16 06:44:00'),
   ('abfe959f-94a8-4584-adf0-bf106c5c6ce5', 'GamePlayer.RealmTitle.Male.Thunderer', 'DE', 'Donnerer', '', '2015-07-16 06:43:54');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('ac068ff8-792f-46ca-a33e-14bd0693eef5', 'Alb.GreetingsArmsman.Summary', 'EN', 'Speak to Captain Kinzee to hear about all the specializations available to you. When you are done, he will offer you a weapon. ', 'Constantine''s Sound Quests', '2015-07-16 06:44:02'),
   ('ac07010e-0f91-4f8a-b06f-9eda3147dd68', 'Alb.GreetingsCabalist.Conclusion.Text1', 'EN', 'Excellent, {0}! ', 'Constantine''s Sound Quests', '2015-07-16 06:44:02'),
   ('ac0828c3-ed15-4f0a-85d8-e61d7d75749a', 'Hib.GreetingsBard.CheckPlayerAbortQuest.Text1', 'EN', 'Good, now go out there and finish your work!', '', '2015-07-16 06:44:02'),
@@ -11065,7 +11060,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('af0a05c7-7885-4c2a-8a34-f336a5cbb474', 'Effects.StagEffect.YourHuntsSpiritEnds', 'DE', 'Die Verbindung mit dem Geist der Jagd ist unterbrochen.', '', '2015-07-16 06:44:04'),
   ('af0acc8f-6522-4d69-a9eb-70c2f413018c', 'RAPropertyEnhancer.DelveInfo.Info1', 'DE', 'Stufe {0}: Wert: {1}{2}', '', '2015-07-16 06:43:58'),
   ('af0b5f6f-1904-4dd1-af85-6f2383e277d4', 'House.SendHouseInfo.RentDueIn', 'EN', 'Rent due in: {0} days, {1} hours', '', '2015-07-16 06:43:56');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('af1a83e2-ebb3-408b-8b3e-c2bc4cc61762', 'Zone.Description.Typhon''sReach', 'EN', 'Typhon''s Reach', '', '2015-07-16 06:43:59'),
   ('af1c52a6-1d8f-4215-b104-accca3d9dc01', 'DetailDisplayHandler.WritePotionInfo.Charges', 'EN', '- {0} Charges', '', '2015-07-16 06:43:56'),
   ('af1f5b63-667b-4e9c-aa47-0319ae6d10b5', 'SendMasterLevelWindow.Uncomplete.ML7.Step6', 'EN', 'The Hephaestians wish to test your endurance. This is a group encounter.', '', '2015-07-16 06:43:51'),
@@ -11266,7 +11261,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('b2a1255d-4f17-45a8-837a-1a7f34bd91ea', 'PlayerClass.Savage.GetTitle.45', 'EN', 'Tribal Legend', '', '2015-07-16 06:43:56'),
   ('b2a2e5c5-d0c6-4d70-9d68-66aa5b1b89b1', 'Scripts.Player.ViewReport.InvalidReport', 'DE', 'Das ist kein g??????????????????ltiger Bericht.', '', '2015-07-16 06:43:59'),
   ('b2a8a1f3-83c8-45b0-be00-ea87387e46b8', 'GameObject.GetPronoun.Pronoun3', 'FR', 'Son', '', '2015-07-16 06:43:58');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('b2adb7a9-9f44-4ef6-8a99-24275fd15fb2', 'PlayerBonusesListRequestHandler.HandlePacket.Special', 'EN', 'Special Item Bonuses', '', '2015-07-16 06:43:54'),
   ('b2b69410-d073-4be6-a348-fd5295fb30da', 'Mid.MaulerInvasion.Talk5', 'EN', 'That''s right. If you agree to help me get rid of a few of these black mauler cubs, I will pay you. I figure if we can cull down the population a bit they will be less likely to venture into Mularn. Why don''t you think about [my offer] and let me know if you''d like to help.', '', '2015-07-16 06:43:56'),
   ('b2b7e9cb-38da-40ef-8000-d63b72131a79', 'PlayerClass.Warden.GetTitle.5', 'EN', 'Watcher', '', '2015-07-16 06:44:00'),
@@ -11467,7 +11462,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('b5ed1849-cba7-4547-be18-c0921d11c3d7', 'PlayerClass.Name.Magician', 'DE', 'Adept', '', '2015-07-16 06:43:53'),
   ('b5f2aba0-c9e9-4d00-9d06-c6484be93af5', 'Alb.GreetingsInfiltrator.QuestTitle', 'EN', 'Greetings Infiltrator', 'Constantine''s Sound Quests', '2015-07-16 06:44:02'),
   ('b5fb7aca-fb7e-411b-a5e5-66c3616d3235', 'DamageSpeedDecrease.DelveInfo.Decrease', 'EN', 'Speed decrease: {0}%', '', '2015-07-16 06:43:58');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('b60316f5-b7fc-4a2d-a44c-b4730c8fb9c2', 'Hibernia.Arbiter.WhisperReceive.Text1', 'FR', 'This paradise, for it was truly a paradise,was a model for all the civilizations around Atlantis. They saw themselves as greater than all the others, and they were benevolent in their treatment of those civilizations they took into their fold. They gave them a sort of [test] before they would let them into the kingdom of Atlantis. Nations that passed the test were seen as advanced, not as superior as Atlantis herself, but advanced. Those who failed were either not dealt with or treated as a subservient nation.', '', '2015-07-16 06:43:54'),
   ('b6033f62-ae08-4862-b638-c90a5720e9a9', 'Scripts.Player.Guild.UnableToCreateLead', 'DE', 'Die Gilde "{0}" konnte nicht mit "{1}" als Leiter erstellt werden.', '', '2015-07-16 06:44:00'),
   ('b6064256-7160-48d1-8e07-253b2c25aa62', 'GamePlayer.Attack.TooFarAway', 'DE', '{0} ist zu weit weg f??????????????????r einen Angriff!', '', '2015-07-16 06:43:55'),
@@ -11668,7 +11663,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('b916ebc3-f21b-46fe-b7b9-682ae57a2dd2', 'GMCommands.Merchant.Description', 'EN', 'Various merchant creation commands!', '', '2015-07-16 06:43:52'),
   ('b917f18b-4e70-4739-9f51-d95afff7ae6b', 'Alb.CemmethsOrders.Init.Text7', 'EN', 'Kill 1 Decayed Zombie', '', '2015-07-16 06:44:01'),
   ('b9198903-8f0f-43ea-a5e8-353c80b5fe8a', 'Quests.Albion.AFewRepairs.Description.Step4', 'FR', 'Take the elder wood to Patrick Yarley. You can find him along the fence in Western Cornwall.', '', '2015-07-16 06:43:53');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('b91b4b63-590b-40d8-856a-511c32ca3d6e', 'PlayerClass.Scout.GetTitle.5', 'EN', 'Apprentice Scout', '', '2015-07-16 06:43:57'),
   ('b91e7eb4-0c28-4bc9-ba53-b12c186dd150', 'GamePlayer.Pray.CantPrayNow', 'DE', 'Ihr k??????????????????nnt jetzt nicht beten!', '', '2015-07-16 06:44:01'),
   ('b91e91a2-296b-4ba0-8a7b-c9d191a08f57', 'Zone.Description.Stavgaard', 'DE', 'in Stavgaard', '', '2015-07-16 06:44:06'),
@@ -11869,7 +11864,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('bc2ef3c9-2448-41ed-83f2-24041964af6e', 'DetailDisplayHandler.WriteClassicArmorInfos.Quality', 'FR', '- {0}% Qualit??????????????????', '', '2015-07-16 06:43:53'),
   ('bc31dacb-5e3f-4af8-9273-ace0404c5646', 'PlayerClass.Enchanter.GetTitle.20', 'EN', 'Entrancer', '', '2015-07-16 06:43:59'),
   ('bc3551e3-982b-4763-8b3c-3357d4cf4e57', 'GamePlayer.RealmTitle.Female.Guardian', 'FR', 'D??fenseur', '', '2015-07-16 06:44:09');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('bc365960-3579-4c8f-888c-d5d74a219a87', 'Healer.HealerDialogResponse.Text4', 'EN', 'Need {0} to restore {1} constitution points.', '', '2015-07-16 06:43:51'),
   ('bc37c7ca-b1ac-426e-96aa-c5d1c30a0f2c', 'Scripts.Players.Bountyrent.YouSpend', 'DE', 'Ihr bezahlt {0} eigene Kopfgeldpunkte was einer Mietzahlung in Hohe von {1} Goldm????????nzen entspricht.', '', '2015-07-16 06:44:02'),
   ('bc3a9c5d-90a2-42e8-be32-d190be81c235', 'Scripts.Players.Battlegroup.BattleGroupLootTreasurer', 'FR', 'Le type de loot du groupe de bataille est d??????????????????fini pour aller au tr??????????????????sorier.', '', '2015-07-16 06:43:56'),
@@ -12070,7 +12065,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('bf70d9dc-3b6d-472a-90c9-43e58b01beed', 'HorseEmote.graze.ToSource', 'DE', '-', '', '2015-07-16 06:44:00'),
   ('bf74d51d-ec2a-44fe-a416-e57e62ad7680', 'PlayerClass.Savage.GetTitle.10', 'DE', 'Kelgors Gehilfe', '', '2015-07-16 06:44:01'),
   ('bf770077-0e1d-4320-adde-e1329ad671ff', 'Alb.GreetingsMinstrel.CheckPlayerAbortQuest.Text1', 'EN', 'Very well then, remember you can come to me at any time to ask about your specializations if you need.', 'Constantine''s Sound Quests', '2015-07-16 06:44:02');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('bf783c43-494c-44b5-88ad-f9db57e43aa4', 'GamePlayer.Sit.InterruptCallMount', 'DE', 'Ihr setzt Euch hin und unterbrecht damit den Ruf nach Eurem Pferd!', '', '2015-07-16 06:43:55'),
   ('bf983b7d-4a70-49f4-a782-84e37446e6f7', 'SkillBase.RegisterPropertyNames.EnduranceRegeneration', 'EN', 'Endurance Regeneration', '', '2015-07-16 06:43:51'),
   ('bfa03c33-6965-4917-bbcc-e47e0902bc18', 'GamePlayer.Attack.HitsYou', 'FR', '{0} vous frappe pour {1}{2} dommages !', '', '2015-07-16 06:43:55'),
@@ -12271,7 +12266,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('c2c749be-7e4e-42c7-88ae-2522ff82c365', 'GameObjects.CommanderPet.WR.Const.2HandedHammer', 'DE', 'Zweihandhammer', '', '2015-07-16 06:44:07'),
   ('c2c91b7e-7fef-44ce-b4d8-cef83e029320', 'Crafting.CheckTool.FindSmithTool', 'IT', 'Devi trovare uno smith tool!', '', '2015-07-16 06:43:53'),
   ('c2cc1f6a-2b8a-4f72-b9f6-f97736baa0a1', 'PlayerStatistic.Deathblows.MidgardPlayer', 'FR', 'Coups fatals, Midgard', '', '2015-07-16 06:43:51');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('c2cfe376-0807-45ba-a269-ee9835ab62f2', 'GamePlayer.Attack.NeedRepairDire', 'CZ', '{0} je ve strasnem stavu a potrebuje opravit.', '', '2015-07-16 06:44:03'),
   ('c2d023b1-a111-4acb-8e45-6287271c7998', 'GamePlayer.Quit.CantQuitStanding', 'CZ', 'Musis stat na miste, pokud chces ukoncit hru.', '', '2015-07-16 06:44:04'),
   ('c2d5376f-78f3-45c7-8bee-7e7f5ffb6dc7', 'AdminCommands.Account.AccountHasNoFreeSlots', 'IT', 'Acconto {0} non ha un slot libero per un''altro personaggio di questo reame!', '', '2015-07-16 06:43:59'),
@@ -12472,7 +12467,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('c606590f-2724-4c08-9002-d952437efa5c', 'PlayerClass.Name.Naturalist', 'EN', 'Naturalist', '', '2015-07-16 06:44:01'),
   ('c606e71a-2ec8-44cb-9268-3ca1231592d2', 'Hib.GreetingsValewalker.Description.Specialization.Scythe', 'EN', 'Scythe is a basic weaponry skill. Each train you place into it will increase your damage with a Scythe weapon. At different levels of training you will acquire combat styles. These styles will be unique to Scythe weapons. What else can I tell you about [Arborial] path, [Scythe], [Parry] or are you [done]?', '', '2015-07-16 06:44:01'),
   ('c60aabbe-0f39-45cc-8775-3ad1deac26c6', 'Zone.ScreenDescription.WestSvealand', 'EN', 'West Svealand', '', '2015-07-16 06:43:59');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('c619b5c9-e94e-4e0c-b931-ed9b9663e7ac', 'GamePlayer.Sprint.PrepareSprint', 'IT', 'Ti prepari a scattare!', '', '2015-07-16 06:44:01'),
   ('c61c1db6-6894-491a-816d-4fc95798500d', 'GameNPC.GetAggroLevelString.Neutral1', 'CZ', 'neutralni', '', '2015-07-16 06:44:03'),
   ('c61d74dc-130d-43a7-8f03-ba155d9aa38e', 'Mid.StolenEggs.TalkToDalikor.Whisper6', 'DE', 'unterst?tzen', '', '2015-07-16 06:44:00'),
@@ -12673,7 +12668,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('c994e9a7-38ba-4941-aab0-419203b29bf5', 'Scripts.Player.Housing.HookPointAdded', 'FR', 'Cet objet a ??????????????????t?????????????????? ajout?????????????????? ?????????????????? votre maison.', '', '2015-07-16 06:43:51'),
   ('c99c6e46-abd1-4485-9872-e5361dbf0cce', 'DetailDisplayHandler.WriteHorseInfo.AdvancedHorse', 'IT', 'Questo e'' un cavallo avanzato.', '', '2015-07-16 06:43:58'),
   ('c9a25f6e-de23-4425-ac8f-973fdfdcc3bc', 'Effects.EngageEffect.EngageName', 'IT', 'Ingaggiato: {0}', '', '2015-07-16 06:44:00');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('c9a50391-1e95-477d-ba8e-62851c30f638', 'Scripts.Players.Advice.Advice', 'FR', '[CONSEIL{0}] {1}: "{2}"', '', '2015-07-16 06:44:01'),
   ('c9a57666-ecce-4fbd-8ff2-671e0b79fb49', 'Effects.GuardEffect.Name', 'DE', 'Wache', '', '2015-07-16 06:44:04'),
   ('c9a7e07f-55ad-46c0-990b-8923944da5d7', 'Skill.Ability.Protect.CancelTargetNull', 'DE', 'Ihr besch??tzt nicht l??nger irgendjemanden.', '', '2015-07-16 06:44:04'),
@@ -12874,7 +12869,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('ccbe5430-4cd2-49dd-8dde-dd6e430c34ac', 'GMCommands.Merchant.Articles.Remove.SlotInvalid', 'DE', 'Slot ({0}) must be between [0-{1}]!', '', '2015-07-16 06:43:53'),
   ('ccc05cc9-6145-4eeb-968b-eeb32fa219e9', 'Effects.QuickCastEffect.YourNextSpellNoQCed', 'FR', 'Votre prochain sort ne sera pas incant?????????????????? rapidement.', '', '2015-07-16 06:44:01'),
   ('ccc13a0d-33e3-46a6-99a5-68cb065e5a73', 'Alb.Mauler.GuildGift.QuestTitle', 'EN', 'Mauler Guild Gift', '', '2015-07-16 06:43:56');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('ccd46bef-dbaa-43c0-9661-cba98a86af0e', 'GamePlayer.Attack.Location.Torso', 'DE', 'Eure Brust', '', '2015-07-16 06:43:50'),
   ('ccd6d34f-efdd-4c76-896b-8c0f934debc9', 'Alb.Mercenary.GuildGift.Rewards.Init.Text2', 'EN', 'novice''''s hammer', '', '2015-07-16 06:43:54'),
   ('ccda00ed-c5fc-4c07-afe5-e829d14ef9db', 'PlayerClass.Hunter.GetTitle.25', 'EN', 'Skadi''s Pathfinder', '', '2015-07-16 06:43:55'),
@@ -13075,7 +13070,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('cfd51494-ccdb-4505-9563-c0f3b5f928a4', 'Repair.BeginWork.BeginRepair', 'DE', 'Ihr beginnt mit der Reparatur von {0}.', '', '2015-07-16 06:43:57'),
   ('cfd9b397-c38f-4b1c-b9e3-00acd29e3692', 'Zone.ScreenDescription.Mid30Dungeon', 'FR', 'Donjon 30 (Mid)', '', '2015-07-16 06:44:10'),
   ('cfef2a09-64f8-429b-95d2-ad99e7e57afb', 'Skill.Ability.TargetIsUnderSputinLegacy', 'DE', '{0} steht unter dem Effekt von "Sputins Verm??chtnis" und kann nicht angegriffen werden!', '', '2015-07-16 06:44:04');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('cff3006a-0673-4f4b-abdf-7b95e38437ed', 'SetGuardName.Renegade', 'FR', '{0} Renegad', '', '2015-07-16 06:43:54'),
   ('cff3511b-c2a8-43c4-a5de-459fb7ba3447', 'Scripts.Players.Chatgroup.PasswordClear', 'DE', 'Das Passwort dieser Chat-Gruppe wurde gel??scht.', '', '2015-07-16 06:44:07'),
   ('cff5b162-1cc7-48b3-bc27-9e78bc5aa788', 'Hib.ToReachTheBreach.Init.Text3', 'EN', 'Recruit''s Pious Belt', '', '2015-07-16 06:43:53'),
@@ -13276,7 +13271,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('d2fad2f6-a614-4078-8672-f791fec97bc3', 'Scripts.Player.Boat.Unsummoned', 'FR', 'Votre {0} a ??????????????????t?????????????????? rang??????????????????.', '', '2015-07-16 06:44:02'),
   ('d2fb71d1-7dcc-4d23-989c-bdda4300ebbb', 'System.LanguagesName.IT', 'DE', 'Italienisch', '', '2015-07-16 06:44:04'),
   ('d2fed903-9b30-48e9-8d5c-f0e1c739de91', 'Alb.WhenGoodBrowniesGoBad.CheckPlayerAbortQuest.Text2', 'EN', 'Aborting Quest {0}. You can start over again if you want.', '', '2015-07-16 06:43:52');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('d30ed47f-7788-47b4-856f-e88297c20f1d', 'Zone.Description.SilvermineMts.', 'DE', 'in den Silberminen-Bergen', '', '2015-07-16 06:44:06'),
   ('d310c0aa-9571-48e1-9994-0bf24b04ad6e', 'Scripts.Player.Guild.MadeLeader', 'EN', 'You are now the leader of {0}.', '', '2015-07-16 06:43:58'),
   ('d318ac18-4738-420d-88e3-0fbdacbf8d7c', 'MasteryofConcentrationAbility.AddEffectsInfo.Info2', 'IT', '', '', '2015-07-16 06:44:12'),
@@ -13477,7 +13472,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('d67ab89a-327c-4728-b1bd-3b8df7555be4', 'GamePlayer.StartAttack.CantAttackStunned', 'FR', 'Vous ne pouvez pas attaquer lorsque vous ??????????????????tes assomm??????????????????(e) !', '', '2015-07-16 06:43:55'),
   ('d67b24dc-58b0-488e-a3f0-16a0f729b3c9', 'HousingPlaceItemHandler.CantWall', 'CZ', 'Tento objekt nemuze byt umisten na zdi !', '', '2015-07-16 06:44:04'),
   ('d685f5f3-a2d2-4a53-a2ce-5333f379aec7', 'Zone.Description.TheHallofReawakening', 'DE', 'in der Halle der Wiedererweckung', '', '2015-07-16 06:44:06');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('d6882664-0061-4056-a28e-8b6eb6e7fc39', 'PlayerClass.Hero.GetTitle.5', 'FR', 'Serviteur', '', '2015-07-16 06:44:00'),
   ('d688b234-3ce2-4cd0-987b-6ff86bec68a7', 'GMCommands.Ban.Usage.Account', 'DE', '''/ban account <reason>'' Ban target''s account', '', '2015-07-16 06:43:55'),
   ('d68a6c4f-699c-450c-b31d-d6f43c810235', 'System.NoSense', 'EN', 'That would make no sense!', '', '2015-07-16 06:43:57'),
@@ -13678,7 +13673,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('d977dd48-7b57-4a9b-b81b-93bbd710ed5e', 'SkillBase.RegisterPropertyNames.BodyMagicFocus', 'EN', 'Body Magic Focus', '', '2015-07-16 06:43:56'),
   ('d986b2de-b655-4131-907e-963bf6b0eba3', 'Zone.ScreenDescription.Chiltern', 'EN', 'Chiltern', '', '2015-07-16 06:43:58'),
   ('d9892ff8-a429-480c-b908-1d23f4a5ca2d', 'Scripts.Players.Chatgroup.PasswordUnset', 'EN', 'The password to this chat group is currently unset.', '', '2015-07-16 06:43:55');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('d9923d31-13d1-4b05-a26b-84d10dedc113', 'Crafting.Name.Evocation', 'DE', 'Bannzauberei', '', '2015-07-16 06:44:02'),
   ('d992649d-3510-41bb-81ad-fdeb189c999b', 'GamePlayer.RealmTitle.Albion.RR10.Male', 'EN', 'Dragon Knight', '', '2015-07-28 13:52:24'),
   ('d99974f6-bca1-48ec-b2a8-73e8d67a6852', 'GamePlayer.Quit.CantQuitDead', 'CZ', 'Ted nemuzes ukoncit hru, jsi mrtvy. Napis ''/release'' pro oziveni tveho tela.', '', '2015-07-16 06:44:04'),
@@ -13879,7 +13874,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('dd14cc64-5f8c-4020-a6a9-02bd3ff4024d', 'GameObjects.CommanderPet.WR.Const.Assist', 'DE', 'unterst?tzen', '', '2015-07-16 06:43:52'),
   ('dd1590d8-219c-4c05-be1a-a163066559b5', 'Zone.Description.IrishSea', 'EN', 'Irish Sea', '', '2015-07-16 06:43:54'),
   ('dd28f10a-50b2-456e-a222-61bc4882e429', 'GamePlayer.Send.YouSendTo', 'FR', 'Vous envoyez, "{0}" ?? {1}.', '', '2015-07-16 06:44:11');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('dd2c4d52-83d3-4a16-8be7-af3f35f80c69', 'GamePlayer.RealmTitle.Female.Baroness', 'FR', 'Comtesse', '', '2015-07-16 06:44:09'),
   ('dd2c7763-1ddf-4d8c-8ac0-51e33e35e839', 'GMCommands.Item.Count.NotStackable', 'EN', '{0} is not stackable.', '', '2015-07-16 06:43:58'),
   ('dd2e64af-ebcd-423b-b74a-5ea8aebd3afd', 'PlayerClass.Sorcerer.GetTitle.15', 'FR', 'Apprenti Sorcier', '', '2015-07-16 06:43:59'),
@@ -14080,7 +14075,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('e073789c-0d84-4836-a70b-7cbb6c31cb45', 'Zone.Description.LowerCrypt', 'FR', 'La Crypte Corrompue', '', '2015-07-16 06:44:10'),
   ('e07ba4d2-d216-4763-b237-d77730b7bd15', 'Mid.GreetingsShaman.Description.Specialization', 'EN', 'Greetings. I can tell you about your specializations: [Mending], [Augmentation], and [Cave Magic]. Let me know when you are [done].', 'Grenlock''s Sound Quests', '2015-07-16 06:43:51'),
   ('e0848f3a-2af0-4c42-9999-77601ecaae74', 'Behaviour.GiveItemAction.YouReceiveItem', 'DE', 'Ihr bekommt "{0}".', '', '2015-07-16 06:43:58');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('e0851e57-81a9-4bd0-a37e-2cc911acc74e', 'SendMasterLevelWindow.Uncomplete.ML6.Step3', 'FR', 'Lateef se lamente sur son destin de suivant d''Am-he et souhaite retourner dans le d??????????????????sert ! Ce d??????????????????fi est r??????????????????serv?????????????????? ?????????????????? un groupe de combat.', '', '2015-07-16 06:43:59'),
   ('e08573aa-0b6c-46ef-bb5f-5b0e1ea94b99', 'GamePlayer.GainRealmPoints.GainBonus', 'DE', 'Ihr erhaltet einen +{0}-Bonus auf alle Spezialisierungen!', '', '2015-07-16 06:43:56'),
   ('e0869fed-be2b-4677-9c64-8d4adfeecb37', 'Scripts.Players.Chatgroup.Help.JoinPrivate', 'EN', '/cg join [moderator name] [password] - Join a private chat group which has a password set', '', '2015-07-16 06:43:53'),
@@ -14281,7 +14276,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('e3ee3e44-7164-4929-8d3e-5bd549dd06e8', 'GamePlayer.RealmTitle.Midgard.RR2.Male', 'DE', 'Isen Vakten', '', '2015-07-28 13:52:23'),
   ('e3eeb0cf-085f-45f9-8b76-b12d40e2b54e', 'SkillBase.RegisterPropertyNames.Thrust', 'EN', 'Thrust', '', '2015-07-16 06:43:52'),
   ('e3f125a9-a4dd-41d4-882f-1b40e027d328', 'Hib.WingsOfTheIsle.Goal1', 'DE', 'Find Jessica north of town and speak with her.', '', '2015-07-16 06:44:01');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('e3fbf85d-6d06-4790-995d-94b4f73a0852', 'Effects.RapidFireEffect.Name', 'DE', 'Schnelle Schussfolge', '', '2015-07-16 06:44:04'),
   ('e3fcc029-97db-4acb-b18f-5caad924356f', 'Hib.ImportantDelivery.FinishQuest.RecieveReward', 'IT', 'Ricevi {0} come ricompensa.', '', '2015-07-16 06:43:50'),
   ('e401b092-bdab-4f51-9d47-4c7ea4198903', 'HorseEmote.halt.NoTargetToSource', 'DE', 'You order everyone to halt.', '', '2015-07-16 06:43:52'),
@@ -14482,7 +14477,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('e71e64c9-1864-4ddd-aa7e-d995dcded5dc', 'Hib.GreetingsChampion.Description.Weapon2', 'EN', 'standard hammer', '', '2015-07-16 06:43:56'),
   ('e726b054-9722-4df5-9b1d-e803085a8775', 'Zone.ScreenDescription.Aylesbury', 'EN', 'Aylesbury', '', '2015-07-16 06:43:50'),
   ('e72b7a19-0222-4890-8a95-6c6289f533b0', 'Effects.EngageEffect.Name', 'DE', 'Angriff', '', '2015-07-16 06:44:04');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('e72bc92d-c3d8-4f9d-991f-57d66af47ebf', 'Money.GetString.Text1', 'FR', '0 pi??ce de cuivre', '', '2015-07-16 06:44:11'),
   ('e72c31b1-6789-4237-acf9-2c240affe995', 'GamePlayer.GetExamineMessages.YouExamine', 'FR', 'Vous observez {0}.', '', '2015-07-16 06:43:51'),
   ('e7311222-d45d-42cd-8a5e-2b0d0f4db77c', 'MentalistTrainer.WhisperReceiveCase.Text1', 'DE', 'mentalist', '', '2015-07-16 06:43:53'),
@@ -14683,7 +14678,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('e9cde5d3-7215-4f86-836c-3e9aa6ef9549', 'GMCommands.Item.Usage.Name', 'DE', '''/item name <NameID> [slot #]'' - Change item name', '', '2015-07-16 06:43:55'),
   ('e9d6c490-4393-434d-9f13-c02b3b44b389', 'GamePlayer.RealmTitle.Midgard.RR10.Male', 'DE', 'Einherjar', '', '2015-07-28 13:52:23'),
   ('e9d8b9ba-b8b5-46e0-8e99-749e82043eb2', 'GamePlayer.RealmTitle.Male.EldingHerra', 'DE', 'Elding Herra', '', '2015-07-16 06:43:50');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('e9dcec8a-916b-4715-b0b7-9ae252a63dae', 'AbstractCraftingSkill.CraftItem.StopWork', 'FR', 'Vous arr??????????????????tez votre travail.', '', '2015-07-16 06:43:58'),
   ('e9dd2cc9-335f-47f2-ae7e-348ee983fb33', 'AblativeArmor.DelveInfo.Function', 'EN', 'Function: melee hitpoint buffer (?)', '', '2015-07-16 06:44:00'),
   ('e9ddc4bc-7749-42b1-bed9-ee6f368a8541', 'StyleProcessor.ExecuteStyle.PerformPerfectly', 'FR', 'Vous effectuez votre {0} Parfaitement ! {1}', '', '2015-07-16 06:43:51'),
@@ -14884,7 +14879,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('eca83458-4094-4f4a-941f-fe8f70015ccc', 'Scripts.Players.Chatgroup.Help.JoinPublic', 'FR', '/cg join [moderateur] - Rejoindre un groupe de discussion.', '', '2015-07-16 06:43:58'),
   ('ecaff7a1-1dee-4ccc-854b-7e50a21c2ffb', 'GMCommands.MinoRelic.Usage.Info', 'DE', '''/minorelic info'' browses relic Informations;', '', '2015-07-16 06:43:51'),
   ('ecb32909-a229-44a6-a1f7-fe4f9a20a29f', 'Scripts.Blacksmith.RepairFinished', 'FR', 'Bien, c''est termin??. Votre {0} est comme neuf. Revenez si vous avez ?? nouveau besoin de mes services !', '', '2015-07-16 06:44:11');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('ecb4d7f9-a00a-4195-8ee2-4672ec8a32c2', 'Scripts.Players.Appeal.CantCancelWhile', 'EN', 'You can''t cancel your appeal while you are being helped.', '', '2015-07-16 06:43:57'),
   ('ecb527d3-851a-4535-ab13-b87b7c12c665', 'Hib.GreetingsValewalker.Story', 'EN', 'Welcome to Fintain Valewalker. I am Dryeqa the Valewalker. I have been chosen from our ranks for my knowledge. I can impart all that I know of our specializations and skills. Please take the time now to learn them and perhaps one day you shall be in my position.', '', '2015-07-16 06:43:56'),
   ('ecb5913e-464a-456b-be9a-c4a4b9ac401f', 'GamePlayer.RealmTitle.Hibernia.RR6.Male', 'EN', 'Silver Hand', '', '2015-07-28 13:52:24'),
@@ -15085,7 +15080,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('effdac6e-a620-47a2-a122-febb3fe1e8eb', 'Scripts.Player.Guild.RankGCHearSet', 'DE', 'Ihr habt {0} the GCHear of the rank {1}.', '', '2015-07-16 06:43:51'),
   ('effe7b67-8176-459f-b4cf-a96532a2f44a', 'Zone.ScreenDescription.Hibernia''sDarkspire', 'DE', 'in Darkspire', '', '2015-07-16 06:44:05'),
   ('f0045034-3ad9-4273-ad51-25fb331722c5', 'DetailDisplayHandler.WritePotionInfo.UseItem3', 'FR', 'Peut ??????????????????tre r??????????????????utilis??????????????????e dans: {0}', '', '2015-07-16 06:43:54');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('f0075760-61b2-47c6-a043-f7e5414f270f', 'DamageSpeedDecrease.DelveInfo.Decrease', 'DE', 'Geschwindigkeitsabzug: {0}%', '', '2015-07-16 06:43:58'),
   ('f01b5cdd-9f8d-46b1-8d21-fcf7d719921b', 'Alb.TombWithAView.Summary', 'FR', 'Trouvez l''entr??????????????????e de la Tombe de  Burial. Retournez voir Lady Grynoch d??????????????????s que vous avez visit?????????????????? le Tombeau.', '', '2015-07-16 06:44:01'),
   ('f01d9289-296c-49bf-abba-1cd3c5be05b1', 'GMCommands.HookPoint.Description', 'EN', 'Add hookpoint on a keep component.', '', '2015-07-16 06:43:54'),
@@ -15286,7 +15281,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('f336eecd-cd8a-4fa5-b59c-aa51f0b660c2', 'Hib.ToReachTheBreach.Init.Text1', 'DE', 'einf??????????????????hlsamer Rekruten-G??????????????????rtel', '', '2015-07-16 06:43:58'),
   ('f343ac42-43ea-469c-a55b-906f41361b80', 'GamePlayer.RealmTitle.Male.Baronet', 'EN', 'Baronet', '', '2015-07-16 06:43:54'),
   ('f34cb297-3843-43a9-bfcb-9ef1420bf8a9', 'DetailDisplayHandler.HandlePacket.TargetBlocks', 'EN', 'Target Blocks', '', '2015-07-16 06:43:54');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('f350b9a5-b02e-4325-8976-373f85aafbf0', 'Zone.Description.StonehengeBarrows', 'EN', 'Stonehenge Barrows', '', '2015-07-16 06:43:55'),
   ('f358e74b-ee4b-43b2-91a4-924264fa336f', 'PlayerClass.Cabalist.GetTitle.25', 'DE', 'Erfahrener Kabbalist', '', '2015-07-16 06:43:52'),
   ('f360b19b-c2b6-4260-99a7-978d5002006f', 'GMCommands.Cast.Description', 'FR', 'Lance l''effet visuel d''un sort', '', '2015-07-16 06:43:54'),
@@ -15487,7 +15482,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('f63f52fe-7005-4d71-af8f-9d4d00bcd0ff', 'PlayerStatistic.Deathblows.HiberniaPlayer', 'IT', 'Hibernia Deathblows', '', '2015-07-16 06:43:58'),
   ('f64110ab-232a-4900-93f9-6fb8dfcf7b08', 'GamePlayer.GainBountyPoints.YouGet', 'FR', 'Vous obtenez {0} primes de royaume !', '', '2015-07-16 06:43:53'),
   ('f6427e0e-bd67-4d35-a3e3-a0f0b7632d04', 'Hib.GreetingsWarden.Description.Specialization.Blunt', 'EN', 'Blunt is a basic weaponry skill. Each point you place into it will increase your damage with a blunt weapon. At different levels of training you will acquire combat styles. These styles will be unique to blunt weapons. What else can I tell you about [Regrowth], [Nurture], [Blades], [Blunt] or[shield]? Or are you [done]?', '', '2015-07-16 06:43:58');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('f64412d5-bff7-4311-af84-b4d6fed4f6ac', 'GMCommands.Merchant.Articles.Remove.SlotInPageIsAEmpty', 'EN', 'Slot {0} in page {1} is already empty.', '', '2015-07-16 06:43:58'),
   ('f64f007a-5a24-40d0-ba7e-fb443b26bc84', 'PlayerClass.Profession.HouseofBodgar', 'DE', 'Haus Bodgar', '', '2015-07-16 06:43:59'),
   ('f652665e-123b-4495-8c7e-1e604551f387', 'Zone.ScreenDescription.Felena''sSorrow', 'EN', 'Felena''s Sorrow', '', '2015-07-16 06:43:56'),
@@ -15688,7 +15683,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('f94bd583-8a53-4c99-be46-b00df45d9422', 'SendMasterLevelWindow.Complete.ML3.Step10', 'EN', '[Termin??????????????????] La M??????????????????duse a ??????????????????t?????????????????? vaincue, vous avez r??????????????????ussi une nouvelle ??????????????????preuve !', '', '2015-07-16 06:43:51'),
   ('f957edf8-7063-4a14-888a-a12074004aee', 'Zone.Description.Iarnvidiur''sLair', 'DE', 'in Iarnvidiurs Lager', '', '2015-07-16 06:44:06'),
   ('f96882c5-77aa-4655-9411-c10dff6ee825', 'GamePlayer.Sit.NoLongerWaitingQuit', 'CZ', 'Uz necekas na opusteni hry.', '', '2015-07-16 06:44:04');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('f96e12da-6da2-4bb6-9b4e-797ffae1fd4c', 'PlayerClass.Armsman.GetTitle.20', 'EN', 'Soldier', '', '2015-07-16 06:44:01'),
   ('f9728602-9c18-4b5d-bac7-5e22347d0205', 'SkillBase.RegisterPropertyNames.WeaponSkill', 'DE', 'Waffenskillbonus', '', '2015-07-16 06:44:01'),
   ('f9779167-bef1-4d33-9909-4872367a4fbb', 'GamePlayer.RealmTitle.Midgard.RR13.Male', 'EN', 'Vicomte', '', '2015-07-28 13:52:24'),
@@ -15889,7 +15884,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('fcaae3f7-206c-4671-8efa-651ebf5f27f3', 'PlayerClass.Runemaster.GetTitle.30', 'DE', 'Steinrunenschnitzer', '', '2015-07-16 06:43:54'),
   ('fcad62af-88c3-4a53-89ee-dbf556497d79', 'DashingDefenseAbility.AddEffectsInfo.Info3', 'FR', 'Temps d''invocation: Instantan??????????????????', '', '2015-07-16 06:43:51'),
   ('fcc32e5a-dbc8-4b91-9a73-14bca782bd89', 'Scripts.Player.Guild.BannerSummoned', 'EN', 'You have summoned your guild banner.', '', '2015-07-16 06:43:55');
-INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) VALUES
   ('fcc910eb-91d8-40ca-84d2-937f3ea8ac5a', 'Scripts.Blacksmith.ObjectCantRepaired', 'FR', 'Cet objet ne peut pas ??????????????????tre r??????????????????par??????????????????.', '', '2015-07-16 06:43:57'),
   ('fcca3c72-eae0-4051-afa3-1ceecc6685fb', 'GamePlayer.PlayerRace.Male.Deifang', 'EN', 'Deifang', '', '2015-07-16 06:43:56'),
   ('fcd163eb-dfd4-4bee-a300-8583a2823aaa', 'Alb.Minstrel.GuildGift.CheckPlayerAbortQuest.Text2', 'EN', 'Aborting Quest {0}. You can start over again if you want.', '', '2015-07-16 06:43:53'),
@@ -16076,13 +16071,7 @@ INSERT INTO _tmp_languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language
   ('fff96c19-5a54-4b81-9121-e6f921a4eee8', 'Scripts.Player.Guild.ThirdArgNotNum', 'EN', 'The third argument must be a number.', '', '2015-07-16 06:43:54'),
   ('fffd5aae-0c29-4686-8b53-75ef5e5a9186', 'Crafting.CheckTool.SewingKit', 'DE', 'N??????????????????hset', '', '2015-07-16 06:43:55');
 
--- Merge: keep customisations — only insert rows whose (TranslationId, Language) is new.
-INSERT INTO languagesystem (`LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated`) SELECT `LanguageSystem_ID`, `TranslationId`, `Language`, `Text`, `Tag`, `LastTimeRowUpdated` FROM _tmp_languagesystem
-WHERE NOT EXISTS (SELECT 1 FROM languagesystem WHERE languagesystem.`TranslationId` = _tmp_languagesystem.`TranslationId` AND languagesystem.`Language` = _tmp_languagesystem.`Language`);
-
-DROP TABLE _tmp_languagesystem;
-
-COMMIT;
 SET FOREIGN_KEY_CHECKS=1;
 
--- Done. Inserted only rows that were not already present.
+-- Rows that would have collided with existing data were silently skipped.
+-- Run `SELECT COUNT(*) FROM languagesystem;` afterwards to see the new total.

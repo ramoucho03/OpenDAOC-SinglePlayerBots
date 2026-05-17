@@ -1,16 +1,11 @@
--- zonepoint: merge from DOLSharp (1737 candidate rows)
--- Strategy: stage in _tmp_zonepoint, then copy only rows whose natural key
--- (Id, Realm) does not already exist in zonepoint.
--- Existing customisations stay untouched.
+-- zonepoint: INSERT IGNORE merge from DOLSharp (1737 candidate rows).
+-- INSERT IGNORE silently skips rows that would violate any UNIQUE/PK
+-- constraint — so the operator's existing rows stay intact and only
+-- genuinely-new content is added.
 
 SET FOREIGN_KEY_CHECKS=0;
-START TRANSACTION;
 
-DROP TABLE IF EXISTS _tmp_zonepoint;
-CREATE TABLE _tmp_zonepoint LIKE zonepoint;
-
--- Load DOLSharp rows into the staging table.
-INSERT INTO _tmp_zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ`, `TargetRegion`, `TargetHeading`, `SourceX`, `SourceY`, `SourceZ`, `SourceRegion`, `Realm`, `ClassType`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ`, `TargetRegion`, `TargetHeading`, `SourceX`, `SourceY`, `SourceZ`, `SourceRegion`, `Realm`, `ClassType`, `LastTimeRowUpdated`) VALUES
   ('001eb050-10ee-418b-a788-7da6703ee530', 664, 27492, 61743, 7296, 335, 3185, 0, 0, 0, 0, 1, '', '2000-01-01 00:00:00'),
   ('0094af1c-2af9-417d-9a09-a4bd62492470', 666, 20948, 24009, 24571, 348, 1058, 27292, 61700, 7296, 330, 1, '', '2000-01-01 00:00:00'),
   ('03b02ede-6433-4660-a56f-a54eb5b7ab20', 665, 51917, 39686, 4692, 335, 3561, 0, 0, 0, 0, 1, '', '2000-01-01 00:00:00'),
@@ -211,7 +206,7 @@ INSERT INTO _tmp_zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ
   ('270', 108, 555388, 523893, 2512, 1, 3050, 0, 0, 0, 0, 3, '', '2000-01-01 00:00:00'),
   ('271', 109, 814169, 722001, 5456, 100, 268, 0, 0, 0, 0, 1, '', '2000-01-01 00:00:00'),
   ('272', 109, 814169, 722001, 5456, 100, 268, 525966, 561410, 3640, 102, 2, '', '2000-01-01 00:00:00');
-INSERT INTO _tmp_zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ`, `TargetRegion`, `TargetHeading`, `SourceX`, `SourceY`, `SourceZ`, `SourceRegion`, `Realm`, `ClassType`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ`, `TargetRegion`, `TargetHeading`, `SourceX`, `SourceY`, `SourceZ`, `SourceRegion`, `Realm`, `ClassType`, `LastTimeRowUpdated`) VALUES
   ('273', 109, 814169, 722001, 5456, 100, 268, 0, 0, 0, 0, 3, '', '2000-01-01 00:00:00'),
   ('274', 110, 297758, 479054, 5386, 200, 0, 0, 0, 0, 0, 1, '', '2000-01-01 00:00:00'),
   ('275', 110, 297758, 479054, 5386, 200, 0, 0, 0, 0, 0, 2, '', '2000-01-01 00:00:00'),
@@ -412,7 +407,7 @@ INSERT INTO _tmp_zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ
   ('448', 8, 585994, 585029, 2096, 1, 2560, 0, 0, 0, 0, 1, '', '2000-01-01 00:00:00'),
   ('449', 8, 585836, 585113, 2109, 1, 2504, 0, 0, 0, 0, 2, '', '2000-01-01 00:00:00'),
   ('45', 19, 332733, 485215, 5215, 200, 189, 17703, 35966, 6261, 201, 3, '', '2000-01-01 00:00:00');
-INSERT INTO _tmp_zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ`, `TargetRegion`, `TargetHeading`, `SourceX`, `SourceY`, `SourceZ`, `SourceRegion`, `Realm`, `ClassType`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ`, `TargetRegion`, `TargetHeading`, `SourceX`, `SourceY`, `SourceZ`, `SourceRegion`, `Realm`, `ClassType`, `LastTimeRowUpdated`) VALUES
   ('450', 8, 585836, 585113, 2109, 1, 2504, 0, 0, 0, 0, 3, '', '2000-01-01 00:00:00'),
   ('451', 79, 31211, 27924, 22893, 249, 3072, 601804, 430749, 5855, 1007, 2, 'DOL.GS.ServerRules.DFEnterJumpPoint', '2000-01-01 00:00:00'),
   ('452', 79, 31211, 27924, 22893, 249, 3072, 601798, 430727, 5855, 1007, 3, 'DOL.GS.ServerRules.DFEnterJumpPoint', '2000-01-01 00:00:00'),
@@ -613,7 +608,7 @@ INSERT INTO _tmp_zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ
   ('Cata A despairs=>crypt/e M', 400, 29628, 35414, 16464, 68, 1031, 0, 0, 0, 0, 2, '', '2000-01-01 00:00:00'),
   ('Cata A exiled=>mine A', 322, 21660, 28649, 16828, 227, 85, 0, 0, 0, 0, 1, '', '2000-01-01 00:00:00'),
   ('Cata A exiled=>mine H', 322, 21660, 28649, 16828, 227, 85, 0, 0, 0, 0, 3, '', '2000-01-01 00:00:00');
-INSERT INTO _tmp_zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ`, `TargetRegion`, `TargetHeading`, `SourceX`, `SourceY`, `SourceZ`, `SourceRegion`, `Realm`, `ClassType`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ`, `TargetRegion`, `TargetHeading`, `SourceX`, `SourceY`, `SourceZ`, `SourceRegion`, `Realm`, `ClassType`, `LastTimeRowUpdated`) VALUES
   ('Cata A exiled=>mine M', 322, 21660, 28649, 16828, 227, 85, 0, 0, 0, 0, 2, '', '2000-01-01 00:00:00'),
   ('Cata A exiled=>mine/e A', 323, 21660, 28649, 16828, 227, 85, 0, 0, 0, 0, 1, '', '2000-01-01 00:00:00'),
   ('Cata A exiled=>mine/e H', 323, 21660, 28649, 16828, 227, 85, 0, 0, 0, 0, 3, '', '2000-01-01 00:00:00'),
@@ -814,7 +809,7 @@ INSERT INTO _tmp_zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ
   ('Cata H gobl=>forge/e H', 469, 40254, 31500, 16003, 99, 1, 0, 0, 0, 0, 3, '', '2000-01-01 00:00:00'),
   ('Cata H gobl=>forge/e M', 469, 40254, 31500, 16003, 99, 1, 0, 0, 0, 0, 2, '', '2000-01-01 00:00:00'),
   ('Cata H hugak=>forge A', 464, 30048, 35001, 16003, 99, 3085, 0, 0, 0, 0, 1, '', '2000-01-01 00:00:00');
-INSERT INTO _tmp_zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ`, `TargetRegion`, `TargetHeading`, `SourceX`, `SourceY`, `SourceZ`, `SourceRegion`, `Realm`, `ClassType`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ`, `TargetRegion`, `TargetHeading`, `SourceX`, `SourceY`, `SourceZ`, `SourceRegion`, `Realm`, `ClassType`, `LastTimeRowUpdated`) VALUES
   ('Cata H hugak=>forge H', 464, 30048, 35001, 16003, 99, 3085, 0, 0, 0, 0, 3, '', '2000-01-01 00:00:00'),
   ('Cata H hugak=>forge M', 464, 30048, 35001, 16003, 99, 3085, 0, 0, 0, 0, 2, '', '2000-01-01 00:00:00'),
   ('Cata H hugak=>forge/e A', 465, 30048, 35001, 16003, 99, 3085, 0, 0, 0, 0, 1, '', '2000-01-01 00:00:00'),
@@ -1015,7 +1010,7 @@ INSERT INTO _tmp_zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ
   ('Cata M madness=>nyttheim A', 318, 35475, 26804, 16022, 149, 2931, 0, 0, 0, 0, 1, '', '2000-01-01 00:00:00'),
   ('Cata M madness=>nyttheim H', 318, 35475, 26804, 16022, 149, 2931, 0, 0, 0, 0, 3, '', '2000-01-01 00:00:00'),
   ('Cata M madness=>nyttheim M', 318, 35475, 26804, 16022, 149, 2931, 0, 0, 0, 0, 2, '', '2000-01-01 00:00:00');
-INSERT INTO _tmp_zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ`, `TargetRegion`, `TargetHeading`, `SourceX`, `SourceY`, `SourceZ`, `SourceRegion`, `Realm`, `ClassType`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ`, `TargetRegion`, `TargetHeading`, `SourceX`, `SourceY`, `SourceZ`, `SourceRegion`, `Realm`, `ClassType`, `LastTimeRowUpdated`) VALUES
   ('Cata M madness=>nyttheim/e A', 319, 35475, 26804, 16022, 149, 2931, 0, 0, 0, 0, 1, '', '2000-01-01 00:00:00'),
   ('Cata M madness=>nyttheim/e H', 319, 35475, 26804, 16022, 149, 2931, 0, 0, 0, 0, 3, '', '2000-01-01 00:00:00'),
   ('Cata M madness=>nyttheim/e M', 319, 35475, 26804, 16022, 149, 2931, 0, 0, 0, 0, 2, '', '2000-01-01 00:00:00'),
@@ -1216,7 +1211,7 @@ INSERT INTO _tmp_zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ
   ('Inst A deliah=>stone M', 366, 26984, 30107, 16223, 20, 3077, 0, 0, 0, 0, 2, '', '2000-01-01 00:00:00'),
   ('Inst A deliah=>stone/e A', 367, 26984, 30107, 16223, 20, 3077, 0, 0, 0, 0, 1, '', '2000-01-01 00:00:00'),
   ('Inst A deliah=>stone/e H', 367, 26984, 30107, 16223, 20, 3077, 0, 0, 0, 0, 3, '', '2000-01-01 00:00:00');
-INSERT INTO _tmp_zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ`, `TargetRegion`, `TargetHeading`, `SourceX`, `SourceY`, `SourceZ`, `SourceRegion`, `Realm`, `ClassType`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ`, `TargetRegion`, `TargetHeading`, `SourceX`, `SourceY`, `SourceZ`, `SourceRegion`, `Realm`, `ClassType`, `LastTimeRowUpdated`) VALUES
   ('Inst A deliah=>stone/e M', 367, 26984, 30107, 16223, 20, 3077, 0, 0, 0, 0, 2, '', '2000-01-01 00:00:00'),
   ('Inst A doom=>cardo A', 360, 34141, 30808, 15760, 23, 2048, 0, 0, 0, 0, 1, '', '2000-01-01 00:00:00'),
   ('Inst A doom=>cardo H', 360, 34133, 31002, 15760, 23, 1, 0, 0, 0, 0, 3, '', '2000-01-01 00:00:00'),
@@ -1417,7 +1412,7 @@ INSERT INTO _tmp_zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ
   ('Inst M master=>spin/e H', 347, 30525, 32634, 14977, 125, 993, 0, 0, 0, 0, 3, '', '2000-01-01 00:00:00'),
   ('Inst M master=>spin/e M', 347, 30525, 32634, 14977, 125, 993, 0, 0, 0, 0, 0, '', '2000-01-01 00:00:00'),
   ('Inst M nisse=>retreat A', 369, 32352, 31613, 16261, 346, 1126, 0, 0, 0, 0, 1, '', '2000-01-01 00:00:00');
-INSERT INTO _tmp_zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ`, `TargetRegion`, `TargetHeading`, `SourceX`, `SourceY`, `SourceZ`, `SourceRegion`, `Realm`, `ClassType`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ`, `TargetRegion`, `TargetHeading`, `SourceX`, `SourceY`, `SourceZ`, `SourceRegion`, `Realm`, `ClassType`, `LastTimeRowUpdated`) VALUES
   ('Inst M nisse=>retreat H', 369, 32228, 31601, 16271, 346, 1111, 0, 0, 0, 0, 3, '', '2000-01-01 00:00:00'),
   ('Inst M nisse=>retreat M', 369, 32228, 31601, 16271, 346, 1111, 0, 0, 0, 0, 0, 'DOL.GS.Scripts.AdventureWingJumpPoint', '2000-01-01 00:00:00'),
   ('Inst M nisse=>tomte A', 368, 33771, 32394, 16000, 345, 136, 0, 0, 0, 0, 1, '', '2000-01-01 00:00:00'),
@@ -1618,7 +1613,7 @@ INSERT INTO _tmp_zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ
   ('Task H 21-30 /e H', 417, 27098, 32489, 16769, 463, 2034, 0, 0, 0, 0, 3, '', '2000-01-01 00:00:00'),
   ('Task H 21-30 /e M', 417, 27098, 32489, 16769, 463, 2034, 0, 0, 0, 0, 2, '', '2000-01-01 00:00:00'),
   ('Task H 21-30 /s A', 518, 334712, 587920, 8570, 200, 2945, 0, 0, 0, 0, 1, '', '2000-01-01 00:00:00');
-INSERT INTO _tmp_zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ`, `TargetRegion`, `TargetHeading`, `SourceX`, `SourceY`, `SourceZ`, `SourceRegion`, `Realm`, `ClassType`, `LastTimeRowUpdated`) VALUES
+INSERT IGNORE INTO zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ`, `TargetRegion`, `TargetHeading`, `SourceX`, `SourceY`, `SourceZ`, `SourceRegion`, `Realm`, `ClassType`, `LastTimeRowUpdated`) VALUES
   ('Task H 21-30 /s H', 518, 334712, 587920, 8570, 200, 2945, 0, 0, 0, 0, 3, '', '2000-01-01 00:00:00'),
   ('Task H 21-30 /s M', 518, 334712, 587920, 8570, 200, 2945, 0, 0, 0, 0, 2, '', '2000-01-01 00:00:00'),
   ('Task H 31-40 /e A', 418, 31368, 31398, 16259, 448, 35, 0, 0, 0, 0, 1, '', '2000-01-01 00:00:00'),
@@ -1757,13 +1752,7 @@ INSERT INTO _tmp_zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ
   ('Varulvham => Skona Ravina 3', 68, 724234, 936799, 5034, 100, 351, 24187, 24871, 13894, 127, 0, '', '2000-01-01 00:00:00'),
   ('Vendo Caverns => Vale of Mularn', 50, 778630, 679004, 6583, 100, 169, 32769, 33536, 16621, 126, 0, '', '2000-01-01 00:00:00');
 
--- Merge: keep customisations — only insert rows whose (Id, Realm) is new.
-INSERT INTO zonepoint (`ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ`, `TargetRegion`, `TargetHeading`, `SourceX`, `SourceY`, `SourceZ`, `SourceRegion`, `Realm`, `ClassType`, `LastTimeRowUpdated`) SELECT `ZonePoint_ID`, `Id`, `TargetX`, `TargetY`, `TargetZ`, `TargetRegion`, `TargetHeading`, `SourceX`, `SourceY`, `SourceZ`, `SourceRegion`, `Realm`, `ClassType`, `LastTimeRowUpdated` FROM _tmp_zonepoint
-WHERE NOT EXISTS (SELECT 1 FROM zonepoint WHERE zonepoint.`Id` = _tmp_zonepoint.`Id` AND zonepoint.`Realm` = _tmp_zonepoint.`Realm`);
-
-DROP TABLE _tmp_zonepoint;
-
-COMMIT;
 SET FOREIGN_KEY_CHECKS=1;
 
--- Done. Inserted only rows that were not already present.
+-- Rows that would have collided with existing data were silently skipped.
+-- Run `SELECT COUNT(*) FROM zonepoint;` afterwards to see the new total.
