@@ -1211,6 +1211,7 @@ namespace DOL.GS.Scripts
                 case eMimicClass.Theurgist: return new TheurgistSpec(spec);
                 case eMimicClass.Wizard: return new WizardSpec(spec);
                 case eMimicClass.Heretic: return new HereticSpec(spec);
+                case eMimicClass.MaulerAlb: return new MaulerAlbSpec();
 
                 case eMimicClass.Animist: return new AnimistSpec(spec);
                 case eMimicClass.Bainshee: return new BainsheeSpec(spec);
@@ -1225,7 +1226,9 @@ namespace DOL.GS.Scripts
                 case eMimicClass.Nightshade: return new NightshadeSpec();
                 case eMimicClass.Ranger: return new RangerSpec();
                 case eMimicClass.Valewalker: return new ValewalkerSpec();
+                case eMimicClass.Vampiir: return new VampiirSpec();
                 case eMimicClass.Warden: return new WardenSpec(spec);
+                case eMimicClass.MaulerHib: return new MaulerHibSpec();
 
                 case eMimicClass.Berserker: return new BerserkerSpec();
                 case eMimicClass.Bonedancer: return new BonedancerSpec(spec);
@@ -1239,7 +1242,9 @@ namespace DOL.GS.Scripts
                 case eMimicClass.Spiritmaster: return new SpiritmasterSpec(spec);
                 case eMimicClass.Thane: return new ThaneSpec(spec);
                 case eMimicClass.Valkyrie: return new ValkyrieSpec(spec);
+                case eMimicClass.Warlock: return new WarlockSpec();
                 case eMimicClass.Warrior: return new WarriorSpec();
+                case eMimicClass.MaulerMid: return new MaulerMidSpec();
             }
 
             return null;

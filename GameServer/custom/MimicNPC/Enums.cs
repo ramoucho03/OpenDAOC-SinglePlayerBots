@@ -34,6 +34,7 @@ namespace DOL.GS.Scripts
         Theurgist = 5,
         Wizard = 7,
         Heretic = 33,
+        MaulerAlb = 60,
 
         Animist = 55,
         Bainshee = 39,
@@ -48,7 +49,9 @@ namespace DOL.GS.Scripts
         Nightshade = 49,
         Ranger = 50,
         Valewalker = 56,
+        Vampiir = 58,
         Warden = 46,
+        MaulerHib = 62,
 
         Berserker = 31,
         Bonedancer = 30,
@@ -62,7 +65,9 @@ namespace DOL.GS.Scripts
         Spiritmaster = 27,
         Thane = 21,
         Valkyrie = 34,
-        Warrior = 22
+        Warlock = 59,
+        Warrior = 22,
+        MaulerMid = 61,
     }
 
     public enum eMimicClassesHib
@@ -78,10 +83,12 @@ namespace DOL.GS.Scripts
         Eldritch,
         Enchanter,
         Hero,
+        MaulerHib,
         Mentalist,
         Nightshade,
         Ranger,
         Valewalker,
+        Vampiir,
         Warden,
     }
 
@@ -93,6 +100,7 @@ namespace DOL.GS.Scripts
         Bonedancer,
         Healer,
         Hunter,
+        MaulerMid,
         Runemaster,
         Savage,
         Shadowblade,
@@ -101,7 +109,8 @@ namespace DOL.GS.Scripts
         Spiritmaster,
         Thane,
         Valkyrie,
-        Warrior
+        Warlock,
+        Warrior,
     }
 
     public enum eMimicGroupRole
