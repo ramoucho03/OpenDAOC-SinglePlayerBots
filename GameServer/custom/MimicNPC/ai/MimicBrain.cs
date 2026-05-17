@@ -2852,6 +2852,42 @@ namespace DOL.AI.Brain
             TargetFlankPosition = null;
         }
 
+        // True when this healer should skip offensive duty because the group
+        // actually needs heals right now. Used to relax the IsHealer DPS gate
+        // for hybrids (Friar / Heretic / Shaman / Bard) so they stop standing
+        // idle in melee/cast range during 100%-HP fights.
+        // - "Need" = any group member below the heal threshold, OR our own
+        //   mana is too low to safely commit a long offensive cast.
+        // - When the group is full HP and we have mana, we let the offensive
+        //   cycle drive — heals will pre-empt next tick if anything drops.
+        private bool NeedsToHealNow()
+        {
+            // Always defer to heal duty if we're low on mana — committing a
+            // long offensive cast here would just OOM us out of an incoming heal.
+            if (MimicBody?.ManaPercent < 30)
+                return true;
+
+            int threshold = MimicConfig.MIMIC_HEAL_THRESHOLD > 0
+                ? MimicConfig.MIMIC_HEAL_THRESHOLD
+                : 80;
+
+            if (Body.HealthPercent < threshold)
+                return true;
+
+            Group g = Body.Group;
+            if (g == null)
+                return false;
+
+            foreach (GameLiving member in g.GetMembersInTheGroup())
+            {
+                if (member == null || member == Body || !member.IsAlive)
+                    continue;
+                if (member.HealthPercent < threshold)
+                    return true;
+            }
+            return false;
+        }
+
         private bool TryFlee()
         {
             if (TargetFleePosition != null || IsFleeing || !Body.IsBeingInterrupted)
@@ -3990,8 +4026,17 @@ namespace DOL.AI.Brain
             }
             else if (!casted && type == eCheckSpellType.Offensive)
             {
+                // Healer-gate-relaxed: a flagged healer can DPS when the group
+                // is healthy. The original blanket block (`return false`) silenced
+                // Friar / Heretic / Shaman / Bard hybrids entirely, even when
+                // every member was at 100% HP — they'd stand in melee/cast range
+                // doing nothing. We now skip offensive ONLY when there's actual
+                // heal demand (someone below threshold) or we're low on mana.
                 if (IsHealer && combatProfile?.HasRole(eMimicCombatRole.Healer) == true)
-                    return false;
+                {
+                    if (NeedsToHealNow())
+                        return false;
+                }
 
                 // ----------------------------------------------------------------
                 // Generic mana throttle.

@@ -119,6 +119,15 @@ namespace DOL.GS.Scripts
             CreateStatistics();
             SetLevel(level);
 
+            // Force-load specs and spell-dependant skills now. The Level setter
+            // gates OnLevelUp behind `if (oldLevel > 0)`, so a fresh mimic spawned
+            // at level N from base level 0 NEVER triggers OnLevelUp and thus never
+            // calls RefreshSpecDependantSkills. Without this call, the MimicSpec's
+            // custom ratios / caps (LoadClassSpecializations) are silently dropped
+            // — extension classes like Vampiir / Warlock / Mauler get the
+            // hard-coded base class spec list only, ignoring our spec table.
+            RefreshSpecDependantSkills(false);
+
             SetWeapons();
             SetShield();
             SetRanged();
