@@ -441,11 +441,42 @@ namespace DOL.GS.Scripts
             return false;
         }
 
+        /// <summary>
+        /// Tries to promote <paramref name="candidate"/> to MainTank if their
+        /// tank score beats the current MainTank's. Called when a mimic joins
+        /// a player-led group — without this, MainTank stays the player
+        /// (default at MimicGroup construction) and mimic tanks never gate
+        /// their taunt rotation / shield styles on through IsMainTank.
+        ///
+        /// Returns true if a promotion happened.
+        /// </summary>
+        public bool TryAutoPromoteTank(GameLiving candidate)
+        {
+            if (candidate == null || !candidate.IsAlive)
+                return false;
+            if (MainTank == candidate)
+                return false;
+
+            int candidateScore = ScoreTankCandidate(candidate);
+            // Only consider candidates that are actually tank-shaped (anything
+            // <= 5 is "default + player bonus" — i.e. a non-tank class).
+            if (candidateScore <= 5)
+                return false;
+
+            int currentScore = MainTank != null ? ScoreTankCandidate(MainTank) : -1;
+            if (candidateScore <= currentScore)
+                return false;
+
+            MainTank = candidate;
+            SayToGroup(candidate, "Mimic.Group.TankSet");
+            return true;
+        }
+
         // Higher score = better tank candidate. Real tanks (shield + plate class)
         // outrank Reaver-ish hybrids, which outrank pure melee DPS, which outrank
         // casters/healers. Players are slightly preferred over mimics so a real
         // tank in the group always gets the role back.
-        private static int ScoreTankCandidate(GameLiving member)
+        public static int ScoreTankCandidate(GameLiving member)
         {
             int score = 0;
             if (member is GamePlayer)

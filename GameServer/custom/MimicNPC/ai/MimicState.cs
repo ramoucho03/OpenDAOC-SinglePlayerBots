@@ -467,6 +467,13 @@ namespace DOL.AI.Brain
             base.Exit();
         }
 
+        // Maximum distance a mimic in AGGRO can stray from its group's camp
+        // before being force-disengaged and pulled back. Without a leash, a
+        // bot chasing a fleeing mob or kited add wanders into another pull
+        // and wipes the group. 4500u ~= 1.25 screens, generous enough for
+        // ranged DPS to keep firing but tight enough to avoid runaway pulls.
+        private const int CAMP_LEASH_DISTANCE = 4500;
+
         public override void Think()
         {
             _brain.AlreadyCheckedHeals = false;
@@ -477,7 +484,19 @@ namespace DOL.AI.Brain
                 _checkAggroTime = GameLoop.GameLoopTime + 5000;
                 _aggroEndTime = GameLoop.GameLoopTime + LEAVE_WHEN_OUT_OF_COMBAT_FOR;
             }
- 
+
+            // Leash check (PvE only — PvP/RvR is intentionally roam-free).
+            // If we have a camp point set and we've drifted too far from it,
+            // drop aggro and return to camp instead of continuing the chase.
+            if (!_brain.PvPMode && _brain.Body.Group?.MimicGroup?.CampPoint is Point3D camp
+                && !_brain.Body.IsWithinRadius(camp, CAMP_LEASH_DISTANCE))
+            {
+                _brain.ClearAggroList();
+                _brain.Body.StopAttack();
+                _brain.FSM.SetCurrentState(eFSMStateType.CAMP);
+                return;
+            }
+
             if (!_brain.HasAggro || (!_brain.Body.InCombatInLast(LEAVE_WHEN_OUT_OF_COMBAT_FOR) && GameServiceUtils.ShouldTick(_aggroEndTime)))
             {
                 if (!_brain.Body.IsMezzed && !_brain.Body.IsStunned)

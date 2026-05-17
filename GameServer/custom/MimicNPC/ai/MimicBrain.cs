@@ -61,6 +61,45 @@ namespace DOL.AI.Brain
 
         public bool IsMainPuller { get { return Body.Group?.MimicGroup.MainPuller == Body; } }
         public bool IsMainTank { get { return Body.Group?.MimicGroup.MainTank == Body; } }
+
+        /// <summary>
+        /// True when this bot should behave as a tank (taunt rotation, shield
+        /// styles, intercept maintenance). Catches the case where a player
+        /// leads the group and is registered as MainTank by default — the
+        /// best tank-class mimic in the group still needs to hold aggro even
+        /// without the formal role assignment.
+        /// </summary>
+        public bool IsActingAsTank
+        {
+            get
+            {
+                if (IsMainTank)
+                    return true;
+
+                // Solo mimic (no group): act as own tank if class qualifies.
+                MimicGroup mg = Body.Group?.MimicGroup;
+                if (mg == null)
+                    return MimicGroup.ScoreTankCandidate(Body) > 5;
+
+                // In a group: act as tank if my tank score is the highest
+                // among all members (player or mimic). The auto-promotion in
+                // MimicGroup.TryAutoPromoteTank usually sets MainTank
+                // correctly, but this guards against edge cases where the
+                // promotion hook didn't fire (manual /invite, late join).
+                int myScore = MimicGroup.ScoreTankCandidate(Body);
+                if (myScore <= 5)
+                    return false;
+
+                foreach (GameLiving gm in Body.Group.GetMembersInTheGroup())
+                {
+                    if (gm == null || gm == Body)
+                        continue;
+                    if (MimicGroup.ScoreTankCandidate(gm) > myScore)
+                        return false;
+                }
+                return true;
+            }
+        }
         public bool IsMainLeader { get { return Body.Group?.MimicGroup.MainLeader == Body; } }
         public bool IsMainCC { get { return Body.Group?.MimicGroup.MainCC == Body; } }
         public bool IsMainAssist { get { return Body.Group?.MimicGroup.MainAssist == Body; } }
@@ -2343,7 +2382,19 @@ namespace DOL.AI.Brain
                 return false;
 
             Body.TargetObject = threat;
-            AddToAggroList(threat, 1);
+            // Bug fix: previously bumped threat with aggro=1, but DPS auto-
+            // attacks on healers easily out-aggro that baseline. Use the
+            // mob's current aggro on its existing target as a floor so the
+            // taunt/peel actually flips threat to us, rather than just
+            // adding our name at the bottom of the list.
+            long currentTopAggro = 0;
+            foreach (var pair in AggroList)
+            {
+                if (pair.Value != null && pair.Value.Effective > currentTopAggro)
+                    currentTopAggro = pair.Value.Effective;
+            }
+            int peelAmount = (int)Math.Max(currentTopAggro + 50, Body.MaxHealth);
+            AddToAggroList(threat, peelAmount);
             return true;
         }
 
@@ -3759,34 +3810,50 @@ namespace DOL.AI.Brain
         /// Locates the bot's Resurrect spell, regardless of which spell list
         /// the engine sorted it into. Rez is classified as misc but some
         /// builds end up putting it in Spells directly.
+        ///
+        /// When <paramref name="preferInstant"/> is true (typically: in combat,
+        /// or while being interrupted), an instant / uninterruptible rez wins
+        /// even if a higher-level cast rez exists. A 5% instant rez that
+        /// actually lands beats a 60% cast rez that gets bashed off mid-cast.
         /// </summary>
-        private Spell FindResurrectSpell()
+        private Spell FindResurrectSpell(bool preferInstant = false)
         {
             if (MimicBody == null)
                 return null;
 
-            if (MimicBody.MiscSpells != null)
+            // Score = (instant-preference) * 10_000 + spell.Level. The instant
+            // bias is large enough to always promote an instant rez over a
+            // cast rez when combat-rez is needed, but Level still breaks ties
+            // among rez spells of the same kind.
+            Spell best = null;
+            int bestScore = int.MinValue;
+
+            void Consider(Spell s)
             {
-                foreach (Spell s in MimicBody.MiscSpells)
-                    if (s != null && s.SpellType == eSpellType.Resurrect)
-                        return s;
+                if (s == null || s.SpellType != eSpellType.Resurrect)
+                    return;
+                bool isInstant = s.CastTime == 0 || s.Uninterruptible;
+                int score = (preferInstant && isInstant ? 10_000 : 0) + s.Level;
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    best = s;
+                }
             }
+
+            if (MimicBody.MiscSpells != null)
+                foreach (Spell s in MimicBody.MiscSpells)
+                    Consider(s);
 
             if (MimicBody.InstantMiscSpells != null)
-            {
                 foreach (Spell s in MimicBody.InstantMiscSpells)
-                    if (s != null && s.SpellType == eSpellType.Resurrect)
-                        return s;
-            }
+                    Consider(s);
 
             if (Body.Spells != null)
-            {
                 foreach (Spell s in Body.Spells)
-                    if (s != null && s.SpellType == eSpellType.Resurrect)
-                        return s;
-            }
+                    Consider(s);
 
-            return null;
+            return best;
         }
 
         /// <summary>
@@ -3903,7 +3970,15 @@ namespace DOL.AI.Brain
         /// </summary>
         public bool CheckResurrect()
         {
-            Spell rezSpell = FindResurrectSpell();
+            // In combat or while being interrupted, prefer an instant /
+            // uninterruptible rez so the cast actually lands. Out of combat,
+            // pick the highest-level rez for maximum HP/XP-debt recovery.
+            bool preferInstant = Body.InCombat || Body.IsBeingInterrupted;
+            Spell rezSpell = FindResurrectSpell(preferInstant);
+
+            // If the in-combat preference returned an interruptible spell
+            // (no instant rez exists for this bot), fall back gracefully:
+            // we don't try to cast it under fire — it would just be bashed.
             if (rezSpell == null)
                 return false;
 
@@ -3921,7 +3996,11 @@ namespace DOL.AI.Brain
             if (rezSpell.HasRecastDelay && Body.GetSkillDisabledDuration(rezSpell) > 0)
                 return false;
 
-            if (Body.IsBeingInterrupted && !rezSpell.Uninterruptible)
+            // Hard rule: never start an interruptible rez while being hit.
+            // The combat path above already preferred an instant rez when one
+            // existed; if we ended up here with an interruptible spell during
+            // interruption, it's because no instant rez is available — skip.
+            if (Body.IsBeingInterrupted && !rezSpell.Uninterruptible && rezSpell.CastTime > 0)
                 return false;
 
             if (Body.Group == null)
@@ -4345,6 +4424,13 @@ namespace DOL.AI.Brain
                         // engine refuses ("too many controlled creatures"), and the
                         // bot dead-locks on the same useless cast instead of nuking.
                         if (IsAtPetCap(spell))
+                            return false;
+                        // Cone spells (ice shard, frigid wind, etc.) only hit if
+                        // the bot is facing the target. Skip the cast otherwise —
+                        // mimics don't turn automatically pre-cast like players,
+                        // so a misaligned cone wastes the cast cycle.
+                        if (spell.Target == eSpellTarget.CONE && Body.TargetObject != null
+                            && !Body.IsObjectInFront(Body.TargetObject, 120))
                             return false;
                         return true;
                     }

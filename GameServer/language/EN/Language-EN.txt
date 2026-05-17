@@ -17,3 +17,167 @@ Scripts.Events.PlayerEnterExit.Entered:			        {0} just entered the game!
 Scripts.Events.PlayerEnterExit.Left:			        {0} just left the game!
 Scripts.Events.PlayerEnterExit.Staff:			        [TEAM] {0}
 
+## Mimic Right-Click Menu — sections
+Mimic.Menu.Header:					[Mimic menu]
+Mimic.Menu.Sec.State:					State
+Mimic.Menu.Sec.Roles:					Roles
+Mimic.Menu.Sec.Defensive:				Defensive
+Mimic.Menu.Sec.Orders:					Orders
+Mimic.Menu.Sec.Spells:					Spells
+Mimic.Menu.Sec.Combat:					Combat
+Mimic.Menu.Sec.Info:					Info
+Mimic.Menu.Sec.Inventory:				Inventory
+Mimic.Menu.Sec.Equipment:				Equipment
+
+## Mimic Right-Click Menu — buttons (use the &keyword command to fire each)
+Mimic.Button.State:					[state]
+Mimic.Button.PreventCombat:				[no-combat]
+Mimic.Button.Brain:					[brain]
+Mimic.Button.Debug:					[debug]
+Mimic.Button.Group:					[group]
+Mimic.Button.Leader:					[leader]
+Mimic.Button.MainPuller:				[puller]
+Mimic.Button.MainCC:					[cc]
+Mimic.Button.MainTank:					[tank]
+Mimic.Button.MainAssist:				[assist]
+Mimic.Button.Healer:					[healer]
+Mimic.Button.Guard:					[guard]
+Mimic.Button.Protect:					[protect]
+Mimic.Button.Intercept:					[intercept]
+Mimic.Button.Stay:					[stay]
+Mimic.Button.Follow:					[follow]
+Mimic.Button.Camp:					[camp]
+Mimic.Button.Reset:					[reset]
+Mimic.Button.Pull:					[pull]
+Mimic.Button.Roam:					[roam]
+Mimic.Button.Spells:					[spells]
+Mimic.Button.InstHarmful:				[inst-harmful]
+Mimic.Button.HarmfulSpells:				[harmful]
+Mimic.Button.InstMisc:					[inst-misc]
+Mimic.Button.MiscSpells:				[misc]
+Mimic.Button.InstHeal:					[inst-heal]
+Mimic.Button.HealSpells:				[heals]
+Mimic.Button.CC:					[cc-spells]
+Mimic.Button.Styles:					[styles]
+Mimic.Button.Abilities:					[abilities]
+Mimic.Button.Spec:					[spec]
+Mimic.Button.Stats:					[stats]
+Mimic.Button.AbilityEffects:				[ability-fx]
+Mimic.Button.SpellEffects:				[spell-fx]
+Mimic.Button.Inventory:					[inventory]
+Mimic.Button.Hood:					[hood]
+Mimic.Button.RightHand:					[r-hand]
+Mimic.Button.LeftHand:					[l-hand]
+Mimic.Button.TwoHand:					[2h]
+Mimic.Button.Ranged:					[ranged]
+Mimic.Button.Helm:					[helm]
+Mimic.Button.Torso:					[torso]
+Mimic.Button.Legs:					[legs]
+Mimic.Button.Arms:					[arms]
+Mimic.Button.Hands:					[hands]
+Mimic.Button.Boots:					[boots]
+Mimic.Button.Jewelry:					[jewelry]
+Mimic.Button.Delete:					[delete]
+Mimic.Button.Help:					[help]
+
+## Mimic Whisper Replies
+Mimic.Reply.BrainReset:					My brain has been reset.
+Mimic.Reply.IDoNotHaveThatAbility:			I don't have that ability.
+Mimic.Reply.MustBeInSameGroup:				You must be in the same group as me.
+Mimic.Reply.IWillGuardYou:				I will guard you.
+Mimic.Reply.IWillNoLongerGuard:				I will no longer guard you.
+Mimic.Reply.ICannotGuardYou:				I cannot guard you right now.
+Mimic.Reply.IWillProtectYou:				I will protect you.
+Mimic.Reply.IWillNoLongerProtect:			I will no longer protect you.
+Mimic.Reply.ICannotProtectYou:				I cannot protect you right now.
+Mimic.Reply.IWillInterceptForYou:			I will intercept for you.
+Mimic.Reply.IWillNoLongerIntercept:			I will no longer intercept for you.
+Mimic.Reply.ICannotInterceptForYou:			I cannot intercept for you right now.
+Mimic.Reply.NotInGroup:					I'm not in your group.
+Mimic.Reply.OrderStay:					Holding position.
+Mimic.Reply.OrderFollow:				Following you.
+Mimic.Reply.OrderCamp:					Camp set.
+Mimic.Reply.OrderReset:					Resetting.
+Mimic.Reply.OrderPull:					Pulling now.
+Mimic.Reply.NoActiveAbilityEffects:			No active ability effects.
+Mimic.Reply.NoActiveSpellEffects:			No active spell effects.
+Mimic.Reply.InventoryEmpty:				My backpack is empty.
+
+## Mimic Group Coordination
+Mimic.Group.LeaderSet:					{0} is the new group leader.
+Mimic.Group.PullerSet:					{0} is the main puller.
+Mimic.Group.PullerUnset:				{0} is no longer the main puller.
+Mimic.Group.TankSet:					{0} is the main tank.
+Mimic.Group.CCSet:					{0} is the main CC.
+Mimic.Group.AssistSet:					{0} is the main assist.
+Mimic.Group.HealerOn:					I'll handle the heals.
+Mimic.Group.HealerOff:					I'm no longer healing the group.
+Mimic.Group.CannotCastHeal:				I can't cast that heal.
+
+## Mimic Combat Chat — multiple variants picked at random by the bot
+Mimic.Chat.AssistCall.1:				Switching to the assist target.
+Mimic.Chat.AssistCall.2:				Following main assist.
+Mimic.Chat.AssistCall.3:				On target!
+Mimic.Chat.Banter.1:					Anyone bring snacks?
+Mimic.Chat.Banter.2:					This dungeon is huge.
+Mimic.Chat.Banter.3:					I miss my horse.
+Mimic.Chat.Banter.4:					Let me know when we're moving.
+Mimic.Chat.Banter.5:					Ready when you are.
+Mimic.Chat.Banter.6:					Anyone need a buff?
+Mimic.Chat.CampReady.1:					Camp is set, take a breather.
+Mimic.Chat.CampReady.2:					Ready at the camp point.
+Mimic.Chat.CampReady.3:					Holding camp.
+Mimic.Chat.CcCast.1:					CC on {0}.
+Mimic.Chat.CcCast.2:					Mez incoming on {0}.
+Mimic.Chat.CcCast.3:					Locking down {0}.
+Mimic.Chat.ChainPull.1:					Chain pull, hold the line.
+Mimic.Chat.ChainPull.2:					Next mob inbound.
+Mimic.Chat.ChainPull.3:					Bringing more, get ready.
+Mimic.Chat.IncomingAdds.1:				Adds incoming!
+Mimic.Chat.IncomingAdds.2:				Watch the adds!
+Mimic.Chat.IncomingAdds.3:				More mobs incoming!
+Mimic.Chat.LeaderEngage.1:				Engaging, on me.
+Mimic.Chat.LeaderEngage.2:				Pulling now, follow up.
+Mimic.Chat.LeaderEngage.3:				Going in!
+Mimic.Chat.LeaderPostCombat.1:				Clear. Regen up.
+Mimic.Chat.LeaderPostCombat.2:				All down. Good work.
+Mimic.Chat.LeaderPostCombat.3:				Combat over, rest a moment.
+Mimic.Chat.LostAggro.1:					I lost aggro on {0}!
+Mimic.Chat.LostAggro.2:					Aggro slipping on {0}!
+Mimic.Chat.LostAggro.3:					Can't hold {0}, help!
+Mimic.Chat.LowEnd.1:					Endurance low.
+Mimic.Chat.LowEnd.2:					Running out of endurance.
+Mimic.Chat.LowEnd.3:					Need to catch my breath.
+Mimic.Chat.LowHealth.1:					Taking damage, need a heal.
+Mimic.Chat.LowHealth.2:					Health getting low.
+Mimic.Chat.LowHealth.3:					Heal me when you can.
+Mimic.Chat.LowHealthCrit.1:				Critical health! Heal NOW!
+Mimic.Chat.LowHealthCrit.2:				Dying! Heal me!
+Mimic.Chat.LowHealthCrit.3:				Emergency heal, fast!
+Mimic.Chat.LowMana.1:					Mana low.
+Mimic.Chat.LowMana.2:					Almost out of power.
+Mimic.Chat.LowMana.3:					Need to regen mana.
+Mimic.Chat.MemberCrit.1:				{0} is dying!
+Mimic.Chat.MemberCrit.2:				{0} needs heals NOW!
+Mimic.Chat.MemberCrit.3:				Critical on {0}!
+Mimic.Chat.MemberMezzed.1:				{0} is mezzed.
+Mimic.Chat.MemberMezzed.2:				Mez on {0}, need cure.
+Mimic.Chat.MemberMezzed.3:				{0} caught a mez.
+Mimic.Chat.NeedCure.1:					Need a cure on {0}.
+Mimic.Chat.NeedCure.2:					{0} has a debuff.
+Mimic.Chat.NeedCure.3:					Cleanse {0} please.
+Mimic.Chat.Pulling.1:					Pulling {0}.
+Mimic.Chat.Pulling.2:					Tagging {0}, here it comes.
+Mimic.Chat.Pulling.3:					Bringing {0} to camp.
+Mimic.Chat.ReleaseToBind.1:				Releasing to bind.
+Mimic.Chat.ReleaseToBind.2:				I'll release and run back.
+Mimic.Chat.ReleaseToBind.3:				Heading back from bind.
+Mimic.Chat.Retreat.1:					Falling back!
+Mimic.Chat.Retreat.2:					Retreating, regroup!
+Mimic.Chat.Retreat.3:					Pull back!
+Mimic.Chat.Rezzing.1:					Rezzing {0}.
+Mimic.Chat.Rezzing.2:					Bringing {0} back.
+Mimic.Chat.Rezzing.3:					Don't move, rezzing {0}.
+Mimic.Chat.TankEngage.1:				I have aggro, hit them!
+Mimic.Chat.TankEngage.2:				On me, focus damage.
+Mimic.Chat.TankEngage.3:				Aggro locked, go!

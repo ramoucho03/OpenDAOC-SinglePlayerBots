@@ -55,7 +55,10 @@ namespace DOL.GS
                         return s;
 
             // 3. Tank taunt rotation (PvE only — PvP would waste the style).
-            if (!mimic.MimicBrain.PvPMode && mimic.MimicBrain.IsMainTank)
+            // IsActingAsTank covers both the assigned MainTank case and the
+            // player-led group case where a mimic tank is the de-facto tank
+            // but MainTank still points at the player.
+            if (!mimic.MimicBrain.PvPMode && mimic.MimicBrain.IsActingAsTank)
             {
                 Style s = CheckTaunt(mimic, lastAttackData);
 
@@ -66,7 +69,7 @@ namespace DOL.GS
             // 4. Shield control for assigned tanks. If Slam or another shield
             // style is available, it is usually stronger than a generic weapon
             // swing because it peels or stuns the target.
-            if (mimic.MimicBrain.IsMainTank && mimic.StylesShield != null && mimic.StylesShield.Count > 0)
+            if (mimic.MimicBrain.IsActingAsTank && mimic.StylesShield != null && mimic.StylesShield.Count > 0)
             {
                 Style s = GetBestStyle(mimic.StylesShield, lastAttackData, mimic);
 

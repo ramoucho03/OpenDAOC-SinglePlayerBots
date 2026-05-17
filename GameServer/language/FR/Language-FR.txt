@@ -1,4 +1,4 @@
-﻿# Language file for DOL
+# Language file for DOL
 # Language used : FRENCH / FRANCAIS
 # Create by DOL
 #
@@ -14,7 +14,172 @@ System.LanguagesName.FR:					Français
 System.LanguagesName.DE:					Allemand
 System.LanguagesName.ES:					Espagnol
 System.LanguagesName.CZ:						Tchèque
-System.LanguagesName.IT:					Italien 
+System.LanguagesName.IT:					Italien
 
 
 PlayerPickUpRequestHandler.HandlePacket.Target:		Vous devez avoir une cible valide a ramassé.
+
+## Mimic — sections du menu clic-droit
+Mimic.Menu.Header:					[Menu du Mimic]
+Mimic.Menu.Sec.State:					État
+Mimic.Menu.Sec.Roles:					Rôles
+Mimic.Menu.Sec.Defensive:				Défensif
+Mimic.Menu.Sec.Orders:					Ordres
+Mimic.Menu.Sec.Spells:					Sorts
+Mimic.Menu.Sec.Combat:					Combat
+Mimic.Menu.Sec.Info:					Infos
+Mimic.Menu.Sec.Inventory:				Inventaire
+Mimic.Menu.Sec.Equipment:				Équipement
+
+## Mimic — boutons du menu (chaque [mot] = commande cliquable)
+Mimic.Button.State:					[etat]
+Mimic.Button.PreventCombat:				[pas-combat]
+Mimic.Button.Brain:					[cerveau]
+Mimic.Button.Debug:					[debug]
+Mimic.Button.Group:					[groupe]
+Mimic.Button.Leader:					[leader]
+Mimic.Button.MainPuller:				[puller]
+Mimic.Button.MainCC:					[cc]
+Mimic.Button.MainTank:					[tank]
+Mimic.Button.MainAssist:				[assist]
+Mimic.Button.Healer:					[soigneur]
+Mimic.Button.Guard:					[garder]
+Mimic.Button.Protect:					[protéger]
+Mimic.Button.Intercept:					[intercepter]
+Mimic.Button.Stay:					[rester]
+Mimic.Button.Follow:					[suivre]
+Mimic.Button.Camp:					[camp]
+Mimic.Button.Reset:					[reset]
+Mimic.Button.Pull:					[pull]
+Mimic.Button.Roam:					[errer]
+Mimic.Button.Spells:					[sorts]
+Mimic.Button.InstHarmful:				[inst-attaque]
+Mimic.Button.HarmfulSpells:				[attaque]
+Mimic.Button.InstMisc:					[inst-divers]
+Mimic.Button.MiscSpells:				[divers]
+Mimic.Button.InstHeal:					[inst-soin]
+Mimic.Button.HealSpells:				[soins]
+Mimic.Button.CC:					[cc-sorts]
+Mimic.Button.Styles:					[styles]
+Mimic.Button.Abilities:					[capacités]
+Mimic.Button.Spec:					[spec]
+Mimic.Button.Stats:					[stats]
+Mimic.Button.AbilityEffects:				[effets-cap]
+Mimic.Button.SpellEffects:				[effets-sorts]
+Mimic.Button.Inventory:					[inventaire]
+Mimic.Button.Hood:					[capuche]
+Mimic.Button.RightHand:					[main-droite]
+Mimic.Button.LeftHand:					[main-gauche]
+Mimic.Button.TwoHand:					[2-mains]
+Mimic.Button.Ranged:					[distance]
+Mimic.Button.Helm:					[casque]
+Mimic.Button.Torso:					[torse]
+Mimic.Button.Legs:					[jambes]
+Mimic.Button.Arms:					[bras]
+Mimic.Button.Hands:					[mains]
+Mimic.Button.Boots:					[bottes]
+Mimic.Button.Jewelry:					[bijoux]
+Mimic.Button.Delete:					[supprimer]
+Mimic.Button.Help:					[aide]
+
+## Mimic — réponses aux whispers
+Mimic.Reply.BrainReset:					Mon cerveau a été réinitialisé.
+Mimic.Reply.IDoNotHaveThatAbility:			Je n'ai pas cette capacité.
+Mimic.Reply.MustBeInSameGroup:				Vous devez être dans mon groupe.
+Mimic.Reply.IWillGuardYou:				Je vais te garder.
+Mimic.Reply.IWillNoLongerGuard:				Je ne te garde plus.
+Mimic.Reply.ICannotGuardYou:				Je ne peux pas te garder.
+Mimic.Reply.IWillProtectYou:				Je vais te protéger.
+Mimic.Reply.IWillNoLongerProtect:			Je ne te protège plus.
+Mimic.Reply.ICannotProtectYou:				Je ne peux pas te protéger.
+Mimic.Reply.IWillInterceptForYou:			Je vais intercepter pour toi.
+Mimic.Reply.IWillNoLongerIntercept:			Je n'intercepte plus pour toi.
+Mimic.Reply.ICannotInterceptForYou:			Je ne peux pas intercepter pour toi.
+Mimic.Reply.NotInGroup:					Je ne suis pas dans ton groupe.
+Mimic.Reply.OrderStay:					Je reste en place.
+Mimic.Reply.OrderFollow:				Je te suis.
+Mimic.Reply.OrderCamp:					Camp défini.
+Mimic.Reply.OrderReset:					Je me réinitialise.
+Mimic.Reply.OrderPull:					Je pull maintenant.
+Mimic.Reply.NoActiveAbilityEffects:			Aucun effet de capacité actif.
+Mimic.Reply.NoActiveSpellEffects:			Aucun effet de sort actif.
+Mimic.Reply.InventoryEmpty:				Mon sac est vide.
+
+## Mimic — coordination de groupe
+Mimic.Group.LeaderSet:					{0} est le nouveau leader du groupe.
+Mimic.Group.PullerSet:					{0} est le pulleur principal.
+Mimic.Group.PullerUnset:				{0} n'est plus le pulleur principal.
+Mimic.Group.TankSet:					{0} est le tank principal.
+Mimic.Group.CCSet:					{0} est le CC principal.
+Mimic.Group.AssistSet:					{0} est l'assist principal.
+Mimic.Group.HealerOn:					Je m'occupe des soins.
+Mimic.Group.HealerOff:					Je ne soigne plus le groupe.
+Mimic.Group.CannotCastHeal:				Je ne peux pas lancer ce soin.
+
+## Mimic — chat de combat (variantes tirées au hasard)
+Mimic.Chat.AssistCall.1:				Je passe sur la cible de l'assist.
+Mimic.Chat.AssistCall.2:				Suivi de l'assist principal.
+Mimic.Chat.AssistCall.3:				Sur la cible !
+Mimic.Chat.Banter.1:					Quelqu'un a pris à manger ?
+Mimic.Chat.Banter.2:					Ce donjon est immense.
+Mimic.Chat.Banter.3:					Mon cheval me manque.
+Mimic.Chat.Banter.4:					Dites-moi quand on bouge.
+Mimic.Chat.Banter.5:					Prêt quand tu veux.
+Mimic.Chat.Banter.6:					Quelqu'un a besoin d'un buff ?
+Mimic.Chat.CampReady.1:					Camp posé, on souffle.
+Mimic.Chat.CampReady.2:					Prêt au point de camp.
+Mimic.Chat.CampReady.3:					Je tiens le camp.
+Mimic.Chat.CcCast.1:					CC sur {0}.
+Mimic.Chat.CcCast.2:					Mez en cours sur {0}.
+Mimic.Chat.CcCast.3:					Je bloque {0}.
+Mimic.Chat.ChainPull.1:					Pull en chaîne, tenez bon.
+Mimic.Chat.ChainPull.2:					Prochain mob en route.
+Mimic.Chat.ChainPull.3:					J'en ramène d'autres, prêts.
+Mimic.Chat.IncomingAdds.1:				Adds en approche !
+Mimic.Chat.IncomingAdds.2:				Attention aux adds !
+Mimic.Chat.IncomingAdds.3:				Plus de mobs arrivent !
+Mimic.Chat.LeaderEngage.1:				J'engage, sur moi.
+Mimic.Chat.LeaderEngage.2:				Je pull, suivez.
+Mimic.Chat.LeaderEngage.3:				J'y vais !
+Mimic.Chat.LeaderPostCombat.1:				Clean. On regen.
+Mimic.Chat.LeaderPostCombat.2:				Tous au tapis. Bien joué.
+Mimic.Chat.LeaderPostCombat.3:				Combat fini, on respire.
+Mimic.Chat.LostAggro.1:					J'ai perdu l'aggro sur {0} !
+Mimic.Chat.LostAggro.2:					L'aggro glisse sur {0} !
+Mimic.Chat.LostAggro.3:					Je tiens plus {0}, aidez !
+Mimic.Chat.LowEnd.1:					Endurance basse.
+Mimic.Chat.LowEnd.2:					Plus beaucoup d'endurance.
+Mimic.Chat.LowEnd.3:					Je dois reprendre mon souffle.
+Mimic.Chat.LowHealth.1:					Je prends des dégâts, soin svp.
+Mimic.Chat.LowHealth.2:					Santé qui baisse.
+Mimic.Chat.LowHealth.3:					Soigne-moi dès que possible.
+Mimic.Chat.LowHealthCrit.1:				Santé critique ! Soin MAINTENANT !
+Mimic.Chat.LowHealthCrit.2:				Je meurs ! Soigne-moi !
+Mimic.Chat.LowHealthCrit.3:				Soin d'urgence, vite !
+Mimic.Chat.LowMana.1:					Mana basse.
+Mimic.Chat.LowMana.2:					Presque plus de mana.
+Mimic.Chat.LowMana.3:					Je dois regen ma mana.
+Mimic.Chat.MemberCrit.1:				{0} est en train de mourir !
+Mimic.Chat.MemberCrit.2:				{0} a besoin de soins MAINTENANT !
+Mimic.Chat.MemberCrit.3:				Critique sur {0} !
+Mimic.Chat.MemberMezzed.1:				{0} est mezz.
+Mimic.Chat.MemberMezzed.2:				Mez sur {0}, faut le cure.
+Mimic.Chat.MemberMezzed.3:				{0} s'est pris un mez.
+Mimic.Chat.NeedCure.1:					Besoin d'un cure sur {0}.
+Mimic.Chat.NeedCure.2:					{0} a un débuff.
+Mimic.Chat.NeedCure.3:					Cleanse {0} stp.
+Mimic.Chat.Pulling.1:					Je pull {0}.
+Mimic.Chat.Pulling.2:					Je tag {0}, ça arrive.
+Mimic.Chat.Pulling.3:					Je ramène {0} au camp.
+Mimic.Chat.ReleaseToBind.1:				Je release au bind.
+Mimic.Chat.ReleaseToBind.2:				Je release et je reviens.
+Mimic.Chat.ReleaseToBind.3:				Je remonte du bind.
+Mimic.Chat.Retreat.1:					On recule !
+Mimic.Chat.Retreat.2:					Retraite, on regroupe !
+Mimic.Chat.Retreat.3:					Repli !
+Mimic.Chat.Rezzing.1:					Rez sur {0}.
+Mimic.Chat.Rezzing.2:					Je remonte {0}.
+Mimic.Chat.Rezzing.3:					Ne bouge pas, rez sur {0}.
+Mimic.Chat.TankEngage.1:				J'ai l'aggro, tapez !
+Mimic.Chat.TankEngage.2:				Sur moi, focus DPS.
+Mimic.Chat.TankEngage.3:				Aggro bloquée, allez-y !

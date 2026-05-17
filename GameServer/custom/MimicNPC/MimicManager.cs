@@ -1488,6 +1488,25 @@ namespace DOL.GS.Scripts
                 log.Info("MimicNPCs Initialized.");
             else
                 log.Error("MimicNPCs Failed to Initialize.");
+
+            // When anyone joins a group, see if a better tank is now available
+            // and promote them. Without this, MainTank stays whatever it was
+            // initialized to (usually the human leader), and mimic tanks never
+            // act as tank because IsMainTank is false for them. Global handler
+            // — fires for player-led groups, full-bot groups, and LFG recruits
+            // alike.
+            GameEventMgr.AddHandler(GroupEvent.MemberJoined, OnGroupMemberJoined);
+        }
+
+        private static void OnGroupMemberJoined(DOLEvent e, object sender, EventArgs args)
+        {
+            if (sender is not Group g || g.MimicGroup == null)
+                return;
+            if (args is not MemberJoinedEventArgs mja || mja.Member == null)
+                return;
+
+            // Evaluate the joiner — usually the only candidate that changed.
+            g.MimicGroup.TryAutoPromoteTank(mja.Member);
         }
     }
 

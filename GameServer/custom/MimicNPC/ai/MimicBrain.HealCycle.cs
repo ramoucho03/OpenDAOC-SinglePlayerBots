@@ -615,6 +615,13 @@ namespace DOL.AI.Brain
 
                     oldTarget = MimicBody.TargetObject;
                     MimicBody.TargetObject = spellTarget;
+                    // If we're being interrupted mid-cast on a non-instant
+                    // heal, fire QuickCast so the spell lands through the
+                    // interrupt. Real cleric/druid behavior — without this
+                    // an interrupted heal just keeps re-failing until the
+                    // attacker stops, leaving the tank to die.
+                    if (!spellToCast.IsInstantCast)
+                        TryQuickCastThroughInterrupt(spellToCast);
                     startedCasting = MimicBody.CastSpell(spellToCast, MimicBody.GetSpellLineForSpell(spellToCast), false);
 
                     if (!startedCasting)
