@@ -402,15 +402,36 @@ namespace DOL.AI.Brain
                 if (petEngaging)
                     engaging = true;
 
-                // Pick whichever target is actually being engaged on (the member's
-                // target, or the pet's, whichever lines up with the engagement signal).
+                // Pick the target only if it's the SAME entity that's actually
+                // in combat with the member. `InCombatInLast(2000)` stays true
+                // for 2s after ANY combat ended, so a player who finishes one
+                // fight and target-selects another mob within that window
+                // would otherwise drag the group to the new (unrelated) target.
+                // Require a concrete combat link: member was hit by it, OR
+                // member hit it, OR we have a harmful cast in flight on it,
+                // OR our pet is actually swinging on it.
                 GameLiving engageTarget = null;
                 if (engaging)
                 {
-                    if (member.TargetObject is GameLiving mTgt && mTgt.IsAlive && mTgt.ObjectState == GameObject.eObjectState.Active && CanAggroTarget(mTgt))
-                        engageTarget = mTgt;
-                    else if (petBody?.TargetObject is GameLiving pTgt && pTgt.IsAlive && pTgt.ObjectState == GameObject.eObjectState.Active && CanAggroTarget(pTgt))
-                        engageTarget = pTgt;
+                    GameLiving mTgt = member.TargetObject as GameLiving;
+                    if (mTgt != null && mTgt.IsAlive && mTgt.ObjectState == GameObject.eObjectState.Active && CanAggroTarget(mTgt))
+                    {
+                        bool memberWasHitByTarget = member.attackComponent?.AttackerTracker?.Attackers?.Contains(mTgt) == true;
+                        bool targetWasHitByMember = mTgt.attackComponent?.AttackerTracker?.Attackers?.Contains(member) == true;
+                        bool castingAtTarget = castIsHarmfulNonCc && member.castingComponent?.SpellHandler?.Target == mTgt;
+                        if (memberWasHitByTarget || targetWasHitByMember || castingAtTarget)
+                            engageTarget = mTgt;
+                    }
+
+                    if (engageTarget == null && petBody?.TargetObject is GameLiving pTgt
+                        && pTgt.IsAlive && pTgt.ObjectState == GameObject.eObjectState.Active && CanAggroTarget(pTgt))
+                    {
+                        // Pet path: only adopt if pet is in actual combat with this target.
+                        bool petWasHitBy = petBody.attackComponent?.AttackerTracker?.Attackers?.Contains(pTgt) == true;
+                        bool petHitTarget = pTgt.attackComponent?.AttackerTracker?.Attackers?.Contains(petBody) == true;
+                        if (petWasHitBy || petHitTarget)
+                            engageTarget = pTgt;
+                    }
                 }
 
                 if (engageTarget != null && Body.IsWithinRadius(engageTarget, maxRange))
