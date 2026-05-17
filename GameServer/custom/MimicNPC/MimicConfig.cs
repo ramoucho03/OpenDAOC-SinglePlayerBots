@@ -20,10 +20,26 @@ namespace DOL.GS.Scripts
         public static readonly bool PLAYER_LOOTMASTER = false; // Should all loot go to the player leader or distribute to bots as normal
 
         // Strategy/trigger/action layer. When false the system stays inert
-        // and the existing FSM keeps full control of bot behaviour. Active
-        // par défaut sur ce fork : nouvelles stratégies disponibles via /mstrategy.
+        // and the existing FSM keeps full control of bot behaviour.
+        //
+        // Disabled by default after a 10-agent audit found two compounded
+        // bugs in the strategy layer that break basic combat:
+        //   - Healer triggers (GroupMemberHealthLowTrigger,
+        //     GroupMemberCriticalTrigger, etc.) read `mg.MemberToHeal`,
+        //     which is populated by CheckGroupHealth(), which only runs
+        //     from CheckHeals(), which only fires when a trigger matches.
+        //     Circular: trigger never fires until MemberToHeal is set,
+        //     MemberToHeal never sets until trigger fires.
+        //   - Caster triggers gate on HasAggro/InCombat, which don't apply
+        //     to a caster that hasn't been directly damaged yet — the FSM
+        //     does the right thing already via ScanGroupCombat + AGGRO
+        //     state + CheckSpells(Offensive). The strategy layer doubles
+        //     and conflicts via cooldowns.
+        // KDS-KDS reference fork has no strategy layer at all and combat
+        // works correctly through the FSM alone. Flip to true to re-enable
+        // for testing / future repair.
         [ServerProperty("npc", "mimic_use_strategy_system",
-            "Master switch for the Bot AI v2 strategy/trigger/action layer. When false, only the legacy FSM drives bots.", true)]
+            "Master switch for the Bot AI v2 strategy/trigger/action layer. When false, only the legacy FSM drives bots.", false)]
         public static bool USE_STRATEGY_SYSTEM;
 
         // ----------------------------------------------------------------
