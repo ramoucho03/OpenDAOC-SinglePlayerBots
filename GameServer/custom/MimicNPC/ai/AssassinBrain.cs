@@ -23,6 +23,18 @@ namespace DOL.GS.Scripts
                 Body.Stealth(true);
         }
 
+        public override void OnEnterAggro()
+        {
+            // Refresh poison charges at every combat entry. Without this the
+            // Defensive cycle (which used to call PoisonWeapons) is never
+            // invoked for non-healer assassins in AGGRO state — bots would
+            // melee with bare weapons after the first opener.
+            if (UsesAssassinProfile)
+                PoisonWeapons();
+
+            base.OnEnterAggro();
+        }
+
         public override void OnRefreshSpecDependantSkills()
         {
             SortEnvenomSpells();

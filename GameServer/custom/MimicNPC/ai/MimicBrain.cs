@@ -124,6 +124,10 @@ namespace DOL.AI.Brain
             FSM.Add(new MimicState_Duel(this));
             FSM.Add(new MimicState_Dead(this));
             FSM.Add(new MimicState_CityIdle(this));
+            // Set initial state explicitly. Without this, FSM.GetCurrentState()
+            // returns null until the first transition, and Think() called
+            // before any transition (immediately after AddToWorld) NPEs.
+            FSM.SetCurrentState(eFSMStateType.WAKING_UP);
             _aggroLosCheckListener = new(this);
         }
 
@@ -3625,6 +3629,20 @@ namespace DOL.AI.Brain
         public virtual void OnAttackedByEnemy(AttackData ad)
         {
             ConvertAttackToAggroAmount(ad);
+
+            // Solo / standalone mimic that gets hit directly: force AGGRO
+            // transition now so combat starts on the same tick rather than
+            // waiting for the next FSM.Think + ScanGroupCombat cycle. The
+            // group-attacked path (OnGroupMemberAttacked) already does this
+            // explicitly; this mirrors it for the lone case. Healers stay in
+            // their current state (their heal cycle runs from FollowLeader).
+            if (HasAggro
+                && !IsHealer
+                && FSM.GetState(eFSMStateType.AGGRO) != FSM.GetCurrentState()
+                && FSM.GetState(eFSMStateType.DEAD) != FSM.GetCurrentState())
+            {
+                FSM.SetCurrentState(eFSMStateType.AGGRO);
+            }
         }
 
         // <summary>
@@ -3632,7 +3650,10 @@ namespace DOL.AI.Brain
         /// </summary>
         protected void ConvertAttackToAggroAmount(AttackData ad)
         {
-            if (!ad.GeneratesAggro || !Body.IsAlive || Body.ObjectState is not GameObject.eObjectState.Active || FSM.GetCurrentState() == FSM.GetState(eFSMStateType.PASSIVE))
+            // PreventCombat flag is the explicit "stay out of fights" gate
+            // for mimics. The legacy eFSMStateType.PASSIVE state is never
+            // registered and never set, so the original check was dead code.
+            if (!ad.GeneratesAggro || !Body.IsAlive || Body.ObjectState is not GameObject.eObjectState.Active || PreventCombat)
                 return;
 
             int damage = Math.Max(0, ad.Damage + ad.CriticalDamage);
@@ -4135,8 +4156,12 @@ namespace DOL.AI.Brain
 
                 // TODO: This makes Thane and Valewalker use melee when in range rather than cast in all situations.
                 //        but still use instants. Need to include other exceptions like maybe low health or endurance.
+                // Null guard on Body.TargetObject — caster hybrids may reach
+                // this point with target cleared (mob died between target
+                // acquisition and this check). IsWithinRadius would NPE.
                 if (combatProfile?.PrefersMelee == true
                     && (MimicBody.CanUsePositionalStyles || MimicBody.CanUseAnytimeStyles)
+                    && Body.TargetObject != null
                     && (Body.IsWithinRadius(Body.TargetObject, 550) || Body.ManaPercent <= 10))
                     return false;
 
