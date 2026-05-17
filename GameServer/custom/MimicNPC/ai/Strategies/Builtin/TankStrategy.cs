@@ -36,11 +36,28 @@ namespace DOL.GS.Scripts.AI.Strategies.Builtin
 
         public IEnumerable<BotTriggerActionBinding> GetBindings(BotContext ctx)
         {
+            // Highest-priority recovery cycle: fires the defensive cycle
+            // (which picks the best Taunt spell + Taunt style + shield slam)
+            // immediately when the tank notices they've lost aggro. Cooldown
+            // 800ms — short enough to recover aggro within ~2s, long enough
+            // that we don't gut endurance regen.
+            yield return new BotTriggerActionBinding(
+                new TankLostAggroTrigger(),
+                new DelegateCheckSpellsAction(MimicBrain.eCheckSpellType.Defensive, "tank-lost-aggro-recovery"),
+                priority: 78,
+                cooldownMs: 800,
+                exclusive: true);
+
+            // Pressure cycle: tank already has aggro on at least one mob.
+            // Cadence 250ms (was 350) so the tank keeps threat ramping faster
+            // than a focused-DPS train can take it back. The defensive picker
+            // still gates on actual Taunt availability; we just stop sleeping
+            // between attempts.
             yield return new BotTriggerActionBinding(
                 new HasAggroTrigger(true),
                 new DelegateCheckSpellsAction(MimicBrain.eCheckSpellType.Defensive, "tank-pressure-cycle"),
                 priority: 72,
-                cooldownMs: 350,
+                cooldownMs: 250,
                 exclusive: true);
 
             yield return new BotTriggerActionBinding(
@@ -52,6 +69,7 @@ namespace DOL.GS.Scripts.AI.Strategies.Builtin
 
             // Lost-aggro callout: long-ish cooldown so the tank doesn't
             // cry wolf every tick a mob fluctuates between two members.
+            // The actual recovery is handled by the priority-78 binding above.
             yield return new BotTriggerActionBinding(
                 new TankLostAggroTrigger(),
                 new LocalizedGroupSayAction("say-lost-aggro",
