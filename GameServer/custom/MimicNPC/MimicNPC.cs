@@ -513,44 +513,14 @@ namespace DOL.GS.Scripts
 
             sb.Append(Lbl(lang, "Mimic.Button.Delete"));
             sb.Append("  ").Append(Lbl(lang, "Mimic.Button.Help"));
-            sb.Append("\n\n");
+            sb.Append("\n");
 
-            // ----- Global commands -----
-            // These bracket buttons whisper a keyword back to this mimic; the
-            // WhisperReceive dispatcher below maps each to ScriptMgr.HandleCommand
-            // so the click is equivalent to typing the slash command in chat.
-            sb.Append("=== Groupes / LFG / BG ===\n");
-            sb.Append("[lfg]   ");          // /mlfg
-            sb.Append("[lfgPage2]  ");      // /mlfg page 2
-            sb.Append("[grpAlb]  ");        // /mgroup alb
-            sb.Append("[grpHib]  ");        // /mgroup hib
-            sb.Append("[grpMid]  ");        // /mgroup mid
-            sb.Append("[bgThid]  ");        // /mbattle thid start
-            sb.Append("[bgStop]  ");        // /mbattle thid stop
-            sb.Append("[clearAll]\n\n");    // /mclear
-
-            sb.Append("=== Ordres globaux ===\n");
-            sb.Append("[gSummon]  ");       // /msummon
-            sb.Append("[gFollow]  ");       // /mfollow
-            sb.Append("[gAttack]  ");       // /mattack
-            sb.Append("[gPull]  ");         // /mpull
-            sb.Append("[gPullHere]  ");     // /mpullfrom here
-            sb.Append("[gPullClr]\n\n");    // /mpullfrom remove
-
-            sb.Append("=== Camp ===\n");
-            sb.Append("[campSet]  ");       // /mcamp set
-            sb.Append("[campHere]  ");      // /mcamp here
-            sb.Append("[campOff]  ");       // /mcamp remove
-            sb.Append("[campAgg550]  ");    // /mcamp aggrorange 550
-            sb.Append("[campAgg1500]  ");   // /mcamp aggrorange 1500
-            sb.Append("[campBlue]  ");      // /mcamp filter blue
-            sb.Append("[campYellow]  ");    // /mcamp filter yellow
-            sb.Append("[campOrange]\n\n");  // /mcamp filter orange
-
-            sb.Append("=== Modes ===\n");
-            sb.Append("[pvpOn]  [pvpOff]  ");
-            sb.Append("[pcOn]  [pcOff]  ");
-            sb.Append("[help]  [bstats]\n");
+            // The four global sections (LFG/BG, Ordres globaux, Camp, Modes)
+            // were removed from the menu in 2026-05: they weren't reliably
+            // dispatching the underlying slash commands and just cluttered
+            // the popup. The dispatcher in ResolveGlobalMenuKeyword stays
+            // alive so existing chat macros keep working; only the buttons
+            // are gone.
 
             player.Out.SendMessage(sb.ToString(), eChatType.CT_Say, eChatLoc.CL_PopupWindow);
             return true;
