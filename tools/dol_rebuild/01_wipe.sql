@@ -11,7 +11,9 @@ TRUNCATE TABLE `artifactbonus`;
 TRUNCATE TABLE `artifactxitem`;
 TRUNCATE TABLE `battleground`;
 TRUNCATE TABLE `bindpoint`;
-TRUNCATE TABLE `classxrealmability`;
+-- classxrealmability skipped: doesn't exist on this server (only the
+-- OpenDAoC variant `classxrealmability_atlas` is used, and that one is
+-- deliberately preserved to keep characters' assigned RAs intact).
 TRUNCATE TABLE `classxspecialization`;
 TRUNCATE TABLE `crafteditem`;
 TRUNCATE TABLE `craftedxitem`;
