@@ -6,20 +6,48 @@ namespace DOL.GS.PlayerClass
 	[CharacterClass((int)eCharacterClass.Warlock, "Warlock", "Mystic")]
 	public class ClassWarlock : ClassMystic
 	{
+		private static readonly string[] AutotrainableSkills = new[] { Specs.Hexing, Specs.Witchcraft };
+
 		public ClassWarlock()
 			: base()
 		{
 			m_profession = "PlayerClass.Profession.HouseofHel";
-			m_specializationMultiplier = 10;
+			m_specializationMultiplier = 20;
 			m_primaryStat = eStat.PIE;
 			m_secondaryStat = eStat.CON;
 			m_tertiaryStat = eStat.DEX;
 			m_manaStat = eStat.PIE;
+			m_wsbase = 360;
+			m_baseHP = 720;
+		}
+
+		public override IList<string> GetAutotrainableSkills()
+		{
+			return AutotrainableSkills;
 		}
 
 		public override bool HasAdvancedFromBaseClass()
 		{
 			return true;
+		}
+
+		/// <summary>
+		/// Grant level-up abilities matching DAoC Live for Warlock:
+		///   lvl 1: Staff, Sprint
+		///   lvl 3: Quickcast
+		/// </summary>
+		public override void OnLevelUp(GamePlayer player, int previousLevel)
+		{
+			base.OnLevelUp(player, previousLevel);
+
+			if (player.Level >= 1)
+			{
+				player.AddAbility(SkillBase.GetAbility(Abilities.Weapon_Staves));
+				player.AddAbility(SkillBase.GetAbility(Abilities.Sprint));
+			}
+
+			if (player.Level >= 3)
+				player.AddAbility(SkillBase.GetAbility(Abilities.Quickcast));
 		}
 
 		/// <summary>
@@ -61,7 +89,7 @@ namespace DOL.GS.PlayerClass
 
 		public override List<PlayerRace> EligibleRaces => new List<PlayerRace>()
 		{
-			// PlayerRace.Frostalf, PlayerRace.Kobold, PlayerRace.Norseman,
+			PlayerRace.Frostalf, PlayerRace.Kobold, PlayerRace.Norseman, PlayerRace.Valkyn,
 		};
 	}
 }

@@ -81,7 +81,8 @@ namespace DOL.GS.Trainer
 		{
 			if (!base.WhisperReceive(source, text)) return false;
 			GamePlayer player = source as GamePlayer;
-			
+			if (player == null) return false;
+
 			switch (text) {
 				case "Path of Affinity":
 					// promote player to other class

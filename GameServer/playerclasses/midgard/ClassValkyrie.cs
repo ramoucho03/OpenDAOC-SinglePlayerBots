@@ -24,17 +24,24 @@ namespace DOL.GS.PlayerClass
 	[CharacterClass((int)eCharacterClass.Valkyrie, "Valkyrie", "Viking")]
 	public class ClassValkyrie : ClassViking
 	{
+		private static readonly string[] AutotrainableSkills = new[] { Specs.Mending, Specs.OdinsWill };
+
 		public ClassValkyrie()
 			: base()
 		{
 			m_profession = "PlayerClass.Profession.HouseofOdin";
-			m_specializationMultiplier = 20;
-			m_primaryStat = eStat.CON;
-			m_secondaryStat = eStat.STR;
+			m_specializationMultiplier = 15;
+			m_primaryStat = eStat.STR;
+			m_secondaryStat = eStat.CON;
 			m_tertiaryStat = eStat.DEX;
-			m_manaStat = eStat.PIE;
-			m_wsbase = 360;
+			m_manaStat = eStat.STR;
+			m_wsbase = 440;
 			m_baseHP = 720;
+		}
+
+		public override IList<string> GetAutotrainableSkills()
+		{
+			return AutotrainableSkills;
 		}
 
 		public override eClassType ClassType
@@ -47,9 +54,30 @@ namespace DOL.GS.PlayerClass
 			return true;
 		}
 
+		/// <summary>
+		/// Grant level-up abilities matching DAoC Live for Valkyrie:
+		///   lvl 1: Sword, Spear, Shield mastery, Sprint
+		///   lvl 5: Evade I (Determination is a Realm Ability, not granted here)
+		/// </summary>
+		public override void OnLevelUp(GamePlayer player, int previousLevel)
+		{
+			base.OnLevelUp(player, previousLevel);
+
+			if (player.Level >= 1)
+			{
+				player.AddAbility(SkillBase.GetAbility(Abilities.Weapon_Swords));
+				player.AddAbility(SkillBase.GetAbility(Abilities.Weapon_Spears));
+				player.AddAbility(SkillBase.GetAbility(Abilities.Shield, 2));
+				player.AddAbility(SkillBase.GetAbility(Abilities.Sprint));
+			}
+
+			if (player.Level >= 5)
+				player.AddAbility(SkillBase.GetAbility(Abilities.Evade, 1));
+		}
+
 		public override List<PlayerRace> EligibleRaces => new List<PlayerRace>()
 		{
-			// PlayerRace.Dwarf, PlayerRace.Frostalf, PlayerRace.Norseman,
+			PlayerRace.Dwarf, PlayerRace.Frostalf, PlayerRace.Norseman, PlayerRace.Valkyn,
 		};
 	}
 }

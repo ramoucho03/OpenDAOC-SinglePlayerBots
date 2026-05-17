@@ -35,6 +35,29 @@ namespace DOL.GS.PropertyCalc
 
                 return conc;
             }
+            // MimicNPC module extension (from KDS-KDS reference fork).
+            // Without this branch mimics fall through to the "return 1000000"
+            // else, which makes concentration-spell budgeting meaningless for
+            // bots (they could spam infinite buffs / pulses).
+            else if (living is DOL.GS.Scripts.MimicNPC mimic && mimic.Level > 1)
+            {
+                if (mimic.CharacterClass.ManaStat is eStat.UNDEFINED)
+                    return 1000000;
+
+                int concBase = (int)(mimic.Level * 4 * 2.2);
+                int stat = mimic.GetModified((eProperty)mimic.CharacterClass.ManaStat);
+                var statConc = (stat - 50) * 2.8;
+                int conc = (concBase + (int)statConc) / 2;
+                conc = (int)(mimic.Effectiveness * conc);
+
+                if (conc < 0)
+                    conc = 0;
+
+                if (mimic.GetSpellLine("Perfecter") != null && mimic.MLLevel >= 4)
+                    conc += 20 * conc / 100;
+
+                return conc;
+            }
             else
                 return 1000000;
         }

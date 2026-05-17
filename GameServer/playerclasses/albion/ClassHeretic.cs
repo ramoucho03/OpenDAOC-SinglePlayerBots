@@ -24,6 +24,8 @@ namespace DOL.GS.PlayerClass
 	[CharacterClass((int)eCharacterClass.Heretic, "Heretic", "Acolyte")]
 	public class ClassHeretic : ClassAcolyte
 	{
+		private static readonly string[] AutotrainableSkills = new[] { Specs.Rejuvenation, Specs.Enhancement };
+
 		public ClassHeretic()
 			: base()
 		{
@@ -37,14 +39,42 @@ namespace DOL.GS.PlayerClass
 			m_baseHP = 720;
 		}
 
+		public override IList<string> GetAutotrainableSkills()
+		{
+			return AutotrainableSkills;
+		}
+
 		public override bool HasAdvancedFromBaseClass()
 		{
 			return true;
 		}
 
+		/// <summary>
+		/// Grant level-up abilities matching DAoC Live for Heretic:
+		///   lvl 1: Flexible Weapon, Sprint
+		///   lvl 3: Quickcast
+		///   lvl 5: Rejuvenation evade (granted here as Evade I)
+		/// </summary>
+		public override void OnLevelUp(GamePlayer player, int previousLevel)
+		{
+			base.OnLevelUp(player, previousLevel);
+
+			if (player.Level >= 1)
+			{
+				player.AddAbility(SkillBase.GetAbility(Abilities.Weapon_Flexible));
+				player.AddAbility(SkillBase.GetAbility(Abilities.Sprint));
+			}
+
+			if (player.Level >= 3)
+				player.AddAbility(SkillBase.GetAbility(Abilities.Quickcast));
+
+			if (player.Level >= 5)
+				player.AddAbility(SkillBase.GetAbility(Abilities.Evade, 1));
+		}
+
 		public override List<PlayerRace> EligibleRaces => new List<PlayerRace>()
 		{
-			 //PlayerRace.Korazh, PlayerRace.Avalonian, PlayerRace.Briton, PlayerRace.Inconnu,
+			PlayerRace.Avalonian, PlayerRace.Briton, PlayerRace.Inconnu, PlayerRace.Korazh,
 		};
 	}
 }

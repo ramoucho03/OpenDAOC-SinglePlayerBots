@@ -45,6 +45,36 @@ namespace DOL.GS.PropertyCalc
                 result += itemBonus + buffBonus + flatAbilityBonus;
                 return (int) result;
             }
+            // MimicNPC module extension (from KDS-KDS reference fork).
+            // Mimics need the player-style HP formula, not the generic mob
+            // template-based calc. Otherwise their HP pool is wrong by an
+            // order of magnitude (mob defaults are tiny).
+            else if (living is DOL.GS.Scripts.MimicNPC mimic && mimic.Level > 1)
+            {
+                int hpBase = mimic.CalculateMaxHealth(mimic.Level, mimic.GetModified(eProperty.Constitution));
+                int buffBonus = mimic.BaseBuffBonusCategory[property];
+
+                if (buffBonus < 0)
+                    buffBonus = (int)((1 + buffBonus / -100.0) * hpBase) - hpBase;
+
+                int itemBonus = mimic.ItemBonus[property];
+                int cap = GetItemBonusCap(mimic) + GetItemBonusCapIncrease(mimic);
+                itemBonus = Math.Min(itemBonus, cap);
+
+                if (mimic.HasAbility(Abilities.ScarsOfBattle) && mimic.Level >= 40)
+                {
+                    int levelBonus = Math.Min(mimic.Level - 40, 10);
+                    hpBase = (int)(hpBase * (100 + levelBonus) * 0.01);
+                }
+
+                int mimicFlatAbilityBonus = mimic.AbilityBonus[property];
+                int mimicMultAbilityBonus = mimic.AbilityBonus[eProperty.Of_Toughness];
+
+                double mimicResult = hpBase;
+                mimicResult *= 1 + mimicMultAbilityBonus * 0.01;
+                mimicResult += itemBonus + buffBonus + mimicFlatAbilityBonus;
+                return (int) mimicResult;
+            }
             else if (living is GameKeepComponent keepComponent)
             {
                 AbstractGameKeep gameKeep = keepComponent.Keep;

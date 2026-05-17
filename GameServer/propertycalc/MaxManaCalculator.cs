@@ -16,8 +16,41 @@ namespace DOL.GS.PropertyCalc
     {
         public MaxManaCalculator() {}
 
-        public override int CalcValue(GameLiving living, eProperty property) 
+        public override int CalcValue(GameLiving living, eProperty property)
         {
+            // MimicNPC module extension (from KDS-KDS reference fork).
+            // Mimics need a real mana pool. Without this branch the calc
+            // falls back to "return 0" below and bots have 0 power forever
+            // (every spell cast fails Power check, mimic caster classes
+            // can't function).
+            if (living is DOL.GS.Scripts.MimicNPC mimicLiving)
+            {
+                if (mimicLiving.Level == 1)
+                    return 100;
+
+                eStat mimicManaStat = mimicLiving.CharacterClass.ManaStat;
+
+                if (mimicManaStat is eStat.UNDEFINED)
+                {
+                    if ((eCharacterClass) mimicLiving.CharacterClass.ID is eCharacterClass.Vampiir)
+                        mimicManaStat = eStat.STR;
+                    else
+                        return 0;
+                }
+
+                int mimicManaBase = mimicLiving.CalculateMaxMana(mimicLiving.Level, mimicLiving.GetModified((eProperty) mimicManaStat));
+                int mimicItemFlat = Math.Min(mimicLiving.Level / 2 + 1, mimicLiving.ItemBonus[property]);
+                int mimicItemPool = Math.Min(mimicLiving.Level / 2 + Math.Min(mimicLiving.ItemBonus[eProperty.PowerPoolCapBonus], mimicLiving.Level), mimicLiving.ItemBonus[eProperty.PowerPool]);
+                int mimicAbilityFlat = mimicLiving.AbilityBonus[property];
+                int mimicAbilityPool = mimicLiving.AbilityBonus[eProperty.PowerPool];
+
+                double mimicResult = mimicManaBase;
+                mimicResult *= 1 + mimicAbilityPool * 0.01;
+                mimicResult += mimicItemFlat + mimicAbilityFlat;
+                mimicResult *= 1 + mimicItemPool * 0.01;
+                return (int) mimicResult;
+            }
+
             if (living is not GamePlayer player)
                 return 0;
 

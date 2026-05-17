@@ -33,7 +33,7 @@ namespace DOL.GS.Trainer
 			get { return eCharacterClass.Heretic; }
 		}
 
-		public const string WEAPON_ID1 = "chrush_sword_item";
+		public const string WEAPON_ID1 = "crush_sword_item";
 
 		public HereticTrainer()
 			: base()
@@ -83,6 +83,7 @@ namespace DOL.GS.Trainer
 		{
 			if (!base.WhisperReceive(source, text)) return false;
 			GamePlayer player = source as GamePlayer;
+			if (player == null) return false;
 
 			switch (text)
 			{
@@ -91,6 +92,7 @@ namespace DOL.GS.Trainer
 					if (CanPromotePlayer(player))
 					{
 						PromotePlayer(player, (int)eCharacterClass.Heretic, "Welcome to the Temple of Arawn, " + player.Name + ".", null);
+						player.ReceiveItem(this, WEAPON_ID1);
 					}
 					break;
 			}

@@ -34,7 +34,8 @@ namespace DOL.GS.PropertyCalc
 	{
 		public override int CalcValue(GameLiving living, eProperty property)
 		{
-			if (living is GameNPC)
+			// MimicNPC exception: bots use the player melee-speed formula (KDS-KDS pattern).
+			if (living is GameNPC && living is not DOL.GS.Scripts.MimicNPC)
 			{
 				// NPC buffs effects are halved compared to debuffs, so it takes 2% debuff to mitigate 1% buff
 				// See PropertyChangingSpell.ApplyNpcEffect() for details.

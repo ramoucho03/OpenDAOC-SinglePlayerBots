@@ -26,21 +26,46 @@ namespace DOL.GS.PlayerClass
 	[CharacterClass((int)eCharacterClass.Bainshee, "Bainshee", "Magician")]
 	public class ClassBainshee : ClassMagician
 	{
+		private static readonly string[] AutotrainableSkills = new[] { Specs.Mentalism, Specs.SpectralForce };
+
 		public ClassBainshee() : base()
 		{
 			m_profession = "PlayerClass.Profession.PathofAffinity";
-			m_specializationMultiplier = 10;
+			m_specializationMultiplier = 20;
 			m_primaryStat = eStat.INT;
-			m_secondaryStat = eStat.DEX;
-			m_tertiaryStat = eStat.CON;
+			m_secondaryStat = eStat.CON;
+			m_tertiaryStat = eStat.DEX;
 			m_manaStat = eStat.INT;
+			m_wsbase = 360;
+			m_baseHP = 720;
+		}
+
+		public override IList<string> GetAutotrainableSkills()
+		{
+			return AutotrainableSkills;
 		}
 
 		public override bool HasAdvancedFromBaseClass()
 		{
 			return true;
 		}
-		
+
+		/// <summary>
+		/// Grant level-up abilities matching DAoC Live for Bainshee:
+		///   lvl 1: Sprint (Wraith Form is automatic via Init() — no ability constant)
+		///   lvl 3: Quickcast
+		/// </summary>
+		public override void OnLevelUp(GamePlayer player, int previousLevel)
+		{
+			base.OnLevelUp(player, previousLevel);
+
+			if (player.Level >= 1)
+				player.AddAbility(SkillBase.GetAbility(Abilities.Sprint));
+
+			if (player.Level >= 3)
+				player.AddAbility(SkillBase.GetAbility(Abilities.Quickcast));
+		}
+
 		#region Wraith Form
 		protected const int WRAITH_FORM_RESET_DELAY = 30000;
 		
@@ -173,7 +198,7 @@ namespace DOL.GS.PlayerClass
 
 		public override List<PlayerRace> EligibleRaces => new()
 		{
-			// PlayerRace.Celt, PlayerRace.Elf, PlayerRace.Lurikeen,
+			PlayerRace.Celt, PlayerRace.Elf, PlayerRace.Lurikeen,
 		};
 	}
 	#endregion

@@ -960,8 +960,8 @@ namespace DOL.GS
 				eCharacterClass.Mage, 			// Mage = 18,
 				eCharacterClass.Reaver, 		// Reaver = 19,
 				eCharacterClass.Disciple,		// Disciple = 20,
-				// eCharacterClass.Heretic, 		// Heretic = 33,
-				// eCharacterClass.MaulerAlb		// Mauler_Alb = 60,
+				eCharacterClass.Heretic, 		// Heretic = 33,
+				eCharacterClass.MaulerAlb,		// Mauler_Alb = 60,
 			}},
 			{eRealm.Midgard, new List<eCharacterClass>() {eCharacterClass.Viking, eCharacterClass.Mystic, eCharacterClass.Seer, eCharacterClass.MidgardRogue,
 				// post 1.93
@@ -982,8 +982,8 @@ namespace DOL.GS
 				eCharacterClass.Mystic, 		// Mystic = 36,
 				eCharacterClass.Seer, 			// Seer = 37,
 				eCharacterClass.MidgardRogue,	// MidgardRogue = 38,
-				// eCharacterClass.Warlock, 		// Warlock = 59,
-				// eCharacterClass.MaulerMid		// Mauler_Mid = 61,
+				eCharacterClass.Warlock, 		// Warlock = 59,
+				eCharacterClass.MaulerMid,		// Mauler_Mid = 61,
 			}},
 			{eRealm.Hibernia, new List<eCharacterClass>() {eCharacterClass.Guardian, eCharacterClass.Stalker, eCharacterClass.Naturalist, eCharacterClass.Magician, eCharacterClass.Forester,
 				// post 1.93
@@ -1006,8 +1006,8 @@ namespace DOL.GS
 				eCharacterClass.Animist, 		// Animist = 55,
 				eCharacterClass.Valewalker, 	// Valewalker = 56,
 				eCharacterClass.Forester, 		// Forester = 57,
-				// eCharacterClass.Vampiir, 		// Vampiir = 58,
-				// eCharacterClass.MaulerHib	 	// Mauler_Hib = 62,
+				eCharacterClass.Vampiir, 		// Vampiir = 58,
+				eCharacterClass.MaulerHib,	 	// Mauler_Hib = 62,
 			}},
 		};
 

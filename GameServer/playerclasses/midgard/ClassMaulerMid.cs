@@ -24,24 +24,31 @@ namespace DOL.GS.PlayerClass
 	[CharacterClass((int)eCharacterClass.MaulerMid, "Mauler", "Viking")]
 	public class ClassMaulerMid : ClassViking
 	{
+		private static readonly string[] AutotrainableSkills = new[] { Specs.Fist_Wraps, Specs.Mauler_Staff, Specs.Power_Strikes };
+
 		public ClassMaulerMid()
 			: base()
 		{
 			m_profession = "PlayerClass.Profession.TempleofIronFist";
-			m_specializationMultiplier = 15;
+			m_specializationMultiplier = 10;
 			m_wsbase = 440;
-			m_baseHP = 600;
+			m_baseHP = 880;
 			m_primaryStat = eStat.STR;
 			m_secondaryStat = eStat.CON;
-			m_tertiaryStat = eStat.QUI;
-            m_manaStat = eStat.STR;
+			m_tertiaryStat = eStat.DEX;
+			m_manaStat = eStat.STR;
+		}
+
+		public override IList<string> GetAutotrainableSkills()
+		{
+			return AutotrainableSkills;
 		}
 
 		public override bool CanUseLefthandedWeapon
 		{
 			get { return true; }
 		}
-		
+
 		public override eClassType ClassType
 		{
 			get { return eClassType.Hybrid; }
@@ -57,9 +64,32 @@ namespace DOL.GS.PlayerClass
 			return true;
 		}
 
+		/// <summary>
+		/// Grant level-up abilities matching DAoC Live for Mauler:
+		///   lvl 1: Fist Wraps mastery, Sprint
+		///   lvl 5: Evade I
+		///   lvl 10: Stoicism
+		/// </summary>
+		public override void OnLevelUp(GamePlayer player, int previousLevel)
+		{
+			base.OnLevelUp(player, previousLevel);
+
+			if (player.Level >= 1)
+			{
+				player.AddAbility(SkillBase.GetAbility(Abilities.Weapon_FistWraps));
+				player.AddAbility(SkillBase.GetAbility(Abilities.Sprint));
+			}
+
+			if (player.Level >= 5)
+				player.AddAbility(SkillBase.GetAbility(Abilities.Evade, 1));
+
+			if (player.Level >= 10)
+				player.AddAbility(SkillBase.GetAbility(Abilities.Stoicism));
+		}
+
 		public override List<PlayerRace> EligibleRaces => new List<PlayerRace>()
 		{
-			// PlayerRace.Kobold, PlayerRace.Deifrang, PlayerRace.Norseman,
+			PlayerRace.Deifrang, PlayerRace.Kobold, PlayerRace.Norseman,
 		};
 	}
 }

@@ -24,19 +24,26 @@ namespace DOL.GS.PlayerClass
     [CharacterClass((int)eCharacterClass.Vampiir, "Vampiir", "Stalker")]
     public class ClassVampiir : ClassStalker
     {
+        private static readonly string[] AutotrainableSkills = new[] { Specs.Piercing, Specs.Blades };
+
         public ClassVampiir()
             : base()
         {
             m_profession = "PlayerClass.Profession.PathofAffinity";
-            m_specializationMultiplier = 15;
-            m_primaryStat = eStat.CON;
-            m_secondaryStat = eStat.STR;
+            m_specializationMultiplier = 20;
+            m_primaryStat = eStat.STR;
+            m_secondaryStat = eStat.CON;
             m_tertiaryStat = eStat.DEX;
             //Vampiirs do not have a mana stat
             //Special handling is need in the power pool calculator
             //m_manaStat = eStat.STR;
             m_wsbase = 440;
-            m_baseHP = 878;
+            m_baseHP = 880;
+        }
+
+        public override IList<string> GetAutotrainableSkills()
+        {
+            return AutotrainableSkills;
         }
 
         public override eClassType ClassType
@@ -49,9 +56,25 @@ namespace DOL.GS.PlayerClass
             return true;
         }
 
+        /// <summary>
+        /// Grant level-up abilities matching DAoC Live for Vampiir:
+        ///   lvl 1: Sprint, Evade I (Vampiirs evade by default)
+        ///   Stealth is intentionally NOT granted.
+        /// </summary>
+        public override void OnLevelUp(GamePlayer player, int previousLevel)
+        {
+            base.OnLevelUp(player, previousLevel);
+
+            if (player.Level >= 1)
+            {
+                player.AddAbility(SkillBase.GetAbility(Abilities.Sprint));
+                player.AddAbility(SkillBase.GetAbility(Abilities.Evade, 1));
+            }
+        }
+
         public override List<PlayerRace> EligibleRaces => new List<PlayerRace>()
         {
-            // PlayerRace.Celt, PlayerRace.Lurikeen, PlayerRace.Shar,
+            PlayerRace.Celt, PlayerRace.Lurikeen, PlayerRace.Shar,
         };
     }
 }
