@@ -1170,6 +1170,11 @@ namespace DOL.GS.Scripts
 
                 Notify(GameLivingEvent.Dying, this, new DyingEventArgs(killer));
 
+                // Tank takeover: if the dying bot was the MainTank, promote the best
+                // surviving tank candidate immediately so the healer doesn't keep
+                // topping up a corpse and DPS keep assisting on the right target.
+                Group?.MimicGroup?.TryPromoteSecondaryTank(this);
+
                 // Choose the rez window length. With a rezzer present we wait the full
                 // minute; otherwise release the corpse fast so the group can /assist again.
                 int waitMs = GroupHasRezzer() ? REZ_WAIT_MS : REZ_WAIT_NO_HEALER_MS;

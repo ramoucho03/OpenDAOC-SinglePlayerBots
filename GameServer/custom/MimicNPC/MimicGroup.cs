@@ -324,6 +324,97 @@ namespace DOL.GS.Scripts
             return true;
         }
 
+        /// <summary>
+        /// Called when a group member dies. If the dying member was the MainTank,
+        /// scan the rest of the group for the best surviving tank-capable mimic
+        /// and promote them. Without this the dead tank stays MainTank, the
+        /// healer keeps trying to top up a corpse, and DPS keep assisting on
+        /// nothing — the group spirals.
+        ///
+        /// Returns true if a takeover happened.
+        /// </summary>
+        public bool TryPromoteSecondaryTank(GameLiving dying)
+        {
+            if (dying == null || MainTank != dying)
+                return false;
+            if (MainLeader?.Group == null)
+                return false;
+
+            GameLiving best = null;
+            int bestScore = int.MinValue;
+            foreach (GameLiving member in MainLeader.Group.GetMembersInTheGroup())
+            {
+                if (member == null || member == dying || !member.IsAlive)
+                    continue;
+                int score = ScoreTankCandidate(member);
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    best = member;
+                }
+            }
+
+            // Even a non-ideal melee can hold aggro better than the corpse. Floor
+            // is "any alive group member with a melee weapon" — score may be 0
+            // but it beats a dead MainTank.
+            if (best == null)
+                return false;
+
+            MainTank = best;
+            SayToGroup(best, "Mimic.Group.TankSet");
+            return true;
+        }
+
+        // Higher score = better tank candidate. Real tanks (shield + plate class)
+        // outrank Reaver-ish hybrids, which outrank pure melee DPS, which outrank
+        // casters/healers. Players are slightly preferred over mimics so a real
+        // tank in the group always gets the role back.
+        private static int ScoreTankCandidate(GameLiving member)
+        {
+            int score = 0;
+            if (member is GamePlayer)
+                score += 5;
+
+            int classId = 0;
+            if (member is GamePlayer gp)
+                classId = gp.CharacterClass?.ID ?? 0;
+            else if (member is MimicNPC mn)
+                classId = (int) mn.CharacterClass.ID;
+
+            switch ((eCharacterClass) classId)
+            {
+                // Plate / shield tanks — first choice
+                case eCharacterClass.Paladin:
+                case eCharacterClass.Armsman:
+                case eCharacterClass.Hero:
+                case eCharacterClass.Warrior:
+                    score += 100;
+                    break;
+                // Chain / hybrid melee with shield spec — second choice
+                case eCharacterClass.Reaver:
+                case eCharacterClass.Champion:
+                case eCharacterClass.Thane:
+                case eCharacterClass.Warden:
+                    score += 60;
+                    break;
+                // Off-tanks / heavy melee — last resort
+                case eCharacterClass.Mercenary:
+                case eCharacterClass.Berserker:
+                case eCharacterClass.Blademaster:
+                case eCharacterClass.Savage:
+                case eCharacterClass.Valkyrie:
+                case eCharacterClass.Friar:
+                    score += 20;
+                    break;
+                default:
+                    // Anything else is a bad tank but we still allow it as a
+                    // floor over no tank at all.
+                    score += 1;
+                    break;
+            }
+            return score;
+        }
+
         public bool SetMainCC(GameLiving living)
         {
             if (living == null)
