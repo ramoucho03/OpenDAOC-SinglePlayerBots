@@ -337,29 +337,68 @@ namespace DOL.GS
                             return;
                         }
 
-                        if (ServerProperties.Properties.CONSIGNMENT_USE_BP)
+                        // Step 1: debit the buyer. Bail out cleanly if the player can't pay.
+                        // BountyPoints path is non-failable (the < check above guarantees enough).
+                        bool useBp = ServerProperties.Properties.CONSIGNMENT_USE_BP;
+
+                        if (useBp)
                         {
-                            ChatUtil.SendMerchantMessage(player, "GameMerchant.OnPlayerBuy.BoughtBP", item.GetName(1, false), purchasePrice);
                             player.BountyPoints -= purchasePrice;
                             player.Out.SendUpdatePoints();
                         }
-                        else if (player.RemoveMoney(purchasePrice))
+                        else if (!player.RemoveMoney(purchasePrice))
+                        {
+                            return;
+                        }
+
+                        // Step 2: move the item from merchant to buyer. If the move fails
+                        // (race against another buyer, target slot taken, etc.) we must
+                        // refund — otherwise the buyer pays and walks away empty-handed.
+                        var updatedItems = GameInventoryObjectExtensions.MoveItemInternal(merchant, player, fromClientSlot, toClientSlot, (ushort) item.Count);
+
+                        if (updatedItems.Count == 0)
+                        {
+                            // Refund the buyer. Mirror the original debit path exactly so
+                            // BP/money accounting and packets stay consistent.
+                            if (useBp)
+                            {
+                                player.BountyPoints += purchasePrice;
+                                player.Out.SendUpdatePoints();
+                            }
+                            else
+                            {
+                                player.AddMoney(purchasePrice);
+                                InventoryLogging.LogInventoryAction(merchant, player, eInventoryActionType.Merchant, purchasePrice);
+                            }
+
+                            ChatUtil.SendErrorMessage(player, "The item is no longer available. Your payment has been refunded.");
+
+                            if (log.IsWarnEnabled)
+                                log.Warn($"CM: refunded {player.Name} {purchasePrice} after MoveItemInternal returned 0 items for slot {(int) fromClientSlot} on lot {merchant.HouseNumber}.");
+
+                            return;
+                        }
+
+                        // Step 3: item is now in the buyer's inventory. Credit the seller
+                        // and emit user-facing messages + audit entries.
+                        AddMoney(sellPrice);
+
+                        if (useBp)
+                            ChatUtil.SendMerchantMessage(player, "GameMerchant.OnPlayerBuy.BoughtBP", item.GetName(1, false), purchasePrice);
+                        else
                         {
                             InventoryLogging.LogInventoryAction(player, merchant, eInventoryActionType.Merchant, purchasePrice);
                             ChatUtil.SendMerchantMessage(player, "GameMerchant.OnPlayerBuy.Bought", item.GetName(1, false), Money.GetString(purchasePrice));
                         }
-                        else
-                            return;
 
-                        AddMoney(sellPrice);
+                        // Audit the item movement as well (matters for dispute / refund tickets).
+                        if (item.Template != null)
+                            InventoryLogging.LogInventoryAction(merchant, player, eInventoryActionType.Merchant, item.Template, item.Count);
 
                         if (ServerProperties.Properties.MARKET_ENABLE_LOG)
                             log.Debug($"CM: {player.Name}:{player.Client.Account.Name} purchased '{item.Name}' for {purchasePrice} from consignment merchant on lot {merchant.HouseNumber}.");
 
-                        var updatedItems = GameInventoryObjectExtensions.MoveItemInternal(merchant, player, fromClientSlot, toClientSlot, (ushort) item.Count);
-
-                        if (updatedItems.Count > 0)
-                            GameInventoryObjectExtensions.NotifyObservers(player, _observers, updatedItems);
+                        GameInventoryObjectExtensions.NotifyObservers(player, _observers, updatedItems);
                     }
                     finally
                     {

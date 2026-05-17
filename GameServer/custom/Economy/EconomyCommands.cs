@@ -14,7 +14,7 @@ namespace DOL.GS.Economy
         "/economy stats - shows merchant counts and listings.",
         "/economy topup - top up to target stock (background, serialized).",
         "/economy refresh - rotate a slice of stock now (background, serialized).",
-        "/economy clear - remove all bot listings.",
+        "/economy clear confirm - remove all bot listings (requires the 'confirm' keyword).",
         "/economy suspend - pause periodic rotations.",
         "/economy resume - resume periodic rotations.")]
     public class EconomyCommand : AbstractCommandHandler, ICommandHandler

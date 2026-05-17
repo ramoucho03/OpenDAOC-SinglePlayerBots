@@ -39,7 +39,8 @@ namespace DOL.GS
 				return false;
 
 			TurnTo(player, 5000);
-			if (!player.Champion && player.Level == 50)
+			// Use >= so the prompt still appears if MAX_LEVEL is ever bumped above 50.
+			if (!player.Champion && player.Level >= 50)
 			{
 				player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "KingNPC.WhisperReceive.AskForChampion"), eChatType.CT_System, eChatLoc.CL_PopupWindow);
 			}
@@ -77,7 +78,7 @@ namespace DOL.GS
 			GamePlayer player = source as GamePlayer;
 			if (player == null) return false;
 
-			if (str == "Champions" && player.Level == 50)
+			if (str == "Champions" && player.Level >= 50)
 			{
 				if (player.Champion == true)
 				{
@@ -87,7 +88,12 @@ namespace DOL.GS
 
 				player.RemoveChampionLevels();
 				player.Champion = true;
+				// Make sure the empty CL spec list is immediately reflected in the UI
+				// so the player can train as soon as they earn their first CL.
+				player.RefreshSpecDependantSkills(true);
 				player.Out.SendUpdatePlayer();
+				player.Out.SendUpdatePoints();
+				player.Out.SendUpdatePlayerSkills(true);
 				player.SaveIntoDatabase();
 				player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "KingNPC.WhisperReceive.IsNowChampion"), eChatType.CT_System, eChatLoc.CL_PopupWindow);
 				return true;

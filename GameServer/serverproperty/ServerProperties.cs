@@ -458,13 +458,13 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// Post 1.108 Passive RA 9-Tiers
 		/// </summary>
-		[ServerProperty("server", "use_new_passives_ras_scaling", "Use new passives realmabilities scaling (1.108+) ?", false)]
+		[ServerProperty("server", "use_new_passives_ras_scaling", "Use new passives realmabilities scaling (1.108+) ?", true)]
 		public static bool USE_NEW_PASSIVES_RAS_SCALING;
 
 		/// <summary>
 		/// Post 1.108 Active RA 5-Tiers
 		/// </summary>
-		[ServerProperty("server", "use_new_actives_ras_scaling", "Use new actives realmabilities (5-Tiers) scaling (1.108+) ?", false)]
+		[ServerProperty("server", "use_new_actives_ras_scaling", "Use new actives realmabilities (5-Tiers) scaling (1.108+) ?", true)]
 		public static bool USE_NEW_ACTIVES_RAS_SCALING;
 
 		/// <summary>
@@ -1290,15 +1290,17 @@ namespace DOL.GS.ServerProperties
 		public static int RELIC_RETURN_TIME;
 
 		/// <summary>
-		/// Allow all realms access to DF
+		/// Allow all realms access to DF. Default true mirrors the Darkness Rising
+		/// era behavior where Darkness Falls became accessible from all three realms
+		/// rather than gated on tower/keep ownership.
 		/// </summary>
-		[ServerProperty("pvp", "allow_all_realms_df", "Should we allow all realms access to DF", false)]
+		[ServerProperty("pvp", "allow_all_realms_df", "Should we allow all realms access to DF", true)]
 		public static bool ALLOW_ALL_REALMS_DF;
 
 		/// <summary>
 		/// Allow Bounty Points to be gained in Battlegrounds
 		/// </summary>
-		[ServerProperty("pvp", "allow_bps_in_bgs", "Allow bounty points to be gained in battlegrounds", false)]
+		[ServerProperty("pvp", "allow_bps_in_bgs", "Allow bounty points to be gained in battlegrounds", true)]
 		public static bool ALLOW_BPS_IN_BGS;
 
 		/// <summary>
@@ -1322,14 +1324,14 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// Ignore too long outcoming packet or not
 		/// </summary>
-		[ServerProperty("pvp", "enable_minotaur_relics", "Shall we enable Minotaur Relics ?", false)]
-		public static bool ENABLE_MINOTAUR_RELICS;
+		[ServerProperty("pvp", "enable_minotaur_relics", "Shall we enable Minotaur Relics ?", true)]
+		public static bool ENABLE_MINOTAUR_RELICS = true;
 
 		/// <summary>
 		/// Enable WarMap manager
 		/// </summary>
-		[ServerProperty("pvp", "enable_warmapmgr", "Shall we enable the WarMap manager ?", false)]
-		public static bool ENABLE_WARMAPMGR;
+		[ServerProperty("pvp", "enable_warmapmgr", "Shall we enable the WarMap manager ?", true)]
+		public static bool ENABLE_WARMAPMGR = true;
 		
 		/// <summary>
 		/// Toggle con loss on PvP server type
@@ -1381,8 +1383,8 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// The number of players needed for claiming
 		/// </summary>
-		[ServerProperty("keeps", "claim_num", "Players Needed For Claim - Edit this to change the amount of players required to claim a keep, towers are half this amount", 8)]
-		public static int CLAIM_NUM;
+		[ServerProperty("keeps", "claim_num", "Players Needed For Claim - Edit this to change the amount of players required to claim a keep, towers are half this amount", 1)]
+		public static int CLAIM_NUM = 1;
 
 		/// <summary>
 		/// Use Keep Balancing
@@ -1435,8 +1437,8 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// Enable the keep upgrade timer to slowly raise keep levels
 		/// </summary>
-		[ServerProperty("keeps", "enable_keep_upgrade_timer", "Enable the keep upgrade timer to slowly raise keep levels?", false)]
-		public static bool ENABLE_KEEP_UPGRADE_TIMER;
+		[ServerProperty("keeps", "enable_keep_upgrade_timer", "Enable the keep upgrade timer to slowly raise keep levels?", true)]
+		public static bool ENABLE_KEEP_UPGRADE_TIMER = true;
 
 		/// <summary>
 		/// Define toughness for keep and tower walls: 100 is 100% player's damages inflicted.
@@ -1603,8 +1605,8 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// Do you allowed player to climb towers?
 		/// </summary>
-		[ServerProperty("keeps", "allow_tower_climb", "Do you allowed player to climb towers? Set True for yes, False for not.", false)]
-		public static bool ALLOW_TOWER_CLIMB;
+		[ServerProperty("keeps", "allow_tower_climb", "Do you allowed player to climb towers? Set True for yes, False for not.", true)]
+		public static bool ALLOW_TOWER_CLIMB = true;
 
 		/// <summary>
 		/// Keep guard heal when a target is below what percentage of their health?
@@ -1848,7 +1850,7 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// TOA Artifact XP rate
 		/// </summary>
-		[ServerProperty("pve", "artifact_xp_rate", "Adjust the rate at which all artifacts gain xp.  Higher numbers mean slower XP gain. XP / this = result", 350)]
+		[ServerProperty("pve", "artifact_xp_rate", "Adjust the rate at which all artifacts gain xp.  Higher numbers mean slower XP gain. XP / this = result", 30)]
 		public static int ARTIFACT_XP_RATE;
 
 		/// <summary>
@@ -1872,7 +1874,7 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// Minimum privilege level to be able to enter Atlantis through teleporters.
 		/// </summary>
-		[ServerProperty("pve", "atlantis_teleport_plvl", "Set the minimum privilege level required to enter Atlantis zones.", 2)]
+		[ServerProperty("pve", "atlantis_teleport_plvl", "Set the minimum privilege level required to enter Atlantis zones.", 1)]
 		public static int ATLANTIS_TELEPORT_PLVL;
 		
 		/// <summary>
@@ -2031,7 +2033,7 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// How often, in days, is rent due?  0 for never, negative for testing repossession
 		/// </summary>
-		[ServerProperty("housing", "rent_due_days", "How often, in days, is rent due?  0 for never, negative for testing repossession.", 7)]
+		[ServerProperty("housing", "rent_due_days", "How often, in days, is rent due?  0 for never, negative for testing repossession.", 0)]
 		public static int RENT_DUE_DAYS;
 
 		/// <summary>
@@ -2082,6 +2084,16 @@ namespace DOL.GS.ServerProperties
 		[ServerProperty("housing", "market_search_limit", "How many items can the market search return?", 300)]
 		public static int MARKET_SEARCH_LIMIT;
 
+		/// <summary>
+		/// Hard cap on the sell price a player can set on a consignment merchant
+		/// (in copper). Set to 0 to disable the cap. Prevents griefing/typo prices
+		/// like uint.MaxValue (~4.29 billion) clogging the market index.
+		/// Default is 1 billion copper = 100 000 platinum, well above any legit
+		/// item value. Raise via /serverproperty if you run a high-end server.
+		/// </summary>
+		[ServerProperty("housing", "market_price_cap", "Hard cap on consignment merchant sell price in copper (0 = no cap).", 1_000_000_000L)]
+		public static long MARKET_PRICE_CAP;
+
 		#endregion
 
 		#region CLASSES
@@ -2094,7 +2106,7 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// Allow players to /train without having a trainer present
 		/// </summary>
-		[ServerProperty("classes", "allow_vault_command", "Allow players to use the /vault command to open the player's vault anywhere in the world?", false)]
+		[ServerProperty("classes", "allow_vault_command", "Allow players to use the /vault command to open the player's vault anywhere in the world?", true)]
 		public static bool ALLOW_VAULT_COMMAND;
 
 		/// <summary>
@@ -2136,7 +2148,7 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// Allow Cata Slash Level
 		/// </summary>
-		[ServerProperty("classes", "allow_cata_slash_level", "Allow catacombs classes to use /level command", false)]
+		[ServerProperty("classes", "allow_cata_slash_level", "Allow catacombs classes to use /level command", true)]
 		public static bool ALLOW_CATA_SLASH_LEVEL;
 
 		/// <summary>
@@ -2350,7 +2362,7 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// Allow any realm to craft items with a realm of 0 (no realm)
 		/// </summary>
-		[ServerProperty("craft", "allow_craft_norealm_items", "Allow any realm to craft items with 0 (no) realm.", false)]
+		[ServerProperty("craft", "allow_craft_norealm_items", "Allow any realm to craft items with 0 (no) realm.", true)]
 		public static bool ALLOW_CRAFT_NOREALM_ITEMS;
 
 		/// <summary>
@@ -2368,7 +2380,7 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// Use salvage per realm and get back material to use in chars realm
 		/// </summary>
-		[ServerProperty("salvage", "use_salvage_per_realm", "Enable to get back material to use in chars realm. Disable to get back the same material in all realms.", false)]
+		[ServerProperty("salvage", "use_salvage_per_realm", "Enable to get back material to use in chars realm. Disable to get back the same material in all realms.", true)]
 		public static bool USE_SALVAGE_PER_REALM;
 
 		/// <summary>
@@ -2410,8 +2422,8 @@ namespace DOL.GS.ServerProperties
 		/// <summary>
 		/// Allow claiming of BG keeps
 		/// </summary>
-		[ServerProperty("atlas", "allow_bg_claim", "Allow claiming of BG keeps", false)]
-		public static bool ALLOW_BG_CLAIM;
+		[ServerProperty("atlas", "allow_bg_claim", "Allow claiming of BG keeps", true)]
+		public static bool ALLOW_BG_CLAIM = true;
 
 		/// <summary>
 		/// Enables the API endpoints on the port :5000

@@ -340,9 +340,12 @@ namespace DOL.GS
                 }
                 else if (memberCount > 1 && LivingLeader == living)
                 {
-                    // Assign a new leader.
-                    LivingLeader = _groupMembers.OfType<GamePlayer>().First() ?? _groupMembers[0];
-                    SendMessageToGroupMembers($"{Leader.Name} is the new group leader.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    // Assign a new leader. FirstOrDefault (not First) so a
+                    // mimic-only group doesn't throw; fall back to the first
+                    // member (which may be a MimicNPC). Use LivingLeader.Name
+                    // since Leader can be null when the fallback is a mimic.
+                    LivingLeader = _groupMembers.OfType<GamePlayer>().FirstOrDefault() ?? _groupMembers[0];
+                    SendMessageToGroupMembers($"{LivingLeader.Name} is the new group leader.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
                 }
             }
 

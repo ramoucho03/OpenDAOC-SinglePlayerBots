@@ -147,6 +147,23 @@ namespace DOL.GS
 		}
 		
 		/// <summary>
+		/// When a player uses a door / zone point inside the Adventure Wing instance,
+		/// route them back to the SourceEntrance (where they originally jumped in)
+		/// instead of using the default zone-point target (which points at the
+		/// skinned region and may not exist or may dump the player in the wrong spot).
+		/// Returning false tells the engine we handled the move ourselves.
+		/// </summary>
+		public override bool OnInstanceDoor(GamePlayer player, DbZonePoint zonePoint)
+		{
+			if (m_sourceentrance != null)
+			{
+				player.MoveTo(m_sourceentrance.RegionID, m_sourceentrance.X, m_sourceentrance.Y, m_sourceentrance.Z, (ushort)m_sourceentrance.Heading);
+				return false;
+			}
+			return base.OnInstanceDoor(player, zonePoint);
+		}
+
+		/// <summary>
 		/// Override because mobs shouldn't respawn in Adventure wings.
 		/// </summary>
 		public override void LoadFromDatabase(DbMob[] mobObjs, ref long mobCount, ref long merchantCount, ref long itemCount, ref long bindCount)

@@ -50,37 +50,46 @@ namespace DOL.GS.ServerRules
             AdventureWingInstance previousInstance = null;
                       
             // Do we have a group ?
-            if(player.Group != null) 
+            if(player.Group != null)
             {
+            	GamePlayer leader = player.Group.Leader;
             	//Check if there is an instance dedicated to this group
-            	foreach(Region region in WorldMgr.GetAllRegions()) 
+            	foreach(Region region in WorldMgr.GetAllRegions())
             	{
-            		if(region is AdventureWingInstance && ((AdventureWingInstance)region).Group != null && ((AdventureWingInstance)region).Group == player.Group) 
+            		if(region is AdventureWingInstance && ((AdventureWingInstance)region).Group != null && ((AdventureWingInstance)region).Group == player.Group)
             		{
             			// Our group has an instance !
             			previousInstance = (AdventureWingInstance)region;
             			break;
             		}
-            		else if(region is AdventureWingInstance && ((AdventureWingInstance)region).Player != null && ((AdventureWingInstance)region).Player == player.Group.Leader) 
+            		else if(leader != null && region is AdventureWingInstance && ((AdventureWingInstance)region).Player != null && ((AdventureWingInstance)region).Player == leader)
             		{
             			// Our leader has an instance !
             			previousInstance = (AdventureWingInstance)region;
             			previousInstance.Group = player.Group;
             			break;
             		}
+            		else if(region is AdventureWingInstance && ((AdventureWingInstance)region).Player != null && ((AdventureWingInstance)region).Player == player)
+            		{
+            			// Player owns a (previously solo) instance; promote it to the group.
+            			previousInstance = (AdventureWingInstance)region;
+            			previousInstance.Group = player.Group;
+            			previousInstance.Player = leader != null ? leader : player;
+            			break;
+            		}
             	}
-            	
+
             }
             else {
             	// I am solo !
             	//Check if there is an instance dedicated to me
-            	foreach(Region region in WorldMgr.GetAllRegions()) 
+            	foreach(Region region in WorldMgr.GetAllRegions())
             	{
-            		if(region is AdventureWingInstance && ((AdventureWingInstance)region).Player != null && ((AdventureWingInstance)region).Player == player) 
+            		if(region is AdventureWingInstance && ((AdventureWingInstance)region).Player != null && ((AdventureWingInstance)region).Player == player)
             		{
             			// I have an Instance !
             			previousInstance = (AdventureWingInstance)region;
-            			previousInstance.Group = player.Group;
+            			previousInstance.Group = null;
             			break;
             		}
             	}

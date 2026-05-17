@@ -387,8 +387,9 @@ namespace DOL.GS.Scripts
 
                 if (house == null)
                 {
-                    SayTo(player, $"I'm sorry but {player.Guild.Name} doesn't own a Guild House.");
-                    return false;
+                    SayTo(player, player.Guild != null
+                        ? $"I'm sorry but {player.Guild.Name} doesn't own a Guild House."
+                        : "I'm sorry but you are not a member of a guild.");
                     return false; // no teleport when guild house not found
                 }
                 else

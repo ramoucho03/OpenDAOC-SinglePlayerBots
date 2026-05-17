@@ -3251,10 +3251,15 @@ namespace DOL.AI.Brain
 
         protected virtual GameLiving CleanUpAggroListAndGetHighestModifiedThreat()
         {
-            // Clear cached ordered aggro list.
-            // It isn't built here because ordering all entities in the aggro list can be expensive, and we typically don't need it.
+            // Clear cached ordered aggro list under the same lock that
+            // GetOrderedAggroList takes — without this, a concurrent reader
+            // can be iterating while the list is mid-Clear, throwing
+            // InvalidOperationException ("Collection was modified").
             // It's built on demand, when `GetOrderedAggroList` is called.
-            OrderedAggroList.Clear();
+            lock (_orderedAggroListLock)
+            {
+                OrderedAggroList.Clear();
+            }
 
             int attackRange = Body.attackComponent.AttackRange;
             GameLiving highestThreat = null;

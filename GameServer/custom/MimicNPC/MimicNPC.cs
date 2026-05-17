@@ -113,7 +113,22 @@ namespace DOL.GS.Scripts
 
             MimicSpec = MimicSpec.GetSpec(cClass, spec);
             CombatProfile = MimicCombatProfileRegistry.Get(cClass, MimicSpec?.SpecType ?? spec);
-            SetCharacterClass((int)cClass);
+
+            // Hard fail-fast on bad construction inputs. Without this guard
+            // a typo in /mcreate (unknown class id) silently produces a mimic
+            // with null CharacterClass + MimicSpec, which then NPEs deep in
+            // SetWeapons / RefreshSpecDependantSkills / brain Think. Better
+            // to throw at construction so the command handler reports the
+            // error to the player.
+            if (!SetCharacterClass((int)cClass))
+                throw new InvalidOperationException($"MimicNPC: unknown character class id {(int)cClass} ({cClass}).");
+
+            if (MimicSpec == null)
+                throw new InvalidOperationException($"MimicNPC: no MimicSpec registered for {cClass}/{spec}.");
+
+            if (CombatProfile == null)
+                throw new InvalidOperationException($"MimicNPC: no MimicCombatProfile registered for {cClass}/{MimicSpec.SpecType}.");
+
             SetRaceAndName();
             SetBrain(cClass);
             CreateStatistics();

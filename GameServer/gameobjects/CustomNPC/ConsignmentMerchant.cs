@@ -244,6 +244,12 @@ namespace DOL.GS
             if (ServerProperties.Properties.MARKET_ENABLE_LOG)
                 log.Debug($"CM: {player.Name}:{player.Client.Account.Name} adding '{item.Name}' to consignment merchant on lot {HouseNumber}.");
 
+            // Audit the storage movement (matters for dispute / theft tickets even
+            // when the item is just listed, not sold). Template can be null for
+            // ItemUnique-backed entries; the logger handles that case via overloads.
+            if (item.Template != null)
+                InventoryLogging.LogInventoryAction(player, this, eInventoryActionType.Merchant, item.Template, item.Count);
+
             // Update owner lot and ID before adding to the cache, so that the item can be retrieved when its price will be set (from another packet).
             item.OwnerLot = HouseNumber;
             item.OwnerID = GetOwner();
@@ -255,6 +261,10 @@ namespace DOL.GS
         {
             if (ServerProperties.Properties.MARKET_ENABLE_LOG)
                 log.Debug($"CM: {player.Name}:{player.Client.Account.Name} removing '{item.Name}' from consignment merchant on lot {HouseNumber}.");
+
+            // Audit the withdrawal. Direction is merchant -> player.
+            if (item.Template != null)
+                InventoryLogging.LogInventoryAction(this, player, eInventoryActionType.Merchant, item.Template, item.Count);
 
             // Remove from the cache before changing item data.
             MarketCache.RemoveItem(item);
@@ -284,6 +294,23 @@ namespace DOL.GS
 
             if (!TryGetItem((int) clientSlot, out DbInventoryItem item))
                 return false;
+
+            // Reject 0 — used to be possible via crafted client packets and just
+            // results in a useless "free" listing the buyer flow refuses anyway.
+            if (price == 0)
+            {
+                player.Out.SendMessage("Price must be greater than zero.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                return false;
+            }
+
+            // Enforce server cap if configured. 0 = no cap.
+            long cap = ServerProperties.Properties.MARKET_PRICE_CAP;
+
+            if (cap > 0 && price > cap)
+            {
+                player.Out.SendMessage($"Price exceeds the server cap of {Money.GetString(cap)}.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                return false;
+            }
 
             MarketCache.UpdateItem(item, static (item, price) => item.SellPrice = item.IsTradable ? (int) price : 0, price);
 

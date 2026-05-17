@@ -242,7 +242,13 @@ namespace DOL.GS
 		}
 		
 		/// <summary>
-		/// Retrieve the given Champ Mini Line Type for "index"
+		/// Retrieve the given Champ Mini Line Type for "index".
+		/// Note: eChampionTrainerType values 1 (Fighter/Guardian/Viking) and 2
+		/// (AlbionRogue/Stalker) are shared across realms - Enum.GetName resolves
+		/// duplicates deterministically (first-declared by metadata), so callers
+		/// effectively get one canonical type per index. Each Mini-line registered
+		/// against ANY type that resolves to a duplicate index still receives the
+		/// same trainer window slot, which matches live behaviour.
 		/// </summary>
 		/// <param name="index">Hardcoded index</param>
 		/// <returns></returns>
