@@ -3033,6 +3033,20 @@ namespace DOL.AI.Brain
             if (!IsActive)
                 return;
 
+            // Healer focus belt-and-suspenders: MimicState_Aggro.Think already
+            // routes a flagged healer to CheckHeals instead of AttackMostWanted,
+            // but several non-AGGRO callsites can still land here on edge
+            // transitions (rez completion, leader handoff, /mfollow chain).
+            // Healers must NEVER swing or fire offensive specials — drop any
+            // pending swing, run the heal cycle, and return.
+            if (IsHealer)
+            {
+                if (Body.IsAttacking)
+                    Body.StopAttack();
+                CheckHeals();
+                return;
+            }
+
             if (!CheckMainTankTarget())
                 Body.TargetObject = CalculateNextAttackTarget();
 
@@ -3115,10 +3129,12 @@ namespace DOL.AI.Brain
                     }
                     else
                     {
-                        // Grouped: take a short kite step (300u) to give the
-                        // tank one extra second to peel, then resume casting
-                        // next tick (interrupt window is short).
-                        TryShortKiteStep(300);
+                        // Grouped: take a wider kite step (900u, 3x the old
+                        // 300u) so the bot actually breaks out of melee range
+                        // instead of spinning a tight circle that the mob
+                        // re-engages immediately. Gives the tank a real beat
+                        // to peel before the caster resumes.
+                        TryShortKiteStep(900);
                     }
 
                     return;
@@ -3209,42 +3225,6 @@ namespace DOL.AI.Brain
             TargetFlankPosition = null;
         }
 
-        // True when this healer should skip offensive duty because the group
-        // actually needs heals right now. Used to relax the IsHealer DPS gate
-        // for hybrids (Friar / Heretic / Shaman / Bard) so they stop standing
-        // idle in melee/cast range during 100%-HP fights.
-        // - "Need" = any group member below the heal threshold, OR our own
-        //   mana is too low to safely commit a long offensive cast.
-        // - When the group is full HP and we have mana, we let the offensive
-        //   cycle drive — heals will pre-empt next tick if anything drops.
-        private bool NeedsToHealNow()
-        {
-            // Always defer to heal duty if we're low on mana — committing a
-            // long offensive cast here would just OOM us out of an incoming heal.
-            if (MimicBody?.ManaPercent < 30)
-                return true;
-
-            int threshold = MimicConfig.MIMIC_HEAL_THRESHOLD > 0
-                ? MimicConfig.MIMIC_HEAL_THRESHOLD
-                : 80;
-
-            if (Body.HealthPercent < threshold)
-                return true;
-
-            Group g = Body.Group;
-            if (g == null)
-                return false;
-
-            foreach (GameLiving member in g.GetMembersInTheGroup())
-            {
-                if (member == null || member == Body || !member.IsAlive)
-                    continue;
-                if (member.HealthPercent < threshold)
-                    return true;
-            }
-            return false;
-        }
-
         private bool TryFlee()
         {
             if (TargetFleePosition != null || IsFleeing || !Body.IsBeingInterrupted)
@@ -3261,10 +3241,11 @@ namespace DOL.AI.Brain
         // the caster eats a full melee combo. Returns false if we can't (no
         // target / already fleeing / movement blocked).
         // Maximum distance a caster will allow itself to be from the group
-        // anchor (main tank or living leader) when kiting. 1300u keeps the
-        // bot well inside the standard 1500u heal range with a small buffer
-        // for movement during the heal cast.
-        private const int KITE_MAX_DISTANCE_FROM_ANCHOR = 1300;
+        // anchor (main tank or living leader) when kiting. Raised to 1500u
+        // to accommodate the wider 900u kite step without silently aborting
+        // when the bot starts close to the tether edge. Still inside healer
+        // cast range with a buffer for movement during the heal cast.
+        private const int KITE_MAX_DISTANCE_FROM_ANCHOR = 1500;
 
         private bool TryShortKiteStep(int distance)
         {
@@ -4526,17 +4507,24 @@ namespace DOL.AI.Brain
             }
             else if (!casted && type == eCheckSpellType.Offensive)
             {
-                // Healer-gate-relaxed: a flagged healer can DPS when the group
-                // is healthy. The original blanket block (`return false`) silenced
-                // Friar / Heretic / Shaman / Bard hybrids entirely, even when
-                // every member was at 100% HP — they'd stand in melee/cast range
-                // doing nothing. We now skip offensive ONLY when there's actual
-                // heal demand (someone below threshold) or we're low on mana.
-                if (IsHealer && combatProfile?.HasRole(eMimicCombatRole.Healer) == true)
-                {
-                    if (NeedsToHealNow())
-                        return false;
-                }
+                // Dedicated healers focus 100% on healing/curing/HoT upkeep
+                // when they're flagged as the group healer (player toggle or
+                // composer assignment). Letting a flagged healer commit a
+                // cast-time DD between heal windows costs the next reactive
+                // heal its cast slot: the offensive cast occupies the
+                // castingComponent for 2-3s, and any sudden tank damage
+                // arriving in that window goes unhealed. The CheckHeals call
+                // at the top of CheckSpells already returns true whenever a
+                // heal was actually fired, so the only thing this gate
+                // suppresses is the "everyone is full HP, throw a DD"
+                // opportunistic path — exactly the path the user wants gone.
+                //
+                // Hybrid classes (Friar, Bard, Heretic, Warden, etc.) that
+                // the operator does NOT want as pure healers can be opted
+                // out by clearing IsHealer (/mrole or composer), which keeps
+                // their offensive cycle intact.
+                if (IsHealer)
+                    return false;
 
                 // ----------------------------------------------------------------
                 // Generic mana throttle.
@@ -4580,15 +4568,29 @@ namespace DOL.AI.Brain
                 if (MimicBody.CharacterClass.ID == (int)eCharacterClass.Nightshade)
                     return false;
 
-                // TODO: This makes Thane and Valewalker use melee when in range rather than cast in all situations.
-                //        but still use instants. Need to include other exceptions like maybe low health or endurance.
-                // Null guard on Body.TargetObject — caster hybrids may reach
-                // this point with target cleared (mob died between target
-                // acquisition and this check). IsWithinRadius would NPE.
+                // Hybrid tanks (Thane Stormcalling DDs, Reaver Soulrending,
+                // Vampiir drains, Champion sub-spec nukes, Valewalker scythe
+                // DDs) must keep casting even at melee range — that's their
+                // whole identity. Only short-circuit to pure melee for bots
+                // tagged ONLY as Tank/MeleeDps without any caster role.
+                // Low-mana fallback to melee still applies regardless.
+                bool isHybridCaster = combatProfile != null
+                    && (combatProfile.HasRole(eMimicCombatRole.CasterDps)
+                        || combatProfile.HasRole(eMimicCombatRole.Debuffer));
                 if (combatProfile?.PrefersMelee == true
+                    && !isHybridCaster
                     && (MimicBody.CanUsePositionalStyles || MimicBody.CanUseAnytimeStyles)
                     && Body.TargetObject != null
                     && (Body.IsWithinRadius(Body.TargetObject, 550) || Body.ManaPercent <= 10))
+                    return false;
+
+                // Even hybrid casters fall back to melee on mana exhaustion,
+                // so they don't stand around uselessly when oom in range.
+                if (combatProfile?.PrefersMelee == true
+                    && isHybridCaster
+                    && Body.TargetObject != null
+                    && Body.IsWithinRadius(Body.TargetObject, 550)
+                    && Body.ManaPercent <= 10)
                     return false;
 
                 if (MimicBody.CanCastCrowdControlSpells)
@@ -4646,10 +4648,31 @@ namespace DOL.AI.Brain
                             if (!CanCastOffensiveSpell(spell))
                                 continue;
 
-                            if (spell.Radius > 0
-                                && combatProfile != null
-                                && !ShouldUseDamageAoe(combatProfile, spell, combatProfile.DamageAoeMinTargets, false))
+                            // Don't cast snare/root on a mob that's already
+                            // pinned in melee with the group's tank — it just
+                            // breaks the tank's kite plan and burns mana for
+                            // no benefit. Also skip when the target is already
+                            // CC'd in a way that snare/root can't add to.
+                            if (spell.SpellType is eSpellType.SpeedDecrease
+                                && liveTarget != null
+                                && IsTargetPinnedOnTank(liveTarget))
                                 continue;
+
+                            // Bug fix: previously this passed
+                            // combatProfile.DamageAoeMinTargets as the hostile
+                            // count, which trivially satisfied the
+                            // "hostileCount >= MinTargets" check and never
+                            // rejected an AoE here. Now we actually count
+                            // hostiles in the spell radius so DamageWhenClustered
+                            // works as a real entry filter, not just a
+                            // tie-breaker in the later sort.
+                            if (spell.Radius > 0 && combatProfile != null)
+                            {
+                                GameLiving aoeTarget = liveTarget;
+                                int hostiles = aoeTarget != null ? CountAoeHostiles(spell, aoeTarget) : 0;
+                                if (!ShouldUseDamageAoe(combatProfile, spell, hostiles, hostiles < 0))
+                                    continue;
+                            }
 
                             // Skip debuffs / DoTs already applied on the target. We
                             // would just refresh-stomp our own effect for no gain.
@@ -4701,12 +4724,34 @@ namespace DOL.AI.Brain
                     // is a DPS loss and burns mana for nothing. Inside the same priority
                     // bracket we keep insertion order so class-specific tuning by
                     // spell-list order still matters.
+                    // Vampiir prioritizes lifedrains when wounded — at <70% HP
+                    // the heal-back is worth more than raw nuke damage.
+                    bool isWoundedVampiir = MimicBody?.CharacterClass != null
+                        && MimicBody.CharacterClass.ID == (int)eCharacterClass.Vampiir
+                        && Body.HealthPercent < 70;
+
+                    // Caster bots prefer spells whose effective class spec is
+                    // close to 50: a Wizard 50 Cold should pick its cold DD
+                    // over a sub-spec fire DD even if both score equal on type.
+                    // We approximate "primary spec" by spell.Level — higher
+                    // level = deeper in the spec line.
                     int SortScore(Spell s)
                     {
                         int score = ScoreOffensivePriority(s);
 
                         if (s.Radius > 0 && !HasCluster(s))
                             score += 2;
+
+                        if (isWoundedVampiir && s.SpellType == eSpellType.Lifedrain)
+                            score -= 4;
+
+                        // Bias toward primary-spec spells. Convert Level to a
+                        // [0..-2] adjustment so a Level-45 spell beats a
+                        // Level-25 within the same priority tier.
+                        if (s.Level >= 30)
+                            score -= 1;
+                        if (s.Level >= 45)
+                            score -= 1;
 
                         return score;
                     }
@@ -4882,6 +4927,40 @@ namespace DOL.AI.Brain
                 case eSpellType.DirectDamage: return 7;
                 default: return 10;
             }
+        }
+
+        /// <summary>
+        /// True when <paramref name="target"/> is currently engaged in melee
+        /// with the group's tank (or another tank-class member). A snare/root
+        /// on such a target wastes mana and can break the tank's positioning
+        /// plan — caster bots should pick a different debuff or skip outright.
+        /// </summary>
+        private bool IsTargetPinnedOnTank(GameLiving target)
+        {
+            if (target == null || Body.Group == null)
+                return false;
+
+            // Target's current focus is the tank — already pinned.
+            if (target.TargetObject is GameLiving focus
+                && Body.Group.IsInTheGroup(focus)
+                && MimicGroup.ScoreTankCandidate(focus) > 5)
+            {
+                if (focus.IsWithinRadius(target, focus.MeleeAttackRange + 32))
+                    return true;
+            }
+
+            // Any tank-class group member is in melee with the target.
+            foreach (GameLiving gm in Body.Group.GetMembersInTheGroup())
+            {
+                if (gm == null || gm == Body || !gm.IsAlive)
+                    continue;
+                if (MimicGroup.ScoreTankCandidate(gm) <= 5)
+                    continue;
+                if (gm.IsWithinRadius(target, gm.MeleeAttackRange + 32))
+                    return true;
+            }
+
+            return false;
         }
 
         // Below this hostile count an AoE damage spell is not worth the cast:
@@ -5334,7 +5413,22 @@ namespace DOL.AI.Brain
                             break;
                     }
 
-                    if (!LivingHasEffect(Body, spell) && !Body.attackComponent.AttackState && spell.Target != eSpellTarget.PET)
+                    // Pulse self-buffs (Paladin chants, Skald speed/DPS, Warden
+                    // pulse BT, etc.) and self-target proc/buff lines must be
+                    // allowed to refresh while engaged — otherwise a tank who
+                    // pulled before chants were up never starts the chant, and
+                    // a chant that drops mid-fight (interrupt, target swap)
+                    // stays off until OOC. Only block the AttackState case for
+                    // one-shot self-buffs that are pre-fight prep.
+                    bool isPulseOrCombatBuff = spell.IsPulsing
+                        || spell.SpellType is eSpellType.DamageAdd
+                            or eSpellType.OffensiveProc
+                            or eSpellType.DefensiveProc
+                            or eSpellType.DamageShield
+                            or eSpellType.Bladeturn;
+                    if (!LivingHasEffect(Body, spell)
+                        && (isPulseOrCombatBuff || !Body.attackComponent.AttackState)
+                        && spell.Target != eSpellTarget.PET)
                     {
                         target = Body;
                         break;
@@ -5535,6 +5629,37 @@ namespace DOL.AI.Brain
             if (spell.NeedInstrument && Body.ActiveWeaponSlot != eActiveWeaponSlot.Distance)
                 Body.SwitchWeapon(eActiveWeaponSlot.Distance);
 
+            // Animist turrets require a valid GroundTarget. Without this the
+            // SummonAnimist* spell handlers fail their pre-cast check silently
+            // and the Animist never spawns a single shroom. Drop the ground
+            // target between the bot and the target so the turret's pulse
+            // covers the engagement, not the bot's back line.
+            if (spell.SpellType is eSpellType.SummonAnimistPet
+                or eSpellType.SummonAnimistFnF
+                or eSpellType.SummonAnimistFnFCustom
+                or eSpellType.SummonAnimistAmbusher
+                or eSpellType.TurretPBAoE)
+            {
+                int gtx = Body.X;
+                int gty = Body.Y;
+                int gtz = Body.Z;
+
+                if (Body.TargetObject is GameLiving aoeAnchor)
+                {
+                    double dx = aoeAnchor.X - Body.X;
+                    double dy = aoeAnchor.Y - Body.Y;
+                    double dist = Math.Sqrt(dx * dx + dy * dy);
+                    if (dist > 1)
+                    {
+                        const int FOOTPRINT_OFFSET = 50;
+                        gtx = Body.X + (int)(dx / dist * FOOTPRINT_OFFSET);
+                        gty = Body.Y + (int)(dy / dist * FOOTPRINT_OFFSET);
+                    }
+                }
+
+                Body.SetGroundTarget(gtx, gty, gtz);
+            }
+
             bool casted = false;
 
             if (Body.TargetObject is GameLiving living && (spell.Duration == 0 || !LivingHasEffect(living, spell) || spell.SpellType == eSpellType.DirectDamageWithDebuff || spell.SpellType == eSpellType.DamageSpeedDecrease))
@@ -5588,11 +5713,11 @@ namespace DOL.AI.Brain
                 case eSpellType.BodyResistBuff:
                 case eSpellType.MatterResistBuff:
                 {
-                    // Temp to stop Paladins/Skalds from spamming.
-                    // TODO: Smarter use of resist chants.
-                    if (spell.Pulse > 0)
-                        break;
-
+                    // Paladin / Skald resist chants are pulse self-targets.
+                    // Cast once when the effect isn't up; the pulse refresh
+                    // itself handles upkeep — we don't re-cast every tick.
+                    if (!LivingHasEffect(Body, spell))
+                        castSpell = true;
                     break;
                 }
 
@@ -5605,7 +5730,11 @@ namespace DOL.AI.Brain
                 case eSpellType.DexterityQuicknessBuff:
                 case eSpellType.CombatSpeedBuff:
                 case eSpellType.OffensiveProc:
-                case eSpellType.SummonHunterPet:
+                // SummonHunterPet removed from this instant-defensive switch:
+                // it's not an instant spell, and the permanent-pet path in
+                // CheckDefensiveSpells (FindTargetForDefensiveSpell) already
+                // re-summons when ControlledBrain is null. Leaving it here
+                // caused redundant cast attempts that did nothing.
 
                 if (spell.UsePulsePower)
                 {

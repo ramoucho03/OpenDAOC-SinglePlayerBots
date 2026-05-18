@@ -44,9 +44,12 @@ namespace DOL.GS.Scripts
 
                 case 4:
                 case 5:
+                // Bug fix: Suppression is the primary line for SuppSpirit,
+                // its weight must be 1.0f, not 0.0f. Previous ratio caused
+                // the score sort to deprioritize the spec's signature spells.
                 SpecType = eSpecType.SuppSpirit;
                 Add(Specs.Darkness, 5, 0.0f);
-                Add(Specs.Suppression, 49, 0.0f);
+                Add(Specs.Suppression, 49, 1.0f);
                 Add(Specs.Summoning, 22, 0.1f);
                 break;
 

@@ -279,7 +279,12 @@ namespace DOL.GS.Spells
             {
                 if (target is GamePlayer)
                     isImmune = target.effectListComponent.ContainsEffectForEffectType(eEffect.Stun);
-                else if (EffectListService.GetEffectOnTarget(target, eEffect.NPCStunImmunity) is NpcStunImmunityEffect immunityEffect)
+                // Pet casters bypass the NPC diminishing-returns gate so their
+                // stuns keep landing at full duration. Matches the pet-side
+                // change in StunECSGameEffect.OnStartEffect which already
+                // avoids creating the immunity tracker for pet casts.
+                else if (Caster is not GameSummonedPet
+                         && EffectListService.GetEffectOnTarget(target, eEffect.NPCStunImmunity) is NpcStunImmunityEffect immunityEffect)
                     isImmune = !immunityEffect.CanApplyNewEffect(base.CalculateEffectDuration(target));
             }
 

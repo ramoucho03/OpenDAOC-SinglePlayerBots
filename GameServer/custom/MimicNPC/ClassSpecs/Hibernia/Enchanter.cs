@@ -21,7 +21,7 @@ namespace DOL.GS.Scripts
             {
                 eSpecType.ManaEnchanter => Util.Random(0, 1),
                 eSpecType.LightEnchanter => Util.Random(2, 3),
-                _ => Util.Random(3),
+                _ => Util.Random(4),
             };
 
             switch (randVariance)
@@ -52,6 +52,16 @@ namespace DOL.GS.Scripts
                 Add(Specs.Mana, 24, 0.2f);
                 Add(Specs.Light, 45, 1.0f);
                 Add(Specs.Enchantments, 17, 0.1f);
+                break;
+
+                case 4:
+                // Pet-spec Enchanter: full Enchantments line for buffed pet
+                // + minimal nuke backup. Closest analogue to the live
+                // "Pet Spec" Enchanter meta build.
+                SpecType = eSpecType.LightEnchanter;
+                Add(Specs.Mana, 16, 0.1f);
+                Add(Specs.Light, 22, 0.3f);
+                Add(Specs.Enchantments, 50, 1.0f);
                 break;
             }
         }

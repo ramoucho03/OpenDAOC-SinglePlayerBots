@@ -37,12 +37,15 @@ namespace DOL.GS.Scripts
             {
                 case 0:
                 case 1:
+                // CS-spec LA Shadowblade: full Left_Axe primary so off-hand
+                // procs scale, with CS at 50 for the big open. Matches the
+                // live LA assassin meta.
                 SpecType = eSpecType.LeftAxe;
-                Add(ObjToSpec(WeaponOneType), 34, 0.6f);
-                Add(Specs.Left_Axe, 39, 0.8f);
-                Add(Specs.Critical_Strike, 34, 0.9f);
+                Add(ObjToSpec(WeaponOneType), 28, 0.5f);
+                Add(Specs.Left_Axe, 50, 1.0f);
+                Add(Specs.Critical_Strike, 39, 0.9f);
                 Add(Specs.Stealth, 35, 0.3f);
-                Add(Specs.Envenom, 35, 0.5f);
+                Add(Specs.Envenom, 30, 0.5f);
                 break;
 
                 case 2:

@@ -88,8 +88,12 @@ namespace DOL.GS
             OnHardCCStart();
             UpdatePlayerStatus();
 
-            // Immediately start the immunity effect for NPCs. This is used for diminishing returns.
-            if (AppliedImmunityType is ImmunityType.Npc && !Owner.effectListComponent.ContainsEffectForEffectType(eEffect.NPCStunImmunity))
+            // Diminishing returns: only create the NpcStunImmunity tracker when
+            // the cast is supposed to trigger immunity. The ctor above already
+            // sets TriggersImmunity=false when the caster is a pet (Theurgist
+            // air pet, etc.), so honouring it here makes pet stuns keep landing
+            // at full duration instead of going inert after 2-3 successful hits.
+            if (TriggersImmunity && AppliedImmunityType is ImmunityType.Npc && !Owner.effectListComponent.ContainsEffectForEffectType(eEffect.NPCStunImmunity))
                 ECSGameEffectFactory.Create(new(Owner, ImmunityDuration, Effectiveness, SpellHandler), static (in i) => new NpcStunImmunityEffect(i));
 
             // "You are stunned!"

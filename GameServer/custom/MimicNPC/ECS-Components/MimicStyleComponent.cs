@@ -41,6 +41,21 @@ namespace DOL.GS
             AttackData lastAttackData = mimic.attackComponent.attackAction.LastAttackData;
             bool isFirstSwing = lastAttackData == null;
 
+            // 0. Stealth opener — Critical Strike / Backstab / Perforate Artery.
+            //    If we're still stealthed at the moment of GetStyleToUse, we
+            //    haven't swung yet and must spend this first swing on the
+            //    biggest stealth-only style (they snapshot stealth status at
+            //    selection time). Walk the back bucket first (CS lives there
+            //    for most assassins), then anytime, picking the highest-damage
+            //    style flagged as stealth-required.
+            if (mimic.IsStealthed && isFirstSwing)
+            {
+                Style stealthBest = PickBestStealthStyle(mimic.StylesBack, lastAttackData, mimic)
+                                  ?? PickBestStealthStyle(mimic.StylesAnytime, lastAttackData, mimic);
+                if (stealthBest != null)
+                    return stealthBest;
+            }
+
             // 1. Chain styles. Always free, always best.
             if (mimic.StylesChain != null && mimic.StylesChain.Count > 0)
                 foreach (Style s in mimic.StylesChain)
@@ -161,6 +176,41 @@ namespace DOL.GS
             {
                 Style s = styles[i];
 
+                if (!StyleProcessor.CanUseStyle(lastAttackData, mimic, s, mimic.ActiveWeapon))
+                    continue;
+
+                int score = (int)(s.GrowthRate * 100) + (int)s.GrowthOffset;
+
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    best = s;
+                }
+            }
+
+            return best;
+        }
+
+        /// <summary>
+        /// From a candidate list, pick the highest-damage style whose
+        /// StealthRequirement is true. Returns null when no stealth-only
+        /// style is usable — caller falls back to the normal priority
+        /// ladder.
+        /// </summary>
+        private Style PickBestStealthStyle(List<Style> styles, AttackData lastAttackData, GameLiving mimic)
+        {
+            if (styles == null || styles.Count == 0)
+                return null;
+
+            Style best = null;
+            int bestScore = int.MinValue;
+
+            for (int i = 0; i < styles.Count; i++)
+            {
+                Style s = styles[i];
+
+                if (!s.StealthRequirement)
+                    continue;
                 if (!StyleProcessor.CanUseStyle(lastAttackData, mimic, s, mimic.ActiveWeapon))
                     continue;
 

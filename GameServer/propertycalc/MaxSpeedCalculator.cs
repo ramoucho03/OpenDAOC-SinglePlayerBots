@@ -136,6 +136,54 @@ namespace DOL.GS.PropertyCalc
                         speedIncrease *= SPRINT;
                     }
                 }
+                else if (npc is Scripts.MimicNPC mimic)
+                {
+                    // MimicNPC speed mirror: bots are not IControlledBrain pets,
+                    // so the pet branch above never fires. Without this, a bot
+                    // following a player leader with chant + sprint (~2.14×)
+                    // could only reach its own sprint (1.30×) and would visibly
+                    // lag behind. Mirror the leader's full effective ratio so
+                    // chants, songs, mount, and sprint all carry through in
+                    // one shot — exactly like the pet branch does.
+                    //
+                    // Resolve the player to mirror: cached leader (refreshed
+                    // every ~2s by MirrorLeaderSprint) → group leader → owner.
+                    // The cache keeps this hot path allocation-free.
+                    GamePlayer leaderPlayer = mimic.MimicBrain?.CachedPlayerLeader;
+                    if (leaderPlayer == null || !leaderPlayer.IsAlive
+                        || leaderPlayer.CurrentRegion != mimic.CurrentRegion)
+                    {
+                        leaderPlayer = mimic.Group?.LivingLeader as GamePlayer
+                                       ?? mimic.GetOwnerPlayerForSprintMirror();
+                    }
+
+                    if (leaderPlayer != null
+                        && leaderPlayer.IsAlive
+                        && leaderPlayer.CurrentRegion == mimic.CurrentRegion
+                        && mimic.IsWithinRadius(leaderPlayer, Scripts.MimicNPC.SPRINT_MIRROR_RANGE))
+                    {
+                        // Inherit the leader's MaxSpeed ratio (already contains
+                        // their chant + sprint + mount). Take the max with the
+                        // bot's existing buff bonuses so a bot stacked with its
+                        // own buffs never loses ground.
+                        maxSpeedBase = Math.Max(maxSpeedBase, leaderPlayer.MaxSpeedBase);
+                        double leaderRatio = leaderPlayer.MaxSpeed / (double) Math.Max((short) 1, leaderPlayer.MaxSpeedBase);
+                        if (leaderRatio > speedIncrease)
+                            speedIncrease = leaderRatio;
+
+                        // Per-bot Sprint multiplier is intentionally NOT applied
+                        // when we mirror the leader: if the leader is sprinting,
+                        // leaderRatio already contains the 1.30× — multiplying
+                        // again would let the bot overtake the leader. The bot's
+                        // own Sprint effect remains useful for endurance drain
+                        // mirroring (see EnduranceRegenerationTimerCallback).
+                        double mimicHealthPercent = living.Health / (double) living.MaxHealth;
+                        if (mimicHealthPercent < 0.33)
+                            speedIncrease *= 0.2 + mimicHealthPercent * (0.8 / 0.33);
+
+                        return (int) Math.Round(maxSpeedBase * speedIncrease);
+                    }
+                }
 
                 // MimicNPC (and any GameNPC that toggles the Sprint effect) should benefit from sprint speed
                 // just like players do. The Sprint effect is only ever applied to NPCs via explicit Sprint(true)

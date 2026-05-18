@@ -10,7 +10,7 @@ namespace DOL.GS.PlayerClass
 			: base()
 		{
 			m_profession = "PlayerClass.Profession.HouseofThor";
-			m_specializationMultiplier = 20;
+			m_specializationMultiplier = 22;
 			m_primaryStat = eStat.STR;
 			m_secondaryStat = eStat.PIE;
 			m_tertiaryStat = eStat.CON;

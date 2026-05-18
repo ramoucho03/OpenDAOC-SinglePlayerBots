@@ -48,7 +48,12 @@ namespace DOL.GS.Scripts
                 break;
 
                 case 4:
+                // Beastmaster Hunter: heavy melee + pet, but Hunter must
+                // still keep some bow spec or it can't open from stealth
+                // before closing. 25 CompositeBow is enough for the
+                // open-and-switch pattern.
                 Add(ObjToSpec(WeaponOneType), 44, 0.9f);
+                Add(Specs.CompositeBow, 25, 0.4f);
                 Add(Specs.Beastcraft, 50, 0.8f);
                 Add(Specs.Stealth, 37, 0.5f);
                 break;

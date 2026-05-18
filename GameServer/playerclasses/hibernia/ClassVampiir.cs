@@ -30,7 +30,7 @@ namespace DOL.GS.PlayerClass
             : base()
         {
             m_profession = "PlayerClass.Profession.PathofAffinity";
-            m_specializationMultiplier = 20;
+            m_specializationMultiplier = 15;
             m_primaryStat = eStat.STR;
             m_secondaryStat = eStat.CON;
             m_tertiaryStat = eStat.DEX;

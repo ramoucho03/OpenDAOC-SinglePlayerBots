@@ -35,32 +35,36 @@ namespace DOL.GS.Scripts
             {
                 case 0:
                 SpecType = eSpecType.NurtureWarden;
-                Add(ObjToSpec(WeaponOneType), 39, 0.6f);
+                Add(ObjToSpec(WeaponOneType), 35, 0.6f);
                 Add(Specs.Nurture, 45, 0.9f);
-                Add(Specs.Regrowth, 26, 0.5f);
+                Add(Specs.Regrowth, 24, 0.5f);
+                Add(Specs.Nature, 22, 0.6f);
                 Add(Specs.Parry, 10, 0.1f);
                 break;
 
                 case 1:
                 SpecType = eSpecType.NurtureWarden;
-                Add(ObjToSpec(WeaponOneType), 34, 0.3f);
+                Add(ObjToSpec(WeaponOneType), 30, 0.3f);
                 Add(Specs.Nurture, 49, 0.9f);
-                Add(Specs.Regrowth, 26, 0.4f);
+                Add(Specs.Regrowth, 22, 0.4f);
+                Add(Specs.Nature, 24, 0.6f);
                 Add(Specs.Parry, 10, 0.0f);
                 break;
 
                 case 2:
                 SpecType = eSpecType.BattleWarden;
                 Add(ObjToSpec(WeaponOneType), 39, 0.7f);
-                Add(Specs.Nurture, 49, 0.9f);
+                Add(Specs.Nurture, 35, 0.6f);
                 Add(Specs.Regrowth, 16, 0.3f);
+                Add(Specs.Nature, 39, 0.8f);
                 Add(Specs.Parry, 12, 0.1f);
                 break;
 
                 case 3:
                 SpecType = eSpecType.RegrowthWarden;
-                Add(Specs.Nurture, 45, 0.9f);
-                Add(Specs.Regrowth, 48, 0.7f);
+                Add(Specs.Nurture, 40, 0.9f);
+                Add(Specs.Regrowth, 44, 0.7f);
+                Add(Specs.Nature, 18, 0.4f);
                 Add(Specs.Parry, 5, 0.0f);
                 break;
             }

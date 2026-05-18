@@ -29,7 +29,7 @@ namespace DOL.GS.PlayerClass
 			: base()
 		{
 			m_profession = "PlayerClass.Profession.HouseofBragi";
-			m_specializationMultiplier = 15;
+			m_specializationMultiplier = 18;
 			m_primaryStat = eStat.CHR;
 			m_secondaryStat = eStat.STR;
 			m_tertiaryStat = eStat.CON;

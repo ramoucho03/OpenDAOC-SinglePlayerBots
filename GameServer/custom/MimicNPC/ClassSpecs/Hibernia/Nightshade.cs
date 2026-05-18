@@ -30,6 +30,15 @@ namespace DOL.GS.Scripts
             switch (randVariance)
             {
                 case 0:
+                // CS-spec assassin: full Critical_Strike spec for big openers
+                // (Backstab II / Perforate Artery line).
+                Add(ObjToSpec(WeaponOneType), 35, 0.7f);
+                Add(Specs.Celtic_Dual, 15, 0.1f);
+                Add(Specs.Critical_Strike, 50, 1.0f);
+                Add(Specs.Stealth, 35, 0.5f);
+                Add(Specs.Envenom, 30, 0.5f);
+                break;
+
                 case 1:
                 Add(ObjToSpec(WeaponOneType), 39, 0.8f);
                 Add(Specs.Celtic_Dual, 15, 0.1f);

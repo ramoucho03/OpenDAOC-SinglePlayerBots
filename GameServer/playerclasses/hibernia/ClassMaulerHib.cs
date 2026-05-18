@@ -30,7 +30,7 @@ namespace DOL.GS.PlayerClass
 			: base()
 		{
 			m_profession = "PlayerClass.Profession.TempleofIronFist";
-			m_specializationMultiplier = 10;
+			m_specializationMultiplier = 18;
 			m_wsbase = 440;
 			m_baseHP = 880;
 			m_primaryStat = eStat.STR;

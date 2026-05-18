@@ -27,7 +27,7 @@ namespace DOL.GS.PlayerClass
 		public ClassBonedancer()
 			: base()
 		{
-			m_specializationMultiplier = 10;
+			m_specializationMultiplier = 15;
 			m_wsbase = 280;
 			m_baseHP = 560;
 			m_manaStat = eStat.PIE;

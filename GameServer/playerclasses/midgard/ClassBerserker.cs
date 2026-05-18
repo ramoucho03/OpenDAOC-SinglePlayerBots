@@ -28,7 +28,7 @@ namespace DOL.GS.PlayerClass
 			: base()
 		{
 			m_profession = "PlayerClass.Profession.HouseofModi";
-			m_specializationMultiplier = 20;
+			m_specializationMultiplier = 22;
 			m_primaryStat = eStat.STR;
 			m_secondaryStat = eStat.DEX;
 			m_tertiaryStat = eStat.CON;

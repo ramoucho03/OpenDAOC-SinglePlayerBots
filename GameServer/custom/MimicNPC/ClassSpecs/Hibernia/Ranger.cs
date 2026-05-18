@@ -49,11 +49,13 @@ namespace DOL.GS.Scripts
 
                 case 4:
                 case 5:
-                Add(ObjToSpec(WeaponOneType), 27, 0.4f);
-                Add(Specs.RecurveBow, 45, 0.9f);
-                Add(Specs.Pathfinding, 40, 0.5f);
-                Add(Specs.Celtic_Dual, 19, 0.3f);
-                Add(Specs.Stealth, 35, 0.2f);
+                // Sniper variant: RecurveBow capped at 50 with minimal melee
+                // backup. Matches the live "Archery Ranger" meta build.
+                Add(ObjToSpec(WeaponOneType), 18, 0.3f);
+                Add(Specs.RecurveBow, 50, 1.0f);
+                Add(Specs.Pathfinding, 42, 0.5f);
+                Add(Specs.Celtic_Dual, 12, 0.2f);
+                Add(Specs.Stealth, 39, 0.3f);
                 break;
 
                 case 6:
