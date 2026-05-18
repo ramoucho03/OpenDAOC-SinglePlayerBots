@@ -785,6 +785,37 @@ namespace DOL.AI.Brain
                     return false;
                 }
 
+                // Permanent-pet global gate: a single class often has 5-10
+                // versions of the same summon at different spell levels
+                // (Cabalist Spirit Magic spec has summon spells from level 4
+                // to 50). Each tick CheckDefensiveSpells iterates ALL of them
+                // and queues every eligible one — Body.CastSpell only fires
+                // the first, but the GAME COMPLETION of cast 1 spawns the
+                // pet via AddControlledBrain which OVERWRITES the previous
+                // ControlledBrain reference instead of releasing the prior
+                // pet. Result: previous pets stay in the world unowned, and
+                // any subsequent successful summon orphans the predecessor.
+                // Bulk-block every summon spell type at the top of the
+                // eligibility check whenever we already control a live pet
+                // — this catches even spells we haven't added to the
+                // FindTargetForDefensiveSpell switch yet, AND prevents the
+                // race where 5 level-tiers of the same summon all pass the
+                // gate in the same tick. Casting a single summon during a
+                // cast is still safe (Body.CastSpell rejects when IsCasting).
+                if (IsPermanentPetSummon(spell)
+                    && Body?.ControlledBrain?.Body is GameNPC livePet
+                    && livePet.IsAlive
+                    && livePet.ObjectState == GameObject.eObjectState.Active)
+                {
+                    return false;
+                }
+
+                // Also reject while we're already casting any spell: this
+                // closes the race where two summons would queue back-to-back
+                // before the first finishes setting ControlledBrain.
+                if (IsPermanentPetSummon(spell) && Body.IsCasting)
+                    return false;
+
                 if (spell.NeedInstrument && Body.Inventory?.GetItem(eInventorySlot.DistanceWeapon) == null)
                     return false;
 

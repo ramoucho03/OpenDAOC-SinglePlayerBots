@@ -3928,6 +3928,36 @@ namespace DOL.AI.Brain
         }
 
         /// <summary>
+        /// True for any spell that summons a permanent pet (one pet at a time
+        /// per caster). Used by CheckDefensiveSpells to bulk-veto duplicate
+        /// summons across all level-tiers of a class's summon spell. We list
+        /// every permanent-pet spell type the engine ships with — turret /
+        /// trash-pet types (SummonTheurgistPet, SummonAnimist*) are NOT
+        /// included because those classes are designed to spam pets.
+        /// </summary>
+        public static bool IsPermanentPetSummon(Spell spell)
+        {
+            if (spell == null) return false;
+            switch (spell.SpellType)
+            {
+                case eSpellType.SummonCommander:
+                case eSpellType.SummonDruidPet:
+                case eSpellType.SummonHunterPet:
+                case eSpellType.SummonNecroPet:
+                case eSpellType.SummonUnderhill:
+                case eSpellType.SummonSimulacrum:
+                case eSpellType.SummonSpiritFighter:
+                case eSpellType.SummonElemental:
+                case eSpellType.SummonHealingElemental:
+                case eSpellType.SummonJuggernaut:
+                case eSpellType.SummonMonster:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>
         /// True if at least one active pulse song / pulsing self buff is
         /// currently maintained on the body. Used by the melee weapon-switch
         /// logic to avoid breaking an active Minstrel/Bard song by pulling
