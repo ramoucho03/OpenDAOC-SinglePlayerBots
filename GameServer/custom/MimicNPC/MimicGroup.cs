@@ -340,28 +340,58 @@ namespace DOL.GS.Scripts
             if (MainLeader?.Group == null)
                 return false;
 
-            GameLiving best = null;
-            int bestScore = int.MinValue;
+            // Two-pass scan: prefer a real tank/melee candidate (score > 5)
+            // and skip flagged healers entirely so a Cleric/Druid never gets
+            // promoted to MainTank while a Mercenary or Reaver is alive.
+            // Healers, even when they're the last hope, stay on heal duty —
+            // losing the heal cycle is a worse outcome than the brief aggro
+            // gap. Only fall back to a non-melee, non-healer survivor if
+            // nothing melee-shaped remains.
+            GameLiving bestMelee = null;
+            int bestMeleeScore = int.MinValue;
+            GameLiving fallbackAny = null;
+            int fallbackAnyScore = int.MinValue;
+
             foreach (GameLiving member in MainLeader.Group.GetMembersInTheGroup())
             {
                 if (member == null || member == dying || !member.IsAlive)
                     continue;
+
+                // Skip flagged healers — keep them healing.
+                if (member is MimicNPC m && m.MimicBrain != null && m.MimicBrain.IsHealer)
+                    continue;
+
                 int score = ScoreTankCandidate(member);
-                if (score > bestScore)
+
+                if (score > 5)
                 {
-                    bestScore = score;
-                    best = member;
+                    // Score > 5 means "shaped like a tank" (plate/chain/hybrid melee,
+                    // see ScoreTankCandidate). Anything else falls to the fallback pile.
+                    if (score > bestMeleeScore)
+                    {
+                        bestMeleeScore = score;
+                        bestMelee = member;
+                    }
+                }
+                else if (score > fallbackAnyScore)
+                {
+                    fallbackAnyScore = score;
+                    fallbackAny = member;
                 }
             }
 
-            // Even a non-ideal melee can hold aggro better than the corpse. Floor
-            // is "any alive group member with a melee weapon" — score may be 0
-            // but it beats a dead MainTank.
+            GameLiving best = bestMelee ?? fallbackAny;
+
+            // No tankable survivor — refuse to crown a corpse-replacement
+            // that would just stand in melee range and die. The dead tank
+            // staying as MainTank is fine here; the heal cycle will keep
+            // trying to rez them and the AI will rebalance on their return.
             if (best == null)
                 return false;
 
             MainTank = best;
             SayToGroup(best, "Mimic.Group.TankSet");
+            MainLeader.Group?.UpdateGroupWindow();
             return true;
         }
 
@@ -371,6 +401,10 @@ namespace DOL.GS.Scripts
         /// best surviving CC-capable mimic and promote them. Without this the
         /// dead bot stays MainCC, CcStrategy keeps dispatching mez/root casts
         /// on a corpse, and adds stay loose.
+        ///
+        /// Picks the highest-tier CC class available (Sorcerer/Runemaster/
+        /// Eldritch > Bard/Mentalist > Minstrel) so a dying Sorcerer is
+        /// replaced by another full CC class rather than a Minstrel pulse-mez.
         /// </summary>
         public bool TryPromoteSecondaryCC(GameLiving dying)
         {
@@ -380,23 +414,50 @@ namespace DOL.GS.Scripts
                 return false;
 
             GameLiving best = null;
+            int bestScore = int.MinValue;
             foreach (GameLiving member in MainLeader.Group.GetMembersInTheGroup())
             {
                 if (member == null || member == dying || !member.IsAlive)
                     continue;
                 if (member is not MimicNPC m || !m.CanCastCrowdControlSpells)
                     continue;
-                // First valid match wins — CC roster is small enough that a
-                // class-tier scoring isn't worth the complexity.
-                best = member;
-                break;
+                int score = ScoreCcCandidate(m);
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    best = member;
+                }
             }
             if (best == null)
                 return false;
 
             MainCC = best;
             SayToGroup(best, "Mimic.Group.CCSet");
+            MainLeader.Group?.UpdateGroupWindow();
             return true;
+        }
+
+        // Higher score = better CC candidate. Pure-CC casters (Sorcerer,
+        // Runemaster, Eldritch, Spiritmaster) outrank hybrid CC classes
+        // (Mentalist, Enchanter, Bard) which outrank Minstrel pulse-mez.
+        private static int ScoreCcCandidate(MimicNPC m)
+        {
+            switch ((eCharacterClass) m.CharacterClass.ID)
+            {
+                case eCharacterClass.Sorcerer:
+                case eCharacterClass.Runemaster:
+                case eCharacterClass.Eldritch:
+                case eCharacterClass.Spiritmaster:
+                    return 100 + m.Level;
+                case eCharacterClass.Mentalist:
+                case eCharacterClass.Enchanter:
+                case eCharacterClass.Bard:
+                    return 70 + m.Level;
+                case eCharacterClass.Minstrel:
+                    return 40 + m.Level;
+                default:
+                    return 10 + m.Level;
+            }
         }
 
         /// <summary>
@@ -436,6 +497,7 @@ namespace DOL.GS.Scripts
                     continue;
                 m.MimicBrain.IsHealer = true;
                 SayToGroup(m, "Mimic.Group.HealerOn");
+                MainLeader.Group?.UpdateGroupWindow();
                 return true;
             }
             return false;

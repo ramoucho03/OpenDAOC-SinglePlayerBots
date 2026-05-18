@@ -31,56 +31,60 @@ Mimic.Menu.Sec.Info:					Infos
 Mimic.Menu.Sec.Inventory:				Inventaire
 Mimic.Menu.Sec.Equipment:				Équipement
 
-## Mimic — boutons du menu (chaque [mot] = commande cliquable)
-Mimic.Button.State:					[etat]
-Mimic.Button.PreventCombat:				[pas-combat]
-Mimic.Button.Brain:					[cerveau]
-Mimic.Button.Debug:					[debug]
-Mimic.Button.Group:					[groupe]
-Mimic.Button.Leader:					[leader]
-Mimic.Button.MainPuller:				[puller]
-Mimic.Button.MainCC:					[cc]
-Mimic.Button.MainTank:					[tank]
-Mimic.Button.MainAssist:				[assist]
-Mimic.Button.Healer:					[soigneur]
-Mimic.Button.Guard:					[garder]
-Mimic.Button.Protect:					[protéger]
-Mimic.Button.Intercept:					[intercepter]
-Mimic.Button.Stay:					[rester]
-Mimic.Button.Follow:					[suivre]
-Mimic.Button.Camp:					[camp]
-Mimic.Button.Reset:					[reset]
-Mimic.Button.Pull:					[pull]
-Mimic.Button.Roam:					[errer]
-Mimic.Button.Spells:					[sorts]
-Mimic.Button.InstHarmful:				[inst-attaque]
-Mimic.Button.HarmfulSpells:				[attaque]
-Mimic.Button.InstMisc:					[inst-divers]
-Mimic.Button.MiscSpells:				[divers]
-Mimic.Button.InstHeal:					[inst-soin]
-Mimic.Button.HealSpells:				[soins]
-Mimic.Button.CC:					[cc-sorts]
-Mimic.Button.Styles:					[styles]
-Mimic.Button.Abilities:					[capacités]
-Mimic.Button.Spec:					[spec]
-Mimic.Button.Stats:					[stats]
-Mimic.Button.AbilityEffects:				[effets-cap]
-Mimic.Button.SpellEffects:				[effets-sorts]
-Mimic.Button.Inventory:					[inventaire]
-Mimic.Button.Hood:					[capuche]
-Mimic.Button.RightHand:					[main-droite]
-Mimic.Button.LeftHand:					[main-gauche]
-Mimic.Button.TwoHand:					[2-mains]
-Mimic.Button.Ranged:					[distance]
-Mimic.Button.Helm:					[casque]
-Mimic.Button.Torso:					[torse]
-Mimic.Button.Legs:					[jambes]
-Mimic.Button.Arms:					[bras]
-Mimic.Button.Hands:					[mains]
-Mimic.Button.Boots:					[bottes]
-Mimic.Button.Jewelry:					[bijoux]
-Mimic.Button.Delete:					[supprimer]
-Mimic.Button.Help:					[aide]
+## Mimic — boutons du menu.
+## NOTE : valeurs OBLIGATOIREMENT compact, un seul mot, SANS crochets.
+## Le helper Lbl() dans MimicNPC.cs ajoute "[...]" au moment du rendu.
+## Le client 1.127 ne rend cliquables que les crochets contenant un seul mot
+## (camelCase ou tirets-collés, ex "pasCombat", "inst-attaque").
+Mimic.Button.State:					etat
+Mimic.Button.PreventCombat:				pasCombat
+Mimic.Button.Brain:					cerveau
+Mimic.Button.Debug:					debug
+Mimic.Button.Group:					groupe
+Mimic.Button.Leader:					leader
+Mimic.Button.MainPuller:				puller
+Mimic.Button.MainCC:					cc
+Mimic.Button.MainTank:					tank
+Mimic.Button.MainAssist:				assist
+Mimic.Button.Healer:					soigneur
+Mimic.Button.Guard:					garder
+Mimic.Button.Protect:					proteger
+Mimic.Button.Intercept:					intercepter
+Mimic.Button.Stay:					rester
+Mimic.Button.Follow:					suivre
+Mimic.Button.Camp:					camp
+Mimic.Button.Reset:					reset
+Mimic.Button.Pull:					pull
+Mimic.Button.Roam:					errer
+Mimic.Button.Spells:					sorts
+Mimic.Button.InstHarmful:				instAttaque
+Mimic.Button.HarmfulSpells:				attaque
+Mimic.Button.InstMisc:					instDivers
+Mimic.Button.MiscSpells:				divers
+Mimic.Button.InstHeal:					instSoin
+Mimic.Button.HealSpells:				soins
+Mimic.Button.CC:					ccSorts
+Mimic.Button.Styles:					styles
+Mimic.Button.Abilities:					capacites
+Mimic.Button.Spec:					spec
+Mimic.Button.Stats:					stats
+Mimic.Button.AbilityEffects:				effetsCap
+Mimic.Button.SpellEffects:				effetsSorts
+Mimic.Button.Inventory:					inventaire
+Mimic.Button.Hood:					capuche
+Mimic.Button.RightHand:					mainDroite
+Mimic.Button.LeftHand:					mainGauche
+Mimic.Button.TwoHand:					deuxMains
+Mimic.Button.Ranged:					distance
+Mimic.Button.Helm:					casque
+Mimic.Button.Torso:					torse
+Mimic.Button.Legs:					jambes
+Mimic.Button.Arms:					bras
+Mimic.Button.Hands:					mains
+Mimic.Button.Boots:					bottes
+Mimic.Button.Jewelry:					bijoux
+Mimic.Button.Delete:					supprimer
+Mimic.Button.Help:					aide
 
 ## Mimic — réponses aux whispers
 Mimic.Reply.BrainReset:					Mon cerveau a été réinitialisé.

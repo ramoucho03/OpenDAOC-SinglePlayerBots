@@ -127,6 +127,20 @@ namespace DOL.AI.Brain
             StateType = eFSMStateType.WAKING_UP;
         }
 
+        public override void Enter()
+        {
+            // Re-arm the one-shot Init block on every entry. The FSM state
+            // instances are singletons that survive bot death, region
+            // transitions, and manual /reset; without this reset the
+            // aggro/range/PvP-mode snapshot taken on the very first wake-up
+            // would stick forever even after the bot rezzes in a new region
+            // (PvE → RvR teleport, dungeon → outdoor, etc.) which left bots
+            // with stale PvP flags and the wrong aggro radius for their new
+            // surroundings.
+            Init = false;
+            base.Enter();
+        }
+
         public override void Think()
         {
             _brain.AlreadyCheckedHeals = false;
@@ -258,6 +272,15 @@ namespace DOL.AI.Brain
             else
                 _brain.FSM.SetCurrentState(eFSMStateType.WAKING_UP);
 
+            // Prime the stuck-recovery baseline so the very first Think after
+            // Enter doesn't see a 0-tick timestamp and immediately fire a
+            // spurious perpendicular side-step (GameLoopTime - 0 is always
+            // larger than STUCK_GRACE_MS). Without this the bot would jitter
+            // on every entry into FOLLOW_THE_LEADER.
+            _lastStuckX = _brain.Body.X;
+            _lastStuckY = _brain.Body.Y;
+            _lastStuckSampleTick = GameLoop.GameLoopTime;
+
             base.Enter();
         }
 
@@ -381,7 +404,13 @@ namespace DOL.AI.Brain
         {
             _brain.Body.StopFollowing();
 
-            _brain.OnExitAggro();
+            // NOTE: do NOT call OnExitAggro() here. FollowLeader is the
+            // out-of-combat travel state — calling the aggro-exit hook on
+            // every Follow exit (e.g. WAKING_UP → FOLLOW → AGGRO transitions)
+            // would fire teardown logic for an aggro session that never
+            // started, clobbering flank state / flee target / pulse effects
+            // owned by the AGGRO state. MimicState_Aggro.Exit is the only
+            // legitimate place to invoke OnExitAggro.
 
             base.Exit();
         }
@@ -1957,12 +1986,30 @@ namespace DOL.AI.Brain
 
         public override void Enter()
         {
+            // Tear down any leftover combat / movement intent so the corpse
+            // doesn't try to keep swinging or pathing during the rez window.
             _brain.ClearAggroList();
+            _brain.Body.StopFollowing();
+            _brain.Body.StopAttack();
+            _brain.Body.TargetObject = null;
+            _brain.IsFleeing = false;
+            _brain.TargetFleePosition = null;
             base.Enter();
         }
 
         public override void Think()
         {
+            // Stay parked while the body is still dead — wait for the rez /
+            // revive path (MimicNPC.ProcessDeath → OnRezWaitExpired → revive
+            // OR a group rez landing) to flip IsAlive back on. The legacy
+            // behaviour fell straight through to WAKING_UP every tick, which
+            // (a) made the DEAD state a one-frame transient that never
+            // actually waited, and (b) caused WakingUp.Think to run against
+            // a corpse — burning cycles on group/region queries that would
+            // re-resolve a moment later anyway when the rez actually landed.
+            if (!_brain.Body.IsAlive)
+                return;
+
             _brain.FSM.SetCurrentState(eFSMStateType.WAKING_UP);
             base.Think();
         }

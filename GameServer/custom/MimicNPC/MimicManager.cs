@@ -227,10 +227,13 @@ namespace DOL.GS.Scripts
                 }
 
                 int totalMimics = m_albSpawner.Mimics.Count + m_hibSpawner.Mimics.Count + m_midSpawner.Mimics.Count;
-                log.Info("Alb: " + m_albSpawner.Mimics.Count + "/" + m_currentMaxAlb);
-                log.Info("Hib: " + m_hibSpawner.Mimics.Count + "/" + m_currentMaxHib);
-                log.Info("Mid: " + m_midSpawner.Mimics.Count + "/" + m_currentMaxMid);
-                log.Info("Total Mimics: " + totalMimics + "/" + m_currentMaxTotalMimics);
+                if (log.IsInfoEnabled)
+                {
+                    log.Info("Alb: " + m_albSpawner.Mimics.Count + "/" + m_currentMaxAlb);
+                    log.Info("Hib: " + m_hibSpawner.Mimics.Count + "/" + m_currentMaxHib);
+                    log.Info("Mid: " + m_midSpawner.Mimics.Count + "/" + m_currentMaxMid);
+                    log.Info("Total Mimics: " + totalMimics + "/" + m_currentMaxTotalMimics);
+                }
 
                 return m_timerInterval + Util.Random(-300000, 300000); // 10 minutes + or - 5 minutes
             }

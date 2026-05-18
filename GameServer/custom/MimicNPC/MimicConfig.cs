@@ -141,6 +141,21 @@ namespace DOL.GS.Scripts
             "Emergency heal % threshold for mimic healers (default 50, vs the generic 37).", 50)]
         public static int MIMIC_EMERGENCY_THRESHOLD;
 
+        // Mana-conservation gate for healers. When the bot's own ManaPercent
+        // drops below MIMIC_HEAL_MANA_STOP_PERCENT, the heal cycle suppresses
+        // non-emergency cast-time heals so the healer can regen. It resumes
+        // normal cadence only once ManaPercent climbs back above
+        // MIMIC_HEAL_MANA_RESUME_PERCENT. Emergency (sub-EmergencyThreshold)
+        // heals, instant heals, and cure mezz/disease/poison are NEVER gated:
+        // letting the tank die at 5% to save 30 mana is never the right call.
+        [ServerProperty("npc", "mimic_heal_mana_stop_percent",
+            "Healer suppresses non-emergency cast-time heals when ManaPercent drops below this value. Default 25.", 25)]
+        public static int MIMIC_HEAL_MANA_STOP_PERCENT;
+
+        [ServerProperty("npc", "mimic_heal_mana_resume_percent",
+            "Healer resumes normal heal cadence once ManaPercent climbs back above this value. Must be >= stop. Default 30.", 30)]
+        public static int MIMIC_HEAL_MANA_RESUME_PERCENT;
+
         // Visual-only entity the bot drops at camp. The campfire is spawned
         // as a GameStaticItem (the historical OpenDAoC worldobject path)
         // using model 3460 — confirmed on-server to render as a proper

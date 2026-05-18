@@ -22,6 +22,28 @@ namespace DOL.AI.Brain
         public bool AlreadyCheckedHeals;
         private long nextCureTime = 0;
 
+        // Mana-conservation latch. Set true once ManaPercent dips below
+        // MIMIC_HEAL_MANA_STOP_PERCENT, cleared once it climbs above
+        // MIMIC_HEAL_MANA_RESUME_PERCENT. Hysteresis prevents oscillation
+        // between cast-and-stop at exactly the threshold. Emergency heals
+        // and cures bypass this latch — see CheckHeals().
+        private bool _healManaConserving;
+
+        // Re-evaluation throttle for the proactive tank HoT/regen block.
+        // Without this, every Think-tick where the tank is in combat but
+        // already has a HoT effect runs the effectListComponent scan. The
+        // refresh interval is generous (1.5s) because HoT durations are
+        // measured in tens of seconds; we just need to catch the moment
+        // the HoT actually drops off.
+        private long _nextProactiveHotScanTime;
+
+        // Static sentinel for the "no group" lock path. The original code
+        // allocated a fresh `new object()` every tick when the bot wasn't
+        // grouped, which is a per-frame allocation in a hot path. Locking
+        // a shared object is fine here because CheckHeals already gates on
+        // AlreadyCheckedHeals per-tick and the un-grouped branch is rare.
+        private static readonly object _ungroupedHealLock = new();
+
         /// <summary>Check for healing and cure spells</summary>
         /// <returns>True if trying to heal, including moving to get into range</returns>
         public bool CheckHeals()
@@ -226,7 +248,26 @@ namespace DOL.AI.Brain
 
             MimicGroup mGroup = MimicBody.Group?.MimicGroup;
 
-            lock (mGroup?.HealLock ?? new object())
+            // Update mana-conservation latch with hysteresis. The thresholds
+            // are pulled at use so a runtime /serverproperty edit takes
+            // effect on the next tick.
+            if (MimicBody.MaxMana > 0)
+            {
+                int manaPct = MimicBody.ManaPercent;
+                int stopPct = MimicConfig.MIMIC_HEAL_MANA_STOP_PERCENT > 0
+                    ? MimicConfig.MIMIC_HEAL_MANA_STOP_PERCENT : 25;
+                int resumePct = Math.Max(stopPct, MimicConfig.MIMIC_HEAL_MANA_RESUME_PERCENT > 0
+                    ? MimicConfig.MIMIC_HEAL_MANA_RESUME_PERCENT : 30);
+
+                if (!_healManaConserving && manaPct < stopPct)
+                    _healManaConserving = true;
+                else if (_healManaConserving && manaPct >= resumePct)
+                    _healManaConserving = false;
+            }
+            else
+                _healManaConserving = false;
+
+            lock (mGroup?.HealLock ?? _ungroupedHealLock)
             {
                 #region Check Health
 
@@ -381,14 +422,28 @@ namespace DOL.AI.Brain
                     && mGroup.MainTank != null
                     && mGroup.MainTank.IsAlive
                     && encounterImminent
-                    && !mGroup.AlreadyCastingHoT)
+                    && !mGroup.AlreadyCastingHoT
+                    && !mGroup.AlreadyCastingRegen
+                    && !_healManaConserving
+                    && _nextProactiveHotScanTime < GameLoop.GameLoopTime)
                 {
+                    // Throttle the proactive scan: HoT durations are tens of
+                    // seconds, so re-checking every 1.5s is more than fast
+                    // enough to catch the drop-off without scanning the
+                    // tank's effect list every Think-tick.
+                    _nextProactiveHotScanTime = GameLoop.GameLoopTime + 1500;
+
                     GameLiving tank = mGroup.MainTank;
 
-                    // Only refresh when the HoT effect isn't already running on the tank.
-                    bool tankHasHoT = tank.effectListComponent.ContainsEffectForEffectType(eEffect.HealOverTime);
+                    // Check BOTH effect types: hybrid healers (Friar/Warden)
+                    // run HealthRegenBuff, dedicated healers run HealOverTime.
+                    // Without the regen check, a Friar would re-cast regen on
+                    // a tank who already has it because the existing check
+                    // only looked at eEffect.HealOverTime.
+                    bool tankHasProactive = tank.effectListComponent.ContainsEffectForEffectType(eEffect.HealOverTime)
+                        || tank.effectListComponent.ContainsEffectForEffectType(eEffect.HealthRegenBuff);
 
-                    if (!tankHasHoT)
+                    if (!tankHasProactive)
                     {
                         if (CanCastInstantHot())
                         {
@@ -484,7 +539,15 @@ namespace DOL.AI.Brain
  
                 #region Non-Emergency Heal
 
-                if (spellToCast == null && numNeedHealing > 0)
+                // Mana conservation: when below the stop threshold, suppress
+                // ALL non-emergency cast-time heals. Instants (no mana cost
+                // typically) and group HoTs that fit in the remaining bar are
+                // still allowed because they were already filtered by
+                // CheckHealSpell (Mana >= PowerCost). Emergency heals above
+                // ran unconditionally; this gate only fires here.
+                bool conserveMana = _healManaConserving && numEmergency == 0;
+
+                if (spellToCast == null && numNeedHealing > 0 && !conserveMana)
                 {
                     // -------- Multi-target: prefer GROUP heal/HoT --------
                     // Group heals are situational: they win when several

@@ -29,56 +29,60 @@ Mimic.Menu.Sec.Info:					Info
 Mimic.Menu.Sec.Inventory:				Inventory
 Mimic.Menu.Sec.Equipment:				Equipment
 
-## Mimic Right-Click Menu — buttons (use the &keyword command to fire each)
-Mimic.Button.State:					[state]
-Mimic.Button.PreventCombat:				[no-combat]
-Mimic.Button.Brain:					[brain]
-Mimic.Button.Debug:					[debug]
-Mimic.Button.Group:					[group]
-Mimic.Button.Leader:					[leader]
-Mimic.Button.MainPuller:				[puller]
-Mimic.Button.MainCC:					[cc]
-Mimic.Button.MainTank:					[tank]
-Mimic.Button.MainAssist:				[assist]
-Mimic.Button.Healer:					[healer]
-Mimic.Button.Guard:					[guard]
-Mimic.Button.Protect:					[protect]
-Mimic.Button.Intercept:					[intercept]
-Mimic.Button.Stay:					[stay]
-Mimic.Button.Follow:					[follow]
-Mimic.Button.Camp:					[camp]
-Mimic.Button.Reset:					[reset]
-Mimic.Button.Pull:					[pull]
-Mimic.Button.Roam:					[roam]
-Mimic.Button.Spells:					[spells]
-Mimic.Button.InstHarmful:				[inst-harmful]
-Mimic.Button.HarmfulSpells:				[harmful]
-Mimic.Button.InstMisc:					[inst-misc]
-Mimic.Button.MiscSpells:				[misc]
-Mimic.Button.InstHeal:					[inst-heal]
-Mimic.Button.HealSpells:				[heals]
-Mimic.Button.CC:					[cc-spells]
-Mimic.Button.Styles:					[styles]
-Mimic.Button.Abilities:					[abilities]
-Mimic.Button.Spec:					[spec]
-Mimic.Button.Stats:					[stats]
-Mimic.Button.AbilityEffects:				[ability-fx]
-Mimic.Button.SpellEffects:				[spell-fx]
-Mimic.Button.Inventory:					[inventory]
-Mimic.Button.Hood:					[hood]
-Mimic.Button.RightHand:					[r-hand]
-Mimic.Button.LeftHand:					[l-hand]
-Mimic.Button.TwoHand:					[2h]
-Mimic.Button.Ranged:					[ranged]
-Mimic.Button.Helm:					[helm]
-Mimic.Button.Torso:					[torso]
-Mimic.Button.Legs:					[legs]
-Mimic.Button.Arms:					[arms]
-Mimic.Button.Hands:					[hands]
-Mimic.Button.Boots:					[boots]
-Mimic.Button.Jewelry:					[jewelry]
-Mimic.Button.Delete:					[delete]
-Mimic.Button.Help:					[help]
+## Mimic Right-Click Menu — buttons.
+## NOTE: values MUST be single-word compact tokens with NO surrounding brackets.
+## The Lbl() helper in MimicNPC.cs wraps each value in "[...]" at render time.
+## The 1.127 client only treats single-word brackets as clickable, so use a
+## camelCase / dash-separated single token here (e.g. "noCombat", "inst-heal").
+Mimic.Button.State:					state
+Mimic.Button.PreventCombat:				noCombat
+Mimic.Button.Brain:					brain
+Mimic.Button.Debug:					debug
+Mimic.Button.Group:					group
+Mimic.Button.Leader:					leader
+Mimic.Button.MainPuller:				puller
+Mimic.Button.MainCC:					cc
+Mimic.Button.MainTank:					tank
+Mimic.Button.MainAssist:				assist
+Mimic.Button.Healer:					healer
+Mimic.Button.Guard:					guard
+Mimic.Button.Protect:					protect
+Mimic.Button.Intercept:					intercept
+Mimic.Button.Stay:					stay
+Mimic.Button.Follow:					follow
+Mimic.Button.Camp:					camp
+Mimic.Button.Reset:					reset
+Mimic.Button.Pull:					pull
+Mimic.Button.Roam:					roam
+Mimic.Button.Spells:					spells
+Mimic.Button.InstHarmful:				instHarmful
+Mimic.Button.HarmfulSpells:				harmful
+Mimic.Button.InstMisc:					instMisc
+Mimic.Button.MiscSpells:				misc
+Mimic.Button.InstHeal:					instHeal
+Mimic.Button.HealSpells:				heals
+Mimic.Button.CC:					ccSpells
+Mimic.Button.Styles:					styles
+Mimic.Button.Abilities:					abilities
+Mimic.Button.Spec:					spec
+Mimic.Button.Stats:					stats
+Mimic.Button.AbilityEffects:				abilityFx
+Mimic.Button.SpellEffects:				spellFx
+Mimic.Button.Inventory:					inventory
+Mimic.Button.Hood:					hood
+Mimic.Button.RightHand:					rHand
+Mimic.Button.LeftHand:					lHand
+Mimic.Button.TwoHand:					twoHand
+Mimic.Button.Ranged:					ranged
+Mimic.Button.Helm:					helm
+Mimic.Button.Torso:					torso
+Mimic.Button.Legs:					legs
+Mimic.Button.Arms:					arms
+Mimic.Button.Hands:					hands
+Mimic.Button.Boots:					boots
+Mimic.Button.Jewelry:					jewelry
+Mimic.Button.Delete:					delete
+Mimic.Button.Help:					help
 
 ## Mimic Whisper Replies
 Mimic.Reply.BrainReset:					My brain has been reset.

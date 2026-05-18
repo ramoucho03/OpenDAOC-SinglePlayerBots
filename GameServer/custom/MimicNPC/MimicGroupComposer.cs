@@ -48,21 +48,32 @@ namespace DOL.GS.Scripts
 
         // Ordered template: as groupSize grows, fill roles in this order.
         // Slots 1..N from this list make a coherent N-man group.
+        //
+        // Spec target for an 8-man: 1 tank + 1 healer + 1 CC + 1 support/buffer
+        // + 4 DPS (mixed melee/caster). We expose a second healer at slot 6 so
+        // every 6+ group gets a backup healer (avoids wipes when the sole
+        // healer goes down before TryPromoteHealer can kick in).
         private static readonly eRole[] _template =
         {
             eRole.Tank,      // 1
             eRole.Healer,    // 2
-            eRole.Healer,    // 3 (second healer)
-            eRole.CC,        // 4
-            eRole.Caster,    // 5
-            eRole.MeleeDPS,  // 6
-            eRole.Support,   // 7
+            eRole.CC,        // 3
+            eRole.Support,   // 4 (buffer/utility)
+            eRole.MeleeDPS,  // 5
+            eRole.Healer,    // 6 (backup healer)
+            eRole.Caster,    // 7
             eRole.MeleeDPS,  // 8
         };
 
         /// <summary>
         /// Picks an ordered list of mimic classes for the given realm and group size.
         /// The returned list preserves order so role assignment can use it as a parallel array.
+        ///
+        /// Guarantees:
+        ///   - Every picked class is valid for <paramref name="realm"/> via
+        ///     <see cref="GlobalConstants.STARTING_CLASSES_DICT"/>.
+        ///   - Avoids picking the same class twice when an alternative exists,
+        ///     so an 8-man doesn't end up with two Heros and two Druids.
         /// </summary>
         public static List<eMimicClass> BuildComposition(eRealm realm, int groupSize)
         {
@@ -71,7 +82,14 @@ namespace DOL.GS.Scripts
             if (!_classesByRole.TryGetValue(realm, out Dictionary<eRole, eMimicClass[]> rolesForRealm))
                 return result;
 
+            // Fail-safe: bots whose enum value isn't a starting class for the
+            // realm would be rejected by MimicManager later, leaving holes in
+            // the comp. Pre-filter here so the result is exactly the group
+            // size the caller requested.
+            GlobalConstants.STARTING_CLASSES_DICT.TryGetValue(realm, out List<eCharacterClass> startingClasses);
+
             int slots = System.Math.Clamp(groupSize, 1, _template.Length);
+            HashSet<eMimicClass> alreadyPicked = new();
 
             for (int i = 0; i < slots; i++)
             {
@@ -80,7 +98,29 @@ namespace DOL.GS.Scripts
                 if (!rolesForRealm.TryGetValue(role, out eMimicClass[] candidates) || candidates.Length == 0)
                     continue;
 
-                result.Add(candidates[Util.Random(candidates.Length - 1)]);
+                // Filter candidates against realm starting classes AND
+                // duplicates already in the comp. If everything's a dup
+                // (small candidate pool, e.g. only 2 healer classes for a
+                // 3rd healer slot), fall back to the realm-valid set.
+                List<eMimicClass> pool = new(candidates.Length);
+                List<eMimicClass> fallback = new(candidates.Length);
+
+                foreach (eMimicClass c in candidates)
+                {
+                    if (startingClasses != null && !startingClasses.Contains((eCharacterClass) c))
+                        continue;
+                    fallback.Add(c);
+                    if (!alreadyPicked.Contains(c))
+                        pool.Add(c);
+                }
+
+                List<eMimicClass> chooseFrom = pool.Count > 0 ? pool : fallback;
+                if (chooseFrom.Count == 0)
+                    continue;
+
+                eMimicClass chosen = chooseFrom[Util.Random(chooseFrom.Count - 1)];
+                result.Add(chosen);
+                alreadyPicked.Add(chosen);
             }
 
             return result;
@@ -116,8 +156,22 @@ namespace DOL.GS.Scripts
             if (tank != null)   mg.SetMainTank(tank);
             if (cc != null)     mg.SetMainCC(cc);
             if (puller != null) mg.SetMainPuller(puller);
-            if (healer != null && healer.MimicBrain != null)
-                healer.MimicBrain.IsHealer = true;
+
+            // Flag EVERY healer-class mimic, not just the first. A Druid+Bard
+            // or Cleric+Friar comp where only the first one heals leaves the
+            // second bot DPSing in a healer kit — same fix as EnsureCampRoles.
+            foreach (MimicNPC m in mimics)
+            {
+                if (m?.MimicBrain == null) continue;
+                if (!IsHealerClass(m)) continue;
+                if (!m.MimicBrain.IsHealer)
+                    m.MimicBrain.IsHealer = true;
+            }
+
+            // Refresh the group window so the player sees the new role icons /
+            // names immediately — without this the client keeps showing
+            // whatever the group looked like at AddMember time.
+            mimics[0].Group?.UpdateGroupWindow();
         }
 
         public static bool IsTankClass(MimicNPC m)

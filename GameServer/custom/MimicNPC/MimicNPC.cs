@@ -409,6 +409,8 @@ namespace DOL.GS.Scripts
 
         // Resolves the bracket label clicked by the player back to its canonical action.
         // Accepts both canonical English (for legacy/script callers) and any localized variant.
+        // Case-insensitive throughout so a lowercased compact token like "state" still
+        // routes to the canonical `State` switch case in WhisperReceive.
         private static string ResolveAction(string str, string lang)
         {
             if (string.IsNullOrEmpty(str))
@@ -416,13 +418,14 @@ namespace DOL.GS.Scripts
 
             for (int i = 0; i < _menuButtons.Length; i++)
             {
-                if (str == _menuButtons[i].Action)
+                if (string.Equals(str, _menuButtons[i].Action, StringComparison.OrdinalIgnoreCase))
                     return _menuButtons[i].Action;
             }
 
             for (int i = 0; i < _menuButtons.Length; i++)
             {
-                if (LanguageMgr.TryGetTranslation(out string t, lang, _menuButtons[i].Key) && t == str)
+                if (LanguageMgr.TryGetTranslation(out string t, lang, _menuButtons[i].Key)
+                    && string.Equals(t, str, StringComparison.OrdinalIgnoreCase))
                     return _menuButtons[i].Action;
             }
 

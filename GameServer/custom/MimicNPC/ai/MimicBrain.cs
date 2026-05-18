@@ -267,6 +267,22 @@ namespace DOL.AI.Brain
 
         public override void Think()
         {
+            // Death gate (no world query — just a flag check). If the body is
+            // dead and we're not already parked in DEAD, transition there now.
+            // This prevents AGGRO/FOLLOW/CAMP from continuing to run on a
+            // corpse during the rez wait window (which can be 30-60s) and
+            // gives MimicState_Dead.Enter a single, deterministic chance to
+            // wipe aggro/targets/follow goals. Without this gate the previous
+            // FSM state kept ticking after death because nothing in the
+            // engine forced the transition.
+            if (Body != null && !Body.IsAlive)
+            {
+                if (FSM.GetCurrentState() != FSM.GetState(eFSMStateType.DEAD))
+                    FSM.SetCurrentState(eFSMStateType.DEAD);
+                FSM.Think();
+                return;
+            }
+
             // Mirror the group leader's sprint state every tick so the bot can
             // keep up no matter which FSM state it's in (follow, roam, aggro
             // chase, etc.). Mirroring only inside FollowLeader.Think misses
@@ -791,52 +807,15 @@ namespace DOL.AI.Brain
         }
 
         /// <summary>
-        /// Checks the Abilities
+        /// Checks the Abilities. Intercept/Guard/Protect maintenance is now
+        /// handled by the strategy layer (PeelStrategy + Guard/Protect/Intercept
+        /// SetXxx helpers below) — the original per-tick scan was a no-op
+        /// switch that iterated every ability for nothing. Kept as an empty
+        /// virtual so any external override / future re-introduction has a
+        /// hook to bind to.
         /// </summary>
         public virtual void CheckDefensiveAbilities()
         {
-            if (Body.Abilities == null || Body.Abilities.Count <= 0)
-                return;
-
-            foreach (Ability ab in Body.Abilities.Values)
-            {
-                switch (ab.KeyName)
-                {
-                    case Abilities.Intercept:
-                    {
-                        //if (Body.Group != null)
-                        //{
-                        //    GameLiving interceptTarget;
-                        //    List<GameLiving> interceptTargets = new List<GameLiving>();
-
-                        //    foreach (GameLiving groupMember in Body.Group.GetMembersInTheGroup())
-                        //    {
-                        //        if (groupMember is MimicNPC mimic)
-                        //        {
-                        //            if (mimic.CharacterClass.ID == (int)eCharacterClass.Cleric ||
-                        //                mimic.CharacterClass.ID == (int)eCharacterClass.Druid ||
-                        //                mimic.CharacterClass.ID == (int)eCharacterClass.Healer ||
-                        //                mimic.CharacterClass.ID == (int)eCharacterClass.Friar ||
-                        //                mimic.CharacterClass.ID == (int)eCharacterClass.Bard ||
-                        //                mimic.CharacterClass.ID == (int)eCharacterClass.Shaman)
-                        //            {
-                        //                interceptTargets.Add(groupMember);
-                        //            }
-                        //        }
-                        //    }
-                        //}
-                        break;
-                    }
-                    case Abilities.Guard:
-                    {
-                        break;
-                    }
-                    case Abilities.Protect:
-                    {
-                        break;
-                    }
-                }
-            }
         }
 
         public void CheckOffensiveAbilities()
@@ -1980,12 +1959,23 @@ namespace DOL.AI.Brain
                 }
             }
 
-            // Best = lowest score, then longest range, then lowest damage
-            // (single mode) / highest damage (aoe mode — we want it to bite).
-            var ordered = candidates.OrderBy(Score).ThenByDescending(s => s.Range);
-            return preferAoe
-                ? ordered.ThenByDescending(s => s.Damage).First()
-                : ordered.ThenBy(s => s.Damage).First();
+            // Best = lowest score (pull-type priority), then highest-tier
+            // version of that type. Within the same SpellType we want the
+            // strongest available spell of that line: spec/spell level first,
+            // then raw damage. The previous tiebreaker preferred LOWEST damage
+            // (in single mode) to keep "noise" down, but in practice that
+            // picked a vestigial low-level spell over the bot's proper top-
+            // tier cast of the same SpellType — a real DPS loss on every pull
+            // and a known cause of bots opening with a tier-1 nuke when they
+            // had a tier-9 of the same line available. Longer range still
+            // wins as a final tiebreak so we don't deliberately move closer
+            // than needed.
+            var ordered = candidates
+                .OrderBy(Score)
+                .ThenByDescending(s => s.Level)
+                .ThenByDescending(s => s.Damage)
+                .ThenByDescending(s => s.Range);
+            return ordered.First();
         }
 
         #endregion MainPuller
@@ -2045,18 +2035,23 @@ namespace DOL.AI.Brain
             // mezzes them. Caps at 2 adds to avoid mezzing the entire pack.
             PopulateAddsForCC();
 
+            // Cheap dictionary scan — prune stale targets every tick rather
+            // than only out of combat. Without this, dead/despawned/group-focus
+            // adds accumulate during sustained fights and keep tripping
+            // GroupHasCcTargetsTrigger, burning a CC cycle that lands nothing.
+            // The predicate captures the current group focus so a target the
+            // assist has committed to killing is dropped from the CC queue
+            // (no point re-mezzing what the group is actively burning).
+            if (Body.Group?.MimicGroup is MimicGroup mg && mg.CcTargetCount > 0)
+            {
+                GameLiving currentFocus = mg.MainAssist?.TargetObject as GameLiving;
+                mg.ValidateCcTargets(cc => IsValidCcTarget(cc) && cc != currentFocus);
+            }
+
             if (Body.Group.MimicGroup.CcTargetCount > 0)
             {
                 if (CheckSpells(eCheckSpellType.CrowdControl))
                     return;
-            }
-
-            if (!Body.InCombat && Body.Group.MimicGroup.CcTargetCount > 0)
-            {
-                // Drop CC targets we can no longer legitimately CC (dead, despawned,
-                // no longer attacking the group). Done in-place under the dedicated
-                // lock — no more "rebuild the list and replace" race.
-                Body.Group.MimicGroup.ValidateCcTargets(IsValidCcTarget);
             }
         }
 
@@ -2151,6 +2146,13 @@ namespace DOL.AI.Brain
             return Math.Min(MAX_ADDS_TO_CC_CEIL, cap);
         }
 
+        // Reusable buffer for PopulateAddsForCC. Cleared at the start and end
+        // of every call so the steady-state allocation cost is zero (the
+        // underlying array is reused). Lives on the brain instance: each
+        // MimicBrain ticks single-threaded for its own body so no cross-thread
+        // access. Honors the "don't allocate a fresh list per tick" guardrail.
+        private readonly List<GameLiving> _ccCandidatesBuffer = new();
+
         private void PopulateAddsForCC()
         {
             MimicGroup mg = Body.Group?.MimicGroup;
@@ -2171,7 +2173,8 @@ namespace DOL.AI.Brain
             // Already-mezzed/rooted mobs are included if their effect is about
             // to expire (<3s remaining), so a CC bot can stage a re-cast and
             // refresh the lock before the gap. Otherwise they're skipped.
-            List<GameLiving> candidates = new();
+            List<GameLiving> candidates = _ccCandidatesBuffer;
+            candidates.Clear();
             foreach (var kv in AggroList)
             {
                 GameLiving c = kv.Key;
@@ -2198,6 +2201,10 @@ namespace DOL.AI.Brain
                 if (mg.AddCcTarget(candidates[i]))
                     room--;
             }
+
+            // Drop references so the buffer doesn't pin GameLiving objects
+            // until the next tick. Capacity is preserved (no realloc).
+            candidates.Clear();
         }
 
         // Returns true when a mob already mezzed or rooted should be put back
@@ -2222,6 +2229,7 @@ namespace DOL.AI.Brain
             }
 
             Probe(eEffect.Mez);
+            Probe(eEffect.Stun);
             Probe(eEffect.MovementSpeedDebuff);
             Probe(eEffect.Snare);
 
@@ -2400,7 +2408,14 @@ namespace DOL.AI.Brain
 
         public bool CheckMainTankTarget()
         {
-            if (!IsMainTank || AggroList.Count == 0)
+            // Was gated on IsMainTank only — but a tank-class bot in a group
+            // without a formal MainTank assignment (player-led group, late
+            // join, auto-promotion miss) would silently skip the peel pass
+            // and fall back to standard assist logic. That left healers
+            // taking hits with no one switching. IsActingAsTank covers both
+            // the formal role and the "highest tank-score in the group"
+            // fallback computed on demand.
+            if (!IsActingAsTank || AggroList.Count == 0)
                 return false;
 
             // Peel pass: among hostiles not mezzed/rooted, prefer one whose
@@ -2516,6 +2531,126 @@ namespace DOL.AI.Brain
         private bool HasAbility(string abilityKey)
         {
             return Body?.GetAbility(abilityKey) != null;
+        }
+
+        // --------------------------------------------------------------
+        // Defensive cooldowns (Realm Abilities)
+        // --------------------------------------------------------------
+        // Mastery of Pain is a passive — nothing to fire. Ignore Pain
+        // (and its Atlas-OF tank variant) is an instant self-heal RA we
+        // pop at low HP. Soldier's Barricade currently assumes a
+        // GamePlayer owner (SoldiersBarricadeAbility casts `living as
+        // GamePlayer` and dereferences `player.Group`) so we deliberately
+        // do NOT trigger it on mimics until that path is hardened —
+        // popping it would NRE the brain tick.
+        //
+        // Returns true if any cooldown was fired this tick. Cheap when
+        // nothing matches: a single GetRealmAbilities() walk over a
+        // typically tiny list.
+        public bool TryFireDefensiveCooldown(int healthThresholdPercent)
+        {
+            if (Body == null || !Body.IsAlive)
+                return false;
+
+            // In combat only & below the trigger HP. Without the combat
+            // guard we'd burn the 15-min reuse on a post-fight top-off.
+            if (!Body.InCombat)
+                return false;
+
+            if (Body.HealthPercent >= healthThresholdPercent)
+                return false;
+
+            if (Body.IsStunned || Body.IsMezzed || Body.IsSitting)
+                return false;
+
+            System.Collections.Generic.List<DOL.GS.RealmAbilities.RealmAbility> ras
+                = MimicBody?.GetRealmAbilities();
+            if (ras == null || ras.Count == 0)
+                return false;
+
+            for (int i = 0; i < ras.Count; i++)
+            {
+                if (ras[i] is not DOL.GS.RealmAbilities.TimedRealmAbility timed)
+                    continue;
+
+                // Name-match keeps this tight without coupling to the
+                // specific class hierarchy (AtlasOF_IgnorePain /
+                // AtlasOF_IgnorePainTank both keep "Ignore Pain" Name).
+                string n = timed.Name;
+                if (string.IsNullOrEmpty(n) || n.IndexOf("Ignore Pain", System.StringComparison.OrdinalIgnoreCase) < 0)
+                    continue;
+
+                if (Body.GetSkillDisabledDuration(timed) > 0)
+                    continue;
+
+                try { timed.Execute(Body); }
+                catch { return false; }
+
+                // Confirm the engine actually disabled it — Execute may
+                // no-op on preconditions; we only want to arm the binding
+                // cooldown when something really fired.
+                return Body.GetSkillDisabledDuration(timed) > 0;
+            }
+
+            return false;
+        }
+
+        // --------------------------------------------------------------
+        // Engage activation — only meaningful when a melee mob is on us.
+        // --------------------------------------------------------------
+        // EngageAbilityHandler is GamePlayer-only (it reads player.Out
+        // and player.Client). Mimics need a parallel path that honours
+        // the same preconditions: alive, not sitting, CaC weapon equipped,
+        // target alive, not already engaging, target hasn't just hit us.
+        // The underlying EngageECSGameEffect handles OwnerPlayer-null
+        // paths correctly (chat messages no-op for mimics).
+        //
+        // Only fires when the mob is melee-swinging at the tank: there's
+        // nothing to block from a mob casting at range, and we'd just
+        // bleed endurance for no defensive value.
+        public bool TryActivateTankEngage()
+        {
+            if (Body == null || !Body.IsAlive)
+                return false;
+
+            if (!HasAbility(Abilities.Engage))
+                return false;
+
+            if (Body.IsSitting || Body.IsMezzed || Body.IsStunned)
+                return false;
+
+            if (Body.IsEngaging)
+                return false; // already engaging — let the effect run
+
+            if (Body.ActiveWeaponSlot == eActiveWeaponSlot.Distance)
+                return false;
+
+            if (Body.TargetObject is not GameLiving target || !target.IsAlive)
+                return false;
+
+            if (target.TargetObject != Body)
+                return false;
+            if (target.attackComponent == null || !target.attackComponent.AttackState)
+                return false;
+            if (target.ActiveWeaponSlot == eActiveWeaponSlot.Distance)
+                return false;
+
+            // Mirror EngageAbilityHandler's "target attacked us in the
+            // last 5s ⇒ skip" rule — engaging post-swing wastes the buff
+            // until the next swing window.
+            if (target.LastAttackedByEnemyTick > GameLoop.GameLoopTime - DOL.GS.SkillHandler.EngageAbilityHandler.ENGAGE_ATTACK_DELAY_TICK)
+                return false;
+
+            if (!GameServer.ServerRules.IsAllowedToAttack(Body, target, true))
+                return false;
+
+            try
+            {
+                ECSGameEffectFactory.Create(new(Body, 0, 1, null), static (in i) => new EngageECSGameEffect(i));
+            }
+            catch { return false; }
+
+            return Body.IsEngaging;
         }
 
         #endregion MainTank
@@ -2817,7 +2952,31 @@ namespace DOL.AI.Brain
             {
                 Body.TargetObject = null;
                 Body.StopAttack();
-                return;
+
+                // Fast re-acquisition: the target died (or despawned) between
+                // ticks. Try once to pick the next hostile from the existing
+                // aggro list / assist focus right now instead of waiting for
+                // the next 500ms FSM tick. Pure in-memory work — no radius
+                // scans, no allocations. Cuts the post-kill idle gap that was
+                // visible as "bot stands for half a second after every kill".
+                // The corpse stays in AggroList briefly; the next call to
+                // CleanUpAggroListAndGetHighestModifiedThreat reaps it via
+                // ShouldBeRemovedFromAggroList (IsAlive false).
+                if (!CheckMainTankTarget())
+                    Body.TargetObject = CalculateNextAttackTarget();
+
+                if (Body.TargetObject == null)
+                    return;
+
+                // Re-validate the freshly picked target before falling through
+                // to attack/cast — paranoia against a race where the new pick
+                // is itself a freshly-dead aggro entry.
+                if (Body.TargetObject is GameLiving newGl
+                    && (!newGl.IsAlive || newGl.ObjectState != GameObject.eObjectState.Active))
+                {
+                    Body.TargetObject = null;
+                    return;
+                }
             }
 
             if (Body.ControlledBrain != null)
@@ -3994,6 +4153,45 @@ namespace DOL.AI.Brain
         /// that don't map to a single ECSGameSpellEffect (procs, etc.) so we
         /// never accidentally double-cast something that is genuinely fresh.
         /// </summary>
+        /// <summary>
+        /// True when <paramref name="target"/> currently carries the immunity
+        /// effect for every CC spell in this bot's CrowdControlSpells list —
+        /// i.e. there is no CC we could land right now. Used by the PvP CC
+        /// picker so it skips targets in post-mez/post-stun immunity rather
+        /// than burning a cast that will instantly resist.
+        ///
+        /// Returns false when the bot has no CC spells (defensive — picker
+        /// already gated on CanCastCrowdControlSpells) or when at least one
+        /// of our CC spells would still land (no matching immunity effect).
+        /// </summary>
+        public bool IsImmuneToAllOurCc(GameLiving target)
+        {
+            if (target == null || MimicBody?.CrowdControlSpells == null
+                || MimicBody.CrowdControlSpells.Count == 0)
+                return false;
+
+            foreach (Spell spell in MimicBody.CrowdControlSpells)
+            {
+                if (spell == null)
+                    continue;
+
+                eEffect imm = EffectHelper.GetImmunityEffectFromSpell(spell);
+                eEffect npcImm = EffectHelper.GetNpcImmunityEffectFromSpell(spell);
+
+                bool blocked = (imm is not eEffect.Unknown
+                                && EffectListService.GetEffectOnTarget(target, imm) != null)
+                            || (npcImm is not eEffect.Unknown
+                                && EffectListService.GetEffectOnTarget(target, npcImm) != null);
+
+                // Any single non-immune CC spell is enough to keep the target
+                // eligible for the picker.
+                if (!blocked)
+                    return false;
+            }
+
+            return true;
+        }
+
         public bool LivingHasFreshEffect(GameLiving target, Spell spell, int minRemainingMs)
         {
             if (target == null || spell == null)
@@ -4550,8 +4748,25 @@ namespace DOL.AI.Brain
                 case eSpellType.SummonAnimistFnFCustom:
                 case eSpellType.SummonAnimistAmbusher:
                     return 0;
+                // Hard single-target CC on the focus target is the strongest
+                // opener available: it removes the mob's ability to swing or
+                // cast for the duration, lets the tank establish aggro
+                // unimpeded, and is a measurable DPS gain on every fight. We
+                // route Mez/Mesmerize through the dedicated CC pipeline (it's
+                // in CrowdControlSpells, not HarmfulSpells) so these only fire
+                // when a non-CC-role caster has a stun in their offensive
+                // list (e.g. Hunter instant stun, Friar's stun, Bonedancer
+                // bone army stun) — exactly when we WANT it as the opener.
+                case eSpellType.Stun:
+                case eSpellType.UnresistableStun:
+                case eSpellType.UnrresistableNonImunityStun:
+                    return 0;
                 case eSpellType.SpeedDecrease: return 0;
                 case eSpellType.Disease: return 1;
+                // Nearsight on a hostile caster/healer is high-value: it caps
+                // their cast range to melee, neutering kiters and back-line
+                // support. Treated like a debuff (sit alongside stat debuffs).
+                case eSpellType.Nearsight: return 2;
                 case eSpellType.StrengthDebuff:
                 case eSpellType.DexterityDebuff:
                 case eSpellType.StrengthConstitutionDebuff:
@@ -4652,6 +4867,12 @@ namespace DOL.AI.Brain
                     continue;
                 if (player == focus)
                     continue;
+                // Skip targets currently immune to every CC spell in our kit
+                // (post-mez / post-stun immunity). Without this filter the
+                // picker locks onto an immune healer, the cast is wasted, and
+                // the actual loose caster keeps free-casting.
+                if (IsImmuneToAllOurCc(player))
+                    continue;
 
                 int dist = Body.GetDistanceTo(player);
                 int score = ccProfile.ScoreTarget(
@@ -4682,6 +4903,8 @@ namespace DOL.AI.Brain
                 if (mimic.IsCrowdControlled)
                     continue;
                 if (mimic == focus)
+                    continue;
+                if (IsImmuneToAllOurCc(mimic))
                     continue;
 
                 int dist = Body.GetDistanceTo(mimic);
@@ -4727,15 +4950,13 @@ namespace DOL.AI.Brain
 
             bool isPBAoE = spell.IsPBAoE;
             int radius = spell.Radius;
-            // Snapshot once into a HashSet for O(1) Contains. The CCTargets
-            // accessor on MimicGroup already returns a fresh copy under the
-            // dedicated lock so this is race-free.
-            HashSet<GameLiving> ccTargetSet = null;
-            var ccTargetsSnap = Body.Group?.MimicGroup?.CCTargets;
-            if (ccTargetsSnap != null && ccTargetsSnap.Count > 0)
-            {
-                ccTargetSet = new HashSet<GameLiving>(ccTargetsSnap);
-            }
+            // Use MimicGroup.ContainsCcTarget directly — O(1) under the group's
+            // own lock — instead of snapshotting CCTargets into a HashSet on
+            // every AoE eval. CountAoeHostiles runs per offensive-spell decision,
+            // so eliminating the per-call ToArray + HashSet copy saves GC churn
+            // under heavy combat.
+            MimicGroup mgCc = Body.Group?.MimicGroup;
+            bool hasCcTargets = mgCc != null && mgCc.CcTargetCount > 0;
 
             HashSet<GameLiving> counted = new();
             int count = 0;
@@ -4752,7 +4973,7 @@ namespace DOL.AI.Brain
                 if (!inRange)
                     return true;
 
-                bool protectedCrowdControl = (ccTargetSet != null && ccTargetSet.Contains(hostile))
+                bool protectedCrowdControl = (hasCcTargets && mgCc.ContainsCcTarget(hostile))
                     || hostile.IsMezzed
                     || (hostile.IsRooted && hostile != primaryTarget && hostile != Body.TargetObject);
 
