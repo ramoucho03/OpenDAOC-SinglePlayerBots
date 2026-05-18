@@ -685,6 +685,14 @@ namespace DOL.AI.Brain
                 // this prevents both receiving an aggro amount of 1 if the attack is a debuff for example, ensuring the NPC attacks the pet first.
                 GamePlayer owner = brain.GetPlayerOwner();
 
+                // Owner can legitimately be null when the controlled NPC's
+                // root owner is itself an NPC (Mimic-summoned Theurgist
+                // pets, sub-pets of non-player chains, etc.). Without this
+                // guard ConcurrentDictionary.ContainsKey throws ANE and
+                // crashes the whole AttackService tick.
+                if (owner == null)
+                    return;
+
                 if (!AggroList.ContainsKey(owner))
                     AggroList.TryAdd(owner, new(0));
             }
