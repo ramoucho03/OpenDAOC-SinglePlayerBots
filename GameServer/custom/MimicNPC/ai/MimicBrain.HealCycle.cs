@@ -22,6 +22,17 @@ namespace DOL.AI.Brain
         public bool AlreadyCheckedHeals;
         private long nextCureTime = 0;
 
+        /// <summary>
+        /// Hard cooldown on any permanent-pet summon cast. Prevents the race
+        /// window between (cast completes, IsCasting goes false) and (the
+        /// SummonSpellHandler's ApplyEffectOnTarget runs SetBrainToOwner, ie
+        /// ControlledBrain becomes non-null). Without it the bot would see a
+        /// brief tick where IsCasting==false AND ControlledBrain==null and
+        /// queue a second summon, ending up with 2-3 wild pets in the world.
+        /// </summary>
+        private long _nextPetSummonAttemptTick;
+        private const int PET_SUMMON_COOLDOWN_MS = 5000;
+
         // Mana-conservation latch. Set true once ManaPercent dips below
         // MIMIC_HEAL_MANA_STOP_PERCENT, cleared once it climbs above
         // MIMIC_HEAL_MANA_RESUME_PERCENT. Hysteresis prevents oscillation
@@ -755,6 +766,14 @@ namespace DOL.AI.Brain
 
             bool cast = Body.CastSpell(spellToCast.spell, MimicBody.GetSpellLineForSpell(spellToCast.spell));
 
+            // Arm the pet-summon cooldown the instant the cast STARTS, not when
+            // it lands. The 3s cast window is exactly when the race could fire
+            // (multiple summon-tier spells would all pass the gate during the
+            // ApplyEffectOnTarget hop), so we lock everything down for the full
+            // PET_SUMMON_COOLDOWN_MS window from cast start.
+            if (cast && IsPermanentPetSummon(spellToCast.spell))
+                _nextPetSummonAttemptTick = GameLoop.GameLoopTime + PET_SUMMON_COOLDOWN_MS;
+
             if (Debug)
             {
                 if (cast)
@@ -814,6 +833,16 @@ namespace DOL.AI.Brain
                 // closes the race where two summons would queue back-to-back
                 // before the first finishes setting ControlledBrain.
                 if (IsPermanentPetSummon(spell) && Body.IsCasting)
+                    return false;
+
+                // Hard cooldown on summons regardless of state. ControlledBrain
+                // is set inside ApplyEffectOnTarget which runs AFTER the cast
+                // animation completes — there is a 1-tick window where
+                // IsCasting==false and ControlledBrain==null, and without this
+                // cooldown the bot starts a second cast in that window. The
+                // user-visible symptom is "Cabalist with 3 pets".
+                if (IsPermanentPetSummon(spell)
+                    && GameLoop.GameLoopTime < _nextPetSummonAttemptTick)
                     return false;
 
                 if (spell.NeedInstrument && Body.Inventory?.GetItem(eInventorySlot.DistanceWeapon) == null)

@@ -221,11 +221,28 @@ namespace DOL.GS.Scripts
                         position = new Point3D(player.GroundTarget);
                 }
 
-                MimicNPC mimic = MimicManager.GetMimic(mclass, level, spec: mimicSpec);
+                // Wrap construction in try/catch so the player sees the real
+                // failure cause (missing MimicSpec, MimicCombatProfile, empty
+                // EligibleRaces, missing STARTING_STATS_DICT entry, etc.).
+                // Without this, an InvalidOperationException from the MimicNPC
+                // constructor was logged server-side and the player just saw
+                // nothing — making it impossible to tell which class is broken.
+                MimicNPC mimic;
+                try
+                {
+                    mimic = MimicManager.GetMimic(mclass, level, spec: mimicSpec);
+                }
+                catch (Exception ex)
+                {
+                    player.Out.SendMessage("Impossible de créer le mimic " + mclass + ": " + ex.Message,
+                        eChatType.CT_Say, eChatLoc.CL_ChatWindow);
+                    return;
+                }
 
                 if (mimic == null || !MimicManager.AddMimicToWorld(mimic, position, player.CurrentRegionID))
                 {
-                    player.Out.SendMessage("Impossible de créer le mimic.", eChatType.CT_Say, eChatLoc.CL_ChatWindow);
+                    player.Out.SendMessage("Impossible de créer le mimic " + mclass + " (AddToWorld a échoué).",
+                        eChatType.CT_Say, eChatLoc.CL_ChatWindow);
                     return;
                 }
 
@@ -244,6 +261,55 @@ namespace DOL.GS.Scripts
                         player.Out.SendMessage("Impossible d'ajouter le mimic au groupe.", eChatType.CT_Say, eChatLoc.CL_ChatWindow);
                 }
             }
+        }
+    }
+
+    [CmdAttribute(
+       "&mcreatetest",
+       ePrivLevel.GM,
+       "/mcreatetest - GM only. Try to instantiate every eMimicClass once (without spawning) and report which classes throw or return null.",
+       "Use this after extension-class changes to confirm all 47 mimics are still constructible.")]
+    public class MimicCreateTestCommandHandler : AbstractCommandHandler, ICommandHandler
+    {
+        public void OnCommand(GameClient client, string[] args)
+        {
+            GamePlayer player = client?.Player;
+            if (player == null)
+                return;
+
+            int ok = 0, fail = 0;
+            var failures = new List<string>();
+
+            foreach (eMimicClass mc in Enum.GetValues(typeof(eMimicClass)))
+            {
+                if (mc == eMimicClass.None)
+                    continue;
+
+                try
+                {
+                    MimicNPC m = MimicManager.GetMimic(mc, 1);
+                    if (m == null)
+                    {
+                        fail++;
+                        failures.Add(mc + ": GetMimic returned null");
+                        continue;
+                    }
+                    // Don't spawn — just confirm the constructor + race + spec
+                    // wiring all completed. Mark for GC.
+                    ok++;
+                }
+                catch (Exception ex)
+                {
+                    fail++;
+                    failures.Add(mc + ": " + ex.GetType().Name + ": " + ex.Message);
+                }
+            }
+
+            player.Out.SendMessage($"[mcreatetest] OK={ok}, FAIL={fail}",
+                eChatType.CT_Important, eChatLoc.CL_SystemWindow);
+
+            foreach (string line in failures)
+                player.Out.SendMessage("  " + line, eChatType.CT_System, eChatLoc.CL_SystemWindow);
         }
     }
 

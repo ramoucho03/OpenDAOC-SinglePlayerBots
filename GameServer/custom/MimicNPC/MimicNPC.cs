@@ -2398,6 +2398,20 @@ namespace DOL.GS.Scripts
 
         public void SetRaceAndName()
         {
+            // EligibleRaces must contain at least one entry. Several extension
+            // classes (Vampiir, Valewalker, Mauler*, Bainshee, Heretic,
+            // Warlock, Valkyrie) historically shipped with the list commented
+            // out — instantiating any of those threw IndexOutOfRangeException
+            // here, which the /mcreate handler silently swallowed. We now
+            // throw a clear message so the operator knows exactly which class
+            // is broken instead of seeing "Impossible de créer le mimic".
+            if (CharacterClass.EligibleRaces == null || CharacterClass.EligibleRaces.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    $"CharacterClass.EligibleRaces is empty for {CharacterClass.Name} (ID {CharacterClass.ID}). " +
+                    "Populate the EligibleRaces override in the GameServer/playerclasses/.../Class*.cs file.");
+            }
+
             PlayerRace playerRace = CharacterClass.EligibleRaces[Util.Random(CharacterClass.EligibleRaces.Count - 1)];
 
             Gender = Util.Random(1) > 0 ? eGender.Female : eGender.Male;
@@ -2408,8 +2422,22 @@ namespace DOL.GS.Scripts
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
 
-            Dictionary<eStat, int> statDict;
-            GlobalConstants.STARTING_STATS_DICT.TryGetValue((eRace)Race, out statDict);
+            // STARTING_STATS_DICT must contain an entry for this race; if it
+            // doesn't (custom/extension race not seeded), fall back to a
+            // neutral baseline so the bot still spawns instead of crashing.
+            if (!GlobalConstants.STARTING_STATS_DICT.TryGetValue((eRace)Race, out Dictionary<eStat, int> statDict)
+                || statDict == null)
+            {
+                statDict = new Dictionary<eStat, int>
+                {
+                    { eStat.STR, 60 }, { eStat.CON, 60 }, { eStat.DEX, 60 }, { eStat.QUI, 60 },
+                    { eStat.INT, 60 }, { eStat.PIE, 60 }, { eStat.EMP, 60 }, { eStat.CHR, 60 },
+                };
+
+                if (log.IsWarnEnabled)
+                    log.WarnFormat("MimicNPC.SetRaceAndName: no STARTING_STATS_DICT entry for race {0} ({1}); using neutral 60/60.",
+                        (eRace)Race, playerRace.ID);
+            }
 
             ChangeBaseStat(eStat.STR, (short)statDict[eStat.STR]);
             ChangeBaseStat(eStat.CON, (short)statDict[eStat.CON]);
@@ -2430,6 +2458,20 @@ namespace DOL.GS.Scripts
                     Realm = keyValuePair.Key;
                     break;
                 }
+            }
+
+            // Fallback realm: if the class isn't listed in STARTING_CLASSES_DICT
+            // (extension class with the registration commented out), derive
+            // the realm from the chosen race so the bot at least has a name
+            // and isn't stuck as eRealm.None (which breaks group invites,
+            // aggro, AI, and the right-click "[invite]" widget).
+            if (Realm == eRealm.None)
+            {
+                Realm = playerRace.Realm;
+
+                if (log.IsWarnEnabled)
+                    log.WarnFormat("MimicNPC.SetRaceAndName: class {0} (ID {1}) not found in STARTING_CLASSES_DICT; derived Realm={2} from race {3}.",
+                        CharacterClass.Name, CharacterClass.ID, Realm, playerRace.ID);
             }
 
             Name = MimicNames.GetName(Gender, Realm);

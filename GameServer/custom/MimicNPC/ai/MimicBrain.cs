@@ -300,10 +300,84 @@ namespace DOL.AI.Brain
             if (sprintRef != null)
                 MimicState.MirrorLeaderSprint(this, sprintRef);
 
+            // Drive the pet every tick, no matter what FSM state we're in.
+            // Previously EnsurePetCombatReady was only called from
+            // AttackMostWanted, which means a Cabalist/Necromancer/Spiritmaster
+            // standing back-line casting nukes never gave its pet a target
+            // (the bot's own TargetObject wasn't always assigned). The pet
+            // would sit idle next to the caster instead of engaging the mob.
+            // Calling it from Think with a target inferred from group context
+            // means the pet attacks even before the bot itself locks aggro.
+            DrivePetEveryTick();
+
             if (MimicConfig.USE_STRATEGY_SYSTEM)
                 StrategyManager?.Tick();
 
             FSM.Think();
+        }
+
+        /// <summary>
+        /// Choose the best target for the controlled pet and command it.
+        /// Priority:
+        ///   1. Our own TargetObject (if hostile and alive).
+        ///   2. The group main-assist's target.
+        ///   3. The first aggro-list entry.
+        ///   4. Highest-aggro target on the main tank.
+        /// Called every Think tick so the pet stays engaged even when the
+        /// owner bot itself is mid-cast / kiting / not yet in AGGRO state.
+        /// </summary>
+        private void DrivePetEveryTick()
+        {
+            if (Body?.ControlledBrain?.Body is not GameNPC pet || !pet.IsAlive)
+                return;
+
+            GameLiving target = null;
+
+            if (Body.TargetObject is GameLiving ownTarget
+                && ownTarget.IsAlive
+                && ownTarget.ObjectState == GameObject.eObjectState.Active
+                && GameServer.ServerRules.IsAllowedToAttack(Body, ownTarget, true))
+            {
+                target = ownTarget;
+            }
+
+            if (target == null && Body.Group?.MimicGroup?.MainAssist?.TargetObject is GameLiving assistTarget
+                && assistTarget.IsAlive
+                && assistTarget.ObjectState == GameObject.eObjectState.Active
+                && GameServer.ServerRules.IsAllowedToAttack(Body, assistTarget, true))
+            {
+                target = assistTarget;
+            }
+
+            if (target == null && AggroList.Count > 0)
+            {
+                foreach (var kvp in AggroList)
+                {
+                    if (kvp.Key != null
+                        && kvp.Key.IsAlive
+                        && kvp.Key.ObjectState == GameObject.eObjectState.Active
+                        && GameServer.ServerRules.IsAllowedToAttack(Body, kvp.Key, true))
+                    {
+                        target = kvp.Key;
+                        break;
+                    }
+                }
+            }
+
+            if (target == null && Body.Group?.MimicGroup?.MainTank is GameLiving tank
+                && tank.IsAlive && tank != Body
+                && tank.attackComponent?.AttackState == true
+                && tank.TargetObject is GameLiving tankTarget
+                && tankTarget.IsAlive
+                && GameServer.ServerRules.IsAllowedToAttack(Body, tankTarget, true))
+            {
+                target = tankTarget;
+            }
+
+            if (target != null)
+                EnsurePetCombatReady(target);
+            else
+                EnsurePetCombatReady(null); // still refresh follow/aggressive flags
         }
 
         public virtual void OnLeaderAggro()
@@ -5203,6 +5277,46 @@ namespace DOL.AI.Brain
                     && Body.IsWithinRadius(Body.TargetObject, 550)
                     && Body.ManaPercent <= 10)
                     return false;
+
+                // Theurgist play loop: summon turrets until cap, then idle.
+                // The class identity is "pet-swarm controller" — direct-damage
+                // nukes exist in the spell lines but a real player almost
+                // never uses them (turrets do the damage, the caster saves
+                // mana for the next swarm). The previous behaviour put DDs
+                // in the rotation with the summons and over a few seconds
+                // the bot drifted into DD spam (visible as "fireballs like a
+                // wizard"). We short-circuit here: pick the summon directly
+                // when not at cap, returning early so DDs / CC / Bolts never
+                // even get added to spellsToCast.
+                if (MimicBody?.CharacterClass != null
+                    && MimicBody.CharacterClass.ID == (int)eCharacterClass.Theurgist
+                    && Body.CanCastHarmfulSpells
+                    && Body.TargetObject is GameLiving theurTarget
+                    && theurTarget.IsAlive
+                    && Body.PetCount < DOL.GS.ServerProperties.Properties.THEURGIST_PET_CAP)
+                {
+                    Spell pickedSummon = null;
+                    int bestLevel = -1;
+                    foreach (Spell spell in Body.HarmfulSpells)
+                    {
+                        if (spell.SpellType != eSpellType.SummonTheurgistPet)
+                            continue;
+                        if (!CanCastOffensiveSpell(spell))
+                            continue;
+                        if (spell.Level > bestLevel)
+                        {
+                            pickedSummon = spell;
+                            bestLevel = spell.Level;
+                        }
+                    }
+
+                    if (pickedSummon != null)
+                    {
+                        casted = CheckOffensiveSpells(pickedSummon);
+                        if (casted)
+                            return true;
+                    }
+                }
 
                 if (MimicBody.CanCastCrowdControlSpells)
                 {
