@@ -287,8 +287,17 @@ namespace DOL.AI.Brain
             // keep up no matter which FSM state it's in (follow, roam, aggro
             // chase, etc.). Mirroring only inside FollowLeader.Think misses
             // any state where the bot is moving but not actively following.
-            if (Body?.Group?.LivingLeader is GameLiving gl)
-                MimicState.MirrorLeaderSprint(this, gl);
+            //
+            // Two paths: (a) grouped bots mirror the group's living leader;
+            // (b) ungrouped owned bots (personal pet / /mfollow / /msummon)
+            // mirror their registered owner if that owner is online and within
+            // mirror range. Without (b) a solo follower bot lags behind the
+            // moment the player sprints.
+            GameLiving sprintRef = Body?.Group?.LivingLeader as GameLiving;
+            if (sprintRef == null && MimicBody != null)
+                sprintRef = MimicBody.GetOwnerPlayerForSprintMirror();
+            if (sprintRef != null)
+                MimicState.MirrorLeaderSprint(this, sprintRef);
 
             if (MimicConfig.USE_STRATEGY_SYSTEM)
                 StrategyManager?.Tick();
@@ -783,6 +792,23 @@ namespace DOL.AI.Brain
                         _activity = eMimicActivity.Hibernating;
                     else
                         _activity = eMimicActivity.Dormant;
+
+                    // Anti-hibernation guard: if a human player from our group
+                    // is alive in the same region within a sane follow radius,
+                    // keep ticking at Idle cadence (1500ms) so MirrorLeaderSprint
+                    // reacts to the player's sprint toggle within ~1.5s instead
+                    // of up to 8s. This is the lone-player-with-bot-in-tow case
+                    // where the proximity scan above hibernates us because no
+                    // *hostile* players are around. Only escalates the tier;
+                    // never demotes Active.
+                    if (_activity == eMimicActivity.Dormant || _activity == eMimicActivity.Hibernating)
+                    {
+                        if (HasGroupedPlayerNearby(8000) || HasOwnerNearby(8000))
+                        {
+                            _activity = eMimicActivity.Idle;
+                            LastSeenByPlayerTick = now;
+                        }
+                    }
                 }
 
                 return _activity switch
@@ -793,6 +819,75 @@ namespace DOL.AI.Brain
                     _                          => 500,
                 };
             }
+        }
+
+        /// <summary>
+        /// Returns true when at least one human <see cref="GamePlayer"/> in
+        /// this bot's group is alive, in the same region, and within
+        /// <paramref name="maxDistance"/> units of the bot. Reuses
+        /// <see cref="CachedPlayerLeader"/> on the hot path before falling
+        /// back to a group scan. Called only on the 5s activity re-evaluation
+        /// cadence — never on every Think tick — so the group iterator's
+        /// internal lock/copy cost is amortized.
+        /// </summary>
+        private bool HasGroupedPlayerNearby(int maxDistance)
+        {
+            if (Body == null)
+                return false;
+
+            // Fast path: cached leader still valid.
+            GamePlayer cached = CachedPlayerLeader;
+            if (cached != null
+                && cached.IsAlive
+                && cached.ObjectState == GameObject.eObjectState.Active
+                && cached.CurrentRegionID == Body.CurrentRegionID
+                && Body.IsWithinRadius(cached, maxDistance))
+            {
+                return true;
+            }
+
+            // Slow path: scan the group for any human player in range. Early-out
+            // on the first match to keep this near O(1) in the common case.
+            Group g = Body.Group;
+            if (g == null)
+                return false;
+
+            foreach (GameLiving gm in g.GetMembersInTheGroup())
+            {
+                if (gm is not GamePlayer gp)
+                    continue;
+                if (!gp.IsAlive || gp.ObjectState != GameObject.eObjectState.Active)
+                    continue;
+                if (gp.CurrentRegionID != Body.CurrentRegionID)
+                    continue;
+                if (Body.IsWithinRadius(gp, maxDistance))
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Companion to <see cref="HasGroupedPlayerNearby"/> for the ungrouped
+        /// owned-bot case: solo follower (/mfollow), personal pet, or /msummon
+        /// bots have no <see cref="Group"/> at all so the group scan misses
+        /// their owner entirely. Without this hook a solo follower bot drops
+        /// to 8s Hibernating cadence and only reacts to the player's sprint
+        /// toggle after an 8-second lag. Called on the same 5s activity tier
+        /// re-evaluation as the grouped guard — never on the hot per-tick path.
+        /// </summary>
+        private bool HasOwnerNearby(int maxDistance)
+        {
+            if (MimicBody == null || string.IsNullOrEmpty(MimicBody.OwnerAccount))
+                return false;
+            if (MimicBody.Group != null)
+                return false; // grouped path covers it
+            GameClient client = ClientService.Instance.GetClientFromAccountName(MimicBody.OwnerAccount);
+            GamePlayer owner = client?.Player;
+            if (owner == null || !owner.IsAlive || owner.ObjectState != GameObject.eObjectState.Active)
+                return false;
+            if (owner.CurrentRegionID != Body.CurrentRegionID)
+                return false;
+            return Body.IsWithinRadius(owner, maxDistance);
         }
 
         /// <summary>

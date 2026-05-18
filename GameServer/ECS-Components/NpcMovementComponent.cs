@@ -731,6 +731,23 @@ namespace DOL.GS
             else
                 speed = (short) Math.Min(MaxSpeed, (distance - MinFollowDistance) * 2.5);
 
+            // Mimic-only: the distance-based smoothing above (D*2.5) stabilises
+            // the bot at a follow distance where its smoothed speed equals the
+            // leader's. With a sprinting player leader (MaxSpeed ~248) and a
+            // mimic that also sprints (matching ~248), this equilibrium sits
+            // ~100u past MinFollowDistance — the bot visibly trails the player.
+            // Pets dodge this because MaxSpeedCalculator gives them an extra
+            // +30% when following their owner; mimics get no such bonus.
+            // When the followed leader is itself moving fast enough that the
+            // smoothing would let it pull away, drop the smoothing and run at
+            // full MaxSpeed so the bot can actually keep pace.
+            if (Owner is Scripts.MimicNPC && FollowTarget != null && FollowTarget.IsMoving)
+            {
+                short leaderSpeed = FollowTarget.CurrentSpeed;
+                if (leaderSpeed > speed)
+                    speed = (short) Math.Min(MaxSpeed, leaderSpeed);
+            }
+
             PathToInternal(targetPos, Math.Max((short) 20, speed));
             return Properties.GAMENPC_FOLLOWCHECK_TIME;
         }

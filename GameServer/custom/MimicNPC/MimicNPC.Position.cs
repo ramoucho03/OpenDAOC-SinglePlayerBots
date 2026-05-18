@@ -376,6 +376,15 @@ namespace DOL.GS.Scripts
 
                 ECSGameEffectFactory.Create(new(this, 0, 1), static (in i) => new SprintECSGameEffect(i));
 
+                // SprintECSGameEffect.OnStartEffect only calls
+                // StartEnduranceRegeneration when OwnerPlayer != null, which is
+                // never true for a MimicNPC. Without this, a bot starting sprint
+                // at full endurance keeps the regen timer dormant (the Endurance
+                // setter only restarts it when value < max), so the per-tick
+                // drain in EnduranceRegenerationTimerCallback never runs and the
+                // bot sprints forever. Kick the timer explicitly here.
+                StartEnduranceRegeneration();
+
                 return true;
             }
             else

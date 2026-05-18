@@ -93,6 +93,46 @@ namespace DOL.GS.Scripts
         /// </summary>
         public string OwnerAccount { get; set; }
 
+        /// <summary>
+        /// Max distance (in game units) at which an ungrouped owned bot will
+        /// mirror its owner's sprint. A bot parked on the other side of the
+        /// world (e.g. /camp left in a city while owner runs in a frontier)
+        /// must NOT toggle Sprint just because the player did — it wastes
+        /// endurance and creates desync at huge range.
+        /// </summary>
+        public const int SPRINT_MIRROR_RANGE = 2500;
+
+        /// <summary>
+        /// Resolves the owning <see cref="GamePlayer"/> to mirror sprint from
+        /// when this bot is NOT in a group (personal pet / /mfollow / /msummon
+        /// scenario). Returns null when the bot is grouped (the grouped path
+        /// handles that), when the owner is offline, in a different region,
+        /// or further than <see cref="SPRINT_MIRROR_RANGE"/> units away.
+        /// </summary>
+        public GamePlayer GetOwnerPlayerForSprintMirror()
+        {
+            // If the bot is grouped, the group leader path in MimicBrain.Think
+            // already provides a reference — don't fight it here.
+            if (Group != null)
+                return null;
+
+            if (string.IsNullOrEmpty(OwnerAccount))
+                return null;
+
+            GameClient client = ClientService.Instance.GetClientFromAccountName(OwnerAccount);
+            GamePlayer owner = client?.Player;
+            if (owner == null || !owner.IsAlive)
+                return null;
+
+            if (owner.CurrentRegion != CurrentRegion)
+                return null;
+
+            if (!IsWithinRadius(owner, SPRINT_MIRROR_RANGE))
+                return null;
+
+            return owner;
+        }
+
         private MimicBrain m_mimicBrain;
 
         public MimicBrain MimicBrain
@@ -3679,6 +3719,18 @@ namespace DOL.GS.Scripts
             }
 
             int regen = GetModified(eProperty.EnduranceRegenerationAmount);
+
+            // EnduranceRegenerationAmountCalculator gates the standing / sitting
+            // out-of-combat bonus behind `living is GamePlayer`, so MimicNPCs
+            // (which derive from GameNPC) silently get regen == 0 unless they
+            // happen to hold a buff/ability/item that grants it. Without this,
+            // a bot whose endurance dropped below max from any source (style,
+            // sprint, fall damage) would never recover and sprint would be
+            // permanently unavailable past the first drain. Mirror the player
+            // formula here so the bot ticks back up while idle.
+            if (!InCombat && !IsMoving)
+                regen += IsSitting ? 4 : 1;
+
             int endChant = GetModified(eProperty.FatigueConsumption);
             ECSGameEffect charge = EffectListService.GetEffectOnTarget(this, eEffect.Charge);
             int longWind = 5;

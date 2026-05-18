@@ -137,6 +137,12 @@ namespace DOL.GS.PropertyCalc
                     }
                 }
 
+                // MimicNPC (and any GameNPC that toggles the Sprint effect) should benefit from sprint speed
+                // just like players do. The Sprint effect is only ever applied to NPCs via explicit Sprint(true)
+                // calls (e.g. from MimicNPC.Sprint), so regular monsters are unaffected.
+                if (npc.effectListComponent.ContainsEffectForEffectType(eEffect.Sprint))
+                    speedIncrease *= SPRINT;
+
                 double healthPercent = living.Health / (double) living.MaxHealth;
 
                 if (healthPercent < 0.33)
