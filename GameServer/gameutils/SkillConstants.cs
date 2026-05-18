@@ -799,6 +799,14 @@ namespace DOL.GS
 		/// </summary>
 		public const string Soulrending   = "Soulrending"; //Reaver
 		/// <summary>
+		/// Arawn's Fire Magic Spec (Heretic offensive specline = Rejuvenation spec)
+		/// </summary>
+		public const string Arawns_Fire = "Arawn's Fire"; //Heretic
+		/// <summary>
+		/// Cthonic Accretion Magic Spec (Heretic buff/melee specline = Enhancement spec)
+		/// </summary>
+		public const string Cthonic_Accretion = "Cthonic Accretion"; //Heretic
+		/// <summary>
 		/// Spectral Force Magic Spec
 		/// </summary>
 		public const string SpectralForce = "Spectral Force"; //Bainshee

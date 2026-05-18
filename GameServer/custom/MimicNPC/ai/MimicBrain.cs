@@ -3187,7 +3187,14 @@ namespace DOL.AI.Brain
             if (Body.IsDestinationValid)
             {
                 if (TargetFlankPosition == null)
-                    Body.Follow(Body.TargetObject, 75, 5000);
+                {
+                    // Match the orbit radius used by GetStylePositionPoint so
+                    // the follow target sits at the bot's actual reach edge
+                    // instead of the legacy hardcoded 75u (which made the bot
+                    // hug the target and produced tiny circles).
+                    int reach = Math.Clamp(Body.attackComponent.AttackRange - 10, 100, 220);
+                    Body.Follow(Body.TargetObject, reach, 5000);
+                }
 
                 return TargetFlankPosition != null;
             }
@@ -3498,7 +3505,14 @@ namespace DOL.AI.Brain
                 _ => living.Heading
             };
 
-            return living.GetPointFromHeading(heading, 75);
+            // Orbit at the edge of the bot's actual melee reach instead of a
+            // hardcoded 75u — that old value put the bot on top of the target
+            // and produced the visible "tiny circle" complaint. A 2H wielder
+            // reaches ~200u, a 1H ~150u, a dagger ~125u; positioning at
+            // (AttackRange - 10) keeps the bot inside swing range while
+            // describing a circle big enough to look like a real flank move.
+            int reach = Math.Clamp(Body.attackComponent.AttackRange - 10, 100, 220);
+            return living.GetPointFromHeading(heading, reach);
         }
 
         private GameObject CheckAssist()

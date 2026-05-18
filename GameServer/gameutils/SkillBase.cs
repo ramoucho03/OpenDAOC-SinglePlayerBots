@@ -1081,6 +1081,8 @@ namespace DOL.GS
 			m_specToSkill.Add(Specs.Cursing, eProperty.Skill_Cursing);
 			m_specToSkill.Add(Specs.Hexing, eProperty.Skill_Hexing);
 			m_specToSkill.Add(Specs.Witchcraft, eProperty.Skill_Witchcraft);
+			m_specToSkill.Add(Specs.Arawns_Fire, eProperty.Skill_Arawns_Fire);
+			m_specToSkill.Add(Specs.Cthonic_Accretion, eProperty.Skill_Cthonic_Accretion);
 
 			//Hib
 			m_specToSkill.Add(Specs.Arboreal_Path, eProperty.Skill_Arboreal);

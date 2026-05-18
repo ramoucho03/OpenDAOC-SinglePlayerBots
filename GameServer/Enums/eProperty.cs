@@ -139,10 +139,11 @@
         Skill_Aura_Manipulation = 113,
         Skill_SpectralGuard = 114,
         Skill_Archery = 115,
-        Skill_Last = 115,
+        Skill_Arawns_Fire = 116,
+        Skill_Cthonic_Accretion = 117,
+        Skill_Last = 117,
         #endregion
 
-        // 116 - 117 Available
 
         Of_Toughness = 118,
         CriticalDebuffHitChance = 119,

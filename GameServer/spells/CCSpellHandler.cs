@@ -317,6 +317,11 @@ namespace DOL.GS.Spells
         {
             base.OnDurationEffectApply(target);
 
+            // Pet casts don't participate in the diminishing-returns counter
+            // (kept consistent with CheckSpellResist and StunECSGameEffect).
+            if (Caster is GameSummonedPet)
+                return;
+
             if (EffectListService.GetEffectOnTarget(target, eEffect.NPCStunImmunity) is NpcStunImmunityEffect immunityEffect)
                 immunityEffect.OnApplyNewEffect();
         }
@@ -326,7 +331,11 @@ namespace DOL.GS.Spells
             double duration = base.CalculateEffectDuration(target);
             duration *= target.GetModified(eProperty.StunDurationReduction) * 0.01;
 
-            if (EffectListService.GetEffectOnTarget(target, eEffect.NPCStunImmunity) is NpcStunImmunityEffect immunityEffect)
+            // Pet casts skip the immunity-based duration shrink: a Theurgist air
+            // pet keeps stunning for the full base duration regardless of how
+            // many times the player has already stunned the same NPC.
+            if (Caster is not GameSummonedPet
+                && EffectListService.GetEffectOnTarget(target, eEffect.NPCStunImmunity) is NpcStunImmunityEffect immunityEffect)
                 duration = immunityEffect.CalculateNewEffectDuration((long) duration);
 
             return (int) Math.Clamp(duration, 1, Spell.Duration * 4);
