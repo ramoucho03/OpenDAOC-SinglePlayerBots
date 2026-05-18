@@ -3047,6 +3047,29 @@ namespace DOL.AI.Brain
                 return;
             }
 
+            // Necromancer Shade form: the caster is incorporeal, cannot melee,
+            // and depends entirely on the pet for damage output. Make absolutely
+            // sure no swing / no melee positioning happens, just keep the pet
+            // hammering the current target and let the normal cast cycle run
+            // (it'll fire damage spells too — the Necro casts THROUGH the pet).
+            if (MimicBody.CharacterClass.ID == (int)eCharacterClass.Necromancer
+                && Body.effectListComponent.ContainsEffectForEffectType(eEffect.Shade))
+            {
+                if (Body.IsAttacking)
+                    Body.StopAttack();
+
+                if (!CheckMainTankTarget())
+                    Body.TargetObject = CalculateNextAttackTarget();
+
+                if (Body.TargetObject != null)
+                    EnsurePetCombatReady(Body.TargetObject);
+
+                if (!IsFleeing && CheckSpells(eCheckSpellType.Offensive))
+                    return;
+
+                return;
+            }
+
             if (!CheckMainTankTarget())
                 Body.TargetObject = CalculateNextAttackTarget();
 
@@ -3088,8 +3111,16 @@ namespace DOL.AI.Brain
                 }
             }
 
-            if (Body.ControlledBrain != null)
-                Body.ControlledBrain.Attack(Body.TargetObject);
+            // Pet engagement: command the pet to attack our current target.
+            // Pets stay on Defensive by default (DAoC convention) which means
+            // they only react to direct attacks. For Mimic casters with a
+            // permanent pet (Cabalist, Necromancer, BD, Spiritmaster,
+            // Enchanter), we want the pet to engage as soon as we do, so we
+            // bump it to Aggressive AND push the target into its aggro list
+            // — Attack(target) alone only sets m_orderAttackTarget which can
+            // be lost between ticks when the pet's CalculateNextAttackTarget
+            // falls back to its own (empty) aggro list.
+            EnsurePetCombatReady(Body.TargetObject);
 
             if (!IsFleeing && CheckSpells(eCheckSpellType.Offensive))
             {
@@ -3137,6 +3168,19 @@ namespace DOL.AI.Brain
                         TryShortKiteStep(900);
                     }
 
+                    return;
+                }
+
+                // Mid-kite: keep walking to the committed destination so the
+                // visible arc actually completes instead of being cancelled
+                // by a fresh cast attempt every tick. The cast attempt itself
+                // would freeze movement, the mob catches up, and the bot zig-
+                // zags in tiny circles — exactly the bug we're fixing.
+                if (IsKiteCommitted)
+                {
+                    // Renew the walk command in case the engine cleared it
+                    // (target swap, path collision, etc.).
+                    Body.WalkTo(_kiteCommittedDestination, Body.MaxSpeed);
                     return;
                 }
 
@@ -3257,9 +3301,54 @@ namespace DOL.AI.Brain
         // Target orbit radius from the threat when kiting. The previous pure-
         // tangent step kept the bot at whatever radius it was interrupted at
         // (typically ~200u, in melee reach) producing a tiny visible circle.
-        // 1200u parks the caster well outside melee + reactive abilities while
+        // 1800u parks the caster well outside melee + reactive abilities while
         // still inside its own cast range (typically 1500u-2000u for nukes).
-        private const int CASTER_KITE_TARGET_RANGE = 1200;
+        // Combined with the kite commitment below this produces a visibly
+        // wide arc instead of the previous "spinning in place" pattern.
+        private const int CASTER_KITE_TARGET_RANGE = 1800;
+
+        // Once a kite step is committed, the bot keeps walking toward the
+        // computed destination for this many ms before being allowed to
+        // recompute. Without this, every Think tick re-derives a fresh
+        // destination from the current (chasing) mob position, which makes
+        // the bot zig-zag in tiny ~200u steps instead of actually completing
+        // the orbit move. 1800ms ≈ enough to cross ~600u at player speed,
+        // which combined with the new orbit radius produces a visible wide
+        // arc the user expects.
+        private const int CASTER_KITE_COMMIT_MS = 1800;
+
+        // The committed destination + expiry. Reset to null/0 when the bot
+        // arrives, the threat dies/becomes invalid, or the commitment lapses.
+        private Point3D _kiteCommittedDestination;
+        private long _kiteCommittedUntilTick;
+        private GameLiving _kiteCommittedThreat;
+
+        /// <summary>
+        /// True while the bot is actively executing a kite step it committed
+        /// to and hasn't yet reached (or the commit timer hasn't lapsed).
+        /// Callers in Think() check this to skip the cast attempt — if we
+        /// re-enter the spell loop mid-kite we just get interrupted again
+        /// and the visible circle stays tiny.
+        /// </summary>
+        public bool IsKiteCommitted
+        {
+            get
+            {
+                if (_kiteCommittedDestination == null)
+                    return false;
+                if (GameLoop.GameLoopTime >= _kiteCommittedUntilTick)
+                    return false;
+                if (_kiteCommittedThreat == null || !_kiteCommittedThreat.IsAlive)
+                    return false;
+                // Within 200u of the destination we treat it as reached so
+                // the bot can resume casting from the new orbit position.
+                int dx = _kiteCommittedDestination.X - Body.X;
+                int dy = _kiteCommittedDestination.Y - Body.Y;
+                if (dx * dx + dy * dy < 200 * 200)
+                    return false;
+                return true;
+            }
+        }
 
         private bool TryShortKiteStep(int distance)
         {
@@ -3269,6 +3358,16 @@ namespace DOL.AI.Brain
                 return false;
             if (Body.IsCasting)
                 return false; // don't break our own cast
+
+            // If we're already mid-kite and the destination is still valid,
+            // keep walking to it rather than recomputing a fresh (smaller)
+            // step against the now-closer mob. This is what produces the
+            // user-visible wide arc instead of the previous tiny circle.
+            if (IsKiteCommitted)
+            {
+                Body.WalkTo(_kiteCommittedDestination, Body.MaxSpeed);
+                return true;
+            }
 
             // Group-aware kite: bot sidesteps tangentially (keeps both threat
             // and group in line of sight) AND retreats radially so the orbit
@@ -3319,7 +3418,15 @@ namespace DOL.AI.Brain
             if (anchor != Body && anchorDistAfter > KITE_MAX_DISTANCE_FROM_ANCHOR)
                 return false;
 
-            Body.WalkTo(new Point3D(dest_x, dest_y, Body.Z), Body.MaxSpeed);
+            // Commit to this destination for ~1.8s so subsequent ticks don't
+            // recompute a fresh (and smaller) destination against the now-
+            // closer mob. The IsKiteCommitted gate above intercepts the next
+            // re-entry and keeps the bot walking toward this point.
+            _kiteCommittedDestination = new Point3D(dest_x, dest_y, Body.Z);
+            _kiteCommittedUntilTick = GameLoop.GameLoopTime + CASTER_KITE_COMMIT_MS;
+            _kiteCommittedThreat = threat;
+
+            Body.WalkTo(_kiteCommittedDestination, Body.MaxSpeed);
             return true;
         }
 
@@ -3507,6 +3614,62 @@ namespace DOL.AI.Brain
                 positional = eOpeningPosition.Back;
 
             return positional;
+        }
+
+        /// <summary>
+        /// Get the controlled pet body if we have one and it's alive. Null
+        /// otherwise. Centralised so the caller doesn't have to chain the
+        /// null/IsAlive checks on every read.
+        /// </summary>
+        public GameNPC GetAlivePet()
+        {
+            if (Body?.ControlledBrain?.Body is GameNPC pet && pet.IsAlive
+                && pet.ObjectState == GameObject.eObjectState.Active)
+                return pet;
+            return null;
+        }
+
+        /// <summary>
+        /// Drive the controlled pet into combat-ready posture:
+        ///  * Aggression state Aggressive so the pet engages on its own.
+        ///  * Walk state Follow so it stays with us between commands.
+        ///  * Target pushed both into the order slot AND the aggro list so
+        ///    CalculateNextAttackTarget keeps picking it after each tick
+        ///    (m_orderAttackTarget can be cleared by AttackData routing).
+        ///  * Cast a hard `Attack(target)` to drop any prior cast and pivot
+        ///    onto the new target.
+        /// Safe to call every tick: idempotent when state is already correct.
+        /// </summary>
+        protected void EnsurePetCombatReady(GameObject target)
+        {
+            if (Body?.ControlledBrain is not ControlledMobBrain petBrain)
+                return;
+            if (petBrain.Body == null || !petBrain.Body.IsAlive)
+                return;
+
+            // Force Aggressive: the engine default for new pets is Defensive
+            // (only attacks after being attacked). For caster Mimics we want
+            // the pet to play the role of the bot's auto-attack, so it must
+            // be Aggressive — otherwise the pet just stands at heel until a
+            // mob happens to swing at it.
+            if (petBrain.AggressionState != eAggressionState.Aggressive)
+                petBrain.AggressionState = eAggressionState.Aggressive;
+
+            if (petBrain.WalkState != eWalkState.Follow)
+                petBrain.Follow(Body);
+
+            if (target is GameLiving living
+                && living.IsAlive
+                && living.ObjectState == GameObject.eObjectState.Active
+                && GameServer.ServerRules.IsAllowedToAttack(petBrain.Body, living, true))
+            {
+                // Add to the pet's own aggro list so the next tick's
+                // CalculateNextAttackTarget keeps picking this mob even if
+                // m_orderAttackTarget was cleared (e.g. when the pet took a
+                // hit from a different attacker).
+                petBrain.AddToAggroList(living, 1);
+                petBrain.Attack(living);
+            }
         }
 
         private Point2D GetStylePositionPoint(GameLiving living, eOpeningPosition positional)
@@ -5601,6 +5764,17 @@ namespace DOL.AI.Brain
 
                 #endregion
 
+                // Permanent-pet summons: one pet at a time. Previously only
+                // the explicit list below was gated, and SummonElemental (the
+                // Cabalist basic pet) plus SummonHealingElemental,
+                // SummonJuggernaut (Cabalist RR5) and SummonMonster (Heretic
+                // rez-summon) fell through to the default branch where target
+                // would stay null and the cast was silently skipped — except
+                // when the spell went through the Offensive path, where the
+                // bot kept re-summoning every cooldown tick. Add the missing
+                // entries here so a single ControlledBrain check covers every
+                // permanent-pet caster (Cabalist, Necro, BD commander,
+                // Spiritmaster, Enchanter, Heretic, Druid hp-pet).
                 case eSpellType.SummonCommander:
                 case eSpellType.SummonDruidPet:
                 case eSpellType.SummonHunterPet:
@@ -5608,8 +5782,12 @@ namespace DOL.AI.Brain
                 case eSpellType.SummonUnderhill:
                 case eSpellType.SummonSimulacrum:
                 case eSpellType.SummonSpiritFighter:
+                case eSpellType.SummonElemental:
+                case eSpellType.SummonHealingElemental:
+                case eSpellType.SummonJuggernaut:
+                case eSpellType.SummonMonster:
                 {
-                    if (Body.ControlledBrain != null)
+                    if (Body.ControlledBrain != null && Body.ControlledBrain.Body != null && Body.ControlledBrain.Body.IsAlive)
                         break;
 
                     target = Body;
