@@ -143,6 +143,23 @@ namespace DOL.GS.Scripts
             // hard-coded base class spec list only, ignoring our spec table.
             RefreshSpecDependantSkills(false);
 
+            // Same gate problem for SpendSpecPoints + SetCasterSpells/SetSpells.
+            // OnLevelUp also runs these, so a fresh /mcreate'd mimic ended up
+            // with every spec at level 0 and an empty Body.Spells list. The brain
+            // then fell back to the GameNPC default spell pool — which for
+            // Sorcerer / Theurgist / Wizard etc. is whatever the parent NPC
+            // template carried, NOT the class's actual spells. Spend the spec
+            // points now (level 0 -> Level), re-run RefreshSpecDependantSkills
+            // so newly-unlocked spell lines (which depend on the post-spend
+            // spec levels) are picked up, and finally build Body.Spells via
+            // the right path for the class type.
+            SpendSpecPoints(level, 0);
+            RefreshSpecDependantSkills(false);
+            if (CharacterClass.ClassType == eClassType.ListCaster)
+                SetCasterSpells();
+            else
+                SetSpells();
+
             SetWeapons();
             SetShield();
             SetRanged();
