@@ -188,9 +188,11 @@ namespace DOL.GS.Scripts
 
                 m_masterTimer = null;
 
+                // Iterate snapshots so we don't race with the spawner's task
+                // pool, which mutates _mimics under lock from CreateMimic.
                 if (m_albSpawner != null)
                 {
-                    foreach (MimicNPC mimic in m_albSpawner.Mimics)
+                    foreach (MimicNPC mimic in m_albSpawner.GetMimicsSnapshot())
                         mimic.Delete();
 
                     m_albSpawner.Delete();
@@ -199,7 +201,7 @@ namespace DOL.GS.Scripts
 
                 if (m_hibSpawner != null)
                 {
-                    foreach (MimicNPC mimic in m_hibSpawner.Mimics)
+                    foreach (MimicNPC mimic in m_hibSpawner.GetMimicsSnapshot())
                         mimic.Delete();
 
                     m_hibSpawner.Delete();
@@ -208,7 +210,7 @@ namespace DOL.GS.Scripts
 
                 if (m_midSpawner != null)
                 {
-                    foreach (MimicNPC mimic in m_midSpawner.Mimics)
+                    foreach (MimicNPC mimic in m_midSpawner.GetMimicsSnapshot())
                         mimic.Delete();
 
                     m_midSpawner.Delete();
@@ -226,12 +228,17 @@ namespace DOL.GS.Scripts
                     ResetMaxMimics();
                 }
 
-                int totalMimics = m_albSpawner.Mimics.Count + m_hibSpawner.Mimics.Count + m_midSpawner.Mimics.Count;
+                // Use the locked Count accessor — the raw .Count read can
+                // tear when the spawn task pool is mid-Add.
+                int albCount = m_albSpawner.MimicsCount;
+                int hibCount = m_hibSpawner.MimicsCount;
+                int midCount = m_midSpawner.MimicsCount;
+                int totalMimics = albCount + hibCount + midCount;
                 if (log.IsInfoEnabled)
                 {
-                    log.Info("Alb: " + m_albSpawner.Mimics.Count + "/" + m_currentMaxAlb);
-                    log.Info("Hib: " + m_hibSpawner.Mimics.Count + "/" + m_currentMaxHib);
-                    log.Info("Mid: " + m_midSpawner.Mimics.Count + "/" + m_currentMaxMid);
+                    log.Info("Alb: " + albCount + "/" + m_currentMaxAlb);
+                    log.Info("Hib: " + hibCount + "/" + m_currentMaxHib);
+                    log.Info("Mid: " + midCount + "/" + m_currentMaxMid);
                     log.Info("Total Mimics: " + totalMimics + "/" + m_currentMaxTotalMimics);
                 }
 
@@ -317,19 +324,21 @@ namespace DOL.GS.Scripts
             {
                 List<MimicNPC> masterList = new List<MimicNPC>();
 
-                foreach (MimicNPC mimic in m_albSpawner.Mimics)
+                // Snapshot each spawner under its own lock so the task-pool
+                // spawn path (Add under lock) can't tear the iterator.
+                foreach (MimicNPC mimic in m_albSpawner.GetMimicsSnapshot())
                 {
                     if (mimic != null && mimic.ObjectState == GameObject.eObjectState.Active && mimic.ObjectState != GameObject.eObjectState.Deleted)
                         masterList.Add(mimic);
                 }
 
-                foreach (MimicNPC mimic in m_hibSpawner.Mimics)
+                foreach (MimicNPC mimic in m_hibSpawner.GetMimicsSnapshot())
                 {
                     if (mimic != null && mimic.ObjectState == GameObject.eObjectState.Active && mimic.ObjectState != GameObject.eObjectState.Deleted)
                         masterList.Add(mimic);
                 }
 
-                foreach (MimicNPC mimic in m_midSpawner.Mimics)
+                foreach (MimicNPC mimic in m_midSpawner.GetMimicsSnapshot())
                 {
                     if (mimic != null && mimic.ObjectState == GameObject.eObjectState.Active && mimic.ObjectState != GameObject.eObjectState.Deleted)
                         masterList.Add(mimic);

@@ -289,11 +289,13 @@ namespace DOL.GS.Spells
             if (player == null) return;
             MessageToLiving((GameLiving)player, "You are moving. Your concentration fades!", eChatType.CT_SpellResisted);
             GameSpellEffect effect = SpellHandler.FindEffectOnTarget(m_target, "Loockout");
+            // effect.Cancel(false) already invokes OnEffectExpires which removes the
+            // Skill_Stealth buff and unregisters the move handlers — invoking
+            // OnEffectExpires again would double-decrement the buff and double-remove
+            // the handlers.
             if (effect != null) effect.Cancel(false);
             IGameEffect effect2 = SpellHandler.FindStaticEffectOnTarget(Caster, typeof(LoockoutOwner));
             if (effect2 != null) effect2.Cancel(false);
-            if (effect != null)
-                OnEffectExpires(effect, true);
         }
         public LoockoutSpellHandler(GameLiving caster, Spell spell, SpellLine line) : base(caster, spell, line) { }
     }

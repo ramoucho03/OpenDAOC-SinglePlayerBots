@@ -221,6 +221,8 @@ namespace DOL.GS
 
         public bool RemoveMember(GameLiving living)
         {
+            bool disbandNow;
+
             lock (_groupMembersLock)
             {
                 if (!_groupMembers.Remove(living))
@@ -229,9 +231,14 @@ namespace DOL.GS
                 living.Group = null;
                 living.GroupIndex = 0xFF;
 
-                if (_groupMembers.Count < 1)
-                    DisbandGroup();
+                // Defer DisbandGroup() until after we release the lock — it
+                // re-acquires _groupMembersLock and System.Threading.Lock is
+                // not reentrant, so calling it here would deadlock.
+                disbandNow = _groupMembers.Count < 1;
             }
+
+            if (disbandNow)
+                DisbandGroup();
 
             SendMessageToGroupMembers($"{living.Name} has left the group.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
 
@@ -329,14 +336,20 @@ namespace DOL.GS
                 player.Notify(GamePlayerEvent.LeaveGroup, player);
             }
 
+            // Snapshot the lone remaining member (if any) under the lock,
+            // then drop the lock before recursing. RemoveMember re-enters
+            // _groupMembersLock and System.Threading.Lock is not reentrant,
+            // so holding the lock here would deadlock the group when its
+            // second-to-last member leaves.
+            GameLiving lastMember = null;
+
             lock (_groupMembersLock)
             {
                 int memberCount = _groupMembers.Count;
 
                 if (memberCount == 1)
                 {
-                    // Disband the group.
-                    _ = RemoveMember(_groupMembers[0]);
+                    lastMember = _groupMembers[0];
                 }
                 else if (memberCount > 1 && LivingLeader == living)
                 {
@@ -348,6 +361,9 @@ namespace DOL.GS
                     SendMessageToGroupMembers($"{LivingLeader.Name} is the new group leader.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
                 }
             }
+
+            if (lastMember != null)
+                _ = RemoveMember(lastMember);
 
             UpdateGroupIndexes();
             UpdateGroupWindow();
@@ -627,7 +643,7 @@ namespace DOL.GS
 
         public bool IsGroupInCombat()
         {
-            lock (_groupMembers)
+            lock (_groupMembersLock)
             {
                 return _groupMembers.Any(static m => m.InCombat);
             }
@@ -635,7 +651,7 @@ namespace DOL.GS
 
         public bool IsInTheGroup(GameLiving living)
         {
-            lock (_groupMembers)
+            lock (_groupMembersLock)
             {
                 return _groupMembers.Contains(living);
             }

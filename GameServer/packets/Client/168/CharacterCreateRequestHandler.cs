@@ -948,7 +948,20 @@ namespace DOL.GS.PacketHandler.Client.v168
 
                 ICharacterClass charClass = ScriptMgr.FindCharacterClass(ch.Class);
 
-                if(!charClass.EligibleRaces.Exists(s => (int)s.ID == ch.Race))
+                if (charClass == null)
+                {
+                    // Should never happen because of the Enum.IsDefined check
+                    // performed before this method, but if it ever does we must
+                    // not NPE on `charClass.EligibleRaces` below — that swallowed
+                    // the real problem inside the generic catch and just reported
+                    // "invalid character" with no usable info. Treat as invalid
+                    // and log clearly so the missing class script is surfaced.
+                    if (log.IsErrorEnabled)
+                        log.ErrorFormat("No CharacterClass with ID {0} found on character creation from Account: {1}", ch.Class, ch.AccountName);
+
+                    valid = false;
+                }
+                else if (!charClass.EligibleRaces.Exists(s => (int)s.ID == ch.Race))
                 {
                     if (log.IsWarnEnabled)
                         log.WarnFormat("Wrong race: {0}, class:{1} on character creation from Account: {2}", ch.Race, ch.Class, ch.AccountName);

@@ -162,8 +162,14 @@ namespace DOL.GS.Spells
 			var list = GameLoop.GetListForTick<GameLiving>();
 			GameLiving target = castTarget as GameLiving;
 
-			//if (target == null || Spell.Range == 0)
-			//	target = Caster;
+			// Fall back to caster when target is missing — otherwise the
+			// GetPlayersInRadius / GetNPCsInRadius calls below NPE (see MonsterDisease
+			// just below which already does this guard).
+			if (target == null || Spell.Range == 0)
+				target = Caster;
+
+			if (target == null)
+				return list;
 
 			foreach (GamePlayer player in target.GetPlayersInRadius((ushort)Spell.Radius))
 			{

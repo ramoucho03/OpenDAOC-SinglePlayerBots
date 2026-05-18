@@ -18,17 +18,20 @@ namespace DOL.GS.RealmAbilities
 
         public override void Execute(GameLiving living)
         {
-            GamePlayer player = living as GamePlayer;
             if (CheckPreconditions(living, DEAD | SITTING | STEALTHED)) return;
-			if (player.EffectList.CountOfType<AdrenalineRushEffect>() > 0)
+
+            GamePlayer player = living as GamePlayer;
+            if (player == null)
+                return;
+
+            if (player.EffectList.CountOfType<AdrenalineRushEffect>() > 0)
             {
                 player.Out.SendMessage("You already have an effect of that type!", eChatType.CT_SpellResisted, eChatLoc.CL_SystemWindow);
+                return;
             }
+
             SendCasterSpellEffectAndCastMessage(living, 7002, true);
-            if (player != null)
-            {
-                new AdrenalineRushEffect(m_duration, m_value).Start(living);
-            }
+            new AdrenalineRushEffect(m_duration, m_value).Start(living);
             DisableSkill(living);
         }
         public override int GetReUseDelay(int level)

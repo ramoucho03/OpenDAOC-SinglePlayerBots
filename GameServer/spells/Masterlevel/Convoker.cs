@@ -682,9 +682,15 @@ namespace DOL.GS.Spells
 			}
 			else
 			{
-				summoned.Flags = 0;
-				m_growTimer.Stop();
-				m_growTimer = null;
+				// Guard against summoned being null/disposed (e.g. effect expired before
+				// titan finished growing) — accessing Flags would NPE.
+				if (summoned != null)
+					summoned.Flags = 0;
+				if (m_growTimer != null)
+				{
+					m_growTimer.Stop();
+					m_growTimer = null;
+				}
 			}
 			return 0;
 		}

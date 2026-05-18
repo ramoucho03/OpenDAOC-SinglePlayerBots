@@ -20,10 +20,5 @@ namespace DOL.GS.RealmAbilities
         {
             return AtlasRAHelpers.GetPropertyEnhancer3AmountForLevel(level);
         }
-
-        public override void OnLevelChange(int oldLevel, int newLevel = 0)
-        {
-            SendUpdates(m_activeLiving);
-        }
     }
 }

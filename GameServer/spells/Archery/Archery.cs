@@ -114,8 +114,13 @@ namespace DOL.GS.Spells
 					}
 					case (int)eShotType.Power:
 					{
-						player = target as GamePlayer;
-						player.Out.SendMessage("A shot penetrated your magic barrier!", eChatType.CT_SpellResisted, eChatLoc.CL_SystemWindow);
+						// Power Shot pierces bladeturn. Only message the target
+						// when it is a player — NPCs with bladeturn would NPE.
+						if (target is GamePlayer)
+						{
+							player = target as GamePlayer;
+							player.Out.SendMessage("A shot penetrated your magic barrier!", eChatType.CT_SpellResisted, eChatLoc.CL_SystemWindow);
+						}
 						ad.AttackResult = eAttackResult.HitUnstyled;
 						bladeturn.End();
 						break;

@@ -71,7 +71,10 @@ namespace DOL.GS.Spells
             if (effect.Owner == null || !effect.Owner.IsAlive)
                 return;
 
-            merchant.AddToWorld();
+            // ctor only assigns merchant when caster is a GamePlayer — skip when null
+            // to avoid NPE if a non-player somehow triggers this spell.
+            if (merchant != null)
+                merchant.AddToWorld();
         }
         public override int OnEffectExpires(GameSpellEffect effect, bool noMessages)
         {
@@ -439,7 +442,7 @@ namespace DOL.GS.Spells
                     }
                 }
             }
-            else
+            else if (player != null)
             {
                 player.Out.SendMessage("You are not a part of a group!", eChatType.CT_System, eChatLoc.CL_SystemWindow);
             }

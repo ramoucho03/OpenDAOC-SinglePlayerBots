@@ -10,7 +10,6 @@ namespace DOL.GS
         public string DisplayedItem = "ItemDisplay";
         public string TempModelID = "TempModelID";
         public string TempModelPrice = "TempModelPrice";
-        private int Chance;
         private Random rnd = new Random();
 
         //placeholder prices
@@ -6834,7 +6833,7 @@ namespace DOL.GS
 
         private void LoopAnimation(GamePlayer player, DbInventoryItem item, GameNPC display,AttackData ad)
         {
-            var _lastAnimation = 0l;
+            var _lastAnimation = 0L;
             while (GameLoop.GameLoopTime < display.SpawnTick )
             {
                 if (GameLoop.GameLoopTime - _lastAnimation > 2000)

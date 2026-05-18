@@ -207,7 +207,10 @@ namespace DOL.GS.Spells
 
             if (target is GamePlayer)
                 ((GamePlayer)target).Out.SendMessage(" You lose " + end + " endurance!", eChatType.CT_System, eChatLoc.CL_SystemWindow);
-            (m_caster as GamePlayer).Out.SendMessage("" + target.Name + " loses " + end + " endurance!", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+            // Storm casters may be NPCs (mimic bots) — guard the player cast or skip
+            // the caster message entirely to avoid NPE.
+            if (m_caster is GamePlayer casterPlayer)
+                casterPlayer.Out.SendMessage("" + target.Name + " loses " + end + " endurance!", eChatType.CT_System, eChatLoc.CL_SystemWindow);
         }
 
         public override int OnEffectExpires(GameSpellEffect effect, bool noMessages)

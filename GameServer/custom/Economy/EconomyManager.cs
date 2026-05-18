@@ -179,6 +179,14 @@ namespace DOL.GS.Economy
                 if (!int.TryParse(row.Value, out int currentValue))
                     return;
 
+                // Preserve admin overrides: only migrate when Value still equals DefaultValue
+                // (i.e. the admin never touched it via /serverproperties). Without this guard,
+                // an admin who intentionally set the same integer that happens to coincide
+                // with a prior default (e.g. economy_initial_batch_size = 200, which is also
+                // one of our oldDefaults) would silently lose their override on every restart.
+                if (!string.Equals(row.Value, row.DefaultValue, StringComparison.Ordinal))
+                    return;
+
                 bool matchesOldDefault = false;
                 for (int i = 0; i < oldDefaults.Length; i++)
                 {
@@ -824,6 +832,22 @@ namespace DOL.GS.Economy
 
             if (EconomyConfig.ECONOMY_VERBOSE_LOG && log.IsDebugEnabled && evaluated > 0)
                 log.Debug($"Economy: player-purchase tick evaluated {evaluated} listings, bought {boughtThisTick}.");
+        }
+
+        /// <summary>
+        /// Invalidates the player-listings snapshot so the next PlayerPurchaseTick
+        /// re-scans MarketCache. Safe to call from any thread; cheap. Intended to be
+        /// invoked by player consignment add/remove paths so the bot purchase loop
+        /// picks up fresh listings without waiting for the TTL. Until those hooks are
+        /// wired, the TTL is the only invalidation path - which is functionally safe
+        /// (MarketCache.RemoveItem deduplicates by reference) but means a brand-new
+        /// player listing can wait up to ECONOMY_PLAYER_LISTINGS_CACHE_SECONDS before
+        /// being considered by the bot buyer.
+        /// </summary>
+        public static void InvalidatePlayerListingsCache()
+        {
+            lock (_playerListingsCacheLock)
+                _playerListingsCacheUtcSec = 0;
         }
 
         /// <summary>

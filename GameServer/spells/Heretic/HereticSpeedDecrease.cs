@@ -98,7 +98,10 @@ namespace DOL.GS.Spells
 
 			ECSGameTimer timer = effect.Owner.TempProperties.GetProperty<ECSGameTimer>(EFFECT_PROPERTY);
 			effect.Owner.TempProperties.RemoveProperty(EFFECT_PROPERTY);
-			timer.Stop();
+			// Guard against a double-expire or an expire that fires before OnEffectStart
+			// could install the timer (timer would then be null).
+			if (timer != null)
+				timer.Stop();
 
 			effect.Owner.BuffBonusMultCategory1.Remove((int)eProperty.MaxSpeed, effect);
 			effect.Owner.OnMaxSpeedChange();

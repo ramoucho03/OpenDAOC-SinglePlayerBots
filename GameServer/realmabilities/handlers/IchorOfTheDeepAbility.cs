@@ -1,6 +1,5 @@
 using System;
 using DOL.Database;
-using DOL.Events;
 using DOL.GS.Effects;
 using DOL.GS.PacketHandler;
 
@@ -10,12 +9,9 @@ namespace DOL.GS.RealmAbilities
 	{
 		public IchorOfTheDeepAbility(DbAbility dba, int level) : base(dba, level) { }
 
-		private ECSGameTimer m_expireTimerID;
-		private ECSGameTimer m_rootExpire;
 		private int dmgValue = 0;
 		private int duration = 0;
 		private GamePlayer caster;
-		private ECSGameEffect _ichorEffect;
 
 		public override void Execute(GameLiving living)
 		{
@@ -79,14 +75,6 @@ namespace DOL.GS.RealmAbilities
 			if (caster != target && caster.Realm == target.Realm)
 			{
 				caster.Out.SendMessage("You can't attack a member of your realm!", eChatType.CT_SpellResisted, eChatLoc.CL_SystemWindow);
-				caster.DisableSkill(this, 3 * 1000);
-				return;
-			}
-
-			// Cannot use ability if timer is not expired
-			if (m_expireTimerID != null && m_expireTimerID.IsAlive)
-			{
-				caster.Out.SendMessage("You must wait" + m_expireTimerID.TimeUntilElapsed / 1000 + " seconds to recast this type of ability!", eChatType.CT_Spell, eChatLoc.CL_SystemWindow);
 				caster.DisableSkill(this, 3 * 1000);
 				return;
 			}
@@ -166,42 +154,6 @@ namespace DOL.GS.RealmAbilities
 		{
 			int modDamage = (int)Math.Round((decimal) (initialDamage * ((500-(initTarget.GetDistance(new Point2D(aetarget.X, aetarget.Y)))) / 500.0)));
 			return modDamage;
-		}
-
-		protected virtual int RootExpires(ECSGameTimer timer)
-		{
-			if (timer.Owner is GameLiving living && _ichorEffect != null)
-			{
-				living.BuffBonusMultCategory1.Remove((int) eProperty.MaxSpeed, _ichorEffect);
-				living.OnMaxSpeedChange();
-			}
-
-			timer.Stop();
-			return 0;
-		}
-
-		/// <summary>
-		/// Handles attack on buff owner
-		/// </summary>
-		protected virtual void OnAttacked(DOLEvent e, object sender, EventArgs arguments)
-		{
-			if (arguments is not AttackedByEnemyEventArgs attackArgs)
-				return;
-
-			if (sender is not GameLiving living)
-				return;
-
-			if (_ichorEffect == null)
-				return;
-
-			switch (attackArgs.AttackData.AttackResult)
-			{
-				case eAttackResult.HitStyle:
-				case eAttackResult.HitUnstyled:
-					living.BuffBonusMultCategory1.Remove((int) eProperty.MaxSpeed, _ichorEffect);
-					living.OnMaxSpeedChange();
-					break;
-			}
 		}
 
 		protected void IchorEffect(GameLiving centerTarget, GameLiving aoeTarget)

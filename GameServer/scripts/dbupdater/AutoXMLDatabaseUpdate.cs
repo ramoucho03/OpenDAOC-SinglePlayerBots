@@ -173,7 +173,7 @@ namespace DOL.GS.DatabaseUpdate
 					string hashStr = null;
 					using (var stream = fi.OpenRead())
 				    {
-				        var sha = new SHA256Managed();
+				        using var sha = SHA256.Create();
 				        var hash = sha.ComputeHash(stream);
 				        hashStr = BitConverter.ToString(hash).Replace("-", String.Empty);
 				    }

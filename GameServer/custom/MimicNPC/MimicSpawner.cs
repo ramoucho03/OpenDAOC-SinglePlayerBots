@@ -11,6 +11,27 @@ namespace DOL.GS.Scripts
     {
         public bool IsRunning { get { return _timer != null && _timer.IsAlive; } }
         public List<MimicNPC> Mimics { get { return _mimics; } }
+        /// <summary>
+        /// Thread-safe snapshot of the spawner's tracked mimics. Callers that
+        /// iterate must use this instead of <see cref="Mimics"/> directly —
+        /// the raw list is mutated under <c>lock(_mimics)</c> by the spawn
+        /// task pool, so foreach over the bare reference throws
+        /// InvalidOperationException ("Collection was modified") when a
+        /// concurrent spawn lands mid-iteration.
+        /// </summary>
+        public List<MimicNPC> GetMimicsSnapshot()
+        {
+            lock (_mimics)
+                return new List<MimicNPC>(_mimics);
+        }
+        public int MimicsCount
+        {
+            get
+            {
+                lock (_mimics)
+                    return _mimics.Count;
+            }
+        }
         public int SpawnCount { get { return _spawnCount; } }
         public bool SpawnAndStop { get; set; }
         public int SpawnCountMax => _spawnCountMax;
@@ -53,7 +74,10 @@ namespace DOL.GS.Scripts
         private int _timerIntervalMin = 1000;
         private int _timerIntervalMax = 2000;
         private int spawningGroupSize;
-        private bool _isRunning = false;
+        // Written from the SpawnMimics task (thread pool) and read from
+        // TimerCallback (ECS timer thread); needs volatile so the timer
+        // thread observes the reset that ends each spawn batch.
+        private volatile bool _isRunning = false;
 
         private Group group;
 
@@ -254,7 +278,7 @@ namespace DOL.GS.Scripts
             player.Out.SendMessage(
                 "---------------------------------------\n" +
                 "Running: " + IsRunning + "\n" +
-                "Spawns: " + _mimics.Count + "/" + _spawnCountMax + "\n\n" +
+                "Spawns: " + MimicsCount + "/" + _spawnCountMax + "\n\n" +
                 "[Toggle]\n\n" +
                 //"[List]\n\n" +
                 "[Delete]"
@@ -344,6 +368,27 @@ namespace DOL.GS.Scripts
         {
             if (_timer != null && !_timer.IsAlive)
                 _timer.Start();
+        }
+
+        /// <summary>
+        /// Stops the tick timer and removes this spawner from the static
+        /// <see cref="MimicSpawning.MimicSpawners"/> registry when it leaves
+        /// the world. Without this, every BG cycle leaked the 3 realm spawners
+        /// (and their stopped-but-referenced ECSGameTimer fields) into the
+        /// static list forever — MimicBattleground.Clear() only called
+        /// Stop()/Delete() and never touched the registry.
+        /// </summary>
+        public override bool RemoveFromWorld()
+        {
+            if (!base.RemoveFromWorld())
+                return false;
+
+            if (_timer != null && _timer.IsAlive)
+                _timer.Stop();
+            _timer = null;
+
+            MimicSpawning.MimicSpawners.Remove(this);
+            return true;
         }
     }
 }
