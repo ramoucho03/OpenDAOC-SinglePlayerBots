@@ -744,6 +744,15 @@ namespace DOL.AI.Brain
             GameObject oldTarget = Body.TargetObject;
             (Spell spell, GameLiving target) spellToCast = spellsToCast[0];
             Body.TargetObject = spellToCast.target;
+
+            // Instrument spells (Minstrel/Bard songs) require Distance slot —
+            // switch transparently so the cast actually fires. The previous
+            // code rejected ALL NeedInstrument spells in CanCastDefensiveSpell
+            // ("TODO: Handle instrument spells"), so a Minstrel mimic never
+            // pulsed Speed/Mana-regen/Health-regen songs in his life.
+            if (spellToCast.spell.NeedInstrument && Body.ActiveWeaponSlot != eActiveWeaponSlot.Distance)
+                Body.SwitchWeapon(eActiveWeaponSlot.Distance);
+
             bool cast = Body.CastSpell(spellToCast.spell, MimicBody.GetSpellLineForSpell(spellToCast.spell));
 
             if (Debug)
@@ -764,12 +773,20 @@ namespace DOL.AI.Brain
             {
                 target = null;
 
-                // TODO: Handle instrument spells
-                if (spell.NeedInstrument || (!spell.Uninterruptible && Body.IsBeingInterrupted) ||
+                // Instrument spells are now handled (see CastSpell switch
+                // above) — only block when we genuinely can't, e.g. mid-
+                // interrupt on a non-uninterruptible spell or on cooldown.
+                // We still skip instrument spells if we have no equipped
+                // instrument at all (rare for a properly outfitted Mimic but
+                // possible in edge cases like an inventory swap).
+                if ((!spell.Uninterruptible && Body.IsBeingInterrupted) ||
                     (spell.HasRecastDelay && Body.GetSkillDisabledDuration(spell) > 0))
                 {
                     return false;
                 }
+
+                if (spell.NeedInstrument && Body.Inventory?.GetItem(eInventorySlot.DistanceWeapon) == null)
+                    return false;
 
                 target = FindTargetForDefensiveSpell(spell);
                 return target != null;

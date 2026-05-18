@@ -11,6 +11,7 @@ using DOL.GS.Scripts.AI.Strategies.Builtin;
 using DOL.GS.ServerProperties;
 using DOL.GS.SkillHandler;
 using DOL.GS.Spells;
+using DOL.GS.Styles;
 using DOL.Language;
 using Microsoft.Extensions.Configuration.UserSecrets;
 using Microsoft.VisualBasic;
@@ -1699,9 +1700,16 @@ namespace DOL.AI.Brain
         /// </summary>
         private GameLiving ScanPullCandidates(int tier)
         {
-            int conFilter = Body.Group.MimicGroup.ConLevelFilter;
-            Point2D pullFrom = Body.Group.MimicGroup.PullFromPoint;
-            Point3D camp = Body.Group.MimicGroup.CampPoint;
+            // Re-narrow defensively: the caller validated Body.Group and
+            // MimicGroup at entry, but the player can leave the group from
+            // the network thread between ticks, leaving Body.Group null.
+            MimicGroup mg = Body.Group?.MimicGroup;
+            if (mg == null)
+                return null;
+
+            int conFilter = mg.ConLevelFilter;
+            Point2D pullFrom = mg.PullFromPoint;
+            Point3D camp = mg.CampPoint;
 
             int maxPull = GetMaxPullCount();
             bool wantPack = maxPull > 1;
@@ -2141,11 +2149,12 @@ namespace DOL.AI.Brain
             {
                 GameLiving currentFocus = mg.MainAssist?.TargetObject as GameLiving;
                 mg.ValidateCcTargets(cc => IsValidCcTarget(cc) && cc != currentFocus);
-            }
 
-            if (Body.Group.MimicGroup.CcTargetCount > 0)
-            {
-                if (CheckSpells(eCheckSpellType.CrowdControl))
+                // Use the safely-narrowed `mg` from the pattern-matched check
+                // above; the previous `Body.Group.MimicGroup.CcTargetCount`
+                // re-read here would NPE if Group went null between ticks
+                // (member leave during combat).
+                if (mg.CcTargetCount > 0 && CheckSpells(eCheckSpellType.CrowdControl))
                     return;
             }
         }
@@ -2420,10 +2429,16 @@ namespace DOL.AI.Brain
             if (Body?.Group == null || AggroList.Count == 0 || IsHealer)
                 return null;
 
+            // MimicGroup is set lazily; a fresh group right after /mgroup
+            // build hits the AGGRO path before MimicGroup is wired. The old
+            // unguarded read NPE'd in that window.
+            MimicGroup mg = Body.Group.MimicGroup;
+            if (mg == null)
+                return null;
+
             GameLiving best = null;
             int bestScore = int.MaxValue;
             int bestDistance = int.MaxValue;
-            MimicGroup mg = Body.Group.MimicGroup;
             eMimicCombatMode mode = PvPMode ? eMimicCombatMode.PvP : eMimicCombatMode.PvE;
 
             foreach (var pair in AggroList)
@@ -2463,6 +2478,19 @@ namespace DOL.AI.Brain
 
                 if (hostile == Body.TargetObject)
                     score -= 25;
+
+                // Currently mid-cast on a squishy — almost certainly a nuke or
+                // CC about to land. Heavy bonus so the peel/switch path picks
+                // this hostile over a melee swinger on the same victim. Same
+                // reasoning as TryInterruptCastingEnemyWithSlam but expressed
+                // at the scoring layer so any tank (not just one with Slam
+                // available) ends up focusing the caster first.
+                if (hostile.IsCasting
+                    && hostile.CurrentSpellHandler?.Spell != null
+                    && hostile.CurrentSpellHandler.Spell.CastTime > 0)
+                {
+                    score -= 350;
+                }
 
                 if (score < bestScore || (score == bestScore && distance < bestDistance))
                 {
@@ -2746,6 +2774,271 @@ namespace DOL.AI.Brain
             catch { return false; }
 
             return Body.IsEngaging;
+        }
+
+        // ------------------------------------------------------------------
+        // Tank interrupt: Slam a casting enemy.
+        //
+        // Detects an enemy in our aggro list that is currently mid-cast within
+        // melee range, switches our target onto them, and queues a stun style
+        // (Slam first, any other stun-proc style as fallback) so the next
+        // swing interrupts the cast for 9s. This is the highest-impact
+        // contribution a tank can make to group survivability against enemy
+        // casters in PvE/PvP.
+        //
+        // Cheap by design — single AggroList scan, single style-list scan.
+        // Called from a rate-limited binding so we don't churn endurance
+        // trying to slam every tick.
+        // ------------------------------------------------------------------
+        public bool TryInterruptCastingEnemyWithSlam()
+        {
+            if (Body == null || !Body.IsAlive || MimicBody == null)
+                return false;
+
+            if (Body.IsStunned || Body.IsMezzed || Body.IsSitting)
+                return false;
+
+            if (Body.styleComponent == null)
+                return false;
+
+            // Already chambered a style this tick — don't overwrite it.
+            if (Body.styleComponent.NextCombatStyle != null)
+                return false;
+
+            // No point finding a target if we have no stun style to use.
+            Style stunStyle = FindUsableStunStyle();
+            if (stunStyle == null)
+                return false;
+
+            int meleeRange = Body.MeleeAttackRange;
+            GameLiving castingEnemy = null;
+
+            foreach (var pair in AggroList)
+            {
+                GameLiving enemy = pair.Key;
+
+                if (enemy == null
+                    || !enemy.IsAlive
+                    || enemy.ObjectState != GameObject.eObjectState.Active)
+                    continue;
+
+                if (!enemy.IsCasting)
+                    continue;
+
+                // Only worth interrupting a real spell — instant procs and
+                // melee styles also flip IsCasting briefly.
+                if (enemy.CurrentSpellHandler?.Spell == null
+                    || enemy.CurrentSpellHandler.Spell.CastTime <= 0)
+                    continue;
+
+                if (!Body.IsWithinRadius(enemy, meleeRange))
+                    continue;
+
+                castingEnemy = enemy;
+                break;
+            }
+
+            if (castingEnemy == null)
+                return false;
+
+            // Swap target + queue the style. StartAttack covers the case where
+            // we were idle / following from out of range.
+            Body.TargetObject = castingEnemy;
+            Body.styleComponent.NextCombatStyle = stunStyle;
+
+            if (Body.attackComponent != null && !Body.attackComponent.AttackState)
+                Body.StartAttack(castingEnemy);
+
+            return true;
+        }
+
+        // Cheap snapshot for trigger gating: count live hostiles in our
+        // aggro list (no range check, no LoS). Used by the AoE-taunt trigger
+        // so it can skip the heavy action plumbing on single-target pulls.
+        public int CountAggroListAlive()
+        {
+            int n = 0;
+            foreach (var pair in AggroList)
+            {
+                GameLiving enemy = pair.Key;
+                if (enemy == null
+                    || !enemy.IsAlive
+                    || enemy.ObjectState != GameObject.eObjectState.Active)
+                    continue;
+                n++;
+            }
+            return n;
+        }
+
+        // ------------------------------------------------------------------
+        // Tank AoE pressure: queue a multi-target style when surrounded.
+        //
+        // When 3+ hostiles are inside our melee swing radius, we prefer a
+        // style whose proc has Radius > 0 (Polearm Onslaught, Hammer-Boon,
+        // 2H sweeps, etc.) so a single swing applies its effect to every
+        // mob in front of us — boosting threat across the pack rather
+        // than chasing single-target taunts one mob at a time. Falls back
+        // to leaving NextCombatStyle untouched (normal taunt cycle continues)
+        // when the bot's style book has no AoE entry.
+        // ------------------------------------------------------------------
+        public bool TryFireAoeTauntStyle()
+        {
+            if (Body == null || !Body.IsAlive || MimicBody == null)
+                return false;
+
+            if (Body.IsStunned || Body.IsMezzed || Body.IsSitting)
+                return false;
+
+            if (Body.styleComponent == null)
+                return false;
+
+            if (Body.styleComponent.NextCombatStyle != null)
+                return false;
+
+            int meleeRange = Body.MeleeAttackRange;
+            int hostileCount = 0;
+
+            foreach (var pair in AggroList)
+            {
+                GameLiving enemy = pair.Key;
+
+                if (enemy == null
+                    || !enemy.IsAlive
+                    || enemy.ObjectState != GameObject.eObjectState.Active)
+                    continue;
+
+                if (!Body.IsWithinRadius(enemy, meleeRange))
+                    continue;
+
+                hostileCount++;
+
+                if (hostileCount >= 3)
+                    break;
+            }
+
+            if (hostileCount < 3)
+                return false;
+
+            Style aoeStyle = FindUsableAoeStyle();
+            if (aoeStyle == null)
+                return false;
+
+            Body.styleComponent.NextCombatStyle = aoeStyle;
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // Style lookup helpers. Walk the relevant pre-categorised style lists
+        // on MimicNPC (StylesShield, StylesAnytime, …) — they're already
+        // bucketed by usage class, so we never scan the full style book.
+        // ------------------------------------------------------------------
+        private Style FindUsableStunStyle()
+        {
+            AttackData lad = MimicBody?.attackComponent?.attackAction?.LastAttackData;
+            DbInventoryItem weapon = MimicBody?.ActiveWeapon;
+
+            if (weapon == null)
+                return null;
+
+            // Slam (shield slot) first — it's almost always a Tank's best
+            // single-target interrupt.
+            Style best = PickStunStyleFrom(MimicBody.StylesShield, lad, weapon);
+            if (best != null)
+                return best;
+
+            // Anytime stun fallback (Hammer Stun, etc.).
+            return PickStunStyleFrom(MimicBody.StylesAnytime, lad, weapon);
+        }
+
+        private Style FindUsableAoeStyle()
+        {
+            AttackData lad = MimicBody?.attackComponent?.attackAction?.LastAttackData;
+            DbInventoryItem weapon = MimicBody?.ActiveWeapon;
+
+            if (weapon == null)
+                return null;
+
+            Style best = PickAoeStyleFrom(MimicBody.StylesAnytime, lad, weapon);
+            if (best != null) return best;
+
+            best = PickAoeStyleFrom(MimicBody.StylesChain, lad, weapon);
+            if (best != null) return best;
+
+            return PickAoeStyleFrom(MimicBody.StylesDefensive, lad, weapon);
+        }
+
+        private Style PickStunStyleFrom(List<Style> styles, AttackData lad, DbInventoryItem weapon)
+        {
+            if (styles == null)
+                return null;
+
+            for (int i = 0; i < styles.Count; i++)
+            {
+                Style s = styles[i];
+
+                if (!StyleProcInfoIsStun(s))
+                    continue;
+
+                if (!StyleProcessor.CanUseStyle(lad, Body, s, weapon))
+                    continue;
+
+                return s;
+            }
+
+            return null;
+        }
+
+        private Style PickAoeStyleFrom(List<Style> styles, AttackData lad, DbInventoryItem weapon)
+        {
+            if (styles == null)
+                return null;
+
+            for (int i = 0; i < styles.Count; i++)
+            {
+                Style s = styles[i];
+
+                if (!StyleProcInfoIsAoe(s))
+                    continue;
+
+                if (!StyleProcessor.CanUseStyle(lad, Body, s, weapon))
+                    continue;
+
+                return s;
+            }
+
+            return null;
+        }
+
+        private static bool StyleProcInfoIsStun(Style style)
+        {
+            if (style?.Procs == null || style.Procs.Count == 0)
+                return false;
+
+            for (int i = 0; i < style.Procs.Count; i++)
+            {
+                Spell sp = style.Procs[i]?.Spell;
+                if (sp == null)
+                    continue;
+                if (sp.SpellType == eSpellType.StyleStun)
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static bool StyleProcInfoIsAoe(Style style)
+        {
+            if (style?.Procs == null || style.Procs.Count == 0)
+                return false;
+
+            for (int i = 0; i < style.Procs.Count; i++)
+            {
+                Spell sp = style.Procs[i]?.Spell;
+                if (sp?.Radius > 0)
+                    return true;
+            }
+
+            return false;
         }
 
         #endregion MainTank
@@ -3198,11 +3491,29 @@ namespace DOL.AI.Brain
             if (Body.TargetObject != LastTargetObject)
                 ResetFlanking();
 
-            bool isMinstrel = MimicBody.CharacterClass.ID == (int)eCharacterClass.Minstrel;
-            bool isSoloBard = MimicBody.CharacterClass.ID == (int)eCharacterClass.Bard && Body.Group == null;
+            int charClassId = MimicBody.CharacterClass.ID;
+            bool isMinstrel = charClassId == (int)eCharacterClass.Minstrel;
+            bool isSoloBard = charClassId == (int)eCharacterClass.Bard && Body.Group == null;
+            // Skald is the Midgard speed/end song carrier — same instrument
+            // mechanic as Minstrel. Bard solo is also covered. Without this
+            // entry the Skald would never switch back to its weapon after
+            // pulsing a song, OR (more importantly) would swap to melee mid-
+            // pulse and break the song. Treat the three speed-song classes
+            // identically here so the pulse stays alive while idle and the
+            // melee swap happens cleanly when no song is active.
+            bool isSoloSkald = charClassId == (int)eCharacterClass.Skald && Body.Group == null;
 
-            if ((isMinstrel || isSoloBard) && Body.ActiveWeaponSlot != eActiveWeaponSlot.Standard)
+            // Switch to melee weapon ONLY if no instrument pulse song is
+            // active. Songs require the instrument to remain equipped; the
+            // pulsing effect stops the moment we swap. The previous blind
+            // switch every tick prevented a Minstrel/Bard from ever holding
+            // an instrument long enough to fire (let alone maintain) a song.
+            if ((isMinstrel || isSoloBard || isSoloSkald)
+                && Body.ActiveWeaponSlot != eActiveWeaponSlot.Standard
+                && !IsAnyPulseSongActive())
+            {
                 Body.SwitchWeapon(eActiveWeaponSlot.Standard);
+            }
 
             bool inMeleeRange = Body.ActiveWeapon?.Item_Type != (int)eInventorySlot.DistanceWeapon
                 && Body.IsWithinRadius(Body.TargetObject, Body.attackComponent.AttackRange);
@@ -3617,6 +3928,25 @@ namespace DOL.AI.Brain
         }
 
         /// <summary>
+        /// True if at least one active pulse song / pulsing self buff is
+        /// currently maintained on the body. Used by the melee weapon-switch
+        /// logic to avoid breaking an active Minstrel/Bard song by pulling
+        /// the instrument out of the active slot.
+        /// </summary>
+        protected bool IsAnyPulseSongActive()
+        {
+            if (Body?.effectListComponent == null)
+                return false;
+
+            foreach (ECSPulseEffect pulse in Body.effectListComponent.GetPulseEffects())
+            {
+                if (pulse?.SpellHandler?.Spell?.NeedInstrument == true)
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>
         /// Get the controlled pet body if we have one and it's alive. Null
         /// otherwise. Centralised so the caller doesn't have to chain the
         /// null/IsAlive checks on every read.
@@ -3644,8 +3974,21 @@ namespace DOL.AI.Brain
         {
             if (Body?.ControlledBrain is not ControlledMobBrain petBrain)
                 return;
-            if (petBrain.Body == null || !petBrain.Body.IsAlive)
+            GameNPC petBody = petBrain.Body;
+            if (petBody == null || !petBody.IsAlive)
                 return;
+
+            // Region mismatch: if the bot zoned (dungeon entry, teleport, port-
+            // stone, /jump) the pet may have been left behind on the previous
+            // map. The engine doesn't auto-recall it, so commanding Attack on
+            // a target we can see (current region) while the pet is on another
+            // region just wastes ticks and the pet rots there until despawn.
+            // Best effort: snap the pet onto us. The Owner.AddControlledBrain
+            // wiring is already in place — we just need to move the body.
+            if (petBody.CurrentRegion != Body.CurrentRegion)
+            {
+                petBody.MoveTo(Body.CurrentRegion.ID, Body.X, Body.Y, Body.Z, Body.Heading);
+            }
 
             // Force Aggressive: the engine default for new pets is Defensive
             // (only attacks after being attacked). For caster Mimics we want
@@ -3661,7 +4004,7 @@ namespace DOL.AI.Brain
             if (target is GameLiving living
                 && living.IsAlive
                 && living.ObjectState == GameObject.eObjectState.Active
-                && GameServer.ServerRules.IsAllowedToAttack(petBrain.Body, living, true))
+                && GameServer.ServerRules.IsAllowedToAttack(petBody, living, true))
             {
                 // Add to the pet's own aggro list so the next tick's
                 // CalculateNextAttackTarget keeps picking this mob even if
@@ -4525,31 +4868,78 @@ namespace DOL.AI.Brain
             if (Body.Group == null)
                 return false;
 
-            GameLiving target = null;
+            // Two-pass candidate scan:
+            //   1. If any dead group member is within rez range, cast on
+            //      them immediately.
+            //   2. Otherwise, pick the closest dead member in the same
+            //      region and WALK toward them. Without this leg, a healer
+            //      whose group ran on after a wipe never closes the gap to
+            //      the corpses and the rez never fires — this was the most
+            //      common "healers don't rez" complaint in practice.
+            GameLiving inRangeTarget = null;
+            GameLiving closestOutOfRangeTarget = null;
+            int closestSqr = int.MaxValue;
+
             foreach (GameLiving gm in Body.Group.GetMembersInTheGroup())
             {
                 if (gm == null || gm == Body || gm.IsAlive)
                     continue;
-                if (!Body.IsWithinRadius(gm, rezSpell.Range))
+                if (gm.CurrentRegionID != Body.CurrentRegionID)
                     continue;
                 if (IsBeingRezzedByGroup(gm))
                     continue;
 
-                target = gm;
-                break;
+                if (Body.IsWithinRadius(gm, rezSpell.Range))
+                {
+                    inRangeTarget = gm;
+                    break;
+                }
+
+                int dx = gm.X - Body.X;
+                int dy = gm.Y - Body.Y;
+                int sqr = dx * dx + dy * dy;
+                if (sqr < closestSqr)
+                {
+                    closestSqr = sqr;
+                    closestOutOfRangeTarget = gm;
+                }
             }
 
-            if (target == null)
-                return false;
+            // Out-of-range fallback: chase the closest corpse so the rez
+            // can land a couple of ticks from now. Skip if we're tanking
+            // aggro ourselves — moving while a mob is hitting us gets the
+            // healer killed and doesn't save the corpse.
+            if (inRangeTarget == null)
+            {
+                if (closestOutOfRangeTarget == null)
+                    return false;
 
-            // Rez wins priority over whatever the bot was doing. Stop any
-            // current cast or melee swing so the rez can start cleanly.
+                bool selfThreatened = Body.InCombat
+                    && Body.attackComponent?.AttackerTracker?.Count > 0;
+                if (selfThreatened)
+                    return false;
+
+                if (Body.IsCasting)
+                    Body.StopCurrentSpellcast();
+                if (Body.IsAttacking)
+                    Body.StopAttack();
+
+                int rezReach = Math.Max(150, rezSpell.Range - 150);
+                Body.Follow(closestOutOfRangeTarget, rezReach, 8000);
+                return true; // hold the action loop while we close the gap
+            }
+
+            // In range — rez wins priority over whatever else we were
+            // doing. Cancel any in-flight cast/swing/follow so the rez
+            // starts cleanly on this tick.
             if (Body.IsCasting)
                 Body.StopCurrentSpellcast();
             if (Body.IsAttacking)
                 Body.StopAttack();
+            if (Body.IsMoving)
+                Body.StopFollowing();
 
-            Body.TargetObject = target;
+            Body.TargetObject = inRangeTarget;
             return Body.CastSpell(rezSpell, MimicBody.GetSpellLineForSpell(rezSpell));
         }
 
@@ -5519,8 +5909,15 @@ namespace DOL.AI.Brain
                 case eSpellType.Bladeturn when spell.IsPulsing:
                 break;
 
-                // TODO: Fix damageshields with low duration.
+                // Long-duration damage shield self-buff (Valewalker Arboreal
+                // Path, Druid pet shield, etc.). The old code had an empty
+                // break here — bot would never cast Arboreal Shield, leaving
+                // the Valewalker without its signature mitigation. We now
+                // cast on self when the effect isn't already up; the buffs
+                // section below takes care of the cast/refresh.
                 case eSpellType.DamageShield when spell.Duration == 60000:
+                if (!LivingHasEffect(Body, spell))
+                    target = Body;
                 break;
 
                 case eSpellType.MesmerizeDurationBuff when spell.IsPulsing:

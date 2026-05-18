@@ -56,6 +56,33 @@ namespace DOL.GS.Scripts.AI.Strategies.Builtin
                 cooldownMs: 5_000,
                 exclusive: false);
 
+            // Interrupt-Slam: highest non-emergency priority (82). When an
+            // enemy in melee range starts a cast, we want to queue a stun
+            // style THIS tick — waiting for the next pressure-cycle slot
+            // could miss the cast window entirely. Cooldown 30 s ≈ Slam's
+            // base reuse so we don't try every second when the style is
+            // disabled. Non-exclusive: queueing NextCombatStyle doesn't
+            // touch the taunt rotation, they can co-tick.
+            yield return new BotTriggerActionBinding(
+                new EnemyCastingInMeleeTrigger(),
+                new TankInterruptSlamAction(),
+                priority: 82,
+                cooldownMs: 30_000,
+                exclusive: false);
+
+            // AoE pressure: when 3+ hostiles are on us, prefer encompassing
+            // styles for the next swing. 2 s cooldown mirrors the typical
+            // anytime-style cadence — long enough that we still alternate
+            // with regular taunts when only one mob is in melee, short
+            // enough to chain AoE swings during a real add-storm. Non-
+            // exclusive for the same reason as interrupt-Slam.
+            yield return new BotTriggerActionBinding(
+                new ManyMobsAggroTrigger(threshold: 3),
+                new TankAoeTauntAction(),
+                priority: 75,
+                cooldownMs: 2_000,
+                exclusive: false);
+
             // Highest-priority recovery cycle: fires the defensive cycle
             // (which picks the best Taunt spell + Taunt style + shield slam)
             // immediately when the tank notices they've lost aggro. Cooldown

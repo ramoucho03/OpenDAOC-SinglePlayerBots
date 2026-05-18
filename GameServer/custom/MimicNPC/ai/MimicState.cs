@@ -145,6 +145,11 @@ namespace DOL.AI.Brain
         {
             _brain.AlreadyCheckedHeals = false;
 
+            // Rez before anything else — the bot might be waking up after
+            // a group wipe, with corpses already on the ground.
+            if (_brain.CheckResurrect())
+                return;
+
             if (!Init)
             {
                 _brain.AggroLevel = 100;
@@ -221,6 +226,13 @@ namespace DOL.AI.Brain
         public override void Think()
         {
             _brain.AlreadyCheckedHeals = false;
+
+            // Rez before everything else — a dead group member dropped on
+            // the last fight and the bot just settled into idle without
+            // anyone clearing the corpse. Without this call site, a healer
+            // who finished combat into Idle would never rez fallen members.
+            if (_brain.CheckResurrect())
+                return;
 
             // Idle still means "no current threat" but we DO want to react if
             // a group member opens fire on something — without this, a bot
@@ -677,6 +689,11 @@ namespace DOL.AI.Brain
         public override void Think()
         {
             _brain.AlreadyCheckedHeals = false;
+
+            // Rez before roaming — a wandering bot should still go pick up
+            // dead group members it walks past.
+            if (_brain.CheckResurrect())
+                return;
 
             if (_brain.PreventCombat)
                 return;
@@ -1922,6 +1939,12 @@ namespace DOL.AI.Brain
         public override void Think()
         {
             _brain.AlreadyCheckedHeals = false;
+
+            // Rez before patrol heals — a dead member on the route should
+            // not be skipped just because the bot is wandering.
+            if (_brain.CheckResurrect())
+                return;
+
             if (_brain.CheckHeals())
                 return;
 
