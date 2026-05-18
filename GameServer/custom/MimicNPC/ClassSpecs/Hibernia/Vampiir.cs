@@ -38,7 +38,7 @@ namespace DOL.GS.Scripts
                     Add(Specs.Dementia, 39, 0.6f);
                     Add(Specs.VampiiricEmbrace, 30, 0.4f);
                     Add(Specs.ShadowMastery, 12, 0.2f);
-                    Add(Specs.Stealth, 12, 0.1f);
+                    // No Stealth: Vampiirs do not have Stealth in DAoC live.
                     break;
 
                 // VampiiricEmbrace-leaning: max drains for sustain

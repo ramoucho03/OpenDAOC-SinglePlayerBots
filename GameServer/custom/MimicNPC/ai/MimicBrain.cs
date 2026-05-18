@@ -3006,6 +3006,12 @@ namespace DOL.AI.Brain
         // interrupting target so the tank's peel actually catches up before
         // the caster eats a full melee combo. Returns false if we can't (no
         // target / already fleeing / movement blocked).
+        // Maximum distance a caster will allow itself to be from the group
+        // anchor (main tank or living leader) when kiting. 1300u keeps the
+        // bot well inside the standard 1500u heal range with a small buffer
+        // for movement during the heal cast.
+        private const int KITE_MAX_DISTANCE_FROM_ANCHOR = 1300;
+
         private bool TryShortKiteStep(int distance)
         {
             if (Body.TargetObject is not GameLiving threat || !threat.IsAlive)
@@ -3015,14 +3021,48 @@ namespace DOL.AI.Brain
             if (Body.IsCasting)
                 return false; // don't break our own cast
 
-            // Vector away from the threat.
+            // Group-aware tangential kite (was: radial flee away from threat).
+            // The old radial path moved the caster on a straight line away from
+            // the threat, which inevitably exits heal range when the threat
+            // chases. A real player kites *tangentially* — sidesteps along the
+            // arc that keeps both the threat and the healer in range — so the
+            // healer never loses the line and the caster never strays out of
+            // group support.
+            GameLiving anchor = Body.Group?.MimicGroup?.MainTank
+                                ?? Body.Group?.LivingLeader
+                                ?? Body;
+
+            // Vector threat -> caster (radial outward).
             double dx = Body.X - threat.X;
             double dy = Body.Y - threat.Y;
             double len = Math.Sqrt(dx * dx + dy * dy);
             if (len < 1)
                 return false;
-            int dest_x = Body.X + (int)(distance * dx / len);
-            int dest_y = Body.Y + (int)(distance * dy / len);
+
+            // Perpendicular (tangent) to the threat vector. Pick the side that
+            // moves us closer to the anchor so we drift back toward the group
+            // even while sidestepping.
+            double tx = -dy / len;
+            double ty = dx / len;
+            double anchorDx = anchor.X - Body.X;
+            double anchorDy = anchor.Y - Body.Y;
+            if (anchorDx * tx + anchorDy * ty < 0)
+            {
+                tx = -tx;
+                ty = -ty;
+            }
+
+            int dest_x = Body.X + (int)(distance * tx);
+            int dest_y = Body.Y + (int)(distance * ty);
+
+            // Clamp destination so we never step past the heal-range tether
+            // from the anchor. Skip the kite entirely if it would take us out.
+            int anchorDistAfter = (int) Math.Sqrt(
+                (dest_x - anchor.X) * (long)(dest_x - anchor.X)
+                + (dest_y - anchor.Y) * (long)(dest_y - anchor.Y));
+            if (anchor != Body && anchorDistAfter > KITE_MAX_DISTANCE_FROM_ANCHOR)
+                return false;
+
             Body.WalkTo(new Point3D(dest_x, dest_y, Body.Z), Body.MaxSpeed);
             return true;
         }
@@ -3070,7 +3110,21 @@ namespace DOL.AI.Brain
             GameObject savedTarget = Body.TargetObject;
             Body.TargetObject = threat;
 
+            // Cap the flee distance so the healer never bolts beyond the
+            // tank's reach. Without this, a melee mob in the healer's face
+            // makes the healer sprint 1500u in a straight line, leaving the
+            // group on its own. Stop at "just past the threat's reach" or
+            // when we're already at the tether edge from the tank.
             int fleeDistance = 1500 - Body.GetDistance(threat);
+
+            GameLiving anchor = Body.Group?.MimicGroup?.MainTank
+                                ?? Body.Group?.LivingLeader;
+            if (anchor != null && anchor != Body)
+            {
+                int distFromAnchor = Body.GetDistanceTo(anchor);
+                int allowance = Math.Max(0, KITE_MAX_DISTANCE_FROM_ANCHOR - distFromAnchor);
+                fleeDistance = Math.Min(fleeDistance, allowance);
+            }
 
             if (fleeDistance > 0)
                 Flee(fleeDistance);

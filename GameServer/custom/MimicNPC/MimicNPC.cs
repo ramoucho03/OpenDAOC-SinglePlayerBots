@@ -1956,19 +1956,24 @@ namespace DOL.GS.Scripts
                 else if (spell.SpellType == eSpellType.Mesmerize ||
                         (spell.SpellType == eSpellType.SpeedDecrease && spell.Value >= 99))
                 {
-                    //if (spell.IsInstantCast)
-                    //{
-                    //    if (InstantCrowdControlSpells == null)
-                    //        InstantCrowdControlSpells = new List<Spell>(1);
-                    //    InstantCrowdControlSpells.Add(spell);
-                    //}
-                    //else
-                    //{
-                    if (CrowdControlSpells == null)
-                        CrowdControlSpells = new List<Spell>(1);
-
-                    CrowdControlSpells.Add(spell);
-                    //}
+                    if (spell.IsInstantCast)
+                    {
+                        // Instant mez / instant root previously fell through
+                        // into the regular CrowdControlSpells list, which the
+                        // CC selection logic only iterates while not casting.
+                        // Putting them in InstantCrowdControlSpells lets the
+                        // bot fire them as emergency interrupt-mez even mid
+                        // cast — which is what a real Sorcerer/Minstrel does.
+                        if (InstantCrowdControlSpells == null)
+                            InstantCrowdControlSpells = new List<Spell>(1);
+                        InstantCrowdControlSpells.Add(spell);
+                    }
+                    else
+                    {
+                        if (CrowdControlSpells == null)
+                            CrowdControlSpells = new List<Spell>(1);
+                        CrowdControlSpells.Add(spell);
+                    }
                 }
                 else if (spell.IsHarmful)
                 {

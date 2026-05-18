@@ -1172,7 +1172,11 @@ namespace DOL.GS.Scripts
 
     public class MimicSpec
     {
-        public static string SpecName;
+        // Instance field (was incorrectly static — every Spec ctor wrote to
+        // the same slot, so the last mimic constructed dictated SpecName for
+        // every other mimic. Harmless today because nothing reads SpecName,
+        // but the static was a foot-gun waiting for the first debug log.)
+        public string SpecName;
         public eObjectType WeaponOneType;
         public eObjectType WeaponTwoType;
         public eWeaponDamageType DamageType = 0;
