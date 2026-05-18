@@ -3254,6 +3254,13 @@ namespace DOL.AI.Brain
         // cast range with a buffer for movement during the heal cast.
         private const int KITE_MAX_DISTANCE_FROM_ANCHOR = 1500;
 
+        // Target orbit radius from the threat when kiting. The previous pure-
+        // tangent step kept the bot at whatever radius it was interrupted at
+        // (typically ~200u, in melee reach) producing a tiny visible circle.
+        // 1200u parks the caster well outside melee + reactive abilities while
+        // still inside its own cast range (typically 1500u-2000u for nukes).
+        private const int CASTER_KITE_TARGET_RANGE = 1200;
+
         private bool TryShortKiteStep(int distance)
         {
             if (Body.TargetObject is not GameLiving threat || !threat.IsAlive)
@@ -3263,29 +3270,29 @@ namespace DOL.AI.Brain
             if (Body.IsCasting)
                 return false; // don't break our own cast
 
-            // Group-aware tangential kite (was: radial flee away from threat).
-            // The old radial path moved the caster on a straight line away from
-            // the threat, which inevitably exits heal range when the threat
-            // chases. A real player kites *tangentially* — sidesteps along the
-            // arc that keeps both the threat and the healer in range — so the
-            // healer never loses the line and the caster never strays out of
-            // group support.
+            // Group-aware kite: bot sidesteps tangentially (keeps both threat
+            // and group in line of sight) AND retreats radially so the orbit
+            // radius grows on each step instead of staying at melee reach.
+            // The user-visible "tiny circle" came from the old pure-tangent
+            // step holding the same distance to the mob every interruption.
             GameLiving anchor = Body.Group?.MimicGroup?.MainTank
                                 ?? Body.Group?.LivingLeader
                                 ?? Body;
 
-            // Vector threat -> caster (radial outward).
+            // Vector threat -> caster (radial outward, unit).
             double dx = Body.X - threat.X;
             double dy = Body.Y - threat.Y;
             double len = Math.Sqrt(dx * dx + dy * dy);
             if (len < 1)
                 return false;
+            double rx = dx / len;
+            double ry = dy / len;
 
             // Perpendicular (tangent) to the threat vector. Pick the side that
             // moves us closer to the anchor so we drift back toward the group
             // even while sidestepping.
-            double tx = -dy / len;
-            double ty = dx / len;
+            double tx = -ry;
+            double ty = rx;
             double anchorDx = anchor.X - Body.X;
             double anchorDy = anchor.Y - Body.Y;
             if (anchorDx * tx + anchorDy * ty < 0)
@@ -3294,8 +3301,15 @@ namespace DOL.AI.Brain
                 ty = -ty;
             }
 
-            int dest_x = Body.X + (int)(distance * tx);
-            int dest_y = Body.Y + (int)(distance * ty);
+            // Compute a destination at the desired radial range from the threat
+            // (1200u by default) — this is the "anchor" of the kite step. Then
+            // add a tangential offset for the visible sidestep motion. The bot
+            // moves to a point ON the wider orbit instead of just shifting
+            // sideways at its current (too close) distance.
+            double radialDestX = threat.X + rx * CASTER_KITE_TARGET_RANGE;
+            double radialDestY = threat.Y + ry * CASTER_KITE_TARGET_RANGE;
+            int dest_x = (int)(radialDestX + distance * tx);
+            int dest_y = (int)(radialDestY + distance * ty);
 
             // Clamp destination so we never step past the heal-range tether
             // from the anchor. Skip the kite entirely if it would take us out.
