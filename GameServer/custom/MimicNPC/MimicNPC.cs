@@ -2043,12 +2043,14 @@ namespace DOL.GS.Scripts
                         HarmfulSpells.Add(spell);
                     }
                 }
-                else if (spell.IsHealing && !spell.IsPulsing && !spell.IsConcentration)
+                else if (spell.IsHealing && !spell.IsPulsing && !spell.IsConcentration && spell.Target != eSpellTarget.PET)
                 {
-                    // TODO: Move pet heals somewhere else
-                    if (spell.Target == eSpellTarget.PET)
-                        continue;
-
+                    // Pet-target heals (Animist HoT for shroom, Cabalist
+                    // commander heal, Druid pet heal) fall through to the
+                    // misc bucket below so they remain castable via the
+                    // generic check-defensive path. The previous `continue`
+                    // dropped them on the floor entirely — pet-healing
+                    // archetypes could never patch up their own pet.
                     double valueNew = HealAmount(spell, this);
 
                     if (spell.SpellType == eSpellType.CureMezz)
