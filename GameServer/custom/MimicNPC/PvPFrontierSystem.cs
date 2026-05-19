@@ -62,6 +62,14 @@ namespace DOL.GS.Scripts
         [ServerProperty("pvpfrontier", "pvp_frontier_keep_attack_chance",
             "Chance (0-100) per patrol waypoint pick that a frontier group targets a nearby enemy keep/tower instead of a random waypoint.", 35)]
         public static int PVP_FRONTIER_KEEP_ATTACK_CHANCE;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_min_group_size",
+            "Minimum mimics per spawned frontier group. Set to 1 to allow solo roamers and small skirmish groups (1-3), or keep at 4 for full party rolls only.", 1)]
+        public static int PVP_FRONTIER_MIN_GROUP_SIZE;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_max_group_size",
+            "Maximum mimics per spawned frontier group (hard cap = full DAoC group of 8).", 8)]
+        public static int PVP_FRONTIER_MAX_GROUP_SIZE;
     }
 
     #endregion
@@ -259,10 +267,17 @@ namespace DOL.GS.Scripts
 
                         int missing = target - alive;
 
-                        // Spawn one group per tick (avoid burst). Groups are 4-8 mimics.
+                        // Spawn one group per tick (avoid burst). Group size
+                        // is configurable: pvp_frontier_min_group_size /
+                        // pvp_frontier_max_group_size cover the 1-8 range so
+                        // an admin can mix solo roamers, small skirmish
+                        // teams, and full 8-man parties.
                         if (missing > 0)
                         {
-                            int groupSize = Math.Clamp(missing, 4, 8);
+                            int minSize = Math.Clamp(PvPFrontierProperties.PVP_FRONTIER_MIN_GROUP_SIZE, 1, 8);
+                            int maxSize = Math.Clamp(PvPFrontierProperties.PVP_FRONTIER_MAX_GROUP_SIZE, minSize, 8);
+                            int rolledSize = Util.Random(minSize, maxSize);
+                            int groupSize = Math.Min(rolledSize, Math.Max(1, missing));
                             PvPFrontierGroup newGroup = PvPFrontierGroup.Spawn(cfg, groupSize);
                             if (newGroup != null)
                                 cfg.Groups.Add(newGroup);
@@ -1072,12 +1087,37 @@ namespace DOL.GS.Scripts
 
             int slots = Math.Clamp(groupSize, 1, _template.Length);
 
+            // Dedup: avoid stacking the same exact class on multiple role
+            // slots (Sorcerer Support + Sorcerer Caster, Mentalist twice,
+            // Healer in both Healer and Support, etc.). When a role's only
+            // candidates are already present, fall through to the next role
+            // and let the caller end up slightly smaller — better than a
+            // 2-Sorcerer 8-man with no real second caster.
+            HashSet<eMimicClass> taken = new();
+
             for (int i = 0; i < slots; i++)
             {
                 if (!rolesForRealm.TryGetValue(_template[i], out var candidates) || candidates.Length == 0)
                     continue;
 
-                result.Add(candidates[Util.Random(candidates.Length - 1)]);
+                eMimicClass pick = eMimicClass.None;
+                // Walk a randomised order so we don't bias the first entry.
+                int start = Util.Random(candidates.Length - 1);
+                for (int k = 0; k < candidates.Length; k++)
+                {
+                    eMimicClass candidate = candidates[(start + k) % candidates.Length];
+                    if (!taken.Contains(candidate))
+                    {
+                        pick = candidate;
+                        break;
+                    }
+                }
+
+                if (pick == eMimicClass.None)
+                    continue;
+
+                taken.Add(pick);
+                result.Add(pick);
             }
 
             return result;
@@ -1091,7 +1131,6 @@ namespace DOL.GS.Scripts
             if (mg == null) return;
 
             MimicNPC tank = mimics.FirstOrDefault(m => MimicGroupComposer.IsTankClass(m));
-            MimicNPC healer = mimics.FirstOrDefault(m => MimicGroupComposer.IsHealerClass(m));
             MimicNPC cc = mimics.FirstOrDefault(m => MimicGroupComposer.IsCCClass(m));
 
             MimicNPC leader = tank ?? mimics[0];
@@ -1100,8 +1139,17 @@ namespace DOL.GS.Scripts
 
             if (tank != null) mg.SetMainTank(tank);
             if (cc != null) mg.SetMainCC(cc);
-            if (healer != null && healer.MimicBrain != null)
-                healer.MimicBrain.IsHealer = true;
+
+            // Flag EVERY healer in the comp as a dedicated healer, not just
+            // the first one found. With a 2- or 3-healer PvP roster, leaving
+            // the secondary healers in DPS mode means they fight on the
+            // front line instead of triaging — the focus targets melt fast
+            // in RvR and we need every healer pumping.
+            foreach (MimicNPC m in mimics)
+            {
+                if (m?.MimicBrain != null && MimicGroupComposer.IsHealerClass(m))
+                    m.MimicBrain.IsHealer = true;
+            }
         }
     }
 
