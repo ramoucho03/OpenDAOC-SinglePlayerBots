@@ -98,9 +98,12 @@ namespace DOL.GS
 
                 if (oldPercent != HealthPercent)
                 {
-                    // Update pet health in group window.
-                    GamePlayer owner = (Brain as IControlledBrain).Owner as GamePlayer;
-                    owner.Group?.UpdateMember(owner, false, false);
+                    // Update pet health in group window — only meaningful when
+                    // the owner is a real player. Mimic-owned pets have a
+                    // GameNPC owner and the previous cast left `owner` null,
+                    // which NPE'd on every damage tick the pet took.
+                    GamePlayer owner = (Brain as IControlledBrain)?.Owner as GamePlayer;
+                    owner?.Group?.UpdateMember(owner, false, false);
                 }
             }
         }
@@ -192,16 +195,18 @@ namespace DOL.GS
         private void ToggleTauntMode()
         {
             TauntEffect tauntEffect = EffectList.GetOfType<TauntEffect>();
-            GamePlayer owner = (Brain as IControlledBrain).Owner as GamePlayer;
+            // Mimic-owned pets have a GameNPC owner — null-safe so the toggle
+            // still applies/removes the effect even without a player to chat.
+            GamePlayer owner = (Brain as IControlledBrain)?.Owner as GamePlayer;
 
             if (tauntEffect != null)
             {
                 tauntEffect.Stop();
-                owner.Out.SendMessage(string.Format("{0} seems to be less aggressive than before.", GetName(0, true)), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                owner?.Out.SendMessage(string.Format("{0} seems to be less aggressive than before.", GetName(0, true)), eChatType.CT_System, eChatLoc.CL_SystemWindow);
             }
             else
             {
-                owner.Out.SendMessage(string.Format("{0} enters an aggressive stance.", GetName(0, true)), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                owner?.Out.SendMessage(string.Format("{0} enters an aggressive stance.", GetName(0, true)), eChatType.CT_System, eChatLoc.CL_SystemWindow);
                 new TauntEffect().Start(this);
             }
         }
