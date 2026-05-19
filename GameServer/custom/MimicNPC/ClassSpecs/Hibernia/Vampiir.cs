@@ -14,18 +14,11 @@ namespace DOL.GS.Scripts
         {
             SpecName = "VampiirSpec";
 
-            // Vampiir uses a 1H weapon; pick at random across the three
-            // base damage types. The mimic equipment layer will pick the
-            // matching item from inventory.
-            // Hibernia weapon types: Blades (slashing), Piercing, Blunt.
-            // 'Slashing' is the Albion enum name; Hibernia uses 'Blades'.
-            int randWeap = Util.Random(2);
-            switch (randWeap)
-            {
-                case 0: WeaponOneType = eObjectType.Blades; break;
-                case 1: WeaponOneType = eObjectType.Piercing; break;
-                case 2: WeaponOneType = eObjectType.Blunt; break;
-            }
+            // Vampiir uses a 1H Piercing weapon. The DB classxspecialization
+            // table for Vampiir (class 58) only includes Piercing as a weapon
+            // spec — Blades/Blunt are silently rejected by SpendSpecPoints,
+            // which would leave the bot under-leveled in its weapon line.
+            WeaponOneType = eObjectType.Piercing;
 
             SpecType = eSpecType.OneHandHybrid;
 

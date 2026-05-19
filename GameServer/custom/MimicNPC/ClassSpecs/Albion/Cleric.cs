@@ -29,16 +29,16 @@ namespace DOL.GS.Scripts
                 case 0:
                 case 1:
                 SpecType = eSpecType.EnhanceCleric;
-                Add(Specs.Rejuvenation, 33, 0.5f);
-                Add(Specs.Enhancement, 42, 0.8f);
+                Add(Specs.Enhancement, 50, 1.0f);
+                Add(Specs.Rejuvenation, 30, 0.4f);
                 Add(Specs.Smite, 7, 0.0f);
                 break;
 
                 case 2:
                 case 3:
                 SpecType = eSpecType.EnhanceCleric;
-                Add(Specs.Rejuvenation, 36, 0.5f);
-                Add(Specs.Enhancement, 40, 0.8f);
+                Add(Specs.Enhancement, 50, 1.0f);
+                Add(Specs.Rejuvenation, 33, 0.4f);
                 Add(Specs.Smite, 4, 0.0f);
                 break;
 
@@ -58,16 +58,16 @@ namespace DOL.GS.Scripts
 
                 case 6:
                 SpecType = eSpecType.SmiteCleric;
+                Add(Specs.Smite, 50, 1.0f);
+                Add(Specs.Enhancement, 26, 0.4f);
                 Add(Specs.Rejuvenation, 6, 0.0f);
-                Add(Specs.Enhancement, 29, 0.5f);
-                Add(Specs.Smite, 45, 0.8f);
                 break;
 
                 case 7:
                 SpecType = eSpecType.SmiteCleric;
+                Add(Specs.Smite, 50, 1.0f);
+                Add(Specs.Enhancement, 33, 0.4f);
                 Add(Specs.Rejuvenation, 4, 0.0f);
-                Add(Specs.Enhancement, 36, 0.5f);
-                Add(Specs.Smite, 40, 0.8f);
                 break;
             }
         }

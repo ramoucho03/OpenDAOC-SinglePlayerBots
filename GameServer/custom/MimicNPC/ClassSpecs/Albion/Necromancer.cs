@@ -6,6 +6,13 @@ namespace DOL.GS.Scripts
         {
             SpecName = "NecromancerSpec";
 
+            // Necromancer fights through the shade-form pet. The mortal body
+            // still carries a staff for the brief unshade window, but the
+            // ListCaster default branch in SetWeapons already two-hands it
+            // when SpecType isn't set. Explicitly mark TwoHanded so callers
+            // (combat profile / equipment debugging) get a meaningful value
+            // instead of the enum's first member (MatterCab).
+            SpecType = eSpecType.TwoHanded;
             WeaponOneType = eObjectType.Staff;
             Is2H = true;
 

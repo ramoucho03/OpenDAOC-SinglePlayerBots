@@ -203,12 +203,20 @@ namespace DOL.GS.Scripts
                 base.GainRealmPoints(amount);
 
             RealmPoints += amount;
-            m_statistics.AddToTotalRealmPointsEarned((uint)amount);
+            // m_statistics is created in CreateStatistics during construction
+            // but some alternate spawn paths (PvP frontier hydration, raw
+            // GetMimic calls) can reach this method before init completes.
+            m_statistics?.AddToTotalRealmPointsEarned((uint)amount);
 
             //if (m_guild != null && Client.Account.PrivLevel == 1)
                 //m_guild.RealmPoints += amount;
 
-            if (sendMessage == true && amount > 0)
+            // Promote RealmLevel regardless of sendMessage. The previous
+            // code only ran the while-loop when sendMessage==true, so every
+            // internal caller (group RP propagation, kill bonus splits)
+            // accumulated RP without ever ranking up — frontier mimics
+            // were stuck at RR1L0 no matter how many kills they made.
+            if (amount > 0)
                 while (RealmPoints >= CalculateRPsFromRealmLevel(RealmLevel + 1) && RealmLevel < (REALMPOINTS_FOR_LEVEL.Length - 1))
                 {
                     RealmLevel++;

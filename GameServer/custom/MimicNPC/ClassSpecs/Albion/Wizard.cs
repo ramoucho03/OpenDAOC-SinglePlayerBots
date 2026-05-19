@@ -36,8 +36,8 @@ namespace DOL.GS.Scripts
 
                 case 1:
                 SpecType = eSpecType.IceWiz;
-                Add(Specs.Earth_Magic, 24, 0.1f);
-                Add(Specs.Cold_Magic, 48, 1.0f);
+                Add(Specs.Cold_Magic, 50, 1.0f);
+                Add(Specs.Earth_Magic, 22, 0.1f);
                 break;
 
                 case 2:

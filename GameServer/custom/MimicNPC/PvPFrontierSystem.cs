@@ -62,6 +62,19 @@ namespace DOL.GS.Scripts
         [ServerProperty("pvpfrontier", "pvp_frontier_keep_attack_chance",
             "Chance (0-100) per patrol waypoint pick that a frontier group targets a nearby enemy keep/tower instead of a random waypoint.", 35)]
         public static int PVP_FRONTIER_KEEP_ATTACK_CHANCE;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_min_group_size",
+            "Minimum mimics per spawned frontier group. Set to 1 to allow solo roamers and small skirmish groups (1-3), or keep at 4 for full party rolls only.", 1)]
+        public static int PVP_FRONTIER_MIN_GROUP_SIZE;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_max_group_size",
+            "Maximum mimics per spawned frontier group (hard cap = full DAoC group of 8).", 8)]
+        public static int PVP_FRONTIER_MAX_GROUP_SIZE;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_group_size_weights",
+            "Weighted distribution for spawned group sizes 1..8, comma-separated. Higher weight = more groups of that size. Default biases strongly toward full 8-man parties, with occasional skirmish teams and rare solo roamers — mirrors what a populated frontier actually looks like.",
+            "3,5,7,10,12,15,20,28")]
+        public static string PVP_FRONTIER_GROUP_SIZE_WEIGHTS;
     }
 
     #endregion
@@ -236,6 +249,13 @@ namespace DOL.GS.Scripts
             {
                 int target = PvPFrontierProperties.PVP_FRONTIER_POPULATION_PER_REALM;
 
+                // Snapshot player positions ONCE per tick. Every group's
+                // IsPlayerWithin check then consults the snapshot instead of
+                // re-walking ClientService for every group + every range
+                // probe — O(groups × players) collapses to O(players) per
+                // tick + O(groups) cache lookups.
+                RefreshPlayerSnapshots();
+
                 lock (_configsLock)
                 {
                     foreach (var kv in _configs)
@@ -259,10 +279,17 @@ namespace DOL.GS.Scripts
 
                         int missing = target - alive;
 
-                        // Spawn one group per tick (avoid burst). Groups are 4-8 mimics.
+                        // Spawn one group per tick (avoid burst). Group size
+                        // is configurable: pvp_frontier_min_group_size /
+                        // pvp_frontier_max_group_size cover the 1-8 range so
+                        // an admin can mix solo roamers, small skirmish
+                        // teams, and full 8-man parties.
                         if (missing > 0)
                         {
-                            int groupSize = Math.Clamp(missing, 4, 8);
+                            int minSize = Math.Clamp(PvPFrontierProperties.PVP_FRONTIER_MIN_GROUP_SIZE, 1, 8);
+                            int maxSize = Math.Clamp(PvPFrontierProperties.PVP_FRONTIER_MAX_GROUP_SIZE, minSize, 8);
+                            int rolledSize = RollWeightedGroupSize(minSize, maxSize);
+                            int groupSize = Math.Min(rolledSize, Math.Max(1, missing));
                             PvPFrontierGroup newGroup = PvPFrontierGroup.Spawn(cfg, groupSize);
                             if (newGroup != null)
                                 cfg.Groups.Add(newGroup);
@@ -276,6 +303,210 @@ namespace DOL.GS.Scripts
             }
 
             return TICK_MS;
+        }
+
+        // ----- Group size distribution -----
+        // Real RvR has lots of full 8-man parties, fewer skirmish teams, and
+        // rare solo roamers. Roll a weighted random size in [min..max] based
+        // on the configured weights so the population looks like a populated
+        // frontier instead of a uniform mix.
+        private static int[] _parsedSizeWeights;
+        private static string _parsedSizeWeightsSource;
+
+        private static int[] GetGroupSizeWeights()
+        {
+            string raw = PvPFrontierProperties.PVP_FRONTIER_GROUP_SIZE_WEIGHTS ?? "3,5,7,10,12,15,20,28";
+            if (_parsedSizeWeights != null && string.Equals(_parsedSizeWeightsSource, raw, StringComparison.Ordinal))
+                return _parsedSizeWeights;
+
+            int[] result = new int[8];
+            // Defaults if parsing fails partway through.
+            int[] defaults = { 3, 5, 7, 10, 12, 15, 20, 28 };
+            Array.Copy(defaults, result, 8);
+
+            try
+            {
+                string[] parts = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                for (int i = 0; i < parts.Length && i < 8; i++)
+                {
+                    if (int.TryParse(parts[i], out int w) && w >= 0)
+                        result[i] = w;
+                }
+            }
+            catch { /* keep defaults */ }
+
+            _parsedSizeWeights = result;
+            _parsedSizeWeightsSource = raw;
+            return result;
+        }
+
+        internal static int RollWeightedGroupSize(int minSize, int maxSize)
+        {
+            int[] weights = GetGroupSizeWeights();
+
+            // Sum the weights of the sizes inside [minSize..maxSize].
+            int total = 0;
+            for (int s = minSize; s <= maxSize; s++)
+                total += weights[s - 1];
+
+            if (total <= 0)
+                return Util.Random(minSize, maxSize); // pathological config, fall back to uniform
+
+            int roll = Util.Random(1, total);
+            int running = 0;
+            for (int s = minSize; s <= maxSize; s++)
+            {
+                running += weights[s - 1];
+                if (roll <= running)
+                    return s;
+            }
+
+            return maxSize;
+        }
+
+        // ----- Per-tick player snapshot -----
+        // IsPlayerWithin used to call ClientService.GetPlayersOfRegion on
+        // every check. With 400 bots × 3 realms × N players per region that
+        // becomes O(groups × players) per maintenance tick — measurable on
+        // a populated server. Snapshot once per maintenance tick and let
+        // each group consult the cache instead of re-walking the client list.
+        internal sealed class PlayerSnapshot
+        {
+            public List<PlayerSampledPos> Sampled = new(16);
+        }
+
+        internal struct PlayerSampledPos
+        {
+            public int X;
+            public int Y;
+        }
+
+        internal static readonly Dictionary<ushort, PlayerSnapshot> _playerSnapshotByRegion = new();
+        internal static long _playerSnapshotTick;
+        internal static readonly object _playerSnapshotLock = new();
+
+        private static void RefreshPlayerSnapshots()
+        {
+            // Collect every region that has at least one group registered to
+            // it (today all groups share PVP_FRONTIER_REGION, but the loop is
+            // future-proof for multi-region rollout).
+            HashSet<ushort> regions = new();
+            lock (_configsLock)
+            {
+                foreach (var cfg in _configs.Values)
+                    foreach (var g in cfg.Groups)
+                        if (g.Region != 0)
+                            regions.Add(g.Region);
+            }
+            if (regions.Count == 0)
+                regions.Add((ushort)PvPFrontierProperties.PVP_FRONTIER_REGION);
+
+            lock (_playerSnapshotLock)
+            {
+                _playerSnapshotByRegion.Clear();
+
+                foreach (ushort regId in regions)
+                {
+                    global::DOL.GS.Region region = WorldMgr.GetRegion(regId);
+                    if (region == null)
+                        continue;
+
+                    PlayerSnapshot snap = new();
+                    foreach (GamePlayer p in ClientService.Instance.GetPlayersOfRegion(region))
+                    {
+                        if (p == null || !p.IsAlive)
+                            continue;
+                        if (p.Client?.Account != null && p.Client.Account.PrivLevel > 1)
+                            continue;
+                        snap.Sampled.Add(new PlayerSampledPos { X = p.X, Y = p.Y });
+                    }
+
+                    _playerSnapshotByRegion[regId] = snap;
+                }
+
+                _playerSnapshotTick = GameLoop.GameLoopTime;
+            }
+        }
+
+        internal static PlayerSnapshot GetPlayerSnapshot(ushort regionId)
+        {
+            lock (_playerSnapshotLock)
+                return _playerSnapshotByRegion.TryGetValue(regionId, out PlayerSnapshot s) ? s : null;
+        }
+
+        // ----- Recent enemy hotspots -----
+        // Whenever a group engages an enemy realm group, record the location.
+        // Other friendly groups consult the hotspot list when picking a
+        // waypoint, which makes them converge on contested zones the way
+        // real players gravitate toward the action.
+        internal struct EnemyHotspot
+        {
+            public ushort Region;
+            public eRealm ObservingRealm;   // realm of the group that recorded it
+            public int X;
+            public int Y;
+            public int Z;
+            public long ExpireTick;
+        }
+
+        private static readonly List<EnemyHotspot> _hotspots = new(32);
+        private static readonly object _hotspotsLock = new();
+        private const int HOTSPOT_LIFETIME_MS = 90_000;     // 90s decay — long enough for a fight, short enough that the world moves on
+        private const int HOTSPOT_MAX_ENTRIES = 64;
+
+        public static void RegisterEnemyHotspot(ushort region, eRealm observingRealm, int x, int y, int z)
+        {
+            long now = GameLoop.GameLoopTime;
+            lock (_hotspotsLock)
+            {
+                // GC expired entries while we're here.
+                _hotspots.RemoveAll(h => h.ExpireTick <= now);
+
+                _hotspots.Add(new EnemyHotspot
+                {
+                    Region = region,
+                    ObservingRealm = observingRealm,
+                    X = x,
+                    Y = y,
+                    Z = z,
+                    ExpireTick = now + HOTSPOT_LIFETIME_MS,
+                });
+
+                // Bound the list so a long-running engagement doesn't leak.
+                if (_hotspots.Count > HOTSPOT_MAX_ENTRIES)
+                    _hotspots.RemoveRange(0, _hotspots.Count - HOTSPOT_MAX_ENTRIES);
+            }
+        }
+
+        /// <summary>
+        /// Pick a recent enemy hotspot from the perspective of `myRealm` in
+        /// `regionId`. Hotspots logged by the SAME realm are skipped (we don't
+        /// want a group of Albs to chase another Alb group's engagement —
+        /// they'd just walk to a friendly fight). Returns null if no relevant
+        /// hotspot exists.
+        /// </summary>
+        public static Point3D PickRecentEnemyHotspot(ushort regionId, eRealm myRealm)
+        {
+            long now = GameLoop.GameLoopTime;
+            lock (_hotspotsLock)
+            {
+                List<EnemyHotspot> candidates = null;
+                for (int i = 0; i < _hotspots.Count; i++)
+                {
+                    EnemyHotspot h = _hotspots[i];
+                    if (h.Region != regionId) continue;
+                    if (h.ExpireTick <= now) continue;
+                    if (h.ObservingRealm == myRealm) continue;
+                    candidates ??= new List<EnemyHotspot>(4);
+                    candidates.Add(h);
+                }
+
+                if (candidates == null || candidates.Count == 0)
+                    return null;
+
+                EnemyHotspot pick = candidates[Util.Random(candidates.Count - 1)];
+                return new Point3D(pick.X, pick.Y, pick.Z);
+            }
         }
 
         public static string BuildStatusReport()
@@ -517,7 +748,13 @@ namespace DOL.GS.Scripts
                 if (m.MimicBrain != null)
                 {
                     m.MimicBrain.PvPMode = true;
-                    m.MimicBrain.Roam = true;
+                    // Frontier movement is driven by OrderGroupToWaypoint /
+                    // PickNextWaypoint, NOT by the generic roam state. The
+                    // WAKING_UP state transitions a CanRoam bot straight to
+                    // ROAMING the moment it ticks, which would short-circuit
+                    // the patrol logic and send bots wandering instead of
+                    // following waypoints.
+                    m.MimicBrain.Roam = false;
                     m.MimicBrain.AggroLevel = 100;
                     m.MimicBrain.AggroRange = 3000;
                     m.MimicBrain.IsHealer = lm.IsHealer;
@@ -687,24 +924,43 @@ namespace DOL.GS.Scripts
         }
 
         /// <summary>
-        /// True if any non-GM human player is within `range` of VirtualPosition
-        /// in our Region. Filters out GMs (PrivLevel > 1) since admins shouldn't
-        /// keep the system busy by being invisible.
+        /// True if any non-GM human player is within `range` of the group's
+        /// active position (leader while hydrated, VirtualPosition while
+        /// dormant) in our Region. Reads from the per-tick player snapshot
+        /// populated by PvPFrontierManager.RefreshPlayerSnapshots — the
+        /// previous per-call iteration over ClientService blew up the tick
+        /// budget on a populated server (O(groups × players)).
         /// </summary>
         private bool IsPlayerWithin(int range)
         {
-            global::DOL.GS.Region region = WorldMgr.GetRegion(Region);
-            if (region == null) return false;
+            PvPFrontierManager.PlayerSnapshot snap = PvPFrontierManager.GetPlayerSnapshot(Region);
+            if (snap == null || snap.Sampled.Count == 0)
+                return false;
+
+            // While the group is hydrated, its members can patrol far from
+            // the original VirtualPosition. Sample the real leader's
+            // position when we have one so the dehydrate gate tracks the
+            // bots, not the stale spawn anchor.
+            int refX = VirtualPosition.X;
+            int refY = VirtualPosition.Y;
+            if (IsHydrated)
+            {
+                GameLiving leader = FirstAliveMember();
+                if (leader != null)
+                {
+                    refX = leader.X;
+                    refY = leader.Y;
+                }
+            }
 
             long rangeSq = (long)range * range;
-            foreach (GamePlayer p in ClientService.Instance.GetPlayersOfRegion(region))
+            List<PvPFrontierManager.PlayerSampledPos> list = snap.Sampled;
+            for (int i = 0; i < list.Count; i++)
             {
-                if (p == null || !p.IsAlive) continue;
-                if (p.Client?.Account != null && p.Client.Account.PrivLevel > 1) continue;
-
-                long dx = p.X - VirtualPosition.X;
-                long dy = p.Y - VirtualPosition.Y;
-                if (dx * dx + dy * dy <= rangeSq) return true;
+                long dx = list[i].X - refX;
+                long dy = list[i].Y - refY;
+                if (dx * dx + dy * dy <= rangeSq)
+                    return true;
             }
             return false;
         }
@@ -717,8 +973,14 @@ namespace DOL.GS.Scripts
             // If we are near our waypoint AND it's a keep, engage the doors/guards.
             TryAttackKeepObjectsNearWaypoint();
 
-            // Reached current waypoint? Pick a new one.
-            if (leader.GetDistance(_currentWaypoint) < WAYPOINT_REACHED_RANGE)
+            // Reached current waypoint? Only pick the next one once the bulk
+            // of the group has caught up — otherwise the leader sprints off
+            // again before stragglers reach the rally point and the group
+            // visibly stretches into a single-file line. Wait until at
+            // least 75% of the alive roster is inside WAYPOINT_REACHED_RANGE
+            // around the leader before advancing.
+            if (leader.GetDistance(_currentWaypoint) < WAYPOINT_REACHED_RANGE
+                && GroupCohesionRatio(leader, WAYPOINT_REACHED_RANGE) >= 0.75)
             {
                 PickNextWaypoint();
                 OrderGroupToWaypoint();
@@ -762,11 +1024,41 @@ namespace DOL.GS.Scripts
             // is clear of combat (enemy wiped or escaped), arm the post-fight
             // cooldown and resume patrol — gives lone humans a chance to
             // disengage instead of being chain-mobbed by every nearby group.
-            bool anyoneInCombat = Members.Any(m => m != null && m.IsAlive && m.InCombat);
+            int aliveNow = 0;
+            bool anyoneInCombat = false;
+            foreach (var m in Members)
+            {
+                if (m != null && m.IsAlive && m.ObjectState == GameObject.eObjectState.Active)
+                {
+                    aliveNow++;
+                    if (m.InCombat) anyoneInCombat = true;
+                }
+            }
 
             if (!anyoneInCombat)
             {
-                _postFightUntilMs = GameLoop.GameLoopTime + POST_FIGHT_COOLDOWN_MS;
+                // Detect a near-wipe: if we lost half or more of our roster
+                // during the engagement, head to safety instead of right
+                // back into the same hotspot. Player groups don't patrol on
+                // a fresh 4/8 — they recover first.
+                int rosterSize = Roster.Count;
+                bool tookHeavyLosses = rosterSize > 0 && aliveNow * 2 <= rosterSize;
+
+                long now = GameLoop.GameLoopTime;
+                _postFightUntilMs = now + POST_FIGHT_COOLDOWN_MS;
+
+                if (tookHeavyLosses)
+                {
+                    // Double-length retreat to a friendly safe point and an
+                    // extended post-fight cooldown so we don't body-block
+                    // chasers.
+                    _retreatUntilMs = now + 45_000;
+                    _postFightUntilMs = now + POST_FIGHT_COOLDOWN_MS * 2;
+                    State = eFrontierState.Retreating;
+                    OrderGroupToRetreat();
+                    return;
+                }
+
                 State = eFrontierState.Patrolling;
                 PickNextWaypoint();
                 OrderGroupToWaypoint();
@@ -794,10 +1086,64 @@ namespace DOL.GS.Scripts
             return null;
         }
 
+        /// <summary>
+        /// Fraction of the alive roster currently within `range` of the given
+        /// anchor (typically the leader). Used to gate "we've arrived" so the
+        /// leader doesn't immediately leave on the next waypoint while the
+        /// rest of the group is still strung out behind.
+        /// </summary>
+        private double GroupCohesionRatio(GameLiving anchor, int range)
+        {
+            if (anchor == null) return 1.0;
+            int alive = 0;
+            int near = 0;
+            long rangeSq = (long)range * range;
+            foreach (var m in Members)
+            {
+                if (m == null || !m.IsAlive || m.ObjectState != GameObject.eObjectState.Active)
+                    continue;
+                alive++;
+                long dx = m.X - anchor.X;
+                long dy = m.Y - anchor.Y;
+                if (dx * dx + dy * dy <= rangeSq)
+                    near++;
+            }
+            if (alive == 0) return 1.0;
+            return (double)near / alive;
+        }
+
         private void PickNextWaypoint()
         {
-            // Roll for "go attack an enemy keep" intent. If it hits, find the
-            // closest enemy-realm keep in our region and use it as the waypoint.
+            // Priority order (mirrors how a real RvR group picks its next
+            // destination):
+            //   1. A friendly keep currently under attack — defend it.
+            //   2. A recently active enemy hotspot — chase the fight.
+            //   3. Roll for "attack an enemy keep" intent.
+            //   4. Random patrol waypoint.
+            //   5. Fall back to spawn anchor.
+
+            // (1) Defend a friendly keep under siege.
+            Point3D defendTarget = PickFriendlyKeepUnderAttack();
+            if (defendTarget != null)
+            {
+                _currentWaypoint = defendTarget;
+                return;
+            }
+
+            // (2) Recent enemy activity bias: 30% chance to head to the last
+            // place an enemy was spotted (if any). Keeps groups converging
+            // on contested ground instead of patrolling deserted waypoints.
+            if (Util.Chance(30))
+            {
+                Point3D hotspot = PvPFrontierManager.PickRecentEnemyHotspot(Region, Config.Realm);
+                if (hotspot != null)
+                {
+                    _currentWaypoint = hotspot;
+                    return;
+                }
+            }
+
+            // (3) Offensive keep intent.
             if (Util.Chance(PvPFrontierProperties.PVP_FRONTIER_KEEP_ATTACK_CHANCE))
             {
                 Point3D keepTarget = PickClosestEnemyKeep();
@@ -808,12 +1154,49 @@ namespace DOL.GS.Scripts
                 }
             }
 
+            // (4) Random patrol waypoint.
             if (Config.PatrolWaypoints.Count == 0)
             {
+                // (5) No waypoints configured: hold position at spawn.
                 _currentWaypoint = Config.SpawnAnchor;
                 return;
             }
             _currentWaypoint = Config.PatrolWaypoints[Util.Random(Config.PatrolWaypoints.Count - 1)];
+        }
+
+        /// <summary>
+        /// Returns the position of a friendly keep / tower currently in combat
+        /// (under attack by enemies). Closest match if several are under siege.
+        /// </summary>
+        private Point3D PickFriendlyKeepUnderAttack()
+        {
+            MimicNPC leader = FirstAliveMember();
+            if (leader == null) return null;
+
+            var keeps = GameServer.KeepManager.GetKeepsOfRegion(leader.CurrentRegionID);
+            if (keeps == null || keeps.Count == 0) return null;
+
+            Keeps.AbstractGameKeep best = null;
+            long bestSq = long.MaxValue;
+
+            foreach (var k in keeps)
+            {
+                if (k == null) continue;
+                if (k.Realm != Config.Realm) continue;     // friendly only
+                if (!k.InCombat) continue;                 // under attack only
+
+                long dx = k.X - leader.X;
+                long dy = k.Y - leader.Y;
+                long sq = dx * dx + dy * dy;
+
+                if (sq < bestSq)
+                {
+                    bestSq = sq;
+                    best = k;
+                }
+            }
+
+            return best != null ? new Point3D(best.X, best.Y, best.Z) : null;
         }
 
         /// <summary>
@@ -942,6 +1325,13 @@ namespace DOL.GS.Scripts
             MimicNPC enemyLeader = enemy.FirstAliveMember();
             if (enemyLeader == null) return;
 
+            // Record the engagement so other friendly groups know where the
+            // fighting is happening and can rally instead of patrolling empty
+            // waypoints. We record OUR realm as the observer so the same
+            // realm's other groups don't all chase each other's engagements.
+            PvPFrontierManager.RegisterEnemyHotspot(Region, Config.Realm,
+                enemyLeader.X, enemyLeader.Y, enemyLeader.Z);
+
             foreach (var m in Members)
             {
                 if (m == null || !m.IsAlive || m.MimicBrain == null) continue;
@@ -952,12 +1342,67 @@ namespace DOL.GS.Scripts
 
         private void OrderGroupToRetreat()
         {
-            // Walk back to the realm's spawn anchor (relative safety).
+            // Pick the closest "safe point": either a friendly keep we still
+            // hold, or the realm's spawn anchor. Real RvR groups duck into
+            // the nearest friendly perimeter, they don't always trek all the
+            // way back to spawn. Falls back to the spawn anchor when no
+            // friendly keep is in our region.
+            Point3D safePoint = PickClosestSafePoint() ?? Config.SpawnAnchor;
+            _retreatDestination = safePoint;
+
+            MimicNPC leader = FirstAliveMember();
+            if (leader == null)
+                return;
+
+            // Move the leader explicitly; the rest follow in formation. The
+            // previous code sent every member to the same point with no
+            // cohesion, so healers and casters got isolated and picked off
+            // by chasers — same fix pattern as OrderGroupToWaypoint.
+            leader.WalkTo(safePoint, leader.MaxSpeed);
+
             foreach (var m in Members)
             {
-                if (m == null || !m.IsAlive) continue;
-                m.WalkTo(Config.SpawnAnchor, m.MaxSpeed);
+                if (m == null || !m.IsAlive || m == leader) continue;
+                if (m.MimicBrain == null) continue;
+                m.MimicBrain.FSM.SetCurrentState(eFSMStateType.FOLLOW_THE_LEADER);
             }
+        }
+
+        private Point3D _retreatDestination;
+
+        /// <summary>
+        /// Closest friendly keep / tower we still own (within the group's
+        /// region). Returns null when no friendly keep exists in the region.
+        /// </summary>
+        private Point3D PickClosestSafePoint()
+        {
+            MimicNPC leader = FirstAliveMember();
+            if (leader == null) return null;
+
+            var keeps = GameServer.KeepManager.GetKeepsOfRegion(leader.CurrentRegionID);
+            if (keeps == null || keeps.Count == 0) return null;
+
+            Keeps.AbstractGameKeep best = null;
+            long bestSq = long.MaxValue;
+
+            foreach (var k in keeps)
+            {
+                if (k == null) continue;
+                if (k.Realm != Config.Realm) continue;     // only our own keeps
+                if (k.InCombat) continue;                  // under attack — not safe
+
+                long dx = k.X - leader.X;
+                long dy = k.Y - leader.Y;
+                long sq = dx * dx + dy * dy;
+
+                if (sq < bestSq)
+                {
+                    bestSq = sq;
+                    best = k;
+                }
+            }
+
+            return best != null ? new Point3D(best.X, best.Y, best.Z) : null;
         }
 
         /// <summary>
@@ -1042,7 +1487,12 @@ namespace DOL.GS.Scripts
                 [eFrontierRole.Tank]      = new[] { eMimicClass.Hero, eMimicClass.Champion, eMimicClass.Blademaster },
                 [eFrontierRole.Healer]    = new[] { eMimicClass.Druid, eMimicClass.Warden },
                 [eFrontierRole.Support]   = new[] { eMimicClass.Bard, eMimicClass.Mentalist },
-                [eFrontierRole.Caster]    = new[] { eMimicClass.Eldritch, eMimicClass.Enchanter, eMimicClass.Mentalist, eMimicClass.Valewalker },
+                // Valewalker is a 2H Scythe melee hybrid (TwoHanded SpecType),
+                // NOT a back-line caster — rolling it in the Caster slot put
+                // it on the front line with no Light/Mana spec to back up
+                // the comp. Animist (turret PetCaster) fits the Caster slot
+                // better. Keep Valewalker on the MeleeDPS list only.
+                [eFrontierRole.Caster]    = new[] { eMimicClass.Eldritch, eMimicClass.Enchanter, eMimicClass.Mentalist, eMimicClass.Animist },
                 [eFrontierRole.Stealther] = new[] { eMimicClass.Nightshade, eMimicClass.Ranger },
                 [eFrontierRole.MeleeDPS]  = new[] { eMimicClass.Blademaster, eMimicClass.Champion, eMimicClass.Hero, eMimicClass.Valewalker },
             },
@@ -1066,12 +1516,37 @@ namespace DOL.GS.Scripts
 
             int slots = Math.Clamp(groupSize, 1, _template.Length);
 
+            // Dedup: avoid stacking the same exact class on multiple role
+            // slots (Sorcerer Support + Sorcerer Caster, Mentalist twice,
+            // Healer in both Healer and Support, etc.). When a role's only
+            // candidates are already present, fall through to the next role
+            // and let the caller end up slightly smaller — better than a
+            // 2-Sorcerer 8-man with no real second caster.
+            HashSet<eMimicClass> taken = new();
+
             for (int i = 0; i < slots; i++)
             {
                 if (!rolesForRealm.TryGetValue(_template[i], out var candidates) || candidates.Length == 0)
                     continue;
 
-                result.Add(candidates[Util.Random(candidates.Length - 1)]);
+                eMimicClass pick = eMimicClass.None;
+                // Walk a randomised order so we don't bias the first entry.
+                int start = Util.Random(candidates.Length - 1);
+                for (int k = 0; k < candidates.Length; k++)
+                {
+                    eMimicClass candidate = candidates[(start + k) % candidates.Length];
+                    if (!taken.Contains(candidate))
+                    {
+                        pick = candidate;
+                        break;
+                    }
+                }
+
+                if (pick == eMimicClass.None)
+                    continue;
+
+                taken.Add(pick);
+                result.Add(pick);
             }
 
             return result;
@@ -1085,7 +1560,6 @@ namespace DOL.GS.Scripts
             if (mg == null) return;
 
             MimicNPC tank = mimics.FirstOrDefault(m => MimicGroupComposer.IsTankClass(m));
-            MimicNPC healer = mimics.FirstOrDefault(m => MimicGroupComposer.IsHealerClass(m));
             MimicNPC cc = mimics.FirstOrDefault(m => MimicGroupComposer.IsCCClass(m));
 
             MimicNPC leader = tank ?? mimics[0];
@@ -1094,8 +1568,17 @@ namespace DOL.GS.Scripts
 
             if (tank != null) mg.SetMainTank(tank);
             if (cc != null) mg.SetMainCC(cc);
-            if (healer != null && healer.MimicBrain != null)
-                healer.MimicBrain.IsHealer = true;
+
+            // Flag EVERY healer in the comp as a dedicated healer, not just
+            // the first one found. With a 2- or 3-healer PvP roster, leaving
+            // the secondary healers in DPS mode means they fight on the
+            // front line instead of triaging — the focus targets melt fast
+            // in RvR and we need every healer pumping.
+            foreach (MimicNPC m in mimics)
+            {
+                if (m?.MimicBrain != null && MimicGroupComposer.IsHealerClass(m))
+                    m.MimicBrain.IsHealer = true;
+            }
         }
     }
 

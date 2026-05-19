@@ -41,10 +41,13 @@ namespace DOL.GS.Spells
 
 		public override bool CheckEndCast(GameLiving selectedTarget)
 		{
-			if (Caster is GamePlayer && ((GamePlayer)Caster).ControlledBrain != null)
+			// Block double-summon regardless of caster type so mimic Hunters
+			// can't stack beast-pets the way the player-only gate allowed.
+			if (Caster.ControlledBrain?.Body is GameLiving livePet && livePet.IsAlive)
 			{
-                MessageToCaster(LanguageMgr.GetTranslation((Caster as GamePlayer).Client, "Summon.CheckBeginCast.AlreadyHaveaPet"), eChatType.CT_SpellResisted);
-                return false;
+				if (Caster is GamePlayer playerCaster)
+					MessageToCaster(LanguageMgr.GetTranslation(playerCaster.Client, "Summon.CheckBeginCast.AlreadyHaveaPet"), eChatType.CT_SpellResisted);
+				return false;
 			}
 			return base.CheckEndCast(selectedTarget);
 		}

@@ -23,7 +23,7 @@ namespace DOL.GS.Scripts
                 case 1: WeaponOneType = eObjectType.Piercing; break;
             }
 
-            int randVariance = Util.Random(4);
+            int randVariance = Util.Random(5);
 
             SpecType = eSpecType.DualWield;
 
@@ -61,6 +61,18 @@ namespace DOL.GS.Scripts
                 Add(Specs.Celtic_Dual, 50, 1.0f);
                 Add(Specs.Stealth, 34, 0.5f);
                 Add(Specs.Envenom, 34, 0.6f);
+                break;
+
+                case 5:
+                // Catacombs hybrid: Nightshade Magic line (single-target DD
+                // and poisons) backed by a weapon + CD opener. DB lists
+                // Nightshade Magic as a valid spec for class 49 — the
+                // previous table never trained it, leaving the line dead.
+                Add(ObjToSpec(WeaponOneType), 35, 0.7f);
+                Add(Specs.Celtic_Dual, 39, 0.7f);
+                Add(Specs.Nightshade_Magic, 44, 0.9f);
+                Add(Specs.Stealth, 35, 0.4f);
+                Add(Specs.Envenom, 30, 0.4f);
                 break;
             }
         }

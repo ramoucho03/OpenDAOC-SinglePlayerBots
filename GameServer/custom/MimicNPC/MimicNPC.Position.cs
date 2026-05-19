@@ -165,7 +165,17 @@ namespace DOL.GS.Scripts
         /// </summary>
         public virtual bool IsSwimming
         {
-            get { return m_z <= CurrentZone.Waterlevel; }
+            get
+            {
+                // Mimics that spawned off-grid (instance edge, between zones,
+                // pre-teleport) have a null CurrentZone for one or two ticks.
+                // Reading Waterlevel through it NPE'd whenever a heal / movement
+                // service polled this property in that window.
+                Zone zone = CurrentZone;
+                if (zone == null)
+                    return false;
+                return m_z <= zone.Waterlevel;
+            }
             set
             {
                 if (value == m_swimming)
@@ -214,7 +224,11 @@ namespace DOL.GS.Scripts
                 if (!value)
                     value = IsUnderwater;
 
-                if (value && !CurrentZone.IsDivingEnabled && value && Client.Account.PrivLevel == 1)
+                // CurrentZone can be transiently null during region transitions;
+                // ditto for the duplicate `&& value` test which was a refactor
+                // artefact. Guard the zone read and drop the redundancy.
+                Zone zone = CurrentZone;
+                if (value && zone != null && !zone.IsDivingEnabled && Client?.Account?.PrivLevel == 1)
                 {
                     Z += 1;
                     Out.SendPlayerJump(false);
@@ -261,6 +275,18 @@ namespace DOL.GS.Scripts
         {
             if (Client.Account.PrivLevel != 1)
                 return;
+
+            // Mimics never received an explicit initialiser for the two
+            // breath timers, so any path into this method NPE'd the first
+            // time a bot dipped below the waterline. Lazy-init both timers
+            // here so the rest of the switch can rely on them being alive.
+            // Mirror GamePlayer's lambda for hold-breath (escalate to drown).
+            m_holdBreathTimer ??= new ECSGameTimer(this, _ =>
+            {
+                UpdateWaterBreathState(eWaterBreath.Drowning);
+                return 0;
+            });
+            m_drowningTimer ??= new ECSGameTimer(this, DrowningTimerCallback);
 
             switch (state)
             {

@@ -86,10 +86,16 @@ namespace DOL.GS.Scripts
                 break;
 
                 case 7:
+                // Friar carries a 2H Staff (Is2H=true above), so even the
+                // RejuvFriar variant needs Staff spec — otherwise the bot
+                // swings a level-1 weapon with no melee styles available
+                // every time the engine falls back to weapon damage. Reduce
+                // Enhancement slightly to fit Staff back in.
                 SpecType = eSpecType.RejuvFriar;
                 Add(Specs.Rejuvenation, 44, 0.8f);
-                Add(Specs.Enhancement, 49, 0.5f);
-                Add(Specs.Parry, 4, 0.1f);
+                Add(Specs.Enhancement, 39, 0.5f);
+                Add(Specs.Staff, 30, 0.4f);
+                Add(Specs.Parry, 14, 0.1f);
                 break;
 
                 case 8:

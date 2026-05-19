@@ -919,7 +919,10 @@ namespace DOL.GS.Scripts
 
         private int OnRezWaitExpired(ECSGameTimer timer)
         {
-            if (!_inRezWait)
+            // Bail if the rez landed in the same tick or if the bot has been
+            // deleted/teardown. Also bail if it's already alive — covers the
+            // narrow race between OnResurrected and the timer firing.
+            if (!_inRezWait || IsAlive || ObjectState != eObjectState.Active)
                 return 0;
 
             _inRezWait = false;
@@ -955,6 +958,12 @@ namespace DOL.GS.Scripts
             // localized per recipient) then leave + delete the corpse.
             AnnounceReleaseToGroup();
             Group?.RemoveMember(this);
+            // Untrack only when the corpse is actually being deleted. This
+            // was previously fired unconditionally before the rez-wait
+            // branch in ProcessDeath, so a successful rez restored the bot
+            // but left the spawner without a reference (no cleanup, no
+            // /madmin visibility, no auto-respawn hook).
+            MimicSpawner?.Remove(this);
             Delete();
             return 0;
         }
@@ -1092,7 +1101,9 @@ namespace DOL.GS.Scripts
             }
 
             Duel?.Stop();
-            MimicSpawner?.Remove(this);
+            // MimicSpawner.Remove is deferred to the actual corpse-deletion
+            // sites (base.ProcessDeath path and OnRezWaitExpired) so a bot
+            // that gets resurrected during the rez wait stays tracked.
 
             eChatType messageType;
             if (m_releaseType == eReleaseType.Duel)
@@ -1190,15 +1201,34 @@ namespace DOL.GS.Scripts
             }
             else
             {
-                // No owner or no group: original behavior — leaves the group, deletes the corpse.
+                // No owner or no group: original behavior — leaves the group,
+                // deletes the corpse. We still want role takeover to happen
+                // BEFORE the bot leaves its group, otherwise PvE-population
+                // and PvP-frontier groups never promote secondary roles on a
+                // member death (those bots have no OwnerAccount, so they
+                // skipped the entire enterRezWait branch where the previous
+                // promotion calls lived).
+                if (Group != null)
+                {
+                    Group.MimicGroup?.TryPromoteSecondaryTank(this);
+                    Group.MimicGroup?.TryPromoteSecondaryCC(this);
+                    Group.MimicGroup?.TryPromoteHealer(this);
+                }
+                MimicSpawner?.Remove(this);
                 base.ProcessDeath(killer);
             }
 
             // sent after buffs drop
             // GamePlayer.Die.CorpseLies:		{0} just died. {1} corpse lies on the ground.
-            Message.SystemToOthers2(this, eChatType.CT_OthersDeath, "GamePlayer.Die.CorpseLies", GetName(0, true), GetPronoun(this.Client, 1, true));
+            // base.ProcessDeath in the no-rez-wait branch calls Delete(), so
+            // CurrentRegion / Group are cleared by the time we get here.
+            // Skip the cosmetic message in that branch to avoid the NPE
+            // chain inside Message.SystemToOthers2 (region traversal +
+            // GetPronoun reading from a torn-down client).
+            if (enterRezWait && ObjectState == eObjectState.Active)
+                Message.SystemToOthers2(this, eChatType.CT_OthersDeath, "GamePlayer.Die.CorpseLies", GetName(0, true), GetPronoun(this.Client, 1, true));
 
-            if (m_releaseType == eReleaseType.Duel)
+            if (m_releaseType == eReleaseType.Duel && killer != null)
             {
                 foreach (GamePlayer player in killer.GetPlayersInRadius(WorldMgr.INFO_DISTANCE))
                 {

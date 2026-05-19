@@ -13,9 +13,13 @@ namespace DOL.GS.Spells
 
         public override bool CheckBeginCast(GameLiving selectedTarget)
         {
-            if (Caster is GamePlayer playerCaster && playerCaster.ControlledBrain != null)
+            // Block double-summon for both player and mimic casters. The
+            // original GamePlayer-only gate let a mimic Bonedancer stack
+            // commanders, orphaning the previous one each tick.
+            if (Caster.ControlledBrain?.Body is GameLiving livePet && livePet.IsAlive)
             {
-                MessageToCaster(LanguageMgr.GetTranslation((Caster as GamePlayer).Client, "SummonCommanderPet.CheckBeginCast.Text"), eChatType.CT_SpellResisted);
+                if (Caster is GamePlayer playerCaster)
+                    MessageToCaster(LanguageMgr.GetTranslation(playerCaster.Client, "SummonCommanderPet.CheckBeginCast.Text"), eChatType.CT_SpellResisted);
                 return false;
             }
 

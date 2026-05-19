@@ -1432,11 +1432,17 @@ namespace DOL.AI.Brain
             // --- Archer / thrown path: bow chain.
             if (hasBow)
             {
+                // AttackRange depends on the active weapon slot. While the
+                // bot is still in melee fallback we'd read the melee reach
+                // (~125-200u) instead of bow range and reject every chain
+                // pull. Switch to the bow first, then sample range.
+                if (Body.ActiveWeaponSlot != eActiveWeaponSlot.Distance)
+                    Body.SwitchWeapon(eActiveWeaponSlot.Distance);
+
                 int bowRange = Body.attackComponent?.AttackRange ?? 1700;
                 if (!Body.IsWithinRadius(chainTarget, bowRange))
                     return false;
 
-                Body.SwitchWeapon(eActiveWeaponSlot.Distance);
                 Body.TargetObject = chainTarget;
                 Body.StopFollowing();
                 Body.StartAttack(chainTarget);
@@ -1638,6 +1644,12 @@ namespace DOL.AI.Brain
             _chainPullCount = 0;
             _pullStartTick = 0;
             _committedPullTarget = null;
+
+            // Cancel the body-pull retreat timer if one was armed. Otherwise
+            // a queued callback would interrupt the next pull cycle 1.5s in
+            // by walking the puller back to camp.
+            _bodyPullRetreatTimer?.Stop();
+            _bodyPullRetreatTimer = null;
 
             // Camp state is shared — clear the group's incoming-pull pointer
             // too so the rest of the camp stops chasing a phantom mob.
@@ -1959,6 +1971,8 @@ namespace DOL.AI.Brain
         // swing and moves the puller back to the camp point. Without this, the
         // melee body-pull keeps swinging on the mob in place and any BAF add
         // chains to the puller standing there alone.
+        private ECSGameTimer _bodyPullRetreatTimer;
+
         private void StartBodyPullRetreat(GameLiving target)
         {
             MimicGroup mg = Body.Group?.MimicGroup;
@@ -1966,10 +1980,15 @@ namespace DOL.AI.Brain
             if (camp == null)
                 return;
 
+            // Cancel any in-flight retreat first — a new pull/chain shouldn't
+            // be hijacked 1.5s later by a stale callback walking us back home.
+            _bodyPullRetreatTimer?.Stop();
+
             // 1.5s gives the first auto-swing time to land and tag the mob
             // before we drop attack and head home.
-            new ECSGameTimer(Body, _ =>
+            _bodyPullRetreatTimer = new ECSGameTimer(Body, _ =>
             {
+                _bodyPullRetreatTimer = null;
                 if (Body == null || !Body.IsAlive || target == null || !target.IsAlive)
                     return 0;
 
@@ -1978,7 +1997,8 @@ namespace DOL.AI.Brain
 
                 Body.WalkTo(camp, Body.MaxSpeed);
                 return 0;
-            }).Start(1500);
+            });
+            _bodyPullRetreatTimer.Start(1500);
         }
 
         /// <summary>
@@ -2598,7 +2618,13 @@ namespace DOL.AI.Brain
                 if (pair.Value != null && pair.Value.Effective > currentTopAggro)
                     currentTopAggro = pair.Value.Effective;
             }
-            int peelAmount = (int)Math.Max(currentTopAggro + 50, Body.MaxHealth);
+            // Clamp before the int cast: with a top aggro past int.MaxValue
+            // the addition wraps negative and the resulting peel amount would
+            // demote the threat below itself (inverted peel). Realistic aggro
+            // values stay well under int.MaxValue but defenders against pet
+            // crit chains or long sieges can drift high enough to matter.
+            long target = Math.Max(currentTopAggro + 50, Body.MaxHealth);
+            int peelAmount = (int)Math.Min(target, int.MaxValue);
             AddToAggroList(threat, peelAmount);
             return true;
         }
@@ -3226,6 +3252,14 @@ namespace DOL.AI.Brain
 
         public void ForceAddToAggroList(GameLiving living, long aggroAmount = 0)
         {
+            // AddToAggroList (the public entry) already guards against null
+            // and dead targets, but ForceAddToAggroList is also reachable
+            // from other internal paths (taunt handlers, OnAttackedByEnemy
+            // re-entry) where the safety check isn't repeated. A null living
+            // here would NPE on living.effectListComponent below.
+            if (living == null || living.effectListComponent == null)
+                return;
+
             if (aggroAmount > 0)
             {
                 foreach (ProtectECSGameEffect protect in living.effectListComponent.GetAbilityEffects(eEffect.Protect))
@@ -3357,10 +3391,19 @@ namespace DOL.AI.Brain
 
         public bool UnsetTemporaryAggroList()
         {
-            // Keep the current aggro list if the previous one is empty.
-            // This can happen when amnesia is used during confusion.
-            if (_tempAggroList == null || _tempAggroList.IsEmpty)
+            // No active swap or both lists empty: reset the temp slot anyway
+            // so subsequent Set/Unset cycles aren't blocked. The previous
+            // code returned false without clearing _tempAggroList, leaving
+            // it pinned at the empty dictionary so the next SetTemporary call
+            // would silently no-op forever on that brain.
+            if (_tempAggroList == null)
                 return false;
+
+            if (_tempAggroList.IsEmpty)
+            {
+                _tempAggroList = null;
+                return false;
+            }
 
             AggroList = _tempAggroList;
             _tempAggroList = null;
@@ -4171,6 +4214,22 @@ namespace DOL.AI.Brain
             Body.StopAttack();
             Body.StopCurrentSpellcast();
             Body.TargetObject = null;
+
+            // Combat sub-states need a hard reset on disengage. Without this,
+            // flags like IsFleeing / IsFlanking / IsPulling and the kite
+            // commitment data leak across engagements and short-circuit later
+            // checks (TryFlee bailed out because TargetFleePosition was still
+            // set, AttackMostWanted re-aimed on a dead _kiteCommittedThreat,
+            // CheckPuller saw the bot as "still pulling" forever).
+            IsFleeing = false;
+            TargetFleePosition = null;
+            IsFlanking = false;
+            TargetFlankPosition = null;
+            IsPulling = false;
+            _committedPullTarget = null;
+            _kiteCommittedDestination = null;
+            _kiteCommittedUntilTick = 0;
+            _kiteCommittedThreat = null;
         }
 
         private readonly AggroLosCheckListener _aggroLosCheckListener;
@@ -4364,7 +4423,12 @@ namespace DOL.AI.Brain
                     bool assistTargetEngagedOnGroup = assistTarget.TargetObject is GameLiving aE
                                                       && Body.Group != null
                                                       && Body.Group.IsInTheGroup(aE);
-                    bool weHaveAggroOnAssistTarget = AggroList.ContainsKey(assistTarget) && AggroList[assistTarget].Effective > 1;
+                    // Use TryGetValue to avoid a check-then-get race on the
+                    // ConcurrentDictionary: a concurrent CleanUp can remove
+                    // the entry between ContainsKey and [] and the indexer
+                    // would throw KeyNotFoundException.
+                    bool weHaveAggroOnAssistTarget = AggroList.TryGetValue(assistTarget, out AggroAmount _assistAmount)
+                                                     && _assistAmount.Effective > 1;
 
                     bool assistIsEngaging = assistAttackingTarget
                                             || assistCastingHarmfulOnTarget
@@ -4683,10 +4747,18 @@ namespace DOL.AI.Brain
             {
                 // If the attacker is a pet, we also add its owner.
                 // this prevents both receiving an aggro amount of 1 if the attack is a debuff for example, ensuring the NPC attacks the pet first.
-                IGamePlayer owner = brain.GetIPlayerOwner();
+                //
+                // GetIPlayerOwner returns null for mimic-owned pets (mimic
+                // is a GameNPC, not IGamePlayer). Fall back to the raw
+                // brain.Owner — a GameLiving — so the propagation still works
+                // when the offender is a bot pet. Without this guard the
+                // (GameLiving)owner cast NPE'd on every debuff cast by a
+                // mimic-owned pet.
+                GameLiving ownerLiving = brain.GetIPlayerOwner() as GameLiving
+                                        ?? brain.Owner as GameLiving;
 
-                if (!AggroList.ContainsKey((GameLiving)owner))
-                    AggroList.TryAdd((GameLiving)owner, new(0));
+                if (ownerLiving != null && !AggroList.ContainsKey(ownerLiving))
+                    AggroList.TryAdd(ownerLiving, new(0));
             }
         }
 
@@ -5162,8 +5234,11 @@ namespace DOL.AI.Brain
 
                         if (casted)
                         {
+                            // Group can be null-cleared between cast start and
+                            // here (player disbands, member kicked) — chain
+                            // the null-conditional all the way down.
                             if (!PvPMode)
-                                MimicBody.Group.MimicGroup.RemoveCcTarget(ccTarget);
+                                MimicBody.Group?.MimicGroup?.RemoveCcTarget(ccTarget);
 
                             if (spell.CastTime > 0)
                                 Body.StopFollowing();
@@ -5361,6 +5436,18 @@ namespace DOL.AI.Brain
                     if (Body.CanCastHarmfulSpells)
                     {
                         GameLiving liveTarget = Body.TargetObject as GameLiving;
+
+                        // Sorcerer / Minstrel / Mentalist identity: charm a
+                        // useful mob and let it pulp the enemy. The classic
+                        // brain explicitly skipped Charm, so mimic charmers
+                        // never used their core mechanic. Try it first when
+                        // we have no pet — if the spell handler rejects the
+                        // target (wrong body type, too high level, friendly,
+                        // etc.) we just continue to the regular nuke path.
+                        if (liveTarget != null
+                            && Body.ControlledBrain == null
+                            && TryCharmBestTarget(liveTarget))
+                            return true;
 
                         foreach (Spell spell in Body.HarmfulSpells)
                         {
@@ -5582,6 +5669,80 @@ namespace DOL.AI.Brain
                 default:
                     return false;
             }
+        }
+
+        /// <summary>
+        /// Sorcerer / Minstrel / Mentalist charm path. Walks the bot's
+        /// harmful spell list, finds the highest-level Charm we can afford,
+        /// and casts it on <paramref name="target"/> when the target's body
+        /// type and level are within the spell's reach. The engine handler
+        /// will short-circuit if the mob is friendly / already controlled /
+        /// in combat — we don't duplicate every check, just the obvious gates
+        /// so we don't waste a 3-second cast on an impossible target.
+        ///
+        /// Returns true when a charm cast was actually started; caller
+        /// should propagate that back to CheckSpells as "done this tick".
+        /// </summary>
+        protected bool TryCharmBestTarget(GameLiving target)
+        {
+            if (target is not GameNPC charmTarget || !charmTarget.IsAlive)
+                return false;
+
+            // Don't try to charm allies, players, summoned pets, or
+            // anything already on someone's leash.
+            if (charmTarget.Realm != 0)
+                return false;
+            if (charmTarget is GameSummonedPet || charmTarget is GameKeepGuard
+                || charmTarget is GameGuard || charmTarget is GameEpicBoss
+                || charmTarget is GameEpicNPC)
+                return false;
+            if (charmTarget.Brain is IControlledBrain ic && ic.Owner != Body)
+                return false;
+
+            // Charm spells live in MiscSpells, not HarmfulSpells:
+            // Spell.IsHarmful explicitly returns false for SpellType == Charm
+            // even though the target is ENEMY, so SortSpells routes them to
+            // the misc bucket.
+            if (Body.MiscSpells == null)
+                return false;
+
+            Spell best = null;
+            foreach (Spell spell in Body.MiscSpells)
+            {
+                if (spell.SpellType != eSpellType.Charm)
+                    continue;
+                if (!CanCastOffensiveSpell(spell))
+                    continue;
+                // Engine rule: mob level cannot exceed spell.Value cap.
+                if (charmTarget.Level > spell.Value)
+                    continue;
+                // Mentalist/Minstrel (Pulse==1) use 110% modspec ceiling;
+                // Sorcerer (Pulse==0) uses caster level. We approximate
+                // both with caster level since modspec lookup costs more
+                // and a mimic's caster level is the tighter bound anyway.
+                if (charmTarget.Level > Body.Level)
+                    continue;
+                if (best == null || spell.Level > best.Level)
+                    best = spell;
+            }
+
+            if (best == null)
+                return false;
+
+            // Make sure the bot is targeting the charm victim; the offensive
+            // path was already aimed at it via Body.TargetObject upstream,
+            // but be defensive in case a CC pass mutated the target.
+            Body.TargetObject = charmTarget;
+
+            // Minstrel charms are instrument-bound (NeedInstrument == true).
+            // Without this swap the cast would fail with "you don't have the
+            // right weapon equipped" the moment the bot is in melee weapon
+            // slot. The mirror swap is in CheckOffensiveSpells already, but
+            // we bypass that wrapper here.
+            if (best.NeedInstrument && Body.ActiveWeaponSlot != eActiveWeaponSlot.Distance)
+                Body.SwitchWeapon(eActiveWeaponSlot.Distance);
+
+            return Body.CastSpell(best, MimicBody.GetSpellLineForSpell(best));
         }
 
         /// <summary>
@@ -6440,9 +6601,17 @@ namespace DOL.AI.Brain
                 case eSpellType.SavageParryBuff:
                 case eSpellType.SavageEvadeBuff:
 
-                if (spell.SpellType == eSpellType.SavageCrushResistanceBuff ||
-                    spell.SpellType == eSpellType.SavageSlashResistanceBuff ||
-                    spell.SpellType == eSpellType.SavageThrustResistanceBuff &&
+                // Operator precedence bug: && binds tighter than ||, so the
+                // previous code only checked CheckSavageResistSpell on Thrust
+                // and let Crush / Slash bypass the resist-trio gate entirely
+                // (and even fall-through from the other Savage buffs above).
+                // Parenthesize the trio so every Savage RESISTANCE buff is
+                // gated by CheckSavageResistSpell; non-resistance Savage
+                // buffs (CombatSpeed / DPS / Parry / Evade) fall through to
+                // the LivingHasEffect gate below as before.
+                if ((spell.SpellType == eSpellType.SavageCrushResistanceBuff ||
+                     spell.SpellType == eSpellType.SavageSlashResistanceBuff ||
+                     spell.SpellType == eSpellType.SavageThrustResistanceBuff) &&
                     !CheckSavageResistSpell(spell.SpellType))
                     break;
 
@@ -6677,18 +6846,23 @@ namespace DOL.AI.Brain
             if (spellEffect is eEffect.DirectDamage or eEffect.Pet or eEffect.Unknown)
                 return false;
 
-            SpellHandler spellHandler = Body.castingComponent.SpellHandler;
+            // castingComponent can be null in narrow teardown windows (rez,
+            // body swap, /sit transitions). Both SpellHandler reads chained
+            // through it without a guard — null-safe both lookups so the
+            // effect-presence check no longer NPE's when called from a
+            // post-rez DrivePetEveryTick / heal cycle.
+            SpellHandler spellHandler = Body.castingComponent?.SpellHandler;
 
             // If we're currently casting 'spell' on 'target', assume it already has the effect.
             // This allows spell queuing while preventing casting on the same target more than once.
-            if (spellHandler != null && spellHandler.Spell.ID == spell.ID && spellHandler.Target == target)
+            if (spellHandler?.Spell != null && spellHandler.Spell.ID == spell.ID && spellHandler.Target == target)
                 return true;
 
-            SpellHandler queuedSpellHandler = Body.castingComponent.QueuedSpellHandler;
+            SpellHandler queuedSpellHandler = Body.castingComponent?.QueuedSpellHandler;
 
             // Do the same for our queued up spell.
             // This can happen on charmed pets having two buffs that they're trying to cast on their owner.
-            if (queuedSpellHandler != null && queuedSpellHandler.Spell.ID == spell.ID && queuedSpellHandler.Target == target)
+            if (queuedSpellHandler?.Spell != null && queuedSpellHandler.Spell.ID == spell.ID && queuedSpellHandler.Target == target)
                 return true;
 
             // May not be the right place for that, but without that check NPCs with more than one offensive or defensive proc will only buff themselves once.

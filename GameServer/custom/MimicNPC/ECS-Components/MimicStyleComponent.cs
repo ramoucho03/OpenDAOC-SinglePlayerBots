@@ -1,4 +1,5 @@
-﻿using DOL.GS.Scripts;
+﻿using DOL.Database;
+using DOL.GS.Scripts;
 using DOL.GS.Styles;
 using System;
 using System.Collections.Generic;
@@ -35,10 +36,18 @@ namespace DOL.GS
         {
             MimicNPC mimic = Owner as MimicNPC;
 
-            if (mimic.Styles == null || mimic.Styles.Count < 1 || mimic.TargetObject == null)
+            // Owner-cast guard: StyleProcessor can call this on a teardown
+            // path where Owner has been reassigned (component handover, body
+            // swap on rez), in which case the cast returns null.
+            if (mimic == null || mimic.Styles == null || mimic.Styles.Count < 1 || mimic.TargetObject == null)
                 return null;
 
-            AttackData lastAttackData = mimic.attackComponent.attackAction.LastAttackData;
+            // attackComponent.attackAction is null until the first swing
+            // initiates the AttackComponent's action. Reading LastAttackData
+            // through a null chain NPE'd whenever GetStyleToUse was invoked
+            // from a non-combat path (e.g. style preview). The downstream
+            // logic already handles lastAttackData == null as "first swing".
+            AttackData lastAttackData = mimic.attackComponent?.attackAction?.LastAttackData;
             bool isFirstSwing = lastAttackData == null;
 
             // 0. Stealth opener — Critical Strike / Backstab / Perforate Artery.
@@ -73,7 +82,7 @@ namespace DOL.GS
             // IsActingAsTank covers both the assigned MainTank case and the
             // player-led group case where a mimic tank is the de-facto tank
             // but MainTank still points at the player.
-            if (!mimic.MimicBrain.PvPMode && mimic.MimicBrain.IsActingAsTank)
+            if (mimic.MimicBrain != null && !mimic.MimicBrain.PvPMode && mimic.MimicBrain.IsActingAsTank)
             {
                 Style s = CheckTaunt(mimic, lastAttackData);
 
@@ -84,7 +93,7 @@ namespace DOL.GS
             // 4. Shield control for assigned tanks. If Slam or another shield
             // style is available, it is usually stronger than a generic weapon
             // swing because it peels or stuns the target.
-            if (mimic.MimicBrain.IsActingAsTank && mimic.StylesShield != null && mimic.StylesShield.Count > 0)
+            if (mimic.MimicBrain != null && mimic.MimicBrain.IsActingAsTank && mimic.StylesShield != null && mimic.StylesShield.Count > 0)
             {
                 Style s = GetBestStyle(mimic.StylesShield, lastAttackData, mimic);
 
@@ -133,7 +142,10 @@ namespace DOL.GS
                     return s;
             }
 
-            if (mimic.MimicBrain.PvPMode || mimic.Group == null)
+            // Taunt fallback path — guard MimicBrain like the earlier
+            // tank-style branches do (was the last unguarded read in this
+            // method).
+            if (mimic.MimicBrain == null || mimic.MimicBrain.PvPMode || mimic.Group == null)
             {
                 Style s = CheckTaunt(mimic, lastAttackData);
 
@@ -228,12 +240,20 @@ namespace DOL.GS
 
         private Style CheckTaunt(MimicNPC mimic, AttackData lastAttackData)
         {
+            // ActiveWeapon can be null while the bot is mid-disarm or while
+            // an instrument swap is in flight. Bail rather than NPE — taunt
+            // styles need a weapon to match the WeaponTypeRequirement
+            // anyway.
+            DbInventoryItem weapon = mimic.ActiveWeapon;
+            if (weapon == null)
+                return null;
+
             if (mimic.StylesTaunt != null && mimic.StylesTaunt.Count > 0)
             {
                 foreach (Style s in mimic.StylesTaunt)
                 {
-                    if (s.WeaponTypeRequirement == mimic.ActiveWeapon.Object_Type)
-                        if (StyleProcessor.CanUseStyle(lastAttackData, mimic, s, mimic.ActiveWeapon))
+                    if (s.WeaponTypeRequirement == weapon.Object_Type)
+                        if (StyleProcessor.CanUseStyle(lastAttackData, mimic, s, weapon))
                             return s;
                 }
             }

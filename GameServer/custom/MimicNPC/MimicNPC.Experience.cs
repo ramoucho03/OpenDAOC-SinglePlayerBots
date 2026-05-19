@@ -270,7 +270,13 @@ namespace DOL.GS.Scripts
                     }
                 }
 
-                if (CurrentRegion.IsRvR || CurrentZone.IsRvR)
+                // CurrentZone can lag by a tick during region transitions;
+                // either source flagging RvR is enough, and we treat the
+                // missing-zone case as non-RvR for XP rate purposes.
+                Region region = CurrentRegion;
+                Zone zone = CurrentZone;
+                bool isRvR = (region != null && region.IsRvR) || (zone != null && zone.IsRvR);
+                if (isRvR)
                     baseXp = (long)(baseXp * Properties.RvR_XP_RATE);
                 else
                     baseXp = (long)(baseXp * Properties.XP_RATE);

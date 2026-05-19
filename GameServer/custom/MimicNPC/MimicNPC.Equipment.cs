@@ -41,6 +41,12 @@ namespace DOL.GS.Scripts
 
         public void UpdateEncumbrance(bool forced = false)
         {
+            // OnItemEquipped can fire during a ctor-time inventory wire-up
+            // before Inventory is assigned. Guard so we don't NPE if the
+            // very first equip arrives that early.
+            if (Inventory == null)
+                return;
+
             int inventoryWeight = Inventory.InventoryWeight;
             int maxCarryingCapacity = MaxCarryingCapacity;
 
@@ -218,12 +224,17 @@ namespace DOL.GS.Scripts
 
             protected override int OnTick(ECSGameTimer timer)
             {
-                if (Owner.ObjectState is not eObjectState.Active)
+                if (Owner == null || Owner.ObjectState is not eObjectState.Active)
                     return _onCompletion();
 
                 Owner.UpdateEncumbrance();
 
-                if (!IsAlive)
+                // IsAlive here resolved to ECSGameTimerWrapperBase.IsAlive
+                // (i.e. "is this timer still alive?"), not the bot's alive
+                // status — a subtle capture bug that short-circuited the
+                // regen reset whenever the timer happened to be ticking
+                // its final round. Test the actual mimic instead.
+                if (!Owner.IsAlive)
                     return _onCompletion();
 
                 int maxHealth = Owner.MaxHealth;

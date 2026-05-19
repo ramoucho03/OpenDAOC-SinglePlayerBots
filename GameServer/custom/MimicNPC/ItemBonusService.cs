@@ -220,7 +220,7 @@ namespace DOL.GS.Scripts
             new ItemBonus(189, "Arrow Recovery", BonusType.Toa),
             new ItemBonus(190, "Buff Effectiveness", BonusType.Toa),
             new ItemBonus(191, "Casting Speed", BonusType.Toa),
-            new ItemBonus(192, "Death EXP Loss Redution", BonusType.Toa),
+            new ItemBonus(192, "Death EXP Loss Reduction", BonusType.Toa),
             new ItemBonus(193, "Debuff Effectiveness", BonusType.Toa),
             new ItemBonus(194, "Fatigue", BonusType.Toa),
             new ItemBonus(195, "Healing Effectiveness", BonusType.Toa),

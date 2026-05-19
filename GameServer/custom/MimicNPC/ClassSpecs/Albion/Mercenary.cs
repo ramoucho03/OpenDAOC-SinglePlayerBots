@@ -30,15 +30,36 @@ namespace DOL.GS.Scripts
                 _ => Util.Random(3),
             };
 
+            // Previously cases 0/1/2 were strict duplicates of the same DW
+            // build, so Util.Random produced essentially one variant. Split
+            // into three real DW flavours (DW-max, weapon-max, parry-max)
+            // plus the DualWieldAndShield variant.
             switch (randVariance)
             {
                 case 0:
-                case 1:
-                case 2:
+                // DW-max DPS: cap the offhand line first, mainline 47 to
+                // leave a few points for parry.
                 SpecType = eSpecType.DualWield;
-                Add(ObjToSpec(WeaponOneType), 50, 0.8f);
                 Add(Specs.Dual_Wield, 50, 1.0f);
-                Add(Specs.Parry, 28, 0.2f);
+                Add(ObjToSpec(WeaponOneType), 47, 0.8f);
+                Add(Specs.Parry, 22, 0.2f);
+                break;
+
+                case 1:
+                // Weapon-line max for big anytime style damage, DW 39 for
+                // the off-hand procs but secondary.
+                SpecType = eSpecType.DualWield;
+                Add(ObjToSpec(WeaponOneType), 50, 1.0f);
+                Add(Specs.Dual_Wield, 39, 0.7f);
+                Add(Specs.Parry, 28, 0.3f);
+                break;
+
+                case 2:
+                // Parry-heavy survivability build with DW 44 / weapon 44.
+                SpecType = eSpecType.DualWield;
+                Add(ObjToSpec(WeaponOneType), 44, 0.8f);
+                Add(Specs.Dual_Wield, 44, 0.8f);
+                Add(Specs.Parry, 39, 0.4f);
                 break;
 
                 case 3:

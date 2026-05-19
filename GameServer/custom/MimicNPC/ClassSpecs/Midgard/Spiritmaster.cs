@@ -13,8 +13,13 @@ namespace DOL.GS.Scripts
         public SpiritmasterSpec(eSpecType spec)
         {
             SpecName = "SpiritmasterSpec";
-            
+
+            // Spiritmaster wields a 2H staff — the previous code left Is2H
+            // unset (default false), so the equipment layer requested a 1H
+            // staff slot that doesn't exist and bot ended up bare-handed
+            // for melee fallback.
             WeaponOneType = eObjectType.Staff;
+            Is2H = true;
 
             var randVariance = spec switch
             {
@@ -29,56 +34,57 @@ namespace DOL.GS.Scripts
                 case 0:
                 case 1:
                 SpecType = eSpecType.DarkSpirit;
-                Add(Specs.Darkness, 47, 1.0f);
-                Add(Specs.Suppression, 5, 0.0f);
+                Add(Specs.Darkness, 50, 1.0f);
                 Add(Specs.Summoning, 26, 0.1f);
+                Add(Specs.Suppression, 5, 0.0f);
                 break;
 
                 case 2:
                 case 3:
                 SpecType = eSpecType.DarkSpirit;
-                Add(Specs.Darkness, 47, 1.0f);
+                Add(Specs.Darkness, 50, 1.0f);
                 Add(Specs.Suppression, 26, 0.1f);
                 Add(Specs.Summoning, 6, 0.0f);
                 break;
 
                 case 4:
                 case 5:
-                // Bug fix: Suppression is the primary line for SuppSpirit,
-                // its weight must be 1.0f, not 0.0f. Previous ratio caused
-                // the score sort to deprioritize the spec's signature spells.
                 SpecType = eSpecType.SuppSpirit;
-                Add(Specs.Darkness, 5, 0.0f);
-                Add(Specs.Suppression, 49, 1.0f);
+                Add(Specs.Suppression, 50, 1.0f);
                 Add(Specs.Summoning, 22, 0.1f);
+                Add(Specs.Darkness, 5, 0.0f);
                 break;
 
                 case 6:
                 SpecType = eSpecType.SuppSpirit;
-                Add(Specs.Darkness, 35, 0.1f);
-                Add(Specs.Suppression, 41, 1.0f);
+                Add(Specs.Suppression, 50, 1.0f);
+                Add(Specs.Darkness, 24, 0.2f);
                 Add(Specs.Summoning, 3, 0.0f);
                 break;
 
                 case 7:
+                // SpecType says SuppSpirit but the previous weights had
+                // Summoning at 1.0f and Suppression at 0.1f, which made this
+                // case behave like a Summ variant — inconsistent with the
+                // surrounding Supp block. Restore Suppression as primary.
                 SpecType = eSpecType.SuppSpirit;
                 Add(Specs.Darkness, 12, 0.0f);
-                Add(Specs.Suppression, 43, 0.1f);
-                Add(Specs.Summoning, 30, 1.0f);
+                Add(Specs.Suppression, 43, 1.0f);
+                Add(Specs.Summoning, 30, 0.1f);
                 break;
 
                 case 8:
                 SpecType = eSpecType.SummSpirit;
+                Add(Specs.Summoning, 50, 1.0f);
                 Add(Specs.Darkness, 24, 0.1f);
                 Add(Specs.Suppression, 6, 0.0f);
-                Add(Specs.Summoning, 48, 1.0f);
                 break;
 
                 case 9:
                 SpecType = eSpecType.SummSpirit;
+                Add(Specs.Summoning, 50, 1.0f);
                 Add(Specs.Darkness, 28, 0.1f);
                 Add(Specs.Suppression, 10, 0.0f);
-                Add(Specs.Summoning, 45, 1.0f);
                 break;
             }
         }

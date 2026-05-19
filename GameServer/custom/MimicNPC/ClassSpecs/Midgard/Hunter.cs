@@ -23,7 +23,11 @@ namespace DOL.GS.Scripts
                 case 2: WeaponOneType = eObjectType.Sword; break;
             }
 
-            Is2H = true;
+            // Hunter Spear is 2H, Sword is 1H. Previously this was forced to
+            // true unconditionally, which would request a 2H Sword the
+            // equipment layer can't fit in the main slot when the Sword roll
+            // landed (case 2).
+            Is2H = WeaponOneType == eObjectType.Spear;
 
             int randVariance = Util.Random(4);
 

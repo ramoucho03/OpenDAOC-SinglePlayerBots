@@ -1923,6 +1923,14 @@ namespace DOL.GS.Scripts
         ///<summary>Calculate heal amount, accounting for percentage based heals</summary>
         public static double HealAmount(Spell spell, GameLiving target)
         {
+            // HealAmount is called from the heal cycle with members of the
+            // bot's HealBig/HealEfficient slots, which can be null when the
+            // caster has not specced into a corresponding spell. Treat
+            // missing spells as zero heal so the caller's > comparison
+            // falls through to whichever heal IS available.
+            if (spell == null || target == null)
+                return 0;
+
             return spell.Value >= 0
                 ? spell.Value
                 : target.MaxHealth * spell.Value * -0.01d;
@@ -2035,16 +2043,26 @@ namespace DOL.GS.Scripts
                         HarmfulSpells.Add(spell);
                     }
                 }
-                else if (spell.IsHealing && !spell.IsPulsing && !spell.IsConcentration)
+                else if (spell.IsHealing && !spell.IsPulsing && !spell.IsConcentration && spell.Target != eSpellTarget.PET)
                 {
-                    // TODO: Move pet heals somewhere else
-                    if (spell.Target == eSpellTarget.PET)
-                        continue;
-
+                    // Pet-target heals (Animist HoT for shroom, Cabalist
+                    // commander heal, Druid pet heal) fall through to the
+                    // misc bucket below so they remain castable via the
+                    // generic check-defensive path. The previous `continue`
+                    // dropped them on the floor entirely — pet-healing
+                    // archetypes could never patch up their own pet.
                     double valueNew = HealAmount(spell, this);
 
                     if (spell.SpellType == eSpellType.CureMezz)
-                        CureMezz = spell;
+                    {
+                        // Prefer the longest-lasting cure mezz when the bot
+                        // has several variants (some classes get an instant
+                        // + a cast version). Previously this overwrote on
+                        // every iteration, so the picked CureMezz depended
+                        // on the m_spells iteration order.
+                        if (CureMezz == null || spell.Duration > CureMezz.Duration)
+                            CureMezz = spell;
+                    }
                     else if (spell.SpellType == eSpellType.CureDisease)
                     {
                         if ((spell.Target == eSpellTarget.GROUP || spell.Radius > 0)
@@ -2182,9 +2200,15 @@ namespace DOL.GS.Scripts
                                     double perSecondEff = HealAmount(HealEfficient, this) / HealEfficient.CastTime;
                                     double perSecondBig = HealBig == null ? 0.0 : HealAmount(HealBig, this) / HealBig.CastTime;
 
-                                    // Add a small margin for new spell efficiency, so we use bigger spec heals when they're almost as efficient
-                                    double effNew = valueNew / PowerCost(spell) + 0.25;
-                                    double effOld = HealAmount(HealEfficient, this) / PowerCost(HealEfficient);
+                                    // Add a small margin for new spell efficiency, so we use bigger spec heals when they're almost as efficient.
+                                    // Guard against zero-cost spells (custom "free" heals or
+                                    // chant procs) — div-by-zero produced Infinity which made
+                                    // the comparator behave non-deterministically and could
+                                    // pick a worse heal over the real efficient one.
+                                    double powerNew = PowerCost(spell);
+                                    double powerOld = PowerCost(HealEfficient);
+                                    double effNew = (powerNew > 0 ? valueNew / powerNew : valueNew) + 0.25;
+                                    double effOld = powerOld > 0 ? HealAmount(HealEfficient, this) / powerOld : HealAmount(HealEfficient, this);
 
                                     if (effNew > effOld)
                                     {
@@ -2740,6 +2764,16 @@ namespace DOL.GS.Scripts
             RemoveCampFire();
             Group?.RemoveMember(this);
             MimicManager.UnregisterOwned(this);
+            // Tear down active strategy bindings before the brain reference
+            // goes away — otherwise strategies that subscribed to game events
+            // (LeaderStrategy, SurvivalStrategy, etc.) leak references back
+            // to this body and brain.
+            MimicBrain?.StrategyManager?.Clear();
+            // The DummyClient holds a real TCP socket allocated per-bot.
+            // Without an explicit close the descriptor stays open until
+            // GC + finalizer, which is a real leak on a server that churns
+            // through frontier bots every dehydrate cycle.
+            try { _dummyClient?.Socket?.Close(); } catch { }
             base.Delete();
         }
 
@@ -2750,6 +2784,7 @@ namespace DOL.GS.Scripts
 
             Duel?.Stop();
             MimicSpawner?.Remove(this);
+            MimicBrain?.StrategyManager?.Clear();
 
             if (ControlledBrain != null)
                 CommandNpcRelease();
@@ -4827,17 +4862,29 @@ namespace DOL.GS.Scripts
             {
                 if (!m_specialization.TryGetValue(keyName, out spec))
                 {
+                    // Combat_Styles_Effect is a virtual spec line — Reaver /
+                    // Heretic / Valewalker / Savage proc-style spells route
+                    // through it. The original code computed the right
+                    // surrogate level here, then immediately overwrote it
+                    // with `level = 0;` outside the if — every Combat-Style
+                    // proc on these four classes was using spec 0 and
+                    // landing for minimum damage / minimum heal. Keep the
+                    // 0 fallback for the actual non-special-case path.
                     if (keyName == GlobalSpellsLines.Combat_Styles_Effect)
                     {
                         if (CharacterClass.ID == (int)eCharacterClass.Reaver || CharacterClass.ID == (int)eCharacterClass.Heretic)
                             level = GetModifiedSpecLevel(Specs.Flexible);
-                        if (CharacterClass.ID == (int)eCharacterClass.Valewalker)
+                        else if (CharacterClass.ID == (int)eCharacterClass.Valewalker)
                             level = GetModifiedSpecLevel(Specs.Scythe);
-                        if (CharacterClass.ID == (int)eCharacterClass.Savage)
+                        else if (CharacterClass.ID == (int)eCharacterClass.Savage)
                             level = GetModifiedSpecLevel(Specs.Savagery);
+                        else
+                            level = 0;
                     }
-
-                    level = 0;
+                    else
+                    {
+                        level = 0;
+                    }
                 }
             }
 
@@ -5423,7 +5470,13 @@ namespace DOL.GS.Scripts
         {
             get
             {
-                return (ushort)m_client.Account.Characters[m_client.ActiveCharIndex].CreationModel;
+                // m_client is a legacy GamePlayer-side field that was never
+                // wired up on MimicNPC (the bot uses _dummyClient instead).
+                // Reading m_client.Account.Characters[] NPE'd for every code
+                // path that asked for CreationModel — notably the Bainshee
+                // remorph and shade-toggle helpers. Mimics don't carry a
+                // distinct creation model, so fall back to the live Model.
+                return Model;
             }
         }
 

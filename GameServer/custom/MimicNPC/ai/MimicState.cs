@@ -852,7 +852,17 @@ namespace DOL.AI.Brain
             // Clear stale puller state — LastTargetObject, sticky mana throttle,
             // pulling flag — so a returning puller can immediately re-engage.
             _brain.ResetPullerState();
-            _brain.PvPMode = false;
+
+            // Only clear PvPMode when we're physically in a non-RvR zone.
+            // Resetting it unconditionally broke frontier camp behaviour:
+            // a group camping inside a RvR zone would forget it's in PvP
+            // mode the moment any member sat down, and target-priority
+            // arrays would flip back to PvE values mid-engagement.
+            Region region = _brain.Body.CurrentRegion;
+            Zone zone = _brain.Body.CurrentZone;
+            bool inRvR = (region != null && region.IsRvR) || (zone != null && zone.IsRvR);
+            if (!inRvR)
+                _brain.PvPMode = false;
 
             // Phase reset: entering camp from elsewhere means a fresh regen
             // window. Only the first bot through (or the puller) needs to
@@ -1910,10 +1920,16 @@ namespace DOL.AI.Brain
             {
                 if (_brain.CheckProximityAggro(_brain.AggroRange))
                 {
-                    if (_brain.Body.Group != null && _brain.Body.Group.MimicGroup.CampPoint != null)
+                    // Group with a camp anchor: fall back to camp duty so
+                    // the puller / healer routine takes over. Solo or no
+                    // camp set: dive straight into combat. The previous
+                    // code set CAMP and then immediately overrode it with
+                    // AGGRO in the same tick, making the camp branch dead
+                    // code (last SetCurrentState wins).
+                    if (_brain.Body.Group != null && _brain.Body.Group.MimicGroup?.CampPoint != null)
                         _brain.FSM.SetCurrentState(eFSMStateType.CAMP);
-
-                    _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
+                    else
+                        _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
                     return;
                 }
             }
@@ -1968,13 +1984,20 @@ namespace DOL.AI.Brain
             StateType = eFSMStateType.DUEL;
         }
 
+        // Remember whether the duel was started outside an RvR zone so Exit
+        // can put PvPMode back to its true (zone-derived) value instead of
+        // leaving it stuck at true forever.
+        private bool _prevPvPMode;
+
         public override void Enter()
         {
             _brain.ClearAggroList();
 
-            _brain.MimicBody.IsDuelReady = false;
+            if (_brain.MimicBody != null)
+                _brain.MimicBody.IsDuelReady = false;
             _brain.Body.IsSitting = false;
             _brain.AggroLevel = 100;
+            _prevPvPMode = _brain.PvPMode;
             _brain.PvPMode = true;
             _brain.AggroRange = 3600;
             _brain.Body.StopMoving();
@@ -1982,20 +2005,44 @@ namespace DOL.AI.Brain
             base.Enter();
         }
 
+        public override void Exit()
+        {
+            // Restore PvPMode to whatever it was before the duel — without
+            // this, the bot stayed in PvP target-priority mode forever after
+            // a duel in a PvE zone.
+            _brain.PvPMode = _prevPvPMode;
+            if (_brain.MimicBody != null)
+                _brain.MimicBody.IsDuelReady = false;
+            base.Exit();
+        }
+
         public override void Think()
         {
             _brain.AlreadyCheckedHeals = false;
 
+            // Defensive exit transitions: if the duel partner is gone (logged
+            // off, died, accepted another duel, or the bot's owner cancelled),
+            // bail back to WAKING_UP so the bot doesn't get stuck mid-stance.
+            if (_brain.MimicBody == null)
+            {
+                _brain.FSM.SetCurrentState(eFSMStateType.WAKING_UP);
+                return;
+            }
+
+            GameLiving partner = _brain.MimicBody.DuelPartner;
+            if (partner == null || !partner.IsAlive || partner.ObjectState != GameObject.eObjectState.Active)
+            {
+                _brain.FSM.SetCurrentState(eFSMStateType.WAKING_UP);
+                return;
+            }
+
             if (!_brain.CheckSpells(MimicBrain.eCheckSpellType.Defensive))
                 _brain.MimicBody.IsDuelReady = true;
 
-            if (_brain.MimicBody.DuelPartner != null && _brain.MimicBody.DuelPartner is IGamePlayer gPlayer)
+            if (partner is IGamePlayer gPlayer && gPlayer.IsDuelReady)
             {
-                if (gPlayer.IsDuelReady)
-                {
-                    _brain.CheckProximityAggro(_brain.AggroRange);
-                    _brain.AttackMostWanted();
-                }
+                _brain.CheckProximityAggro(_brain.AggroRange);
+                _brain.AttackMostWanted();
             }
         }
     }

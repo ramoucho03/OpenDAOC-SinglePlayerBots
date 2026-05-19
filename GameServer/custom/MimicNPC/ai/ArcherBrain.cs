@@ -249,8 +249,21 @@ namespace DOL.GS.Scripts
             int weaponKey = bow.Id_nb?.GetHashCode() ?? bow.Object_Type;
             if (weaponKey != _cachedBowRangeForWeaponId || _cachedBowRange <= 0)
             {
+                // attackComponent.AttackRange reflects the CURRENTLY equipped
+                // slot's range, not the bow's. If the archer is in melee mode
+                // when this fires (post-fight cleanup, opener evaluation
+                // before stealth, etc.) the cached value collapses to the
+                // melee reach (~150) and silently breaks every range gate
+                // downstream. Briefly swap to Distance, sample, restore.
+                eActiveWeaponSlot oldSlot = Body.ActiveWeaponSlot;
+                if (oldSlot != eActiveWeaponSlot.Distance)
+                    Body.SwitchWeapon(eActiveWeaponSlot.Distance);
+
                 _cachedBowRange = Body.attackComponent?.AttackRange ?? 1500;
                 _cachedBowRangeForWeaponId = weaponKey;
+
+                if (oldSlot != eActiveWeaponSlot.Distance)
+                    Body.SwitchWeapon(oldSlot);
             }
 
             return _cachedBowRange;
