@@ -1153,6 +1153,26 @@ namespace DOL.GS.ServerRules
                     if (pair.Key.IsObjectGreyCon(killedNpc) || pair.Key is GameGuard)
                         return false;
 
+                    // MimicNPC: contribute damage to its group's pooled damage so real players
+                    // in the same group get a meaningful XP share. Mimics aren't player-like
+                    // loot owners — skip playerCountAndDamage / mostDamagingPlayer for them.
+                    // Count is not bumped here: it accrues from the real players' propagated
+                    // 0-damage entries (added in GameLiving.TakeDamage), which keeps the XP
+                    // split based on real-player count rather than dividing among mimics.
+                    if (pair.Key is DOL.GS.Scripts.MimicNPC mimic)
+                    {
+                        Group mimicGroup = mimic.Group;
+
+                        if (mimicGroup != null)
+                        {
+                            groupCountAndDamage ??= new();
+                            mostDamagingGroup ??= new();
+                            AccrueMimicGroupDamage(killedNpc, mimicGroup, pair.Value, mostDamagingGroup, groupCountAndDamage);
+                        }
+
+                        continue;
+                    }
+
                     // We only care about players in range.
                     if (pair.Key is not GamePlayer player || player.ObjectState is not GameObject.eObjectState.Active || !player.IsWithinRadius(killedNpc, WorldMgr.MAX_EXPFORKILL_DISTANCE))
                         continue;
@@ -1179,6 +1199,47 @@ namespace DOL.GS.ServerRules
                 }
 
                 return true;
+
+                static void AccrueMimicGroupDamage(GameNPC killedNpc, Group mimicGroup, double damage, ItemOwnerTotalDamagePair mostDamagingGroup, Dictionary<Group, EntityCountTotalDamagePair> groupCountAndDamage)
+                {
+                    double totalDamage;
+
+                    if (groupCountAndDamage.TryGetValue(mimicGroup, out EntityCountTotalDamagePair value))
+                    {
+                        value.Damage += damage;
+                        totalDamage = value.Damage;
+                    }
+                    else
+                    {
+                        // Need a real GamePlayer for HighestLevelPlayer (used for con-color XP scaling).
+                        // Pick the highest-level in-range player from the mimic's group.
+                        GamePlayer highestLevelPlayer = null;
+
+                        foreach (GamePlayer member in mimicGroup.GetPlayersInTheGroup())
+                        {
+                            if (member.ObjectState is not GameObject.eObjectState.Active || !member.IsWithinRadius(killedNpc, WorldMgr.MAX_EXPFORKILL_DISTANCE))
+                                continue;
+
+                            if (highestLevelPlayer == null || highestLevelPlayer.Level < member.Level)
+                                highestLevelPlayer = member;
+                        }
+
+                        // No eligible real player in range — nothing to credit.
+                        if (highestLevelPlayer == null)
+                            return;
+
+                        totalDamage = damage;
+                        groupCountAndDamage[mimicGroup] = new(0, totalDamage, highestLevelPlayer);
+                    }
+
+                    if (mostDamagingGroup.Damage == 0 || totalDamage > mostDamagingGroup.Damage)
+                    {
+                        if (mimicGroup != mostDamagingGroup.Owner)
+                            mostDamagingGroup.Owner = mimicGroup;
+
+                        mostDamagingGroup.Damage = totalDamage;
+                    }
+                }
 
                 static void ProcessDamage<T>(GamePlayer player, double damage, T entity, ItemOwnerTotalDamagePair mostDamagingEntity, Dictionary<T, EntityCountTotalDamagePair> entityDamage) where T : class, IGameStaticItemOwner
                 {

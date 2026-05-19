@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using DOL.AI.Brain;
 using DOL.GS.Effects;
 using DOL.GS.Keeps;
@@ -55,7 +56,9 @@ namespace DOL.GS.Spells
 
             if (Properties.TURRET_AREA_CAP_COUNT > 0)
             {
-                foreach (GameNPC npc in Caster.CurrentRegion.GetNPCsInRadius(Caster.GroundTarget, (ushort) Properties.TURRET_AREA_CAP_RADIUS))
+                List<GameNPC> _npcsInRadius = new();
+                Caster.CurrentRegion.GetInRadius(Caster.GroundTarget, eGameObjectType.NPC, (ushort) Properties.TURRET_AREA_CAP_RADIUS, _npcsInRadius);
+                foreach (GameNPC npc in _npcsInRadius)
                 {
                     if (npc.Brain is TurretFNFBrain && ++count >= Properties.TURRET_AREA_CAP_COUNT)
                     {

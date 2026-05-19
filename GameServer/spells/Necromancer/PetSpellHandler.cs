@@ -27,7 +27,12 @@ namespace DOL.GS.Spells
 
             if (Caster.ControlledBrain == null)
             {
-                MessageToCaster(LanguageMgr.GetTranslation((Caster as GamePlayer).Client, "PetSpellHandler.CheckBeginCast.NoControlledBrainForCast"), eChatType.CT_SpellResisted);
+                // The "no pet" message used to dereference (Caster as GamePlayer).Client
+                // unconditionally, NPE-ing for any non-player caster (Mimic
+                // Necromancer in particular). Funnel through MessageToCaster
+                // which is null-safe for NPC casters.
+                if (Caster is GamePlayer playerCaster)
+                    MessageToCaster(LanguageMgr.GetTranslation(playerCaster.Client, "PetSpellHandler.CheckBeginCast.NoControlledBrainForCast"), eChatType.CT_SpellResisted);
                 return false;
             }
 
@@ -40,15 +45,21 @@ namespace DOL.GS.Spells
         /// <param name="target"></param>
         public override void FinishSpellCast(GameLiving target)
         {
-            if (Caster is not GamePlayer playerCaster || playerCaster.ControlledBrain == null)
+            // Cast spell handler-side: any GameLiving (player or Mimic) that
+            // owns a NecromancerPetBrain should be able to route its queued
+            // pet spells. The previous "Caster is not GamePlayer" gate meant
+            // Mimic Necromancers consumed no mana and never propagated the
+            // SubSpellID to the pet's queue — visible in-game as "necro mimic
+            // casts but pet never does anything".
+            if (Caster?.ControlledBrain == null)
                 return;
 
-            int powerCost = PowerCost(playerCaster);
+            int powerCost = PowerCost(Caster);
 
             if (powerCost > 0)
-                playerCaster.ChangeMana(playerCaster, eManaChangeType.Spell, -powerCost);
+                Caster.ChangeMana(Caster, eManaChangeType.Spell, -powerCost);
 
-            if (playerCaster.ControlledBrain is NecromancerPetBrain petBrain && Spell.SubSpellID > 0)
+            if (Caster.ControlledBrain is NecromancerPetBrain petBrain && Spell.SubSpellID > 0)
             {
                 Spell spell = SkillBase.GetSpellByID(Spell.SubSpellID);
 

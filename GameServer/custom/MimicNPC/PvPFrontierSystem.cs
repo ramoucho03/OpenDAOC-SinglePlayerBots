@@ -1,4 +1,5 @@
 using DOL.AI.Brain;
+using DOL.Database;
 using DOL.Events;
 using DOL.GS.Commands;
 using DOL.GS.PacketHandler;
@@ -44,7 +45,7 @@ namespace DOL.GS.Scripts
         public static int PVP_FRONTIER_POPULATION_PER_REALM;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_region",
-            "Region ID for the shared PvP frontier zone. Default 163 (Hadrian's Wall / Old Frontier).", 163)]
+            "Region ID for the shared PvP frontier zone. Default 163 (New Frontiers — the unified NF region on OpenDAOC).", 163)]
         public static int PVP_FRONTIER_REGION;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_min_level",
@@ -75,6 +76,15 @@ namespace DOL.GS.Scripts
             "Weighted distribution for spawned group sizes 1..8, comma-separated. Higher weight = more groups of that size. Default biases strongly toward full 8-man parties, with occasional skirmish teams and rare solo roamers — mirrors what a populated frontier actually looks like.",
             "3,5,7,10,12,15,20,28")]
         public static string PVP_FRONTIER_GROUP_SIZE_WEIGHTS;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_include_bgs",
+            "Also spawn intelligent PvP frontier groups in every Battleground region from the DB (Thidranki, Molvik, Cathal Valley, etc.), scaled to each BG's level bracket. Default true — gives the frontier-style smart AI to all BGs, not just NF.",
+            true)]
+        public static bool PVP_FRONTIER_INCLUDE_BGS;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_bg_population_per_realm",
+            "Target number of mimic bots maintained per realm in each Battleground region (separate from the main frontier population). Default 30 — keeps BGs lively without saturating a low-pop server.", 30)]
+        public static int PVP_FRONTIER_BG_POPULATION_PER_REALM;
     }
 
     #endregion
@@ -87,19 +97,36 @@ namespace DOL.GS.Scripts
 
         // Per-realm spawn anchors. Bots spawn in a radius around these and pick
         // patrol waypoints from the realm's waypoint list.
-        // These coordinates target Hadrian's Wall area in the Old Frontiers
-        // (region 163) — Albion is south-east, Midgard north-west, Hibernia
-        // north-east. An admin can override per-realm anchors at runtime via
-        // SetSpawnAnchor.
+        // These coordinates target the New Frontiers map (region 163). The
+        // three realms have distinct corners that converge toward the
+        // contested center where encounters happen. An admin can override
+        // per-realm anchors at runtime via SetSpawnAnchor.
         public sealed class RealmConfig
         {
             public eRealm Realm;
             public Point3D SpawnAnchor;
             public List<Point3D> PatrolWaypoints = new();
             public List<PvPFrontierGroup> Groups = new();
+
+            // Per-config region / level / population. Carried on the config so
+            // every BG region runs its own population scaled to its bracket.
+            // Defaults match the single-region NF behaviour when not set.
+            public ushort Region;
+            public byte MinLevel;
+            public byte MaxLevel;
+            public int TargetPopulation;
+
+            // Friendly label for log lines and admin commands. Resolves from
+            // the region description at config-build time so it survives
+            // reloads without re-querying WorldMgr.
+            public string ZoneLabel = "Frontier";
         }
 
-        internal static readonly Dictionary<eRealm, RealmConfig> _configs = new();
+        // Two-level storage: region → (realm → config). Lets the manager run
+        // one independent population per BG region in parallel with the main
+        // NF frontier. Lookups stay O(1) and the maintenance loop is just a
+        // nested foreach.
+        internal static readonly Dictionary<ushort, Dictionary<eRealm, RealmConfig>> _configs = new();
         internal static readonly object _configsLock = new();
         private static ECSGameTimer _tickTimer;
         private static bool _running;
@@ -114,9 +141,10 @@ namespace DOL.GS.Scripts
                 lock (_configsLock)
                 {
                     int total = 0;
-                    foreach (var cfg in _configs.Values)
-                        foreach (var g in cfg.Groups)
-                            total += g.AliveMemberCount;
+                    foreach (var byRealm in _configs.Values)
+                        foreach (var cfg in byRealm.Values)
+                            foreach (var g in cfg.Groups)
+                                total += g.AliveMemberCount;
                     return total;
                 }
             }
@@ -139,54 +167,133 @@ namespace DOL.GS.Scripts
 
         private static void BuildDefaultConfig()
         {
-            ushort region = (ushort)PvPFrontierProperties.PVP_FRONTIER_REGION;
+            ushort nfRegion = (ushort)PvPFrontierProperties.PVP_FRONTIER_REGION;
+            byte nfMinLvl = (byte)PvPFrontierProperties.PVP_FRONTIER_MIN_LEVEL;
+            byte nfMaxLvl = (byte)PvPFrontierProperties.PVP_FRONTIER_MAX_LEVEL;
+            int nfPop = PvPFrontierProperties.PVP_FRONTIER_POPULATION_PER_REALM;
 
             lock (_configsLock)
             {
                 _configs.Clear();
 
-                // Default anchors for Hadrian's Wall (region 163). The three
-                // realms get distinct corners; waypoints describe a triangle
-                // that brings them toward the center where encounters happen.
-                _configs[eRealm.Albion] = new RealmConfig
+                // ----- Main frontier (NF, region 163 by default) -----
+                Dictionary<eRealm, RealmConfig> nfConfigs = new()
                 {
-                    Realm = eRealm.Albion,
-                    SpawnAnchor = new Point3D(45_000, 55_000, 3_500),
-                    PatrolWaypoints = new()
+                    [eRealm.Albion] = new RealmConfig
                     {
-                        new Point3D(45_000, 55_000, 3_500),  // home
-                        new Point3D(38_000, 48_000, 3_500),  // mid-west
-                        new Point3D(40_000, 35_000, 3_500),  // contested center
-                        new Point3D(52_000, 42_000, 3_500),  // east patrol
+                        Realm = eRealm.Albion,
+                        Region = nfRegion,
+                        MinLevel = nfMinLvl,
+                        MaxLevel = nfMaxLvl,
+                        TargetPopulation = nfPop,
+                        ZoneLabel = "New Frontiers",
+                        SpawnAnchor = new Point3D(45_000, 55_000, 3_500),
+                        PatrolWaypoints = new()
+                        {
+                            new Point3D(45_000, 55_000, 3_500),  // home
+                            new Point3D(38_000, 48_000, 3_500),  // mid-west
+                            new Point3D(40_000, 35_000, 3_500),  // contested center
+                            new Point3D(52_000, 42_000, 3_500),  // east patrol
+                        },
+                    },
+                    [eRealm.Hibernia] = new RealmConfig
+                    {
+                        Realm = eRealm.Hibernia,
+                        Region = nfRegion,
+                        MinLevel = nfMinLvl,
+                        MaxLevel = nfMaxLvl,
+                        TargetPopulation = nfPop,
+                        ZoneLabel = "New Frontiers",
+                        SpawnAnchor = new Point3D(25_000, 22_000, 3_500),
+                        PatrolWaypoints = new()
+                        {
+                            new Point3D(25_000, 22_000, 3_500),
+                            new Point3D(30_000, 28_000, 3_500),
+                            new Point3D(40_000, 35_000, 3_500),
+                            new Point3D(20_000, 35_000, 3_500),
+                        },
+                    },
+                    [eRealm.Midgard] = new RealmConfig
+                    {
+                        Realm = eRealm.Midgard,
+                        Region = nfRegion,
+                        MinLevel = nfMinLvl,
+                        MaxLevel = nfMaxLvl,
+                        TargetPopulation = nfPop,
+                        ZoneLabel = "New Frontiers",
+                        SpawnAnchor = new Point3D(55_000, 25_000, 3_500),
+                        PatrolWaypoints = new()
+                        {
+                            new Point3D(55_000, 25_000, 3_500),
+                            new Point3D(48_000, 30_000, 3_500),
+                            new Point3D(40_000, 35_000, 3_500),
+                            new Point3D(52_000, 42_000, 3_500),
+                        },
                     },
                 };
+                _configs[nfRegion] = nfConfigs;
 
-                _configs[eRealm.Hibernia] = new RealmConfig
-                {
-                    Realm = eRealm.Hibernia,
-                    SpawnAnchor = new Point3D(25_000, 22_000, 3_500),
-                    PatrolWaypoints = new()
-                    {
-                        new Point3D(25_000, 22_000, 3_500),
-                        new Point3D(30_000, 28_000, 3_500),
-                        new Point3D(40_000, 35_000, 3_500),
-                        new Point3D(20_000, 35_000, 3_500),
-                    },
-                };
-
-                _configs[eRealm.Midgard] = new RealmConfig
-                {
-                    Realm = eRealm.Midgard,
-                    SpawnAnchor = new Point3D(55_000, 25_000, 3_500),
-                    PatrolWaypoints = new()
-                    {
-                        new Point3D(55_000, 25_000, 3_500),
-                        new Point3D(48_000, 30_000, 3_500),
-                        new Point3D(40_000, 35_000, 3_500),
-                        new Point3D(52_000, 42_000, 3_500),
-                    },
-                };
+                // ----- Battlegrounds (auto-discovered from DB) -----
+                if (PvPFrontierProperties.PVP_FRONTIER_INCLUDE_BGS)
+                    BuildBattlegroundConfigs();
             }
+        }
+
+        /// <summary>
+        /// Scans the Battleground DB table and adds a per-realm RealmConfig
+        /// for each BG region, so the frontier-style smart AI runs in every
+        /// BG (not just NF). Skips the main frontier region so we don't
+        /// duplicate its config, and skips rows whose Region doesn't resolve
+        /// (server map mismatch).
+        /// </summary>
+        private static void BuildBattlegroundConfigs()
+        {
+            ushort nfRegion = (ushort)PvPFrontierProperties.PVP_FRONTIER_REGION;
+            int bgPop = Math.Max(0, PvPFrontierProperties.PVP_FRONTIER_BG_POPULATION_PER_REALM);
+
+            // Shared per-realm anchor coordinates. BGs all use the same
+            // realm-corner layout in OpenDAOC; the portal keep locations
+            // resolved at hydration time pin bots into the right zone.
+            Point3D albAnchor = new(37_200, 51_200, 3_950);
+            Point3D hibAnchor = new(19_820, 19_305, 4_050);
+            Point3D midAnchor = new(53_300, 26_100, 4_270);
+
+            foreach (DbBattleground bg in GameServer.Database.SelectAllObjects<DbBattleground>())
+            {
+                if (bg == null) continue;
+                if (bg.MinLevel == 0 || bg.MaxLevel == 0 || bg.MaxLevel < bg.MinLevel)
+                    continue;
+                if (bg.RegionID == nfRegion) continue; // already configured
+                if (WorldMgr.GetRegion(bg.RegionID) == null) continue;
+
+                string label = WorldMgr.GetRegion(bg.RegionID)?.Description ?? $"BG L{bg.MinLevel}-{bg.MaxLevel}";
+
+                Dictionary<eRealm, RealmConfig> byRealm = new()
+                {
+                    [eRealm.Albion] = MakeBgConfig(eRealm.Albion, bg, albAnchor, bgPop, label),
+                    [eRealm.Hibernia] = MakeBgConfig(eRealm.Hibernia, bg, hibAnchor, bgPop, label),
+                    [eRealm.Midgard] = MakeBgConfig(eRealm.Midgard, bg, midAnchor, bgPop, label),
+                };
+                _configs[bg.RegionID] = byRealm;
+            }
+        }
+
+        private static RealmConfig MakeBgConfig(eRealm realm, DbBattleground bg, Point3D anchor, int targetPop, string label)
+        {
+            return new RealmConfig
+            {
+                Realm = realm,
+                Region = bg.RegionID,
+                MinLevel = bg.MinLevel,
+                MaxLevel = bg.MaxLevel,
+                TargetPopulation = targetPop,
+                ZoneLabel = label,
+                SpawnAnchor = anchor,
+                // Single-waypoint patrol = bots roam around the anchor's
+                // radius. BG maps are small so we don't need a full route;
+                // the engagement loop drives chases from contact anyway.
+                PatrolWaypoints = new() { anchor },
+            };
         }
 
         public static bool Start()
@@ -223,13 +330,16 @@ namespace DOL.GS.Scripts
 
             lock (_configsLock)
             {
-                foreach (var cfg in _configs.Values)
+                foreach (var byRealm in _configs.Values)
                 {
-                    foreach (var grp in cfg.Groups.ToList())
+                    foreach (var cfg in byRealm.Values)
                     {
-                        removed += grp.DisbandAndDelete();
+                        foreach (var grp in cfg.Groups.ToList())
+                        {
+                            removed += grp.DisbandAndDelete();
+                        }
+                        cfg.Groups.Clear();
                     }
-                    cfg.Groups.Clear();
                 }
             }
 
@@ -247,8 +357,6 @@ namespace DOL.GS.Scripts
 
             try
             {
-                int target = PvPFrontierProperties.PVP_FRONTIER_POPULATION_PER_REALM;
-
                 // Snapshot player positions ONCE per tick. Every group's
                 // IsPlayerWithin check then consults the snapshot instead of
                 // re-walking ClientService for every group + every range
@@ -258,34 +366,37 @@ namespace DOL.GS.Scripts
 
                 lock (_configsLock)
                 {
-                    foreach (var kv in _configs)
+                    foreach (var byRealm in _configs.Values)
                     {
-                        RealmConfig cfg = kv.Value;
-
-                        // Step every group; prune disbanded ones.
-                        for (int i = cfg.Groups.Count - 1; i >= 0; i--)
+                        foreach (RealmConfig cfg in byRealm.Values)
                         {
-                            PvPFrontierGroup grp = cfg.Groups[i];
-                            grp.Tick();
+                            // Step every group; prune disbanded ones.
+                            for (int i = cfg.Groups.Count - 1; i >= 0; i--)
+                            {
+                                PvPFrontierGroup grp = cfg.Groups[i];
+                                grp.Tick();
 
-                            if (grp.IsDisbanded)
-                                cfg.Groups.RemoveAt(i);
-                        }
+                                if (grp.IsDisbanded)
+                                    cfg.Groups.RemoveAt(i);
+                            }
 
-                        // Spawn enough new groups to reach the realm's target population.
-                        int alive = 0;
-                        foreach (var g in cfg.Groups)
-                            alive += g.AliveMemberCount;
+                            // Each config carries its own target population
+                            // (per-region, per-realm). BG configs use the
+                            // smaller bg-population setting; the main NF
+                            // config uses the full frontier target.
+                            int target = cfg.TargetPopulation;
+                            if (target <= 0)
+                                continue;
 
-                        int missing = target - alive;
+                            int alive = 0;
+                            foreach (var g in cfg.Groups)
+                                alive += g.AliveMemberCount;
 
-                        // Spawn one group per tick (avoid burst). Group size
-                        // is configurable: pvp_frontier_min_group_size /
-                        // pvp_frontier_max_group_size cover the 1-8 range so
-                        // an admin can mix solo roamers, small skirmish
-                        // teams, and full 8-man parties.
-                        if (missing > 0)
-                        {
+                            int missing = target - alive;
+                            if (missing <= 0)
+                                continue;
+
+                            // Spawn one group per tick per config (avoid burst).
                             int minSize = Math.Clamp(PvPFrontierProperties.PVP_FRONTIER_MIN_GROUP_SIZE, 1, 8);
                             int maxSize = Math.Clamp(PvPFrontierProperties.PVP_FRONTIER_MAX_GROUP_SIZE, minSize, 8);
                             int rolledSize = RollWeightedGroupSize(minSize, maxSize);
@@ -388,15 +499,18 @@ namespace DOL.GS.Scripts
         private static void RefreshPlayerSnapshots()
         {
             // Collect every region that has at least one group registered to
-            // it (today all groups share PVP_FRONTIER_REGION, but the loop is
-            // future-proof for multi-region rollout).
+            // it. With multi-region BG support, this naturally covers NF +
+            // every configured BG region in one pass.
             HashSet<ushort> regions = new();
             lock (_configsLock)
             {
-                foreach (var cfg in _configs.Values)
-                    foreach (var g in cfg.Groups)
-                        if (g.Region != 0)
-                            regions.Add(g.Region);
+                foreach (ushort regionId in _configs.Keys)
+                    regions.Add(regionId);
+                foreach (var byRealm in _configs.Values)
+                    foreach (var cfg in byRealm.Values)
+                        foreach (var g in cfg.Groups)
+                            if (g.Region != 0)
+                                regions.Add(g.Region);
             }
             if (regions.Count == 0)
                 regions.Add((ushort)PvPFrontierProperties.PVP_FRONTIER_REGION);
@@ -514,28 +628,31 @@ namespace DOL.GS.Scripts
             System.Text.StringBuilder sb = new();
             sb.AppendLine("=== PvP Frontier status ===");
             sb.AppendLine($"Running: {_running}");
-            sb.AppendLine($"Target population per realm: {PvPFrontierProperties.PVP_FRONTIER_POPULATION_PER_REALM}");
-            sb.AppendLine($"Region: {PvPFrontierProperties.PVP_FRONTIER_REGION}");
+            sb.AppendLine($"NF target population/realm: {PvPFrontierProperties.PVP_FRONTIER_POPULATION_PER_REALM}");
+            sb.AppendLine($"BG target population/realm: {PvPFrontierProperties.PVP_FRONTIER_BG_POPULATION_PER_REALM} (BGs auto-included: {PvPFrontierProperties.PVP_FRONTIER_INCLUDE_BGS})");
             sb.AppendLine();
-            sb.AppendLine($"{"Realm",-9} {"groups",6} {"logical",7} {"hydrated",8} {"npcs",5}");
+            sb.AppendLine($"{"Zone",-20} {"Realm",-9} {"groups",6} {"logical",7} {"hydrated",8} {"npcs",5}");
 
             lock (_configsLock)
             {
-                foreach (var cfg in _configs.Values)
+                foreach (var kv in _configs)
                 {
-                    int hydrated = 0;
-                    int logical = 0;
-                    int npcs = 0;
-                    foreach (var g in cfg.Groups)
+                    foreach (var cfg in kv.Value.Values)
                     {
-                        logical += g.LogicalMemberCount;
-                        if (g.IsHydrated)
+                        int hydrated = 0;
+                        int logical = 0;
+                        int npcs = 0;
+                        foreach (var g in cfg.Groups)
                         {
-                            hydrated++;
-                            npcs += g.AliveMemberCount;
+                            logical += g.LogicalMemberCount;
+                            if (g.IsHydrated)
+                            {
+                                hydrated++;
+                                npcs += g.AliveMemberCount;
+                            }
                         }
+                        sb.AppendLine($"{cfg.ZoneLabel,-20} {cfg.Realm,-9} {cfg.Groups.Count,6} {logical,7} {hydrated,8} {npcs,5}");
                     }
-                    sb.AppendLine($"{cfg.Realm,-9} {cfg.Groups.Count,6} {logical,7} {hydrated,8} {npcs,5}");
                 }
             }
 
@@ -659,8 +776,13 @@ namespace DOL.GS.Scripts
             if (comp.Count == 0)
                 return null;
 
-            byte minLevel = (byte)PvPFrontierProperties.PVP_FRONTIER_MIN_LEVEL;
-            byte maxLevel = (byte)PvPFrontierProperties.PVP_FRONTIER_MAX_LEVEL;
+            // Bot levels and target region come from the RealmConfig so each
+            // BG config produces bots in its own bracket (Thidranki 20-24,
+            // Molvik 35-39, etc.) — the global PVP_FRONTIER_MIN/MAX_LEVEL
+            // properties remain the source for the main NF config only.
+            byte minLevel = cfg.MinLevel > 0 ? cfg.MinLevel : (byte)PvPFrontierProperties.PVP_FRONTIER_MIN_LEVEL;
+            byte maxLevel = cfg.MaxLevel > 0 ? cfg.MaxLevel : (byte)PvPFrontierProperties.PVP_FRONTIER_MAX_LEVEL;
+            if (maxLevel < minLevel) maxLevel = minLevel;
 
             foreach (eMimicClass cls in comp)
             {
@@ -679,7 +801,9 @@ namespace DOL.GS.Scripts
                 });
             }
 
-            g.Region = (ushort)PvPFrontierProperties.PVP_FRONTIER_REGION;
+            g.Region = cfg.Region != 0
+                ? cfg.Region
+                : (ushort)PvPFrontierProperties.PVP_FRONTIER_REGION;
             g.VirtualPosition = new Point3D(cfg.SpawnAnchor.X + Util.Random(-250, 250),
                                             cfg.SpawnAnchor.Y + Util.Random(-250, 250),
                                             cfg.SpawnAnchor.Z);
@@ -1416,7 +1540,8 @@ namespace DOL.GS.Scripts
 
             lock (PvPFrontierManager._configsLock)
             {
-                foreach (var cfg in PvPFrontierManager._configs.Values)
+                foreach (var byRealm in PvPFrontierManager._configs.Values)
+                foreach (var cfg in byRealm.Values)
                 {
                     if (cfg.Realm == this.Config.Realm) continue;
 

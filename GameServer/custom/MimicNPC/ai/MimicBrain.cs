@@ -3650,8 +3650,19 @@ namespace DOL.AI.Brain
             if (Body.TargetObject is not GameLiving livingTarget)
                 return false;
 
+            // Mob is actively chasing us / running — flanking it is pointless
+            // and the previous behaviour (ResetFlanking, then immediately
+            // recompute via BeginFlanking on the next line) made the bot
+            // oscillate every tick between "advance to flank pos" and
+            // "reset". User-visible "runs to mob, comes back, runs again".
+            // Cancel any pending flank and just attack head-on while the
+            // mob is in motion or focused on us — re-evaluation kicks back
+            // in the moment the mob settles into a swing animation.
             if (livingTarget.IsMoving || livingTarget.TargetObject == Body)
+            {
                 ResetFlanking();
+                return false;
+            }
 
             if (BeginFlanking(livingTarget))
                 return true;
@@ -4042,6 +4053,60 @@ namespace DOL.AI.Brain
                 positional = eOpeningPosition.Back;
 
             return positional;
+        }
+
+        /// <summary>
+        /// Class-locks summon/pet spells so they only fire for the caster
+        /// class they belong to. Shared spec lines (Wizard/Theurgist both
+        /// spec Earth_Magic, Eldritch/Animist both spec Mana_Magic, etc.)
+        /// can leak pet summons across classes via the DB-driven spell
+        /// loader. The user-visible symptom: a Wizard mimic summoning
+        /// Theurgist turrets. Anything not in the table is allowed.
+        /// </summary>
+        public bool IsSummonSpellAllowedForClass(Spell spell)
+        {
+            if (spell == null || MimicBody?.CharacterClass == null)
+                return true;
+
+            int classId = MimicBody.CharacterClass.ID;
+            switch (spell.SpellType)
+            {
+                case eSpellType.SummonTheurgistPet:
+                    return classId == (int)eCharacterClass.Theurgist;
+                case eSpellType.SummonAnimistPet:
+                case eSpellType.SummonAnimistFnF:
+                case eSpellType.SummonAnimistFnFCustom:
+                case eSpellType.SummonAnimistAmbusher:
+                case eSpellType.TurretPBAoE:
+                    return classId == (int)eCharacterClass.Animist;
+                case eSpellType.SummonNecroPet:
+                    return classId == (int)eCharacterClass.Necromancer;
+                case eSpellType.SummonCommander:
+                case eSpellType.SummonMinion:
+                    return classId == (int)eCharacterClass.Bonedancer;
+                case eSpellType.SummonSimulacrum:
+                case eSpellType.SummonJuggernaut:
+                case eSpellType.SummonElemental:
+                case eSpellType.SummonHealingElemental:
+                    return classId == (int)eCharacterClass.Cabalist;
+                case eSpellType.SummonUnderhill:
+                    return classId == (int)eCharacterClass.Enchanter;
+                case eSpellType.SummonSpiritFighter:
+                    return classId == (int)eCharacterClass.Spiritmaster;
+                case eSpellType.SummonDruidPet:
+                    return classId == (int)eCharacterClass.Druid;
+                case eSpellType.SummonHunterPet:
+                    return classId == (int)eCharacterClass.Hunter;
+                case eSpellType.SummonMonster:
+                    return classId == (int)eCharacterClass.Heretic;
+                case eSpellType.Bomber:
+                    // Bomber is the Wizard Magic Affinity self-destruct
+                    // elemental; also used by Animist for fnf-style turrets.
+                    return classId == (int)eCharacterClass.Wizard
+                        || classId == (int)eCharacterClass.Animist;
+                default:
+                    return true;
+            }
         }
 
         /// <summary>
@@ -5028,7 +5093,15 @@ namespace DOL.AI.Brain
                 && Body.castingComponent?.SpellHandler?.Spell?.SpellType == eSpellType.Resurrect)
                 return true;
 
-            if (Body.Mana < MimicBody.PowerCost(rezSpell))
+            // Mana pre-check: the rez handler computes its real power cost
+            // dynamically (typically 50%+ of MaxMana, not spell.Power), so
+            // MimicBody.PowerCost (which returns the static spell.Power) is
+            // useless here — a "0 power" rez would always pass our pre-check
+            // and then fail inside ResurrectSpellHandler.CheckBeginCast for
+            // mana, wasting the attempt. Approximate the engine formula so
+            // we only attempt when we can actually afford it.
+            int rezManaCost = Math.Max(MimicBody.PowerCost(rezSpell), MimicBody.MaxMana / 2);
+            if (Body.Mana < rezManaCost)
                 return false;
 
             if (rezSpell.HasRecastDelay && Body.GetSkillDisabledDuration(rezSpell) > 0)
@@ -5494,6 +5567,33 @@ namespace DOL.AI.Brain
                             // Don't try a spell we cannot afford. Saves mana for
                             // a future cast that might land instead of fizzling.
                             if (Body.Mana < MimicBody.PowerCost(spell))
+                                continue;
+
+                            // Class-locked summon spells. Several spec lines are
+                            // shared by name across classes (Wizard / Theurgist
+                            // both spec Earth_Magic, Eldritch / Animist both
+                            // spec Mana_Magic, etc.). The DB-driven spell loader
+                            // can leak summon spells from one class to another
+                            // through the shared SpellLine KeyName, which
+                            // manifests in-game as "my Wizard mimic is summoning
+                            // Theurgist pets". Block any pet/turret summon that
+                            // doesn't match the bot's actual class.
+                            if (!IsSummonSpellAllowedForClass(spell))
+                                continue;
+
+                            // Permanent-pet duplicate guard on the offensive path.
+                            // CheckDefensiveSpells already gates this in
+                            // CanCastDefensiveSpell, but a permanent-pet summon
+                            // that happens to be tagged Harmful (target ENEMY)
+                            // would otherwise slip through here and let the bot
+                            // queue a second commander while the first is still
+                            // alive — the user-visible "Cabalist with 2-3 pets"
+                            // bug. Same check as the defensive side keeps the
+                            // two paths symmetric.
+                            if (IsPermanentPetSummon(spell)
+                                && Body?.ControlledBrain?.Body is GameNPC livePet
+                                && livePet.IsAlive
+                                && livePet.ObjectState == GameObject.eObjectState.Active)
                                 continue;
 
                             spellsToCast.Add(spell);

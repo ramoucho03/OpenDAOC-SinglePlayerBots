@@ -17,12 +17,22 @@ namespace DOL.GS.Scripts
     {
         private static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
-        // Thidranki: classic 20-24 battleground (region 252).
-        public static MimicBattleground ThidBattleground;
-        // Caledonia: 1-50 battleground (region 249).
-        public static MimicBattleground CaledoniaBattleground;
-        // Molvik: 35-39 battleground (region 165).
-        public static MimicBattleground MolvikBattleground;
+        // DB-driven map of every Battleground row → its running MimicBattleground.
+        // Replaces the hard-coded trio (Thidranki 252 / Caledonia 249 / Molvik 165)
+        // which referenced WRONG region IDs on OpenDAOC: 252 is not a valid
+        // region, 249 is Darkness Falls (a dungeon, not a BG), and 165 is
+        // Cathal Valley (not Molvik). The OpenDAOC BG layout uses regions
+        // 234-242 + 165, and the canonical level/region mapping lives in the
+        // Battleground DB table — so we read that at boot rather than guess.
+        private static readonly Dictionary<ushort, MimicBattleground> _battlegrounds = new();
+
+        // Legacy named handles kept for any external script that still
+        // references them. Now resolved from the DB-driven map at boot time
+        // — they may stay null on servers whose Battleground rows don't
+        // match the historical level brackets.
+        public static MimicBattleground ThidBattleground => _battlegrounds.TryGetValue(238, out var bg) ? bg : null;
+        public static MimicBattleground MolvikBattleground => _battlegrounds.TryGetValue(241, out var bg) ? bg : null;
+        public static MimicBattleground CathalValleyBattleground => _battlegrounds.TryGetValue(165, out var bg) ? bg : null;
 
         // Drives the player-presence check that auto-spawns / auto-clears the
         // BG mimic populations every minute.
@@ -30,27 +40,41 @@ namespace DOL.GS.Scripts
         private const int BG_PRESENCE_CHECK_MS = 60_000;
         private const int BG_BOTS_PER_REALM_WHEN_PLAYERS = 20;
 
+        // Per-realm spawn anchors used by every BG. BGs share a similar
+        // realm-corner layout (Alb SE, Hib SW, Mid NE), so a single set of
+        // coordinates works as a sensible default. Servers with custom BG
+        // layouts can override per-region by populating the DBspawn override
+        // (TODO: add DB column) — for now these are the safe defaults that
+        // landed bots in the right realm zone on stock OpenDAOC maps.
+        private static readonly Point3D BG_ALB_SPAWN = new(37200, 51200, 3950);
+        private static readonly Point3D BG_HIB_SPAWN = new(19820, 19305, 4050);
+        private static readonly Point3D BG_MID_SPAWN = new(53300, 26100, 4270);
+
         public static void Initialize()
         {
-            // We spawn 20 bots / realm with the existing fixed-pool MimicBattleground
-            // engine — it requires min/max totals so we use 60 / 60 to lock the pop.
-            ThidBattleground = new MimicBattleground(252,
-                                                    new Point3D(37200, 51200, 3950),
-                                                    new Point3D(19820, 19305, 4050),
-                                                    new Point3D(53300, 26100, 4270),
-                                                    60, 60, 20, 24);
+            // Load every Battleground row from the DB and instantiate a
+            // MimicBattleground per region. The DB row is the source of
+            // truth for level brackets — no more hardcoded mismatches.
+            foreach (DbBattleground bg in GameServer.Database.SelectAllObjects<DbBattleground>())
+            {
+                if (bg == null)
+                    continue;
 
-            CaledoniaBattleground = new MimicBattleground(249,
-                                                    new Point3D(37200, 51200, 3950),
-                                                    new Point3D(19820, 19305, 4050),
-                                                    new Point3D(53300, 26100, 4270),
-                                                    60, 60, 45, 50);
+                // Skip non-BG entries that may live in the same table
+                // (Darkness Falls, dungeon stub rows). Real BGs always have
+                // a sane MinLevel/MaxLevel range.
+                if (bg.MinLevel == 0 || bg.MaxLevel == 0 || bg.MaxLevel < bg.MinLevel)
+                    continue;
 
-            MolvikBattleground = new MimicBattleground(165,
-                                                    new Point3D(37200, 51200, 3950),
-                                                    new Point3D(19820, 19305, 4050),
-                                                    new Point3D(53300, 26100, 4270),
-                                                    60, 60, 35, 39);
+                if (WorldMgr.GetRegion(bg.RegionID) == null)
+                    continue;
+
+                _battlegrounds[bg.RegionID] = new MimicBattleground(
+                    bg.RegionID, BG_ALB_SPAWN, BG_HIB_SPAWN, BG_MID_SPAWN,
+                    BG_BOTS_PER_REALM_WHEN_PLAYERS * 3,
+                    BG_BOTS_PER_REALM_WHEN_PLAYERS * 3,
+                    bg.MinLevel, bg.MaxLevel);
+            }
 
             // Start the player-presence loop. Each minute we check each BG region:
             //   - if a player is present and the BG is dormant → Start (spawns 20/realm)
@@ -58,16 +82,15 @@ namespace DOL.GS.Scripts
             _bgPresenceTimer = new ECSGameTimer(null, BgPresenceTick, BG_PRESENCE_CHECK_MS);
             _bgPresenceTimer.Start();
 
-            log.Info("MimicBattlegrounds initialized with player-presence auto-spawn.");
+            log.Info($"MimicBattlegrounds initialized: {_battlegrounds.Count} BG(s) registered from DB with player-presence auto-spawn.");
         }
 
         private static int BgPresenceTick(ECSGameTimer timer)
         {
             try
             {
-                UpdateBgPresence(ThidBattleground, 252);
-                UpdateBgPresence(CaledoniaBattleground, 249);
-                UpdateBgPresence(MolvikBattleground, 165);
+                foreach (var kv in _battlegrounds)
+                    UpdateBgPresence(kv.Value, kv.Key);
             }
             catch (Exception e)
             {

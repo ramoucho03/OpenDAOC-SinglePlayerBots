@@ -892,7 +892,9 @@ namespace DOL.GS
 			if (reg == null)
 				return new();
 
-			return reg.GetPlayersInRadius(point, radiusToCheck);
+			List<GamePlayer> result = new();
+			reg.GetInRadius(point, eGameObjectType.PLAYER, radiusToCheck, result);
+			return result;
 		}
 
 		public static List<GameNPC> GetNPCsCloseToSpot(ushort regionid, int x, int y, int z, ushort radiusToCheck)
@@ -907,7 +909,9 @@ namespace DOL.GS
 			if (reg == null)
 				return new();
 
-			return reg.GetNPCsInRadius(point, radiusToCheck);
+			List<GameNPC> result = new();
+			reg.GetInRadius(point, eGameObjectType.NPC, radiusToCheck, result);
+			return result;
 		}
 
 		public static List<GameStaticItem> GetItemsCloseToSpot(ushort regionid, int x, int y, int z, ushort radiusToCheck)
@@ -917,7 +921,9 @@ namespace DOL.GS
 			if (reg == null)
 				return new();
 
-			return reg.GetItemsInRadius(new Point3D(x, y ,z), radiusToCheck);
+			List<GameStaticItem> result = new();
+			reg.GetInRadius(new Point3D(x, y, z), eGameObjectType.ITEM, radiusToCheck, result);
+			return result;
 		}
 
 		#region Instances

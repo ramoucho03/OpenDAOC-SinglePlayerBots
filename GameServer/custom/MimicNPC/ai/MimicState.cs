@@ -1329,6 +1329,20 @@ namespace DOL.AI.Brain
             long now = GameLoop.GameLoopTime;
             MimicGroup.eCampPhase phase = mg.CampPhase;
 
+            // Dead-puller failover: when the MainPuller dies and no human
+            // re-clicks the role on a survivor, the camp would otherwise
+            // stay frozen — Regen → Ready loops forever because CheckPuller
+            // never runs (the puller is a corpse). Promote the first alive
+            // mimic that can pull. Throttled by the watchdog cadence so we
+            // don't spam SetMainPuller.
+            if (mg.MainPuller is GameLiving puller
+                && (!puller.IsAlive || puller.ObjectState != GameObject.eObjectState.Active)
+                && now >= _nextWatchdogTick)
+            {
+                _nextWatchdogTick = now + WATCHDOG_RETRY_MS;
+                PromoteAliveMimicAsPuller(mg);
+            }
+
             // Watchdog: kill stalled pulls.
             if (phase == MimicGroup.eCampPhase.Pulling
                 && now - mg.CampPhaseSinceTick > PULL_WATCHDOG_MS
@@ -1455,6 +1469,44 @@ namespace DOL.AI.Brain
                     if (now - mg.CampPhaseSinceTick > grace)
                         mg.SetCampPhase(MimicGroup.eCampPhase.Regen);
                     break;
+            }
+        }
+
+        /// <summary>
+        /// Find a live mimic in the group that can pull and install it as
+        /// MainPuller. Falls back to MainLeader (which may be the human
+        /// player) when no candidate exists so the role is never null.
+        /// Picks deterministically — lowest ObjectID — so different drivers
+        /// don't fight over the choice across ticks.
+        /// </summary>
+        private void PromoteAliveMimicAsPuller(MimicGroup mg)
+        {
+            if (mg == null || _brain.Body.Group == null)
+                return;
+
+            MimicNPC chosen = null;
+            foreach (GameLiving gl in _brain.Body.Group.GetMembersInTheGroup())
+            {
+                if (gl is not MimicNPC m || !m.IsAlive || m.MimicBrain == null)
+                    continue;
+                // Skip healers — their job is heal, not pull. SetMainPuller's
+                // CanPull check already rejects most healers but mid-spec
+                // healers (Friar/Bard/Warden) can pass; respect IsHealer flag.
+                if (m.MimicBrain.IsHealer)
+                    continue;
+
+                if (chosen == null || m.ObjectID < chosen.ObjectID)
+                    chosen = m;
+            }
+
+            if (chosen != null)
+            {
+                if (!mg.SetMainPuller(chosen))
+                    mg.ForceSetMainPullerForBodyPull(chosen);
+            }
+            else
+            {
+                mg.ClearMainPuller(); // falls back to MainLeader internally
             }
         }
 

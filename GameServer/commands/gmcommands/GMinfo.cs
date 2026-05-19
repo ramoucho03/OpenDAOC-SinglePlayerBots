@@ -20,7 +20,7 @@ namespace DOL.GS.Commands
 			uint hour = WorldMgr.GetCurrentGameTime() / 1000 / 60 / 60;
 			uint minute = WorldMgr.GetCurrentGameTime() / 1000 / 60 % 60;
 			uint seconde = WorldMgr.GetCurrentGameTime() / 1000 % 60;
-			IPHostEntry ip = Dns.GetHostByName(Dns.GetHostName());
+			IPHostEntry ip = Dns.GetHostEntry(Dns.GetHostName());
 			string myNIC = ip.AddressList[0].ToString();
 
 			string myInternetIP = ip.AddressList[0].ToString();

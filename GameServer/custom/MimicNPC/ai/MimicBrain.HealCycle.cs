@@ -826,6 +826,13 @@ namespace DOL.AI.Brain
                 // race where 5 level-tiers of the same summon all pass the
                 // gate in the same tick. Casting a single summon during a
                 // cast is still safe (Body.CastSpell rejects when IsCasting).
+                // Class-locked summon: a Wizard mimic that ends up with
+                // Theurgist summon spells through a shared SpellLine KeyName
+                // would otherwise spawn Theurgist turrets. Block any summon
+                // spell that doesn't belong to this bot's class.
+                if (!IsSummonSpellAllowedForClass(spell))
+                    return false;
+
                 if (IsPermanentPetSummon(spell)
                     && Body?.ControlledBrain?.Body is GameNPC livePet
                     && livePet.IsAlive

@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Threading;
 using DOL.AI.Brain;
 using DOL.Database;
@@ -338,7 +339,9 @@ namespace DOL.GS
 			}
    
 			//let's check if we are trying to move too close to a door, if we are, don't move
-			foreach (GameDoorBase door in Owner.CurrentRegion.GetDoorsInRadius(Owner.GroundTarget, (ushort)(attackComponent.AttackRange - 50)))
+			List<GameDoorBase> _doorsNear = new();
+			Owner.CurrentRegion.GetInRadius(Owner.GroundTarget, eGameObjectType.DOOR, (ushort)(attackComponent.AttackRange - 50), _doorsNear);
+			foreach (GameDoorBase door in _doorsNear)
 			{
 				if (door is GameKeepDoor)
 				{

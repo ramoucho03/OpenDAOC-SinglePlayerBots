@@ -1347,7 +1347,27 @@ namespace DOL.GS
 			if (source is GameLiving livingSource && source != this)
 			{
 				if (source is not GamePlayer attackerPlayer)
-					AddXPGainer(livingSource, damageDealt);
+				{
+					// MimicNPC attackers: propagate XPGainer entries to their group
+					// so real players in the group are eligible for XP credit even
+					// if they didn't personally tag the mob. Mirrors the GamePlayer
+					// path below (without the Mauler RA5L logic, which is player-only).
+					if (livingSource is DOL.GS.Scripts.MimicNPC mimicAttacker && mimicAttacker.Group != null)
+					{
+						foreach (GameLiving living in mimicAttacker.Group.GetMembersInTheGroup())
+						{
+							if (IsWithinRadius(living, WorldMgr.MAX_EXPFORKILL_DISTANCE) && living.ObjectState is eObjectState.Active)
+							{
+								if (living == mimicAttacker)
+									AddXPGainer(living, damageDealt);
+								else
+									AddXPGainer(living, 0);
+							}
+						}
+					}
+					else
+						AddXPGainer(livingSource, damageDealt);
+				}
 				else
 				{
 					// Apply Mauler RA5L

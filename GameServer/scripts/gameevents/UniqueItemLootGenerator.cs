@@ -48,7 +48,7 @@ namespace DOL.GS
                             item.IsTradable = false;
                             item.Price = 1;
                             //item.CapUtility(81);
-                            DbInventoryItem invitem = GameInventoryItem.Create<DbItemUnique>(item);
+                            DbInventoryItem invitem = GameInventoryItem.Create(item);
                             player.Inventory.AddItem(eInventorySlot.FirstEmptyBackpack, invitem);
                             //player.Out.SendMessage("Generated: " + item.Name, eChatType.CT_System, eChatLoc.CL_SystemWindow);
                         }
@@ -98,7 +98,7 @@ namespace DOL.GS
                             }
 
                             item.AllowAdd = true;
-                            DbInventoryItem invitem = GameInventoryItem.Create<DbItemUnique>(item);
+                            DbInventoryItem invitem = GameInventoryItem.Create(item);
                             client.Player.Inventory.AddItem(eInventorySlot.FirstEmptyBackpack, invitem);
                             client.Player.Out.SendMessage("Generated: " + item.Name, eChatType.CT_System,
                                 eChatLoc.CL_SystemWindow);
@@ -485,7 +485,7 @@ namespace DOL.GS
 					item.IsTradable = false;
 					item.Price = 1;
 					//item.CapUtility(81);
-					DbInventoryItem invitem = GameInventoryItem.Create<DbItemUnique>(item);
+					DbInventoryItem invitem = GameInventoryItem.Create(item);
 					player.Inventory.AddItem(eInventorySlot.FirstEmptyBackpack, invitem);
 				}
 				
@@ -498,7 +498,7 @@ namespace DOL.GS
 				dmgTypeItem.IsTradable = false;
 				dmgTypeItem.Price = 1;
 				//dmgTypeItem.CapUtility(81);
-				DbInventoryItem tempItem = GameInventoryItem.Create<DbItemUnique>(dmgTypeItem);
+				DbInventoryItem tempItem = GameInventoryItem.Create(dmgTypeItem);
 				player.Inventory.AddItem(eInventorySlot.FirstEmptyBackpack, tempItem);
 
 				//crush flex
@@ -507,7 +507,7 @@ namespace DOL.GS
 				dmgTypeItem2.IsTradable = false;
 				dmgTypeItem2.Price = 1;
 				//dmgTypeItem2.CapUtility(81);
-				DbInventoryItem tempItem2 = GameInventoryItem.Create<DbItemUnique>(dmgTypeItem2);
+				DbInventoryItem tempItem2 = GameInventoryItem.Create(dmgTypeItem2);
 				player.Inventory.AddItem(eInventorySlot.FirstEmptyBackpack, tempItem2);
 			}
 			else if(type == eObjectType.TwoHandedWeapon || type == eObjectType.PolearmWeapon || type == eObjectType.LargeWeapons)
@@ -526,7 +526,7 @@ namespace DOL.GS
 					dmgTypeItem.IsTradable = false;
 					dmgTypeItem.Price = 1;
 					//dmgTypeItem.CapUtility(81);
-					DbInventoryItem tempItem = GameInventoryItem.Create<DbItemUnique>(dmgTypeItem);
+					DbInventoryItem tempItem = GameInventoryItem.Create(dmgTypeItem);
 					player.Inventory.AddItem(eInventorySlot.FirstEmptyBackpack, tempItem);
 				}	
 			} else
@@ -537,7 +537,7 @@ namespace DOL.GS
 				item.IsTradable = false;
 				item.Price = 1;
 				//item.CapUtility(81);
-				DbInventoryItem invitem = GameInventoryItem.Create<DbItemUnique>(item);
+				DbInventoryItem invitem = GameInventoryItem.Create(item);
 				player.Inventory.AddItem(eInventorySlot.FirstEmptyBackpack, invitem);
 			}	
 		}

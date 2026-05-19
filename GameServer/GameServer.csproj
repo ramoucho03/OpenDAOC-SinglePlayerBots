@@ -18,6 +18,19 @@
         <EnableLibraryImportGenerator>true</EnableLibraryImportGenerator>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <RegisterForComInterop>false</RegisterForComInterop>
+        <!--
+          CS0618 is silenced for the entire GameServer project. The vast
+          majority (1000+) flag the legacy DoL `GameSpellEffect` / `IGameEffect`
+          API which is being incrementally replaced by `ECSGameEffect` /
+          `EffectListComponent`. The migration is tracked via the `[Obsolete]`
+          attribute on the source types — grep `'GameSpellEffect'` to find
+          remaining call sites when working on the migration. Individual
+          non-DoL deprecations (Dns.GetHostByName, Region.GetXxxInRadius,
+          GameInventoryItem.Create<T>, IObjectDatabase.ExecuteNonQuery) have
+          been migrated to their replacements. Suppressing the global noise
+          keeps the build readable for new warnings.
+        -->
+        <NoWarn>$(NoWarn);CS0618</NoWarn>
         <BuildTime>$([System.DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"))</BuildTime>
         <AssemblyName>GameServer</AssemblyName>
         <AssemblyTitle>OpenDAoC - GameServer</AssemblyTitle>

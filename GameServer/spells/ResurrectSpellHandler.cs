@@ -127,6 +127,19 @@ namespace DOL.GS.Spells
 			if (m_caster.ObjectState != GameObject.eObjectState.Active) return;
 			if (m_caster.CurrentRegionID != living.CurrentRegionID) return;
 
+			// MimicNPC corpse: delegate to its OnResurrected hook so the rez-
+			// wait timer is cleaned up, regen timers restart, the bot is
+			// teleported next to the caster, and the FSM transitions out of
+			// DEAD. Without this the corpse just had Health overwritten —
+			// _inRezWait stayed true, regen never restarted, and the rez
+			// wait timer's "release" callback could still fire and delete
+			// the freshly-rezzed bot a few seconds later.
+			if (living is DOL.GS.Scripts.MimicNPC mimic)
+			{
+				mimic.OnResurrected(m_caster, m_spell);
+				return;
+			}
+
             GamePlayer player = living as GamePlayer;
 			if (player != null)
             {

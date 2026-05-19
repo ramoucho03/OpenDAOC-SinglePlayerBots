@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using DOL.GS.Keeps;
 using DOL.GS.PacketHandler;
 
@@ -110,7 +111,9 @@ namespace DOL.GS
 				}
 			}
 
-			foreach (GameDoorBase door in CurrentRegion.GetDoorsInRadius(GroundTarget, (ushort) AttackRadius))
+			List<GameDoorBase> _doorsInRadius = new();
+			CurrentRegion.GetInRadius(GroundTarget, eGameObjectType.DOOR, (ushort) AttackRadius, _doorsInRadius);
+			foreach (GameDoorBase door in _doorsInRadius)
 			{
 				if (Owner != null && door is GameKeepDoor && GameServer.ServerRules.IsAllowedToAttack(Owner, (GameKeepDoor)door, true))
 				{

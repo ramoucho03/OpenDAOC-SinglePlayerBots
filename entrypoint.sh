@@ -66,6 +66,29 @@ cat << EOF > /app/config/serverconfig.xml
 </root>
 EOF
 
+# Apply Heretic Live SQL patches against the live DB.
+# Idempotent (DELETE + REPLACE INTO), so safe to re-run on every container start.
+# This handles existing DBs where docker-entrypoint-initdb.d won't fire again.
+# Parse DB host/user/password from DB_CONNECTION_STRING for the mariadb client.
+if [ -f /app/sql/heretic_live.sql ]; then
+    DB_HOST=$(echo "${DB_CONNECTION_STRING}" | sed -n 's/.*server=\([^;]*\).*/\1/p')
+    DB_PORT=$(echo "${DB_CONNECTION_STRING}" | sed -n 's/.*port=\([^;]*\).*/\1/p')
+    DB_NAME=$(echo "${DB_CONNECTION_STRING}" | sed -n 's/.*database=\([^;]*\).*/\1/p')
+    DB_USER=$(echo "${DB_CONNECTION_STRING}" | sed -n 's/.*userid=\([^;]*\).*/\1/p')
+    DB_PASS=$(echo "${DB_CONNECTION_STRING}" | sed -n 's/.*password=\([^;]*\).*/\1/p')
+    DB_HOST=${DB_HOST:-db}
+    DB_PORT=${DB_PORT:-3306}
+    DB_NAME=${DB_NAME:-opendaoc}
+    DB_USER=${DB_USER:-root}
+
+    echo "[entrypoint] Applying Heretic Live SQL patch to ${DB_HOST}:${DB_PORT}/${DB_NAME}..."
+    if mariadb -h "${DB_HOST}" -P "${DB_PORT}" -u "${DB_USER}" -p"${DB_PASS}" "${DB_NAME}" < /app/sql/heretic_live.sql; then
+        echo "[entrypoint] Heretic Live SQL applied successfully."
+    else
+        echo "[entrypoint] WARN: Heretic Live SQL apply failed — gameserver will start anyway."
+    fi
+fi
+
 # Change ownership of the /app directory
 chown -R appuser:appgroup /app
 

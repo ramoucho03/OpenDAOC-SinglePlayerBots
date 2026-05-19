@@ -55,7 +55,7 @@ namespace DOL.GS
                     item.Color = (int)color;
                 }
                 
-                DbInventoryItem invitem = GameInventoryItem.Create<DbItemUnique>(item);
+                DbInventoryItem invitem = GameInventoryItem.Create(item);
                 invitem.IsROG = true;
                 player.Inventory.AddItem(eInventorySlot.FirstEmptyBackpack, invitem);
                 player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "GamePlayer.PickupObject.YouGet", invitem.Name), eChatType.CT_Loot, eChatLoc.CL_SystemWindow);
@@ -75,7 +75,7 @@ namespace DOL.GS
                 item.AllowAdd = true;
                 item.IsTradable = true;
 
-                DbInventoryItem invitem = GameInventoryItem.Create<DbItemUnique>(item);
+                DbInventoryItem invitem = GameInventoryItem.Create(item);
                 invitem.IsROG = true;
                 player.Inventory.AddItem(eInventorySlot.FirstEmptyBackpack, invitem);
                 player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "GamePlayer.PickupObject.YouGet", invitem.Name), eChatType.CT_Loot, eChatLoc.CL_SystemWindow);
@@ -101,7 +101,7 @@ namespace DOL.GS
                 item.AllowAdd = true;
                 item.IsTradable = true;
 
-                DbInventoryItem invitem = GameInventoryItem.Create<DbItemUnique>(item);
+                DbInventoryItem invitem = GameInventoryItem.Create(item);
                 invitem.IsROG = true;
                 player.Inventory.AddItem(eInventorySlot.FirstEmptyBackpack, invitem);
                 player.Out.SendMessage(

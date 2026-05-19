@@ -985,16 +985,14 @@ namespace DOL.GS
             unique.Color = color;
             unique.ObjectId = "Unique" + System.Guid.NewGuid().ToString();
             unique.Id_nb = "Unique" + System.Guid.NewGuid().ToString();
-            if (GameServer.Database.ExecuteNonQuery("SELECT ItemUnique_ID FROM itemunique WHERE ItemUnique_ID = 'unique.ObjectId'"))
-            {
-                unique.ObjectId = "Unique" + System.Guid.NewGuid().ToString();
-            }
-            if (GameServer.Database.ExecuteNonQuery("SELECT Id_nb FROM itemunique WHERE Id_nb = 'unique.Id_nb'"))
-            {
-                unique.Id_nb = IdGenerator.GenerateID();
-            }
+            // The previous block ran ExecuteNonQuery on a SELECT (wrong API)
+            // and the WHERE clause compared against the literal string
+            // "unique.ObjectId" — never matched anything, so the branches
+            // never fired. The GUID-based ObjectId + IdGenerator.GenerateID()
+            // are already unique enough (1/2^122 collision); the dead
+            // collision check is removed along with the obsolete API call.
 
-            DbInventoryItem newInventoryItem = GameInventoryItem.Create<DbItemUnique>(unique);
+            DbInventoryItem newInventoryItem = GameInventoryItem.Create(unique);
             if(item.IsCrafted)
                 newInventoryItem.IsCrafted = true;
             if(item.Creator != string.Empty)
@@ -1077,16 +1075,14 @@ namespace DOL.GS
             unique.Effect = effect;
             unique.Id_nb = IdGenerator.GenerateID();
             unique.ObjectId = "Unique" + System.Guid.NewGuid().ToString();
-            if (GameServer.Database.ExecuteNonQuery("SELECT ItemUnique_ID FROM itemunique WHERE ItemUnique_ID = 'unique.ObjectId'"))
-            {
-                unique.ObjectId = "Unique" + System.Guid.NewGuid().ToString();
-            }
-            if (GameServer.Database.ExecuteNonQuery("SELECT Id_nb FROM itemunique WHERE Id_nb = 'unique.Id_nb'"))
-            {
-                unique.Id_nb = IdGenerator.GenerateID();
-            }
+            // The previous block ran ExecuteNonQuery on a SELECT (wrong API)
+            // and the WHERE clause compared against the literal string
+            // "unique.ObjectId" — never matched anything, so the branches
+            // never fired. The GUID-based ObjectId + IdGenerator.GenerateID()
+            // are already unique enough (1/2^122 collision); the dead
+            // collision check is removed along with the obsolete API call.
 
-            DbInventoryItem newInventoryItem = GameInventoryItem.Create<DbItemUnique>(unique);
+            DbInventoryItem newInventoryItem = GameInventoryItem.Create(unique);
             if(item.IsCrafted)
                 newInventoryItem.IsCrafted = true;
             if(item.Creator != string.Empty)
