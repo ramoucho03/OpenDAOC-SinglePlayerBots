@@ -2598,7 +2598,13 @@ namespace DOL.AI.Brain
                 if (pair.Value != null && pair.Value.Effective > currentTopAggro)
                     currentTopAggro = pair.Value.Effective;
             }
-            int peelAmount = (int)Math.Max(currentTopAggro + 50, Body.MaxHealth);
+            // Clamp before the int cast: with a top aggro past int.MaxValue
+            // the addition wraps negative and the resulting peel amount would
+            // demote the threat below itself (inverted peel). Realistic aggro
+            // values stay well under int.MaxValue but defenders against pet
+            // crit chains or long sieges can drift high enough to matter.
+            long target = Math.Max(currentTopAggro + 50, Body.MaxHealth);
+            int peelAmount = (int)Math.Min(target, int.MaxValue);
             AddToAggroList(threat, peelAmount);
             return true;
         }
@@ -3226,6 +3232,14 @@ namespace DOL.AI.Brain
 
         public void ForceAddToAggroList(GameLiving living, long aggroAmount = 0)
         {
+            // AddToAggroList (the public entry) already guards against null
+            // and dead targets, but ForceAddToAggroList is also reachable
+            // from other internal paths (taunt handlers, OnAttackedByEnemy
+            // re-entry) where the safety check isn't repeated. A null living
+            // here would NPE on living.effectListComponent below.
+            if (living == null || living.effectListComponent == null)
+                return;
+
             if (aggroAmount > 0)
             {
                 foreach (ProtectECSGameEffect protect in living.effectListComponent.GetAbilityEffects(eEffect.Protect))
@@ -3357,10 +3371,19 @@ namespace DOL.AI.Brain
 
         public bool UnsetTemporaryAggroList()
         {
-            // Keep the current aggro list if the previous one is empty.
-            // This can happen when amnesia is used during confusion.
-            if (_tempAggroList == null || _tempAggroList.IsEmpty)
+            // No active swap or both lists empty: reset the temp slot anyway
+            // so subsequent Set/Unset cycles aren't blocked. The previous
+            // code returned false without clearing _tempAggroList, leaving
+            // it pinned at the empty dictionary so the next SetTemporary call
+            // would silently no-op forever on that brain.
+            if (_tempAggroList == null)
                 return false;
+
+            if (_tempAggroList.IsEmpty)
+            {
+                _tempAggroList = null;
+                return false;
+            }
 
             AggroList = _tempAggroList;
             _tempAggroList = null;
@@ -6787,18 +6810,23 @@ namespace DOL.AI.Brain
             if (spellEffect is eEffect.DirectDamage or eEffect.Pet or eEffect.Unknown)
                 return false;
 
-            SpellHandler spellHandler = Body.castingComponent.SpellHandler;
+            // castingComponent can be null in narrow teardown windows (rez,
+            // body swap, /sit transitions). Both SpellHandler reads chained
+            // through it without a guard — null-safe both lookups so the
+            // effect-presence check no longer NPE's when called from a
+            // post-rez DrivePetEveryTick / heal cycle.
+            SpellHandler spellHandler = Body.castingComponent?.SpellHandler;
 
             // If we're currently casting 'spell' on 'target', assume it already has the effect.
             // This allows spell queuing while preventing casting on the same target more than once.
-            if (spellHandler != null && spellHandler.Spell.ID == spell.ID && spellHandler.Target == target)
+            if (spellHandler?.Spell != null && spellHandler.Spell.ID == spell.ID && spellHandler.Target == target)
                 return true;
 
-            SpellHandler queuedSpellHandler = Body.castingComponent.QueuedSpellHandler;
+            SpellHandler queuedSpellHandler = Body.castingComponent?.QueuedSpellHandler;
 
             // Do the same for our queued up spell.
             // This can happen on charmed pets having two buffs that they're trying to cast on their owner.
-            if (queuedSpellHandler != null && queuedSpellHandler.Spell.ID == spell.ID && queuedSpellHandler.Target == target)
+            if (queuedSpellHandler?.Spell != null && queuedSpellHandler.Spell.ID == spell.ID && queuedSpellHandler.Target == target)
                 return true;
 
             // May not be the right place for that, but without that check NPCs with more than one offensive or defensive proc will only buff themselves once.

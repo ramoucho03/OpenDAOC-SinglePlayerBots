@@ -1048,11 +1048,17 @@ namespace DOL.GS.Scripts
 
                             foreach (GameLiving groupMember in player.Group.GetMembersInTheGroup())
                             {
-                                if (groupMember is MimicNPC mimic)
+                                if (groupMember is MimicNPC mimic && mimic.Brain?.FSM != null)
                                 {
-                                    FSMState mimicState = mimic.Brain.FSM.GetState(eFSMStateType.CAMP);
-
-                                    ((MimicState_Camp)mimicState).AggroRange = range;
+                                    // Pattern-match guards against a missing
+                                    // CAMP state (brain not yet wired) and
+                                    // against an unexpected state type — the
+                                    // previous blind cast would NRE or
+                                    // InvalidCastException and cascade across
+                                    // the whole group on a single misconfigured
+                                    // bot.
+                                    if (mimic.Brain.FSM.GetState(eFSMStateType.CAMP) is MimicState_Camp campState)
+                                        campState.AggroRange = range;
                                 }
                             }
 
@@ -1359,17 +1365,31 @@ namespace DOL.GS.Scripts
                 args[1] = args[1].ToLower();
 
                 eCharacterClass charClass = eCharacterClass.Unknown;
-                Enum.TryParse<eCharacterClass>(args[1], true, out charClass);
+                bool classParsed = Enum.TryParse<eCharacterClass>(args[1], true, out charClass)
+                                   && charClass != eCharacterClass.Unknown;
 
                 foreach (GameLiving groupMember in player.Group.GetMembersInTheGroup())
                 {
-                    if (groupMember != target &&
-                        ((groupMember.Name.Equals(args[1], StringComparison.OrdinalIgnoreCase))
-                        || (groupMember is MimicNPC mimic && mimic.CharacterClass.ID == (int)charClass)
-                        || (groupMember is GamePlayer play && play.CharacterClass.ID == (int)charClass)))
+                    // Match by name OR by class — only fall back to the class
+                    // comparison when the user actually passed a valid class
+                    // name. Without the guard, any non-matching string parsed
+                    // to eCharacterClass.Unknown (= 0) and silently latched
+                    // onto random members whose class ID happened to be 0.
+                    if (groupMember == target)
+                        continue;
+                    if (groupMember.Name != null && groupMember.Name.Equals(args[1], StringComparison.OrdinalIgnoreCase))
                     {
                         targetGroupMember = groupMember;
                         break;
+                    }
+                    if (classParsed)
+                    {
+                        if ((groupMember is MimicNPC mimic && mimic.CharacterClass.ID == (int)charClass)
+                            || (groupMember is GamePlayer play && play.CharacterClass.ID == (int)charClass))
+                        {
+                            targetGroupMember = groupMember;
+                            break;
+                        }
                     }
                 }
 
@@ -1418,17 +1438,26 @@ namespace DOL.GS.Scripts
                 args[1] = args[1].ToLower();
 
                 eCharacterClass charClass = eCharacterClass.Unknown;
-                Enum.TryParse<eCharacterClass>(args[1], true, out charClass);
+                bool classParsed = Enum.TryParse<eCharacterClass>(args[1], true, out charClass)
+                                   && charClass != eCharacterClass.Unknown;
 
                 foreach (GameLiving groupMember in player.Group.GetMembersInTheGroup())
                 {
-                    if (groupMember != target &&
-                        ((groupMember.Name.Equals(args[1], StringComparison.OrdinalIgnoreCase))
-                        || (groupMember is MimicNPC mimic && mimic.CharacterClass.ID == (int)charClass)
-                        || (groupMember is GamePlayer play && play.CharacterClass.ID == (int)charClass)))
+                    if (groupMember == target)
+                        continue;
+                    if (groupMember.Name != null && groupMember.Name.Equals(args[1], StringComparison.OrdinalIgnoreCase))
                     {
                         targetGroupMember = groupMember;
                         break;
+                    }
+                    if (classParsed)
+                    {
+                        if ((groupMember is MimicNPC mimic && mimic.CharacterClass.ID == (int)charClass)
+                            || (groupMember is GamePlayer play && play.CharacterClass.ID == (int)charClass))
+                        {
+                            targetGroupMember = groupMember;
+                            break;
+                        }
                     }
                 }
 
@@ -1475,17 +1504,26 @@ namespace DOL.GS.Scripts
             if (args.Length > 1)
             {
                 eCharacterClass charClass = eCharacterClass.Unknown;
-                Enum.TryParse<eCharacterClass>(args[1], true, out charClass);
+                bool classParsed = Enum.TryParse<eCharacterClass>(args[1], true, out charClass)
+                                   && charClass != eCharacterClass.Unknown;
 
                 foreach (GameLiving groupMember in player.Group.GetMembersInTheGroup())
                 {
-                    if (groupMember != target &&
-                        ((groupMember.Name.Equals(args[1], StringComparison.OrdinalIgnoreCase))
-                        || (groupMember is MimicNPC mimic && mimic.CharacterClass.ID == (int)charClass)
-                        || (groupMember is GamePlayer play && play.CharacterClass.ID == (int)charClass)))
+                    if (groupMember == target)
+                        continue;
+                    if (groupMember.Name != null && groupMember.Name.Equals(args[1], StringComparison.OrdinalIgnoreCase))
                     {
                         targetGroupMember = groupMember;
                         break;
+                    }
+                    if (classParsed)
+                    {
+                        if ((groupMember is MimicNPC mimic && mimic.CharacterClass.ID == (int)charClass)
+                            || (groupMember is GamePlayer play && play.CharacterClass.ID == (int)charClass))
+                        {
+                            targetGroupMember = groupMember;
+                            break;
+                        }
                     }
                 }
 

@@ -194,7 +194,13 @@ namespace DOL.GS.Scripts
 
         public override bool AddToWorld()
         {
-            Realm = eRealm.Albion;
+            // Realm comes from the DB row that spawns this NPC. The previous
+            // code overwrote it to Albion unconditionally, so the Midgard /
+            // Hibernia branches of the equipment switch below were dead code
+            // and any Mid/Hib instance came out wearing Albion plate.
+            // Only fall back to Albion when the row has no realm set.
+            if (Realm == eRealm.None)
+                Realm = eRealm.Albion;
 
             GameNpcInventoryTemplate template = new GameNpcInventoryTemplate();
 
