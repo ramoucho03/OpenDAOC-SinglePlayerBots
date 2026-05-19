@@ -694,8 +694,19 @@ namespace DOL.GS.Scripts
         {
             if (point != null)
             {
+                // If the camp anchor isn't actually changing, don't reset the
+                // camp phase to Regen — that was the bug behind PvE field
+                // groups never advancing past Regen because TickField calls
+                // SetCampPoint every spawn cycle while the field is filling.
+                // Compare the actual coordinates rather than the reference
+                // (the caller clones the Point3D every time it hands it in).
+                bool sameAnchor = CampPoint != null
+                                  && CampPoint.X == point.X
+                                  && CampPoint.Y == point.Y
+                                  && CampPoint.Z == point.Z;
                 CampPoint = new Point3D(point);
-                SetCampPhase(eCampPhase.Regen);
+                if (!sameAnchor)
+                    SetCampPhase(eCampPhase.Regen);
             }
             else
             {
@@ -714,8 +725,13 @@ namespace DOL.GS.Scripts
 
         #region Healing
 
-        /// <summary>Lock before accessing CheckGroupHealth() or related members</summary>
-        public object HealLock = new();
+        /// <summary>
+        /// Lock before accessing CheckGroupHealth() or related members.
+        /// Readonly so a hot-reload of a script can't swap the lock object
+        /// out from under in-flight heal sections; readers consume it via
+        /// `lock (mGroup.HealLock)`.
+        /// </summary>
+        public readonly object HealLock = new();
         /// <summary>How injured is the group as a whole?</summary>
         public int AmountToHeal { get; private set; }
         /// <summary>How many group members are below emergency threshold</summary>
