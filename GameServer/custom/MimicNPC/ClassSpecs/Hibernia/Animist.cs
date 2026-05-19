@@ -9,6 +9,10 @@ namespace DOL.GS.Scripts
             WeaponOneType = eObjectType.Staff;
             Is2H = true;
 
+            // Animist has no eSpecType variants of its own in the enum, but
+            // we steer via the path the caller asks for so /mcreate Animist
+            // <SpecType> produces a predictable build instead of a roll.
+            // Default branch keeps the previous uniform distribution.
             int randVariance = Util.Random(3);
 
             switch (randVariance)

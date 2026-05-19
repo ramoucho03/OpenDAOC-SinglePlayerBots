@@ -1432,11 +1432,17 @@ namespace DOL.AI.Brain
             // --- Archer / thrown path: bow chain.
             if (hasBow)
             {
+                // AttackRange depends on the active weapon slot. While the
+                // bot is still in melee fallback we'd read the melee reach
+                // (~125-200u) instead of bow range and reject every chain
+                // pull. Switch to the bow first, then sample range.
+                if (Body.ActiveWeaponSlot != eActiveWeaponSlot.Distance)
+                    Body.SwitchWeapon(eActiveWeaponSlot.Distance);
+
                 int bowRange = Body.attackComponent?.AttackRange ?? 1700;
                 if (!Body.IsWithinRadius(chainTarget, bowRange))
                     return false;
 
-                Body.SwitchWeapon(eActiveWeaponSlot.Distance);
                 Body.TargetObject = chainTarget;
                 Body.StopFollowing();
                 Body.StartAttack(chainTarget);
@@ -1638,6 +1644,12 @@ namespace DOL.AI.Brain
             _chainPullCount = 0;
             _pullStartTick = 0;
             _committedPullTarget = null;
+
+            // Cancel the body-pull retreat timer if one was armed. Otherwise
+            // a queued callback would interrupt the next pull cycle 1.5s in
+            // by walking the puller back to camp.
+            _bodyPullRetreatTimer?.Stop();
+            _bodyPullRetreatTimer = null;
 
             // Camp state is shared — clear the group's incoming-pull pointer
             // too so the rest of the camp stops chasing a phantom mob.
@@ -1959,6 +1971,8 @@ namespace DOL.AI.Brain
         // swing and moves the puller back to the camp point. Without this, the
         // melee body-pull keeps swinging on the mob in place and any BAF add
         // chains to the puller standing there alone.
+        private ECSGameTimer _bodyPullRetreatTimer;
+
         private void StartBodyPullRetreat(GameLiving target)
         {
             MimicGroup mg = Body.Group?.MimicGroup;
@@ -1966,10 +1980,15 @@ namespace DOL.AI.Brain
             if (camp == null)
                 return;
 
+            // Cancel any in-flight retreat first — a new pull/chain shouldn't
+            // be hijacked 1.5s later by a stale callback walking us back home.
+            _bodyPullRetreatTimer?.Stop();
+
             // 1.5s gives the first auto-swing time to land and tag the mob
             // before we drop attack and head home.
-            new ECSGameTimer(Body, _ =>
+            _bodyPullRetreatTimer = new ECSGameTimer(Body, _ =>
             {
+                _bodyPullRetreatTimer = null;
                 if (Body == null || !Body.IsAlive || target == null || !target.IsAlive)
                     return 0;
 
@@ -1978,7 +1997,8 @@ namespace DOL.AI.Brain
 
                 Body.WalkTo(camp, Body.MaxSpeed);
                 return 0;
-            }).Start(1500);
+            });
+            _bodyPullRetreatTimer.Start(1500);
         }
 
         /// <summary>
@@ -4194,6 +4214,22 @@ namespace DOL.AI.Brain
             Body.StopAttack();
             Body.StopCurrentSpellcast();
             Body.TargetObject = null;
+
+            // Combat sub-states need a hard reset on disengage. Without this,
+            // flags like IsFleeing / IsFlanking / IsPulling and the kite
+            // commitment data leak across engagements and short-circuit later
+            // checks (TryFlee bailed out because TargetFleePosition was still
+            // set, AttackMostWanted re-aimed on a dead _kiteCommittedThreat,
+            // CheckPuller saw the bot as "still pulling" forever).
+            IsFleeing = false;
+            TargetFleePosition = null;
+            IsFlanking = false;
+            TargetFlankPosition = null;
+            IsPulling = false;
+            _committedPullTarget = null;
+            _kiteCommittedDestination = null;
+            _kiteCommittedUntilTick = 0;
+            _kiteCommittedThreat = null;
         }
 
         private readonly AggroLosCheckListener _aggroLosCheckListener;
