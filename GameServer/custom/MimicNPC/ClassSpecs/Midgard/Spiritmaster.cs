@@ -61,10 +61,14 @@ namespace DOL.GS.Scripts
                 break;
 
                 case 7:
+                // SpecType says SuppSpirit but the previous weights had
+                // Summoning at 1.0f and Suppression at 0.1f, which made this
+                // case behave like a Summ variant — inconsistent with the
+                // surrounding Supp block. Restore Suppression as primary.
                 SpecType = eSpecType.SuppSpirit;
                 Add(Specs.Darkness, 12, 0.0f);
-                Add(Specs.Suppression, 43, 0.1f);
-                Add(Specs.Summoning, 30, 1.0f);
+                Add(Specs.Suppression, 43, 1.0f);
+                Add(Specs.Summoning, 30, 0.1f);
                 break;
 
                 case 8:

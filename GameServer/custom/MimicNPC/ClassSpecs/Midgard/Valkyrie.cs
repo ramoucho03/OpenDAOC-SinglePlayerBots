@@ -43,8 +43,15 @@ namespace DOL.GS.Scripts
                 break;
 
                 case 2:
+                // Two-hand Spear variant: lock the offhand/2H slot to Spear.
+                // If WeaponOne also rolled Spear we'd Add(Specs.Spear) twice,
+                // which inflates the perceived cap and only one entry actually
+                // ends up trained. Force WeaponOne to Sword in that case so
+                // both lines get genuine spec points.
                 Is2H = true;
                 SpecType = eSpecType.TwoHandHybrid;
+                if (WeaponOneType == eObjectType.Spear)
+                    WeaponOneType = eObjectType.Sword;
                 WeaponTwoType = eObjectType.Spear;
                 Add(ObjToSpec(WeaponOneType), 39, 0.7f);
                 Add(ObjToSpec(WeaponTwoType), 50, 1.0f);
