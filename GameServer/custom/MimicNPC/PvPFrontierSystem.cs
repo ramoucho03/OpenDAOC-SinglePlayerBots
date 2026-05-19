@@ -434,6 +434,81 @@ namespace DOL.GS.Scripts
                 return _playerSnapshotByRegion.TryGetValue(regionId, out PlayerSnapshot s) ? s : null;
         }
 
+        // ----- Recent enemy hotspots -----
+        // Whenever a group engages an enemy realm group, record the location.
+        // Other friendly groups consult the hotspot list when picking a
+        // waypoint, which makes them converge on contested zones the way
+        // real players gravitate toward the action.
+        internal struct EnemyHotspot
+        {
+            public ushort Region;
+            public eRealm ObservingRealm;   // realm of the group that recorded it
+            public int X;
+            public int Y;
+            public int Z;
+            public long ExpireTick;
+        }
+
+        private static readonly List<EnemyHotspot> _hotspots = new(32);
+        private static readonly object _hotspotsLock = new();
+        private const int HOTSPOT_LIFETIME_MS = 90_000;     // 90s decay — long enough for a fight, short enough that the world moves on
+        private const int HOTSPOT_MAX_ENTRIES = 64;
+
+        public static void RegisterEnemyHotspot(ushort region, eRealm observingRealm, int x, int y, int z)
+        {
+            long now = GameLoop.GameLoopTime;
+            lock (_hotspotsLock)
+            {
+                // GC expired entries while we're here.
+                _hotspots.RemoveAll(h => h.ExpireTick <= now);
+
+                _hotspots.Add(new EnemyHotspot
+                {
+                    Region = region,
+                    ObservingRealm = observingRealm,
+                    X = x,
+                    Y = y,
+                    Z = z,
+                    ExpireTick = now + HOTSPOT_LIFETIME_MS,
+                });
+
+                // Bound the list so a long-running engagement doesn't leak.
+                if (_hotspots.Count > HOTSPOT_MAX_ENTRIES)
+                    _hotspots.RemoveRange(0, _hotspots.Count - HOTSPOT_MAX_ENTRIES);
+            }
+        }
+
+        /// <summary>
+        /// Pick a recent enemy hotspot from the perspective of `myRealm` in
+        /// `regionId`. Hotspots logged by the SAME realm are skipped (we don't
+        /// want a group of Albs to chase another Alb group's engagement —
+        /// they'd just walk to a friendly fight). Returns null if no relevant
+        /// hotspot exists.
+        /// </summary>
+        public static Point3D PickRecentEnemyHotspot(ushort regionId, eRealm myRealm)
+        {
+            long now = GameLoop.GameLoopTime;
+            lock (_hotspotsLock)
+            {
+                List<EnemyHotspot> candidates = null;
+                for (int i = 0; i < _hotspots.Count; i++)
+                {
+                    EnemyHotspot h = _hotspots[i];
+                    if (h.Region != regionId) continue;
+                    if (h.ExpireTick <= now) continue;
+                    if (h.ObservingRealm == myRealm) continue;
+                    candidates ??= new List<EnemyHotspot>(4);
+                    candidates.Add(h);
+                }
+
+                if (candidates == null || candidates.Count == 0)
+                    return null;
+
+                EnemyHotspot pick = candidates[Util.Random(candidates.Count - 1)];
+                return new Point3D(pick.X, pick.Y, pick.Z);
+            }
+        }
+
         public static string BuildStatusReport()
         {
             System.Text.StringBuilder sb = new();
@@ -898,8 +973,14 @@ namespace DOL.GS.Scripts
             // If we are near our waypoint AND it's a keep, engage the doors/guards.
             TryAttackKeepObjectsNearWaypoint();
 
-            // Reached current waypoint? Pick a new one.
-            if (leader.GetDistance(_currentWaypoint) < WAYPOINT_REACHED_RANGE)
+            // Reached current waypoint? Only pick the next one once the bulk
+            // of the group has caught up — otherwise the leader sprints off
+            // again before stragglers reach the rally point and the group
+            // visibly stretches into a single-file line. Wait until at
+            // least 75% of the alive roster is inside WAYPOINT_REACHED_RANGE
+            // around the leader before advancing.
+            if (leader.GetDistance(_currentWaypoint) < WAYPOINT_REACHED_RANGE
+                && GroupCohesionRatio(leader, WAYPOINT_REACHED_RANGE) >= 0.75)
             {
                 PickNextWaypoint();
                 OrderGroupToWaypoint();
@@ -943,11 +1024,41 @@ namespace DOL.GS.Scripts
             // is clear of combat (enemy wiped or escaped), arm the post-fight
             // cooldown and resume patrol — gives lone humans a chance to
             // disengage instead of being chain-mobbed by every nearby group.
-            bool anyoneInCombat = Members.Any(m => m != null && m.IsAlive && m.InCombat);
+            int aliveNow = 0;
+            bool anyoneInCombat = false;
+            foreach (var m in Members)
+            {
+                if (m != null && m.IsAlive && m.ObjectState == GameObject.eObjectState.Active)
+                {
+                    aliveNow++;
+                    if (m.InCombat) anyoneInCombat = true;
+                }
+            }
 
             if (!anyoneInCombat)
             {
-                _postFightUntilMs = GameLoop.GameLoopTime + POST_FIGHT_COOLDOWN_MS;
+                // Detect a near-wipe: if we lost half or more of our roster
+                // during the engagement, head to safety instead of right
+                // back into the same hotspot. Player groups don't patrol on
+                // a fresh 4/8 — they recover first.
+                int rosterSize = Roster.Count;
+                bool tookHeavyLosses = rosterSize > 0 && aliveNow * 2 <= rosterSize;
+
+                long now = GameLoop.GameLoopTime;
+                _postFightUntilMs = now + POST_FIGHT_COOLDOWN_MS;
+
+                if (tookHeavyLosses)
+                {
+                    // Double-length retreat to a friendly safe point and an
+                    // extended post-fight cooldown so we don't body-block
+                    // chasers.
+                    _retreatUntilMs = now + 45_000;
+                    _postFightUntilMs = now + POST_FIGHT_COOLDOWN_MS * 2;
+                    State = eFrontierState.Retreating;
+                    OrderGroupToRetreat();
+                    return;
+                }
+
                 State = eFrontierState.Patrolling;
                 PickNextWaypoint();
                 OrderGroupToWaypoint();
@@ -975,10 +1086,64 @@ namespace DOL.GS.Scripts
             return null;
         }
 
+        /// <summary>
+        /// Fraction of the alive roster currently within `range` of the given
+        /// anchor (typically the leader). Used to gate "we've arrived" so the
+        /// leader doesn't immediately leave on the next waypoint while the
+        /// rest of the group is still strung out behind.
+        /// </summary>
+        private double GroupCohesionRatio(GameLiving anchor, int range)
+        {
+            if (anchor == null) return 1.0;
+            int alive = 0;
+            int near = 0;
+            long rangeSq = (long)range * range;
+            foreach (var m in Members)
+            {
+                if (m == null || !m.IsAlive || m.ObjectState != GameObject.eObjectState.Active)
+                    continue;
+                alive++;
+                long dx = m.X - anchor.X;
+                long dy = m.Y - anchor.Y;
+                if (dx * dx + dy * dy <= rangeSq)
+                    near++;
+            }
+            if (alive == 0) return 1.0;
+            return (double)near / alive;
+        }
+
         private void PickNextWaypoint()
         {
-            // Roll for "go attack an enemy keep" intent. If it hits, find the
-            // closest enemy-realm keep in our region and use it as the waypoint.
+            // Priority order (mirrors how a real RvR group picks its next
+            // destination):
+            //   1. A friendly keep currently under attack — defend it.
+            //   2. A recently active enemy hotspot — chase the fight.
+            //   3. Roll for "attack an enemy keep" intent.
+            //   4. Random patrol waypoint.
+            //   5. Fall back to spawn anchor.
+
+            // (1) Defend a friendly keep under siege.
+            Point3D defendTarget = PickFriendlyKeepUnderAttack();
+            if (defendTarget != null)
+            {
+                _currentWaypoint = defendTarget;
+                return;
+            }
+
+            // (2) Recent enemy activity bias: 30% chance to head to the last
+            // place an enemy was spotted (if any). Keeps groups converging
+            // on contested ground instead of patrolling deserted waypoints.
+            if (Util.Chance(30))
+            {
+                Point3D hotspot = PvPFrontierManager.PickRecentEnemyHotspot(Region, Config.Realm);
+                if (hotspot != null)
+                {
+                    _currentWaypoint = hotspot;
+                    return;
+                }
+            }
+
+            // (3) Offensive keep intent.
             if (Util.Chance(PvPFrontierProperties.PVP_FRONTIER_KEEP_ATTACK_CHANCE))
             {
                 Point3D keepTarget = PickClosestEnemyKeep();
@@ -989,12 +1154,49 @@ namespace DOL.GS.Scripts
                 }
             }
 
+            // (4) Random patrol waypoint.
             if (Config.PatrolWaypoints.Count == 0)
             {
+                // (5) No waypoints configured: hold position at spawn.
                 _currentWaypoint = Config.SpawnAnchor;
                 return;
             }
             _currentWaypoint = Config.PatrolWaypoints[Util.Random(Config.PatrolWaypoints.Count - 1)];
+        }
+
+        /// <summary>
+        /// Returns the position of a friendly keep / tower currently in combat
+        /// (under attack by enemies). Closest match if several are under siege.
+        /// </summary>
+        private Point3D PickFriendlyKeepUnderAttack()
+        {
+            MimicNPC leader = FirstAliveMember();
+            if (leader == null) return null;
+
+            var keeps = GameServer.KeepManager.GetKeepsOfRegion(leader.CurrentRegionID);
+            if (keeps == null || keeps.Count == 0) return null;
+
+            Keeps.AbstractGameKeep best = null;
+            long bestSq = long.MaxValue;
+
+            foreach (var k in keeps)
+            {
+                if (k == null) continue;
+                if (k.Realm != Config.Realm) continue;     // friendly only
+                if (!k.InCombat) continue;                 // under attack only
+
+                long dx = k.X - leader.X;
+                long dy = k.Y - leader.Y;
+                long sq = dx * dx + dy * dy;
+
+                if (sq < bestSq)
+                {
+                    bestSq = sq;
+                    best = k;
+                }
+            }
+
+            return best != null ? new Point3D(best.X, best.Y, best.Z) : null;
         }
 
         /// <summary>
@@ -1123,6 +1325,13 @@ namespace DOL.GS.Scripts
             MimicNPC enemyLeader = enemy.FirstAliveMember();
             if (enemyLeader == null) return;
 
+            // Record the engagement so other friendly groups know where the
+            // fighting is happening and can rally instead of patrolling empty
+            // waypoints. We record OUR realm as the observer so the same
+            // realm's other groups don't all chase each other's engagements.
+            PvPFrontierManager.RegisterEnemyHotspot(Region, Config.Realm,
+                enemyLeader.X, enemyLeader.Y, enemyLeader.Z);
+
             foreach (var m in Members)
             {
                 if (m == null || !m.IsAlive || m.MimicBrain == null) continue;
@@ -1133,12 +1342,67 @@ namespace DOL.GS.Scripts
 
         private void OrderGroupToRetreat()
         {
-            // Walk back to the realm's spawn anchor (relative safety).
+            // Pick the closest "safe point": either a friendly keep we still
+            // hold, or the realm's spawn anchor. Real RvR groups duck into
+            // the nearest friendly perimeter, they don't always trek all the
+            // way back to spawn. Falls back to the spawn anchor when no
+            // friendly keep is in our region.
+            Point3D safePoint = PickClosestSafePoint() ?? Config.SpawnAnchor;
+            _retreatDestination = safePoint;
+
+            MimicNPC leader = FirstAliveMember();
+            if (leader == null)
+                return;
+
+            // Move the leader explicitly; the rest follow in formation. The
+            // previous code sent every member to the same point with no
+            // cohesion, so healers and casters got isolated and picked off
+            // by chasers — same fix pattern as OrderGroupToWaypoint.
+            leader.WalkTo(safePoint, leader.MaxSpeed);
+
             foreach (var m in Members)
             {
-                if (m == null || !m.IsAlive) continue;
-                m.WalkTo(Config.SpawnAnchor, m.MaxSpeed);
+                if (m == null || !m.IsAlive || m == leader) continue;
+                if (m.MimicBrain == null) continue;
+                m.MimicBrain.FSM.SetCurrentState(eFSMStateType.FOLLOW_THE_LEADER);
             }
+        }
+
+        private Point3D _retreatDestination;
+
+        /// <summary>
+        /// Closest friendly keep / tower we still own (within the group's
+        /// region). Returns null when no friendly keep exists in the region.
+        /// </summary>
+        private Point3D PickClosestSafePoint()
+        {
+            MimicNPC leader = FirstAliveMember();
+            if (leader == null) return null;
+
+            var keeps = GameServer.KeepManager.GetKeepsOfRegion(leader.CurrentRegionID);
+            if (keeps == null || keeps.Count == 0) return null;
+
+            Keeps.AbstractGameKeep best = null;
+            long bestSq = long.MaxValue;
+
+            foreach (var k in keeps)
+            {
+                if (k == null) continue;
+                if (k.Realm != Config.Realm) continue;     // only our own keeps
+                if (k.InCombat) continue;                  // under attack — not safe
+
+                long dx = k.X - leader.X;
+                long dy = k.Y - leader.Y;
+                long sq = dx * dx + dy * dy;
+
+                if (sq < bestSq)
+                {
+                    bestSq = sq;
+                    best = k;
+                }
+            }
+
+            return best != null ? new Point3D(best.X, best.Y, best.Z) : null;
         }
 
         /// <summary>
