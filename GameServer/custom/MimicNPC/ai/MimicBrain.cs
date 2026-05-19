@@ -5658,6 +5658,15 @@ namespace DOL.AI.Brain
             // path was already aimed at it via Body.TargetObject upstream,
             // but be defensive in case a CC pass mutated the target.
             Body.TargetObject = charmTarget;
+
+            // Minstrel charms are instrument-bound (NeedInstrument == true).
+            // Without this swap the cast would fail with "you don't have the
+            // right weapon equipped" the moment the bot is in melee weapon
+            // slot. The mirror swap is in CheckOffensiveSpells already, but
+            // we bypass that wrapper here.
+            if (best.NeedInstrument && Body.ActiveWeaponSlot != eActiveWeaponSlot.Distance)
+                Body.SwitchWeapon(eActiveWeaponSlot.Distance);
+
             return Body.CastSpell(best, MimicBody.GetSpellLineForSpell(best));
         }
 
