@@ -5624,8 +5624,15 @@ namespace DOL.AI.Brain
             if (charmTarget.Brain is IControlledBrain ic && ic.Owner != Body)
                 return false;
 
+            // Charm spells live in MiscSpells, not HarmfulSpells:
+            // Spell.IsHarmful explicitly returns false for SpellType == Charm
+            // even though the target is ENEMY, so SortSpells routes them to
+            // the misc bucket.
+            if (Body.MiscSpells == null)
+                return false;
+
             Spell best = null;
-            foreach (Spell spell in Body.HarmfulSpells)
+            foreach (Spell spell in Body.MiscSpells)
             {
                 if (spell.SpellType != eSpellType.Charm)
                     continue;
