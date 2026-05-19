@@ -489,7 +489,7 @@ namespace DOL.AI.Brain
                                 spellToCast = MimicBody.CureDisease;
                                 spellTarget = MimicBody;
                             }
-                            else if (CanCastCureDiseaseGroup() && (!MimicBody.IsCasting) || CanCastCureDiseaseGroupInstant())
+                            else if (CanCastCureDiseaseGroup() && (!MimicBody.IsCasting || CanCastCureDiseaseGroupInstant()))
                             {
                                 spellToCast = MimicBody.CureDiseaseGroup;
                                 spellTarget = MimicBody;
@@ -702,13 +702,18 @@ namespace DOL.AI.Brain
                         MimicBody.TargetObject = oldTarget;
                     else
                     {
+                        // Arm the cure cooldown regardless of cast type. The
+                        // previous code only set nextCureTime for non-instant
+                        // cures, so an instant cure (e.g. some healer RAs)
+                        // would re-fire every tick and spam the group.
+                        if (spellToCast.SpellType == eSpellType.CureDisease || spellToCast.SpellType == eSpellType.CurePoison)
+                            nextCureTime = GameLoop.GameLoopTime + CureDelay;
+
                         if (spellToCast.IsInstantCast)
                         {
                             MimicBody.TargetObject = oldTarget;
                             startedCasting = false;
                         }
-                        else if (spellToCast.SpellType == eSpellType.CureDisease || spellToCast.SpellType == eSpellType.CurePoison)
-                            nextCureTime = GameLoop.GameLoopTime + CureDelay;
 
                         if (mGroup != null)
                             switch (spellToCast.SpellType)

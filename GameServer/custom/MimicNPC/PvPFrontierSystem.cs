@@ -517,7 +517,13 @@ namespace DOL.GS.Scripts
                 if (m.MimicBrain != null)
                 {
                     m.MimicBrain.PvPMode = true;
-                    m.MimicBrain.Roam = true;
+                    // Frontier movement is driven by OrderGroupToWaypoint /
+                    // PickNextWaypoint, NOT by the generic roam state. The
+                    // WAKING_UP state transitions a CanRoam bot straight to
+                    // ROAMING the moment it ticks, which would short-circuit
+                    // the patrol logic and send bots wandering instead of
+                    // following waypoints.
+                    m.MimicBrain.Roam = false;
                     m.MimicBrain.AggroLevel = 100;
                     m.MimicBrain.AggroRange = 3000;
                     m.MimicBrain.IsHealer = lm.IsHealer;

@@ -908,14 +908,26 @@ namespace DOL.GS.Scripts
             if (target == null)
                 return;
 
-            AlreadyCastingSingleHeal = true;
-            MemberBeingSingleHealed ??= target;
-            _membersBeingSingleHealed.Add(target);
+            // _membersBeingSingleHealed is a plain HashSet so concurrent
+            // heal ticks from two healers in the same group would mutate it
+            // without coordination, eventually throwing InvalidOperationException
+            // ("Collection was modified") on the IsSingleHealReserved walk.
+            // Guard with HealLock — every heal-cycle helper that touches
+            // single-heal state takes the same lock.
+            lock (HealLock)
+            {
+                AlreadyCastingSingleHeal = true;
+                MemberBeingSingleHealed ??= target;
+                _membersBeingSingleHealed.Add(target);
+            }
         }
 
         public bool IsSingleHealReserved(GameLiving target)
         {
-            return target != null && _membersBeingSingleHealed.Contains(target);
+            if (target == null)
+                return false;
+            lock (HealLock)
+                return _membersBeingSingleHealed.Contains(target);
         }
 
         public GameLiving PickAlternateHealTarget(MimicNPC checker, GameLiving excluded, bool includeInjured, bool avoidSingleHealReservation)

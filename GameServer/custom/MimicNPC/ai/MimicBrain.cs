@@ -4364,7 +4364,12 @@ namespace DOL.AI.Brain
                     bool assistTargetEngagedOnGroup = assistTarget.TargetObject is GameLiving aE
                                                       && Body.Group != null
                                                       && Body.Group.IsInTheGroup(aE);
-                    bool weHaveAggroOnAssistTarget = AggroList.ContainsKey(assistTarget) && AggroList[assistTarget].Effective > 1;
+                    // Use TryGetValue to avoid a check-then-get race on the
+                    // ConcurrentDictionary: a concurrent CleanUp can remove
+                    // the entry between ContainsKey and [] and the indexer
+                    // would throw KeyNotFoundException.
+                    bool weHaveAggroOnAssistTarget = AggroList.TryGetValue(assistTarget, out AggroAmount _assistAmount)
+                                                     && _assistAmount.Effective > 1;
 
                     bool assistIsEngaging = assistAttackingTarget
                                             || assistCastingHarmfulOnTarget
@@ -4683,10 +4688,18 @@ namespace DOL.AI.Brain
             {
                 // If the attacker is a pet, we also add its owner.
                 // this prevents both receiving an aggro amount of 1 if the attack is a debuff for example, ensuring the NPC attacks the pet first.
-                IGamePlayer owner = brain.GetIPlayerOwner();
+                //
+                // GetIPlayerOwner returns null for mimic-owned pets (mimic
+                // is a GameNPC, not IGamePlayer). Fall back to the raw
+                // brain.Owner — a GameLiving — so the propagation still works
+                // when the offender is a bot pet. Without this guard the
+                // (GameLiving)owner cast NPE'd on every debuff cast by a
+                // mimic-owned pet.
+                GameLiving ownerLiving = brain.GetIPlayerOwner() as GameLiving
+                                        ?? brain.Owner as GameLiving;
 
-                if (!AggroList.ContainsKey((GameLiving)owner))
-                    AggroList.TryAdd((GameLiving)owner, new(0));
+                if (ownerLiving != null && !AggroList.ContainsKey(ownerLiving))
+                    AggroList.TryAdd(ownerLiving, new(0));
             }
         }
 
@@ -5162,8 +5175,11 @@ namespace DOL.AI.Brain
 
                         if (casted)
                         {
+                            // Group can be null-cleared between cast start and
+                            // here (player disbands, member kicked) — chain
+                            // the null-conditional all the way down.
                             if (!PvPMode)
-                                MimicBody.Group.MimicGroup.RemoveCcTarget(ccTarget);
+                                MimicBody.Group?.MimicGroup?.RemoveCcTarget(ccTarget);
 
                             if (spell.CastTime > 0)
                                 Body.StopFollowing();
@@ -6526,9 +6542,17 @@ namespace DOL.AI.Brain
                 case eSpellType.SavageParryBuff:
                 case eSpellType.SavageEvadeBuff:
 
-                if (spell.SpellType == eSpellType.SavageCrushResistanceBuff ||
-                    spell.SpellType == eSpellType.SavageSlashResistanceBuff ||
-                    spell.SpellType == eSpellType.SavageThrustResistanceBuff &&
+                // Operator precedence bug: && binds tighter than ||, so the
+                // previous code only checked CheckSavageResistSpell on Thrust
+                // and let Crush / Slash bypass the resist-trio gate entirely
+                // (and even fall-through from the other Savage buffs above).
+                // Parenthesize the trio so every Savage RESISTANCE buff is
+                // gated by CheckSavageResistSpell; non-resistance Savage
+                // buffs (CombatSpeed / DPS / Parry / Evade) fall through to
+                // the LivingHasEffect gate below as before.
+                if ((spell.SpellType == eSpellType.SavageCrushResistanceBuff ||
+                     spell.SpellType == eSpellType.SavageSlashResistanceBuff ||
+                     spell.SpellType == eSpellType.SavageThrustResistanceBuff) &&
                     !CheckSavageResistSpell(spell.SpellType))
                     break;
 

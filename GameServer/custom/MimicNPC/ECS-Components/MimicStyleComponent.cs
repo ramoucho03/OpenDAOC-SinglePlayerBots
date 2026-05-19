@@ -35,10 +35,18 @@ namespace DOL.GS
         {
             MimicNPC mimic = Owner as MimicNPC;
 
-            if (mimic.Styles == null || mimic.Styles.Count < 1 || mimic.TargetObject == null)
+            // Owner-cast guard: StyleProcessor can call this on a teardown
+            // path where Owner has been reassigned (component handover, body
+            // swap on rez), in which case the cast returns null.
+            if (mimic == null || mimic.Styles == null || mimic.Styles.Count < 1 || mimic.TargetObject == null)
                 return null;
 
-            AttackData lastAttackData = mimic.attackComponent.attackAction.LastAttackData;
+            // attackComponent.attackAction is null until the first swing
+            // initiates the AttackComponent's action. Reading LastAttackData
+            // through a null chain NPE'd whenever GetStyleToUse was invoked
+            // from a non-combat path (e.g. style preview). The downstream
+            // logic already handles lastAttackData == null as "first swing".
+            AttackData lastAttackData = mimic.attackComponent?.attackAction?.LastAttackData;
             bool isFirstSwing = lastAttackData == null;
 
             // 0. Stealth opener — Critical Strike / Backstab / Perforate Artery.
@@ -73,7 +81,7 @@ namespace DOL.GS
             // IsActingAsTank covers both the assigned MainTank case and the
             // player-led group case where a mimic tank is the de-facto tank
             // but MainTank still points at the player.
-            if (!mimic.MimicBrain.PvPMode && mimic.MimicBrain.IsActingAsTank)
+            if (mimic.MimicBrain != null && !mimic.MimicBrain.PvPMode && mimic.MimicBrain.IsActingAsTank)
             {
                 Style s = CheckTaunt(mimic, lastAttackData);
 
@@ -84,7 +92,7 @@ namespace DOL.GS
             // 4. Shield control for assigned tanks. If Slam or another shield
             // style is available, it is usually stronger than a generic weapon
             // swing because it peels or stuns the target.
-            if (mimic.MimicBrain.IsActingAsTank && mimic.StylesShield != null && mimic.StylesShield.Count > 0)
+            if (mimic.MimicBrain != null && mimic.MimicBrain.IsActingAsTank && mimic.StylesShield != null && mimic.StylesShield.Count > 0)
             {
                 Style s = GetBestStyle(mimic.StylesShield, lastAttackData, mimic);
 

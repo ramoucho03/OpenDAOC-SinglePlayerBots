@@ -1923,6 +1923,14 @@ namespace DOL.GS.Scripts
         ///<summary>Calculate heal amount, accounting for percentage based heals</summary>
         public static double HealAmount(Spell spell, GameLiving target)
         {
+            // HealAmount is called from the heal cycle with members of the
+            // bot's HealBig/HealEfficient slots, which can be null when the
+            // caster has not specced into a corresponding spell. Treat
+            // missing spells as zero heal so the caller's > comparison
+            // falls through to whichever heal IS available.
+            if (spell == null || target == null)
+                return 0;
+
             return spell.Value >= 0
                 ? spell.Value
                 : target.MaxHealth * spell.Value * -0.01d;
