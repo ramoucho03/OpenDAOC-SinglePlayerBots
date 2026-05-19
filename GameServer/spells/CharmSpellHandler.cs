@@ -373,9 +373,17 @@ namespace DOL.GS.Spells
             // You should be able to chain pulsing charm on the same mob. The
             // previous code only released for a GamePlayer caster, so a mimic
             // Sorcerer/Minstrel/Mentalist would silently fail to swap pets on
-            // a re-charm (ControlledBrain stuck on the first victim).
+            // a re-charm (ControlledBrain stuck on the first victim). Use the
+            // player command path when we have one (clears spell queue,
+            // resets follow state, sends chat) and fall back to the raw
+            // RemoveControlledBrain call for GameNPC casters.
             if (Spell.Pulse != 0 && Caster.ControlledBrain != null && Caster.ControlledBrain.Body != target)
-                Caster.CommandNpcRelease();
+            {
+                if (playerCaster != null)
+                    playerCaster.CommandNpcRelease();
+                else
+                    Caster.RemoveControlledBrain(Caster.ControlledBrain);
+            }
 
             // Make sure the pet is in the same region and alive
             if (target.CurrentRegion != Caster.CurrentRegion || !target.IsAlive || target.ObjectState != GameObject.eObjectState.Active)
