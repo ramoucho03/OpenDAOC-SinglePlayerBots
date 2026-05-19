@@ -26,7 +26,6 @@ namespace DOL.GS.RealmAbilities
 		{
 			if (CheckPreconditions(living, DEAD | SITTING | MEZZED | STUNNED)) return;
 
-			int heal = 0;
 			int currentCharMaxHealth = living.MaxHealth;
 
 			int healed = living.ChangeHealth(living, eHealthChangeType.Spell, currentCharMaxHealth);

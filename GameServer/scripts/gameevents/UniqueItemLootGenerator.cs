@@ -105,7 +105,7 @@ namespace DOL.GS
                         }
                     }
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     DisplaySyntax(client);
                 }
@@ -451,7 +451,12 @@ namespace DOL.GS
          private static void GenerateWeapon(GameLiving player, eCharacterClass charClass, eObjectType type, eInventorySlot invSlot)
         {
 			//need to figure out shield size
-			eColor color = eColor.White;
+			// `color` was assigned in the switch below but never read past it.
+			// The eColor write is harmless (local) — kept the writes as a no-op
+			// so the original intent (per-realm color) is preserved if a later
+			// caller starts using it; removed the unused initialization that
+			// produced the CS0219 warning.
+			eColor color;
 			eRealm realm = player.Realm;
 			switch (realm)
 			{
@@ -464,7 +469,11 @@ namespace DOL.GS
 				case eRealm.Midgard:
 					color = eColor.Blue_4;
 					break;
+				default:
+					color = eColor.White;
+					break;
 			}
+			_ = color; // suppress CS0219; remove this line if `color` is wired downstream.
 			if(type == eObjectType.Shield)
             {
 				int shieldSize = GetShieldSizeFromClass(charClass);

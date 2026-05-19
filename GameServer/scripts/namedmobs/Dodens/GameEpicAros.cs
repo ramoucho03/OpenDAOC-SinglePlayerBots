@@ -31,10 +31,7 @@ namespace DOL.GS.Scripts
         protected String[] m_DeathAnnounce;
 
         //check if he is doing spells
-        private bool isBombing = true;
-        private bool isBigBombing = true;
         private bool isSummoning = true;
-        private bool isDebuffing = true;
 
         /// <summary>
         /// Creates a new instance of GameEpicAros.

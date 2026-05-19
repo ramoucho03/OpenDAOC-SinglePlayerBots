@@ -55,7 +55,7 @@ namespace DOL.Mail
 
 				// We store the complete file into a buffer
 				byte[] buf = new byte[fstream.Length];
-				fstream.Read(buf, 0, buf.Length);
+				fstream.ReadExactly(buf, 0, buf.Length);
 				fstream.Close();
 
 				// Stream to write the compressed file

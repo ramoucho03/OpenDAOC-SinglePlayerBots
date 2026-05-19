@@ -44,7 +44,6 @@ public class AtlasOF_BrilliantAura : TimedRealmAbility, ISpellCastingAbilityHand
 
         SendCastMessage(player);
 
-        bool AtLeastOneEffectRemoved = false;
         foreach (GamePlayer target in targets)
         {
             ECSGameEffectFactory.Create(new(target, 30000, 1, m_handler), static (in i) => new StatBuffECSEffect(i));

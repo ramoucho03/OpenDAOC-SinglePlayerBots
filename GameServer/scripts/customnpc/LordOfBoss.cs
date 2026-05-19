@@ -293,9 +293,6 @@ namespace DOL.GS {
 
         public int timeBeforeRez = 3000; //3 seconds
 
-        Dictionary<GamePlayer, long> playersToRez;
-        List<GamePlayer> playersToKill;
-
         public override void Think()
         {
            

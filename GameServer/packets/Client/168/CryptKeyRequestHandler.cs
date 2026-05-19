@@ -19,7 +19,7 @@ namespace DOL.GS.PacketHandler.Client.v168
 				client.MinorRev = packet.ReadString(1);
 				if (rc4 == 1)
 				{
-					packet.Read(client.PacketProcessor.Encoding.SBox, 0, 256);
+					packet.ReadExactly(client.PacketProcessor.Encoding.SBox, 0, 256);
 					client.PacketProcessor.Encoding.EncryptionState = eEncryptionState.PseudoRC4Encrypted;
 				}
 				else
@@ -37,7 +37,7 @@ namespace DOL.GS.PacketHandler.Client.v168
 					{
 						var length = packet.ReadIntLowEndian();
 						var key = new byte[length];
-						packet.Read(key, 0, (int) length);
+						packet.ReadExactly(key, 0, (int) length);
 						client.PacketProcessor.Encoding.SBox = key;
 						client.PacketProcessor.Encoding.EncryptionState = eEncryptionState.PseudoRC4Encrypted;
 					}

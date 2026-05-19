@@ -126,7 +126,6 @@ namespace DOL.GS
         #endregion
 
         #region Pick Random Player, PlayerEnter
-        private bool CheckNullPlayer = false;
         public static GamePlayer randomtarget=null;
         public static GamePlayer RandomTarget
         {

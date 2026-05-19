@@ -650,9 +650,7 @@ namespace DOL.GS.Quests.Hibernia
 				WhisperReceiveEventArgs wArgs = (WhisperReceiveEventArgs) args;
 				if (quest == null)
 				{
-					switch (wArgs.Text)
-					{
-					}
+					// No-op: player hasn't started the quest.
 				}
 				else
 				{
@@ -763,9 +761,7 @@ namespace DOL.GS.Quests.Hibernia
 				WhisperReceiveEventArgs wArgs = (WhisperReceiveEventArgs) args;
 				if (quest == null)
 				{
-					switch (wArgs.Text)
-					{
-					}
+					// No-op: player hasn't started the quest.
 				}
 				else
 				{
@@ -853,15 +849,11 @@ namespace DOL.GS.Quests.Hibernia
 				WhisperReceiveEventArgs wArgs = (WhisperReceiveEventArgs) args;
 				if (quest == null)
 				{
-					switch (wArgs.Text)
-					{
-					}
+					// No-op: player hasn't started the quest.
 				}
 				else
 				{
-					switch (wArgs.Text)
-					{
-					}
+					// No whisper triggers wired for this quest step yet.
 				}
 			}
 			else if (e == GameLivingEvent.ReceiveItem)

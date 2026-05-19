@@ -918,7 +918,7 @@ namespace DOL.GS
                             {
                                 handlerConstructor = CompiledConstructorFactory.CompileConstructor(type, [typeof(GameLiving), typeof(Spell), typeof(SpellLine)]) as Func<GameLiving, Spell, SpellLine, ISpellHandler>;
                             }
-                            catch (Exception e)
+                            catch (Exception)
                             {
                                 if (log.IsErrorEnabled)
                                     log.Error($"Couldn't find a SpellHandler constructor for {spellType}");

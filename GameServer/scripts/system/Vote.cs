@@ -212,8 +212,8 @@ namespace DOL.GS.Scripts
 
             string msg = "Voting ended!";
 
-            int listStart = 1;
-            ArrayList filters = null;
+            // listStart/filters used to drive a paged GetPlayers() call; removed
+            // along with the call now that ClientService returns the full list.
             List<GamePlayer> players = ClientService.Instance.GetPlayers();
 
             // counting the votes for each option

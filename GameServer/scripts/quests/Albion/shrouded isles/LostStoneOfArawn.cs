@@ -560,9 +560,9 @@ public class LostStoneofArawn : BaseQuest
         {
             var wArgs = (WhisperReceiveEventArgs) args;
             if (quest == null)
-                switch (wArgs.Text)
-                {
-                }
+            {
+                // No-op: player hasn't started the quest, nothing to whisper-handle.
+            }
             else
                 switch (wArgs.Text)
                 {
@@ -637,9 +637,9 @@ public class LostStoneofArawn : BaseQuest
         {
             var wArgs = (WhisperReceiveEventArgs) args;
             if (quest == null)
-                switch (wArgs.Text)
-                {
-                }
+            {
+                // No-op: player hasn't started the quest, nothing to whisper-handle.
+            }
             else
                 switch (wArgs.Text)
                 {

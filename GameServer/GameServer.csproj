@@ -51,8 +51,9 @@
         <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3" />
         <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.15.1" />
         <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.7" />
-        <PackageReference Include="System.Net.Http" Version="4.3.4" />
-        <PackageReference Include="System.Text.RegularExpressions" Version="4.3.1" />
+        <!-- System.Net.Http and System.Text.RegularExpressions used to be
+             pulled in explicitly; on .NET 10 they ship in the framework so
+             explicit refs trigger NU1510 (won't prune). Removed. -->
         <ProjectReference Include="..\CoreBase\CoreBase.csproj" Name="CoreBase" />
         <ProjectReference Include="..\CoreDatabase\CoreDatabase.csproj" Name="CoreDatabase" />
         <EmbeddedResource Include=".\config\*" />

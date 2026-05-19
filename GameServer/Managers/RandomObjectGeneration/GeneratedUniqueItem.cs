@@ -5,6 +5,13 @@ using DOL.Database;
 using DOL.Events;
 using DOL.GS.ServerProperties;
 
+// Many CanGenerate*() branches in this file are intentionally short-
+// circuited with `return false;` at the top of the case, with the body
+// preserved below for the day extension-class loot tables get turned on
+// again (Mauler/Heretic/Bainshee etc.). Suppressing CS0162 here keeps
+// that body visible and ready to re-enable without flooding the build.
+#pragma warning disable CS0162 // Unreachable code detected
+
 namespace DOL.GS
 {
     /// <summary>
@@ -11138,3 +11145,5 @@ namespace DOL.GS
         }
     }
 }
+
+#pragma warning restore CS0162

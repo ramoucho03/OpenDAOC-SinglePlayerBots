@@ -323,8 +323,7 @@ namespace DOL.GS.Commands
 
 					string sCurrent;
 					string sTitle;
-					int cnt = 0;
-								
+
 					info.Add(" ");
 					info.Add("SPECCING INFORMATIONS ");
 					info.Add("  - Remaining spec. points : " + target.SkillSpecialtyPoints);
@@ -794,10 +793,10 @@ namespace DOL.GS.Commands
 				var hostEntry = Dns.GetHostEntry(clientIP);
 				return hostEntry.HostName;
 			}
-			catch (Exception ex)
+			catch (Exception)
 			{
 				return string.Empty;
-			}            
+			}
 		}
 		private double GetTotalAFHelper(GameLiving living)
 		{

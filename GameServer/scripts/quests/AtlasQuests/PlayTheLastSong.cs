@@ -392,10 +392,7 @@ namespace DOL.GS.Quests.Midgard
 				WhisperReceiveEventArgs wArgs = (WhisperReceiveEventArgs) args;
 				if (quest == null || IsSinging)
 				{
-					switch (wArgs.Text)
-					{
-						
-					}
+					// No-op: player hasn't started the quest, or already singing.
 				}
 				else
 				{

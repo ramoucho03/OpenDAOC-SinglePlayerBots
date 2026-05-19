@@ -16,7 +16,6 @@ namespace DOL.GS.Spells
         private int dexID = 8092;
         private int dexQuickID = 8095;
         private int acuityID = 8093;
-        private int hasteID = 8071;
 
         public override string ShortDescription => $"Increases {TargetPronoun} stats by {Spell.Value}.";
         public override eProperty Property1 => eProperty.Strength;

@@ -453,10 +453,9 @@ namespace DOL.GS.PacketHandler
 
 			using (var pak = PooledObjectFactory.GetForTick<GSTCPPacketOut>().Init(GetPacketCode(eServerPackets.PositionAndObjectID)))
 			{
-				if (m_gameClient.Player.X <= 0)
-				{
-					int x = 0;
-				}
+				// Debug break-point used to live here ("if X<=0 { int x = 0; }") — kept
+				// as a comment so future tracing knows it was intentional, but the
+				// dead local is gone.
 				pak.WriteFloatLowEndian(m_gameClient.Player.X);
 				pak.WriteFloatLowEndian(m_gameClient.Player.Y);
 				pak.WriteFloatLowEndian(m_gameClient.Player.Z);

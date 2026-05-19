@@ -121,10 +121,8 @@ namespace DOL.GS.Scripts
                     player.Level = 1;
                     return true;
 
-                default: 
+                default:
                     return false;
-
-                return true;
             }
         }
 

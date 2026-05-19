@@ -54,7 +54,6 @@ namespace DOL.GS.RealmAbilities
 				}
 			}
 
-			bool success;
 			foreach (GameLiving target in targets)
 			{
 				//send spelleffect

@@ -16,7 +16,6 @@ namespace DOL.GS
 	{
 		protected static readonly Logging.Logger log = Logging.LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
-		private bool finishedCraft = false; 
 		#region Declaration
 		/// <summary>
 		/// the maximum possible range within a player has to be to a forge , lathe ect to craft an item

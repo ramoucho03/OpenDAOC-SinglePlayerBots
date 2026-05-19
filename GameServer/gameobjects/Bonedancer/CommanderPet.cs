@@ -156,9 +156,13 @@ namespace DOL.GS
 		/// <returns>True, if string needs further processing.</returns>
 		public override bool WhisperReceive(GameLiving source, string str)
 		{
-			// Everything below this comment is added in 1.83, and should not exist in a strict 1.65 level. Feel free to add it back in if desired.
+			// The 1.83 command interface below is intentionally disabled on
+			// this 1.65 server. Kept inside `#if false` so it can be
+			// reactivated verbatim if the post-1.65 commander tree is wanted
+			// again, while the compiler stops emitting CS0162 unreachable-
+			// code warnings on every nested branch.
 			return false;
-
+#if false
 			if (source is not GamePlayer player || player != Owner)
 				return false;
 
@@ -430,6 +434,7 @@ namespace DOL.GS
 				}
 			}
 			return base.WhisperReceive(source, str);
+#endif
 		}
 
 		public override bool Interact(GamePlayer player)

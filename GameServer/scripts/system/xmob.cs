@@ -200,7 +200,6 @@ namespace DOL.GS.Commands
 
                         IList<GameNPC> setupmobs = new List<GameNPC>();
                         GameNPC mob;
-                        GameNPC merchant;
 
                         #region load list
                         //base 

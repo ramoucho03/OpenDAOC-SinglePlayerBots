@@ -283,7 +283,12 @@ namespace DOL.GS.SpamMob
 
     public class SpamMobNPC : GameNPC
     {
-        private Spell dot;
+        // 'dot' field was declared but never used: a copy-paste bug below
+        // assigned the DOT spell to 'af' (the AF buff slot), then the
+        // genuine AF block overwrote it. The DOT was never added to the
+        // Spells list either, so the entire block was dead behavior. Removed
+        // the block to make the intent visible — add a proper dot spell here
+        // and include it in the Spells list if a DOT is desired.
         private Spell af;
         private Spell str;
         private Spell con;
@@ -292,31 +297,6 @@ namespace DOL.GS.SpamMob
 
         public SpamMobNPC() : base(new SpamMobBrain())
         {
-            if (dot == null)
-            {
-                DbSpell spell = new DbSpell();
-                spell.AllowAdd = false;
-                spell.CastTime = 3;
-                spell.Concentration = 0;
-                spell.ClientEffect = 10111;
-                spell.Icon = 1467;
-                spell.Duration = 50;
-                spell.Damage = 4;
-                spell.DamageType = 14;
-                spell.Frequency = 50;
-                spell.Name = "DOT";
-                spell.Description =
-                    "Damage Over Time";
-                spell.Range = WorldMgr.VISIBILITY_DISTANCE;
-                spell.SpellID = 88001;
-                spell.Target = eSpellTarget.SELF.ToString();
-                spell.Message1 = "Damage Over TIme";
-                spell.Type = eSpellType.DamageOverTime.ToString();
-                spell.EffectGroup = 1070;
-
-                af = new Spell(spell, 0);
-            }
-
             if (af == null)
             {
                 DbSpell spell = new DbSpell();

@@ -75,7 +75,6 @@ namespace DOL.AI.Brain
             }
         }
 		private bool CanAddNpcs = false;
-		private bool CanPullAditional = false;
 		public override void Think()
 		{
 			if(!CheckProximityAggro())//clear all checks and list
@@ -83,7 +82,6 @@ namespace DOL.AI.Brain
 				npcbaf = null;
 				RandomNpc = null;
 				PickedNpc = false;
-				CanPullAditional = false;
 				if (npcs_to_call.Count > 0)
 					npcs_to_call.Clear();
 			}

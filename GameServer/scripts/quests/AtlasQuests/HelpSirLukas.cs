@@ -461,10 +461,7 @@ namespace DOL.GS.Quests.Albion
 				WhisperReceiveEventArgs wArgs = (WhisperReceiveEventArgs) args;
 				if (quest == null)
 				{
-					switch (wArgs.Text)
-					{
-						
-					}
+					// No-op: player hasn't started the quest.
 				}
 				else
 				{

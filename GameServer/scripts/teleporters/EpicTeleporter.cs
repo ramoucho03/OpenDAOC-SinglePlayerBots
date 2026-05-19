@@ -55,15 +55,11 @@ namespace DOL.GS.Scripts
                 case "Celestius":
 
                     //if (t.Group.MemberCount >= 4) //You have enough
-                    {
-                        Say("I'm now teleporting you to the Celestius");
-                        t.MoveTo(91, 31955, 30276, 15733, 35);
-                        break;
-                    }
+                    Say("I'm now teleporting you to the Celestius");
+                    t.MoveTo(91, 31955, 30276, 15733, 35);
                     //else if (t.Group.MemberCount <= 3) //You dont have enough
                         //t.Out.SendMessage("You need a group of at least 4 adventurers for this encounter!", eChatType.CT_System, eChatLoc.CL_SystemWindow);
                     break;
-            
 
                 default: break;
 			}

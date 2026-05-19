@@ -18,7 +18,7 @@ namespace DOL.GS
         //4k high toa
         //10k dragonsworn
         //20k champion
-        private int lowbie = 450;
+        // 'lowbie' field removed: never referenced. Re-add if needed.
         private int festive = 1000;
         private int toageneric = 2000;
         private int armorpads = 2500;

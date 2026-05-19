@@ -11110,10 +11110,13 @@ namespace DOL.GS
                 case eGameObjectType.NPC:
                 {
                     // Custom feature to make stealthed NPCs actually invisible.
-                    // Currently disabled.
+                    // Currently disabled — re-enable the distance check below
+                    // by removing the early return if the feature is wanted.
                     return true;
+#if false
                     int detectionRange = Math.Clamp(1500 + (Level - enemy.Level) * 50, 500, 3000);
                     return IsWithinRadius(enemy, detectionRange);
+#endif
                 }
                 default:
                     return true;

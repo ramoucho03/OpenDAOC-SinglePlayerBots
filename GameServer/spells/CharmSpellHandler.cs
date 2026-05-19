@@ -450,7 +450,6 @@ namespace DOL.GS.Spells
                 list.Add(" "); //empty line
                 list.Add(ShortDescription);
                 list.Add(" "); //empty line
-                var baseMessage = "Attempts to bring the target monster under the caster's control.";
                 switch ((eCharmType) Spell.AmnesiaChance)
                 {
                     case eCharmType.All:

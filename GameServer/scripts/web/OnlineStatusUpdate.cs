@@ -148,8 +148,10 @@ namespace DOL.GS.GameEvents
 		{
 			try
 			{
-				WebClient webclient = new WebClient();
-				Byte[] contentBuffer = webclient.DownloadData(updateurl);
+				// HttpClient replaces the obsolete WebClient. Sync GetByteArrayAsync().Result
+				// matches the original synchronous semantics of WebClient.DownloadData.
+				using var httpClient = new System.Net.Http.HttpClient();
+				Byte[] contentBuffer = httpClient.GetByteArrayAsync(updateurl).GetAwaiter().GetResult();
 				string result = Encoding.ASCII.GetString(contentBuffer).ToLower();
 				if (result.IndexOf("success") != -1)
 				{

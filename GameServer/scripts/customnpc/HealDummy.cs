@@ -5,7 +5,6 @@ namespace DOL.GS
     public class HealDummy : GameTrainingDummy {
         Int32 Healing = 0;
         DateTime StartTime;
-        TimeSpan TimePassed;
         Boolean StartCheck = true;
 
         public override int Health { get => base.MaxHealth / 5; set { } }
@@ -34,7 +33,8 @@ namespace DOL.GS
             }
 
             Healing += changeAmount;
-            Name = "Heal Dummy Total: " + Healing.ToString() + " HPS: " + (Healing / (TimePassed.TotalSeconds + 1)).ToString("0");
+            double seconds = (DateTime.Now - StartTime).TotalSeconds;
+            Name = "Heal Dummy Total: " + Healing.ToString() + " HPS: " + (Healing / (seconds + 1)).ToString("0");
             return changeAmount;
         }
 

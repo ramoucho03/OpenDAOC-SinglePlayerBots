@@ -9,14 +9,10 @@ namespace DOL.GS
 
         public override void OnStartEffect()
         {
-            eChatType chatType = eChatType.CT_SpellPulse;
-            if (SpellHandler.Spell.Pulse == 0)
-            {
-                chatType = eChatType.CT_Spell;
-            }
-            
-            // "A crystal shield covers you."
-            // "A crystal shield covers {0}'s skin."
+            // chatType was computed but never used downstream — OnEffectStartsMsg
+            // currently uses fixed channels. Block removed; restore the
+            // conditional channel if/when proc messages need to differentiate
+            // pulse vs single-cast.
             OnEffectStartsMsg(true, false, true);
 
             //GameEventMgr.AddHandler(effect.Owner, EventType, new DOLEventHandler(EventHandler));

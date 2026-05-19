@@ -13,13 +13,12 @@ namespace DOL.GS.RealmAbilities.Statics
 		protected override string GetStaticName() {return "Rune Of Decimation";}
 		protected override ushort GetStaticModel() {return 1;}
 		protected override ushort GetStaticEffect() {return 7027;}
-		private DbSpell dbs;
-		private Spell   s;
-		private SpellLine sl;
-		int damage;		
-		public TrapBase(int damage) 
+
+		public TrapBase(int damage)
         {
-			
+			// Damage is intentionally unused: this is a no-op placeholder
+			// trap kept so RA scripts that subclass it can be loaded.
+			_ = damage;
 		}
 		
 		protected override void CastSpell (GameLiving target)

@@ -2857,11 +2857,11 @@ namespace DOL.GS.Scripts
             set => m_targetInView = value;
         }
 
-        // Upstream removed the virtual IsMimic on GameNPC. Hide it with `new`
-        // so existing call sites that read `npc.IsMimic` via a MimicNPC
-        // reference keep working. Callers that go through the GameNPC base
-        // will now need a pattern match (`obj is MimicNPC`) instead.
-        public new bool IsMimic => true;
+        // Upstream removed the virtual IsMimic on GameNPC; this MimicNPC-only
+        // property keeps existing call sites that read `npc.IsMimic` through
+        // a MimicNPC reference working. Callers going through the GameNPC
+        // base need a pattern match (`obj is MimicNPC`) instead.
+        public bool IsMimic => true;
 
         public override int TargetInViewAlwaysTrueMinRange => (TargetObject is GamePlayer targetPlayer && targetPlayer.IsMoving) ? 100 : 64;
 

@@ -321,8 +321,13 @@ namespace DOL.GS
 
         public override bool WhisperReceive(GameLiving source, string text)
         {
-            // Everything below this comment should not exist in a strict 1.65 level. Feel free to add it back in if desired.
+            // The interaction tree below is intentionally disabled on this 1.65
+            // server. The code is kept in a `#if false` block so it can be
+            // restored verbatim if/when the post-1.65 Necromancer command
+            // interface is wanted again — and the compiler stops emitting
+            // CS0162 unreachable-code warnings for every branch.
             return false;
+#if false
             GamePlayer owner = (Brain as IControlledBrain).Owner as GamePlayer;
 
             if (source == null || source != owner)
@@ -342,20 +347,14 @@ namespace DOL.GS
                         case "zombie servant":
                         case "reanimated servant":
                         case "necroservant":
-                        {
                             SayTo(owner, taunt);
                             return true;
-                        }
                         case "greater necroservant":
-                        {
                             SayTo(owner, $"{taunt} I can also inflict [poison] or [disease] on your enemies. {empower}");
                             return true;
-                        }
                         case "abomination":
-                        {
                             SayTo(owner, $"As one of the chosen warriors of Arawn, I have a mighty arsenal of weapons at your disposal. If you wish it, I am able to [taunt] your enemies so that they will focus on me instead of you. {empower}");
                             return true;
-                        }
                         default:
                             return false;
                     }
@@ -363,66 +362,49 @@ namespace DOL.GS
                 case "disease":
                 {
                     DbInventoryItem item = Inventory?.GetItem(eInventorySlot.RightHandWeapon);
-
                     if (item != null)
                     {
                         item.ProcSpellID = (int)Procs.Disease;
                         SayTo(owner, eChatLoc.CL_SystemWindow, "As you command.");
                     }
-
                     return true;
                 }
                 case "empower":
-                {
                     SayTo(owner, eChatLoc.CL_SystemWindow, "As you command.");
                     Empower();
                     return true;
-                }
                 case "poison":
                 {
                     DbInventoryItem item = Inventory?.GetItem(eInventorySlot.RightHandWeapon);
-
                     if (item != null)
                     {
                         item.ProcSpellID = (int)Procs.Poison;
                         SayTo(owner, eChatLoc.CL_SystemWindow, "As you command.");
                     }
-
                     return true;
                 }
                 case "taunt":
-                {
                     ToggleTauntMode();
                     return true;
-                }
                 case "weapons":
-                {
-                    if (Name != "abomination")
-                        return false;
-
+                    if (Name != "abomination") return false;
                     SayTo(owner, "What weapon do you command me to wield? A [fiery sword], [icy sword], [poisonous sword] or a [flaming mace], [frozen mace], [venomous mace]?");
                     return true;
-                }
                 case "fiery sword":
                 case "icy sword":
                 case "poisonous sword":
                 case "flaming mace":
                 case "frozen mace":
                 case "venomous mace":
-                {
-                    if (Name != "abomination")
-                        return false;
-
+                    if (Name != "abomination") return false;
                     string templateID = string.Format("{0}_{1}", Name, text.Replace(" ", "_"));
-
                     if (LoadEquipmentTemplate(templateID))
                         SayTo(owner, eChatLoc.CL_SystemWindow, "As you command.");
-
                     return true;
-                }
                 default:
                     return false;
             }
+#endif
         }
 
         public override void TakeDamage(GameObject source, eDamageType damageType, int damageAmount, int criticalAmount)

@@ -19,7 +19,6 @@ namespace DOL.GS.RealmAbilities
         private DbSpell m_dbspell;
         private Spell m_spell = null;
         private SpellLine m_spellline;
-        private double m_damage = 0;
         private GamePlayer m_player;
 
         public override void AddEffectsInfo(IList<string> list)

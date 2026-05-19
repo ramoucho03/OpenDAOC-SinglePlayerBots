@@ -389,7 +389,6 @@ namespace DOL.GS.Scripts
                 {
                     SayTo(player, $"I'm sorry but {player.Guild.Name} doesn't own a Guild House.");
                     return false;
-                    return false; // no teleport when guild house not found
                 }
                 else
                 {

@@ -58,7 +58,7 @@ namespace DOL.GS.Commands
 
 				client.Player.SpecLock = input;
 			}
-			catch (Exception e)
+			catch (Exception)
 			{
 				DisplaySyntax(client);
 			}

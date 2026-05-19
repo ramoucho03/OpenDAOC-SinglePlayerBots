@@ -52,7 +52,7 @@ public class BPMob : GameNPC
         {
             if (player.Group != null)
             {
-                if (player.Group.MemberCount  == 1) { rewardbp = (rewardbp); }
+                // 1-member group: BP unchanged (no self-assignment needed).
                 if (player.Group.MemberCount  == 2) { rewardbp = (rewardbp / 2); }
                 if (player.Group.MemberCount  == 3) { rewardbp = (rewardbp / 3); }
                 if (player.Group.MemberCount  == 4) { rewardbp = (rewardbp / 4); }

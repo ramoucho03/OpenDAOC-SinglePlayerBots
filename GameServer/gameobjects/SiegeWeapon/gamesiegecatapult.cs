@@ -49,9 +49,6 @@ namespace DOL.GS
 		
 		public int AttackRadius;
 
-		private GameNPC tempLOSSkyChecker;
-		private GameNPC tempLOSGTChecker;
-		private int loschecks;
 		public override void Aim()
 		{
 			if (!CanUse()) return;

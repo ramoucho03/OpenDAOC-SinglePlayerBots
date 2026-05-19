@@ -56,8 +56,9 @@ namespace DOL.GS.Quests.Albion
 
 		private static GameNPC Ferowl = null; // Start NPC
 		private static Morgana Morgana = null; // Mob
-		private static Bechard Bechard = null; // Mob to kill
-		private static Silcharde Silcharde = null; // Mob to kill
+		// Bechard / Silcharde static refs were used by the spawn block at
+		// ~line 189 which is commented out. Re-add them if the spawn block
+		// is reactivated.
 
 		//private static IArea morganaArea = null;
 

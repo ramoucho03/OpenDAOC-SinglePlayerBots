@@ -8,7 +8,7 @@ namespace DOL.GS.DatabaseUpdate
     public class LanguageSystemUpdate : IDatabaseUpdater
     {
         #region DBLanguage table structure
-        private class language : DataObject
+        private class Language : DataObject
         {
             protected string m_translationid;
             protected string m_EN = string.Empty;
@@ -18,7 +18,7 @@ namespace DOL.GS.DatabaseUpdate
             protected string m_CU = string.Empty;
             protected string m_packageID;
 
-            public language() { }
+            public Language() { }
 
             [DataElement(AllowDbNull = false, Unique = true)]
             public string TranslationID
@@ -82,12 +82,12 @@ namespace DOL.GS.DatabaseUpdate
 
             if (GameServer.Database.GetObjectCount<DbLanguageSystem>() < 1 && ServerProperties.Properties.USE_DBLANGUAGE)
             {
-                var objs = GameServer.Database.SelectAllObjects<language>();
+                var objs = GameServer.Database.SelectAllObjects<Language>();
                 if (objs.Count > 0)
                 {
                     List<DbLanguageSystem> lngObjs = new List<DbLanguageSystem>();
 
-                    foreach (language obj in objs)
+                    foreach (Language obj in objs)
                     {
                         if (string.IsNullOrEmpty(obj.TranslationID))
                             continue;
