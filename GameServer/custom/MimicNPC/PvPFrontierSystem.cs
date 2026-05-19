@@ -70,6 +70,11 @@ namespace DOL.GS.Scripts
         [ServerProperty("pvpfrontier", "pvp_frontier_max_group_size",
             "Maximum mimics per spawned frontier group (hard cap = full DAoC group of 8).", 8)]
         public static int PVP_FRONTIER_MAX_GROUP_SIZE;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_group_size_weights",
+            "Weighted distribution for spawned group sizes 1..8, comma-separated. Higher weight = more groups of that size. Default biases strongly toward full 8-man parties, with occasional skirmish teams and rare solo roamers — mirrors what a populated frontier actually looks like.",
+            "3,5,7,10,12,15,20,28")]
+        public static string PVP_FRONTIER_GROUP_SIZE_WEIGHTS;
     }
 
     #endregion
@@ -244,6 +249,13 @@ namespace DOL.GS.Scripts
             {
                 int target = PvPFrontierProperties.PVP_FRONTIER_POPULATION_PER_REALM;
 
+                // Snapshot player positions ONCE per tick. Every group's
+                // IsPlayerWithin check then consults the snapshot instead of
+                // re-walking ClientService for every group + every range
+                // probe — O(groups × players) collapses to O(players) per
+                // tick + O(groups) cache lookups.
+                RefreshPlayerSnapshots();
+
                 lock (_configsLock)
                 {
                     foreach (var kv in _configs)
@@ -276,7 +288,7 @@ namespace DOL.GS.Scripts
                         {
                             int minSize = Math.Clamp(PvPFrontierProperties.PVP_FRONTIER_MIN_GROUP_SIZE, 1, 8);
                             int maxSize = Math.Clamp(PvPFrontierProperties.PVP_FRONTIER_MAX_GROUP_SIZE, minSize, 8);
-                            int rolledSize = Util.Random(minSize, maxSize);
+                            int rolledSize = RollWeightedGroupSize(minSize, maxSize);
                             int groupSize = Math.Min(rolledSize, Math.Max(1, missing));
                             PvPFrontierGroup newGroup = PvPFrontierGroup.Spawn(cfg, groupSize);
                             if (newGroup != null)
@@ -291,6 +303,135 @@ namespace DOL.GS.Scripts
             }
 
             return TICK_MS;
+        }
+
+        // ----- Group size distribution -----
+        // Real RvR has lots of full 8-man parties, fewer skirmish teams, and
+        // rare solo roamers. Roll a weighted random size in [min..max] based
+        // on the configured weights so the population looks like a populated
+        // frontier instead of a uniform mix.
+        private static int[] _parsedSizeWeights;
+        private static string _parsedSizeWeightsSource;
+
+        private static int[] GetGroupSizeWeights()
+        {
+            string raw = PvPFrontierProperties.PVP_FRONTIER_GROUP_SIZE_WEIGHTS ?? "3,5,7,10,12,15,20,28";
+            if (_parsedSizeWeights != null && string.Equals(_parsedSizeWeightsSource, raw, StringComparison.Ordinal))
+                return _parsedSizeWeights;
+
+            int[] result = new int[8];
+            // Defaults if parsing fails partway through.
+            int[] defaults = { 3, 5, 7, 10, 12, 15, 20, 28 };
+            Array.Copy(defaults, result, 8);
+
+            try
+            {
+                string[] parts = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                for (int i = 0; i < parts.Length && i < 8; i++)
+                {
+                    if (int.TryParse(parts[i], out int w) && w >= 0)
+                        result[i] = w;
+                }
+            }
+            catch { /* keep defaults */ }
+
+            _parsedSizeWeights = result;
+            _parsedSizeWeightsSource = raw;
+            return result;
+        }
+
+        internal static int RollWeightedGroupSize(int minSize, int maxSize)
+        {
+            int[] weights = GetGroupSizeWeights();
+
+            // Sum the weights of the sizes inside [minSize..maxSize].
+            int total = 0;
+            for (int s = minSize; s <= maxSize; s++)
+                total += weights[s - 1];
+
+            if (total <= 0)
+                return Util.Random(minSize, maxSize); // pathological config, fall back to uniform
+
+            int roll = Util.Random(1, total);
+            int running = 0;
+            for (int s = minSize; s <= maxSize; s++)
+            {
+                running += weights[s - 1];
+                if (roll <= running)
+                    return s;
+            }
+
+            return maxSize;
+        }
+
+        // ----- Per-tick player snapshot -----
+        // IsPlayerWithin used to call ClientService.GetPlayersOfRegion on
+        // every check. With 400 bots × 3 realms × N players per region that
+        // becomes O(groups × players) per maintenance tick — measurable on
+        // a populated server. Snapshot once per maintenance tick and let
+        // each group consult the cache instead of re-walking the client list.
+        internal sealed class PlayerSnapshot
+        {
+            public List<PlayerSampledPos> Sampled = new(16);
+        }
+
+        internal struct PlayerSampledPos
+        {
+            public int X;
+            public int Y;
+        }
+
+        internal static readonly Dictionary<ushort, PlayerSnapshot> _playerSnapshotByRegion = new();
+        internal static long _playerSnapshotTick;
+        internal static readonly object _playerSnapshotLock = new();
+
+        private static void RefreshPlayerSnapshots()
+        {
+            // Collect every region that has at least one group registered to
+            // it (today all groups share PVP_FRONTIER_REGION, but the loop is
+            // future-proof for multi-region rollout).
+            HashSet<ushort> regions = new();
+            lock (_configsLock)
+            {
+                foreach (var cfg in _configs.Values)
+                    foreach (var g in cfg.Groups)
+                        if (g.Region != 0)
+                            regions.Add(g.Region);
+            }
+            if (regions.Count == 0)
+                regions.Add((ushort)PvPFrontierProperties.PVP_FRONTIER_REGION);
+
+            lock (_playerSnapshotLock)
+            {
+                _playerSnapshotByRegion.Clear();
+
+                foreach (ushort regId in regions)
+                {
+                    global::DOL.GS.Region region = WorldMgr.GetRegion(regId);
+                    if (region == null)
+                        continue;
+
+                    PlayerSnapshot snap = new();
+                    foreach (GamePlayer p in ClientService.Instance.GetPlayersOfRegion(region))
+                    {
+                        if (p == null || !p.IsAlive)
+                            continue;
+                        if (p.Client?.Account != null && p.Client.Account.PrivLevel > 1)
+                            continue;
+                        snap.Sampled.Add(new PlayerSampledPos { X = p.X, Y = p.Y });
+                    }
+
+                    _playerSnapshotByRegion[regId] = snap;
+                }
+
+                _playerSnapshotTick = GameLoop.GameLoopTime;
+            }
+        }
+
+        internal static PlayerSnapshot GetPlayerSnapshot(ushort regionId)
+        {
+            lock (_playerSnapshotLock)
+                return _playerSnapshotByRegion.TryGetValue(regionId, out PlayerSnapshot s) ? s : null;
         }
 
         public static string BuildStatusReport()
@@ -710,20 +851,21 @@ namespace DOL.GS.Scripts
         /// <summary>
         /// True if any non-GM human player is within `range` of the group's
         /// active position (leader while hydrated, VirtualPosition while
-        /// dormant) in our Region. Filters out GMs (PrivLevel > 1) since
-        /// admins shouldn't keep the system busy by being invisible.
+        /// dormant) in our Region. Reads from the per-tick player snapshot
+        /// populated by PvPFrontierManager.RefreshPlayerSnapshots — the
+        /// previous per-call iteration over ClientService blew up the tick
+        /// budget on a populated server (O(groups × players)).
         /// </summary>
         private bool IsPlayerWithin(int range)
         {
-            global::DOL.GS.Region region = WorldMgr.GetRegion(Region);
-            if (region == null) return false;
+            PvPFrontierManager.PlayerSnapshot snap = PvPFrontierManager.GetPlayerSnapshot(Region);
+            if (snap == null || snap.Sampled.Count == 0)
+                return false;
 
             // While the group is hydrated, its members can patrol far from
-            // the original VirtualPosition. Comparing players to the stale
-            // spawn anchor produced a constant dehydrate-flap: a player
-            // standing next to the group's actual position was "far" from
-            // VirtualPosition and tripped the grace timer. Sample the real
-            // leader's position when we have one.
+            // the original VirtualPosition. Sample the real leader's
+            // position when we have one so the dehydrate gate tracks the
+            // bots, not the stale spawn anchor.
             int refX = VirtualPosition.X;
             int refY = VirtualPosition.Y;
             if (IsHydrated)
@@ -737,14 +879,13 @@ namespace DOL.GS.Scripts
             }
 
             long rangeSq = (long)range * range;
-            foreach (GamePlayer p in ClientService.Instance.GetPlayersOfRegion(region))
+            List<PvPFrontierManager.PlayerSampledPos> list = snap.Sampled;
+            for (int i = 0; i < list.Count; i++)
             {
-                if (p == null || !p.IsAlive) continue;
-                if (p.Client?.Account != null && p.Client.Account.PrivLevel > 1) continue;
-
-                long dx = p.X - refX;
-                long dy = p.Y - refY;
-                if (dx * dx + dy * dy <= rangeSq) return true;
+                long dx = list[i].X - refX;
+                long dy = list[i].Y - refY;
+                if (dx * dx + dy * dy <= rangeSq)
+                    return true;
             }
             return false;
         }
