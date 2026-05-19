@@ -1,4 +1,5 @@
-﻿using DOL.GS.Scripts;
+﻿using DOL.Database;
+using DOL.GS.Scripts;
 using DOL.GS.Styles;
 using System;
 using System.Collections.Generic;
@@ -141,7 +142,10 @@ namespace DOL.GS
                     return s;
             }
 
-            if (mimic.MimicBrain.PvPMode || mimic.Group == null)
+            // Taunt fallback path — guard MimicBrain like the earlier
+            // tank-style branches do (was the last unguarded read in this
+            // method).
+            if (mimic.MimicBrain == null || mimic.MimicBrain.PvPMode || mimic.Group == null)
             {
                 Style s = CheckTaunt(mimic, lastAttackData);
 
@@ -236,12 +240,20 @@ namespace DOL.GS
 
         private Style CheckTaunt(MimicNPC mimic, AttackData lastAttackData)
         {
+            // ActiveWeapon can be null while the bot is mid-disarm or while
+            // an instrument swap is in flight. Bail rather than NPE — taunt
+            // styles need a weapon to match the WeaponTypeRequirement
+            // anyway.
+            DbInventoryItem weapon = mimic.ActiveWeapon;
+            if (weapon == null)
+                return null;
+
             if (mimic.StylesTaunt != null && mimic.StylesTaunt.Count > 0)
             {
                 foreach (Style s in mimic.StylesTaunt)
                 {
-                    if (s.WeaponTypeRequirement == mimic.ActiveWeapon.Object_Type)
-                        if (StyleProcessor.CanUseStyle(lastAttackData, mimic, s, mimic.ActiveWeapon))
+                    if (s.WeaponTypeRequirement == weapon.Object_Type)
+                        if (StyleProcessor.CanUseStyle(lastAttackData, mimic, s, weapon))
                             return s;
                 }
             }

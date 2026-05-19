@@ -227,34 +227,55 @@ namespace DOL.GS.Scripts.AI.Strategies
 
         private List<BotTriggerActionBinding> GetOrBuildBindings()
         {
+            // Fast path: cached snapshot under lock.
             lock (_stateLock)
             {
                 if (_bindingsCache != null)
                     return _bindingsCache;
+            }
 
-                List<BotTriggerActionBinding> list = new();
+            // Snapshot the active strategies under the lock, but call
+            // GetBindings OUTSIDE the lock. A strategy's GetBindings can be
+            // arbitrary user code — letting it run while we hold _stateLock
+            // creates a deadlock risk if the implementation calls back into
+            // the manager (Enable/Disable/Toggle/Tick all take _stateLock).
+            IBotStrategy[] snapshot;
+            lock (_stateLock)
+            {
+                snapshot = new IBotStrategy[_strategies.Values.Count];
+                _strategies.Values.CopyTo(snapshot, 0);
+            }
 
-                foreach (IBotStrategy strat in _strategies.Values)
+            List<BotTriggerActionBinding> list = new();
+
+            foreach (IBotStrategy strat in snapshot)
+            {
+                IEnumerable<BotTriggerActionBinding> contributed;
+
+                try { contributed = strat.GetBindings(_ctx); }
+                catch { contributed = null; }
+
+                if (contributed == null)
+                    continue;
+
+                foreach (BotTriggerActionBinding b in contributed)
                 {
-                    IEnumerable<BotTriggerActionBinding> contributed;
-
-                    try { contributed = strat.GetBindings(_ctx); }
-                    catch { contributed = null; }
-
-                    if (contributed == null)
+                    if (b == null || b.Trigger == null || b.Action == null)
                         continue;
 
-                    foreach (BotTriggerActionBinding b in contributed)
-                    {
-                        if (b == null || b.Trigger == null || b.Action == null)
-                            continue;
-
-                        b.OwnerStrategy = strat.Name;
-                        list.Add(b);
-                    }
+                    b.OwnerStrategy = strat.Name;
+                    list.Add(b);
                 }
+            }
 
-                list.Sort(static (a, b) => b.Priority.CompareTo(a.Priority));
+            list.Sort(static (a, b) => b.Priority.CompareTo(a.Priority));
+
+            // Publish. A concurrent Enable/Disable may have invalidated the
+            // cache while we built this list — last writer wins is fine
+            // because the next Tick will rebuild from the up-to-date
+            // _strategies snapshot.
+            lock (_stateLock)
+            {
                 _bindingsCache = list;
                 return list;
             }

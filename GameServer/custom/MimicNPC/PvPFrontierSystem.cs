@@ -708,14 +708,33 @@ namespace DOL.GS.Scripts
         }
 
         /// <summary>
-        /// True if any non-GM human player is within `range` of VirtualPosition
-        /// in our Region. Filters out GMs (PrivLevel > 1) since admins shouldn't
-        /// keep the system busy by being invisible.
+        /// True if any non-GM human player is within `range` of the group's
+        /// active position (leader while hydrated, VirtualPosition while
+        /// dormant) in our Region. Filters out GMs (PrivLevel > 1) since
+        /// admins shouldn't keep the system busy by being invisible.
         /// </summary>
         private bool IsPlayerWithin(int range)
         {
             global::DOL.GS.Region region = WorldMgr.GetRegion(Region);
             if (region == null) return false;
+
+            // While the group is hydrated, its members can patrol far from
+            // the original VirtualPosition. Comparing players to the stale
+            // spawn anchor produced a constant dehydrate-flap: a player
+            // standing next to the group's actual position was "far" from
+            // VirtualPosition and tripped the grace timer. Sample the real
+            // leader's position when we have one.
+            int refX = VirtualPosition.X;
+            int refY = VirtualPosition.Y;
+            if (IsHydrated)
+            {
+                GameLiving leader = FirstAliveMember();
+                if (leader != null)
+                {
+                    refX = leader.X;
+                    refY = leader.Y;
+                }
+            }
 
             long rangeSq = (long)range * range;
             foreach (GamePlayer p in ClientService.Instance.GetPlayersOfRegion(region))
@@ -723,8 +742,8 @@ namespace DOL.GS.Scripts
                 if (p == null || !p.IsAlive) continue;
                 if (p.Client?.Account != null && p.Client.Account.PrivLevel > 1) continue;
 
-                long dx = p.X - VirtualPosition.X;
-                long dy = p.Y - VirtualPosition.Y;
+                long dx = p.X - refX;
+                long dy = p.Y - refY;
                 if (dx * dx + dy * dy <= rangeSq) return true;
             }
             return false;
@@ -1063,7 +1082,12 @@ namespace DOL.GS.Scripts
                 [eFrontierRole.Tank]      = new[] { eMimicClass.Hero, eMimicClass.Champion, eMimicClass.Blademaster },
                 [eFrontierRole.Healer]    = new[] { eMimicClass.Druid, eMimicClass.Warden },
                 [eFrontierRole.Support]   = new[] { eMimicClass.Bard, eMimicClass.Mentalist },
-                [eFrontierRole.Caster]    = new[] { eMimicClass.Eldritch, eMimicClass.Enchanter, eMimicClass.Mentalist, eMimicClass.Valewalker },
+                // Valewalker is a 2H Scythe melee hybrid (TwoHanded SpecType),
+                // NOT a back-line caster — rolling it in the Caster slot put
+                // it on the front line with no Light/Mana spec to back up
+                // the comp. Animist (turret PetCaster) fits the Caster slot
+                // better. Keep Valewalker on the MeleeDPS list only.
+                [eFrontierRole.Caster]    = new[] { eMimicClass.Eldritch, eMimicClass.Enchanter, eMimicClass.Mentalist, eMimicClass.Animist },
                 [eFrontierRole.Stealther] = new[] { eMimicClass.Nightshade, eMimicClass.Ranger },
                 [eFrontierRole.MeleeDPS]  = new[] { eMimicClass.Blademaster, eMimicClass.Champion, eMimicClass.Hero, eMimicClass.Valewalker },
             },

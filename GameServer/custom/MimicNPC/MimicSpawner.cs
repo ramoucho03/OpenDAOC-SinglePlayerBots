@@ -183,6 +183,12 @@ namespace DOL.GS.Scripts
                 }
 
                 group = new Group(mimic);
+                // Register the freshly-created Group with GroupMgr so /who,
+                // /team and the BG presence loop see it. Previously the
+                // Group was constructed but never added to the global
+                // registry, so the spawner's groups were invisible to
+                // standard tooling.
+                GroupMgr.AddGroup(group);
                 group.AddMember(mimic);
 
                 spawningGroupSize = currentGroupSize - 1;

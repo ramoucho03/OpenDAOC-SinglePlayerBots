@@ -55,7 +55,10 @@ namespace DOL.GS.Scripts
 
         public void SendChangeGroundTarget(int x, int y, int z)
         {
-            throw new NotImplementedException();
+            // No-op for mimics: matches every other Send* override in this
+            // file. The previous `throw new NotImplementedException()` would
+            // crash any spell handler (GT AoE / siege) that routed through
+            // the bot's packet lib.
         }
 
         public void SendChangeTarget(GameObject newTarget)

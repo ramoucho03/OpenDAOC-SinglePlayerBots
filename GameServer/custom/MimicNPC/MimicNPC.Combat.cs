@@ -919,7 +919,10 @@ namespace DOL.GS.Scripts
 
         private int OnRezWaitExpired(ECSGameTimer timer)
         {
-            if (!_inRezWait)
+            // Bail if the rez landed in the same tick or if the bot has been
+            // deleted/teardown. Also bail if it's already alive — covers the
+            // narrow race between OnResurrected and the timer firing.
+            if (!_inRezWait || IsAlive || ObjectState != eObjectState.Active)
                 return 0;
 
             _inRezWait = false;
@@ -1198,7 +1201,19 @@ namespace DOL.GS.Scripts
             }
             else
             {
-                // No owner or no group: original behavior — leaves the group, deletes the corpse.
+                // No owner or no group: original behavior — leaves the group,
+                // deletes the corpse. We still want role takeover to happen
+                // BEFORE the bot leaves its group, otherwise PvE-population
+                // and PvP-frontier groups never promote secondary roles on a
+                // member death (those bots have no OwnerAccount, so they
+                // skipped the entire enterRezWait branch where the previous
+                // promotion calls lived).
+                if (Group != null)
+                {
+                    Group.MimicGroup?.TryPromoteSecondaryTank(this);
+                    Group.MimicGroup?.TryPromoteSecondaryCC(this);
+                    Group.MimicGroup?.TryPromoteHealer(this);
+                }
                 MimicSpawner?.Remove(this);
                 base.ProcessDeath(killer);
             }

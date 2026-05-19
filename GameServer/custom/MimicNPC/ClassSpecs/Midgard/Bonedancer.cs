@@ -25,48 +25,54 @@ namespace DOL.GS.Scripts
                 _ => Util.Random(5),
             };
 
+            // BoneArmy is the spec line that grants the Commander pet summon
+            // (along with all subpets). Every Bonedancer build keeps it at
+            // least 26 so the bot can summon its core commander — the
+            // previous "Dark" and "Supp" variants had BoneArmy 4-6, which
+            // meant the bot lost its pet entirely and stood there nuking
+            // without its army. That's not a Bonedancer.
             switch (randVariance)
             {
                 case 0:
                 SpecType = eSpecType.SuppBone;
-                Add(Specs.Darkness, 26, 0.1f);
-                Add(Specs.Suppression, 47, 1.0f);
-                Add(Specs.BoneArmy, 5, 0.0f);
+                Add(Specs.Suppression, 50, 1.0f);
+                Add(Specs.BoneArmy, 35, 0.4f);
+                Add(Specs.Darkness, 12, 0.1f);
                 break;
 
                 case 1:
                 SpecType = eSpecType.SuppBone;
-                Add(Specs.Darkness, 24, 0.1f);
                 Add(Specs.Suppression, 48, 1.0f);
-                Add(Specs.BoneArmy, 6, 0.0f);
+                Add(Specs.BoneArmy, 26, 0.3f);
+                Add(Specs.Darkness, 20, 0.1f);
                 break;
 
                 case 2:
                 SpecType = eSpecType.SuppBone;
-                Add(Specs.Darkness, 5, 0.0f);
-                Add(Specs.Suppression, 47, 1.0f);
-                Add(Specs.BoneArmy, 26, 0.1f);
+                Add(Specs.Suppression, 44, 0.9f);
+                Add(Specs.BoneArmy, 35, 0.4f);
+                Add(Specs.Darkness, 18, 0.1f);
                 break;
 
                 case 3:
                 SpecType = eSpecType.DarkBone;
-                Add(Specs.Darkness, 39, 0.5f);
-                Add(Specs.Suppression, 37, 0.8f);
-                Add(Specs.BoneArmy, 4, 0.0f);
+                Add(Specs.Darkness, 50, 1.0f);
+                Add(Specs.BoneArmy, 26, 0.3f);
+                Add(Specs.Suppression, 12, 0.1f);
                 break;
 
                 case 4:
                 SpecType = eSpecType.DarkBone;
-                Add(Specs.Darkness, 50, 1.0f);
-                Add(Specs.Suppression, 20, 0.1f);
-                Add(Specs.BoneArmy, 4, 0.0f);
+                Add(Specs.Darkness, 45, 1.0f);
+                Add(Specs.BoneArmy, 35, 0.4f);
+                Add(Specs.Suppression, 12, 0.1f);
                 break;
 
                 case 5:
                 SpecType = eSpecType.ArmyBone;
-                Add(Specs.Darkness, 6, 0.0f);
-                Add(Specs.Suppression, 24, 0.1f);
-                Add(Specs.BoneArmy, 48, 1.0f);
+                Add(Specs.BoneArmy, 50, 1.0f);
+                Add(Specs.Suppression, 26, 0.2f);
+                Add(Specs.Darkness, 12, 0.1f);
                 break;
             }
         }

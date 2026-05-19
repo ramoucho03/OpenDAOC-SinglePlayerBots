@@ -2764,6 +2764,16 @@ namespace DOL.GS.Scripts
             RemoveCampFire();
             Group?.RemoveMember(this);
             MimicManager.UnregisterOwned(this);
+            // Tear down active strategy bindings before the brain reference
+            // goes away — otherwise strategies that subscribed to game events
+            // (LeaderStrategy, SurvivalStrategy, etc.) leak references back
+            // to this body and brain.
+            MimicBrain?.StrategyManager?.Clear();
+            // The DummyClient holds a real TCP socket allocated per-bot.
+            // Without an explicit close the descriptor stays open until
+            // GC + finalizer, which is a real leak on a server that churns
+            // through frontier bots every dehydrate cycle.
+            try { _dummyClient?.Socket?.Close(); } catch { }
             base.Delete();
         }
 
@@ -2774,6 +2784,7 @@ namespace DOL.GS.Scripts
 
             Duel?.Stop();
             MimicSpawner?.Remove(this);
+            MimicBrain?.StrategyManager?.Clear();
 
             if (ControlledBrain != null)
                 CommandNpcRelease();
