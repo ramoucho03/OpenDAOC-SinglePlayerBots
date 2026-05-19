@@ -15,9 +15,12 @@ namespace DOL.GS.Spells
 
         public override bool CheckEndCast(GameLiving selectedTarget)
         {
-            if (Caster is GamePlayer && Caster.ControlledBrain != null)
+            // Animist main pet (turret root): one per caster. Block for any
+            // caster type — mimic Animists need the same gate as players.
+            if (Caster.ControlledBrain?.Body is GameLiving livePet && livePet.IsAlive)
             {
-                MessageToCaster(LanguageMgr.GetTranslation((Caster as GamePlayer).Client, "SummonAnimistPet.CheckBeginCast.AlreadyHaveaPet"), eChatType.CT_SpellResisted);
+                if (Caster is GamePlayer playerCaster)
+                    MessageToCaster(LanguageMgr.GetTranslation(playerCaster.Client, "SummonAnimistPet.CheckBeginCast.AlreadyHaveaPet"), eChatType.CT_SpellResisted);
                 return false;
             }
 

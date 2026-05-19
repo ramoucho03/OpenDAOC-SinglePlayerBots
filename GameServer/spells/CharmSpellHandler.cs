@@ -104,27 +104,39 @@ namespace DOL.GS.Spells
         /// <returns></returns>
         public override bool CheckEndCast(GameLiving selectedTarget)
         {
+            // Charm is a Sorcerer / Minstrel / Mentalist pillar — without
+            // it those classes can't fight at low cost. The original gate
+            // rejected the cast outright when Caster wasn't a GamePlayer,
+            // which silently disabled charm for mimic casters. Allow the
+            // cast for any caster and only fire chat-messages when we
+            // actually have a player.
             var casterPlayer = Caster as GamePlayer;
             var charmMob = selectedTarget as GameNPC;
 
-            if (Caster == null || casterPlayer == null)
+            if (Caster == null)
                 return false;
+
+            void Msg(string key, params object[] args)
+            {
+                if (casterPlayer != null)
+                    MessageToCaster(LanguageMgr.GetTranslation(casterPlayer.Client, key, args), eChatType.CT_SpellResisted);
+            }
 
             // If there's no target, then don't cast
             if (charmMob == null)
             {
                 // Message: You must select a target for this spell!
-                MessageToCaster(LanguageMgr.GetTranslation(casterPlayer.Client, "GamePlayer.Target.Spell.SelectATarget"), eChatType.CT_SpellResisted);
+                Msg("GamePlayer.Target.Spell.SelectATarget");
                 return false;
             }
 
             if (!base.CheckEndCast(charmMob))
                 return false;
 
-            if (Caster is GamePlayer && casterPlayer.ControlledBrain != null && casterPlayer.ControlledBrain != charmMob.Brain)
+            if (Caster.ControlledBrain != null && Caster.ControlledBrain != charmMob.Brain)
             {
                 // Message: You already have a charmed creature, release it first!
-                MessageToCaster(LanguageMgr.GetTranslation(casterPlayer.Client, "CharmSpell.EndCast.Fail.AlreadyOwnCharmed"), eChatType.CT_SpellResisted);
+                Msg("CharmSpell.EndCast.Fail.AlreadyOwnCharmed");
                 return false;
             }
 
@@ -134,7 +146,7 @@ namespace DOL.GS.Spells
                 if (charmMob.Brain is IControlledBrain controlledBrain && controlledBrain.Owner != Caster)
                 {
                     // Message: {0} is currently being controlled.
-                    MessageToCaster(LanguageMgr.GetTranslation(casterPlayer.Client, "CharmSpell.EndCast.Fail.CurrentlyControlled", charmMob.GetName(0, true)), eChatType.CT_SpellResisted);
+                    Msg("CharmSpell.EndCast.Fail.CurrentlyControlled", charmMob.GetName(0, true));
                     return false;
                 }
 
@@ -142,7 +154,7 @@ namespace DOL.GS.Spells
                 if (!charmMob.IsAlive)
                 {
                     // Message: {0} is dead!
-                    MessageToCaster(LanguageMgr.GetTranslation(casterPlayer.Client, "GamePlayer.Target.Fail.IsDead", charmMob.GetName(0, true)), eChatType.CT_SpellResisted);
+                    Msg("GamePlayer.Target.Fail.IsDead", charmMob.GetName(0, true));
                     return false;
                 }
 
@@ -156,7 +168,7 @@ namespace DOL.GS.Spells
                 if (charmMob.Realm != 0)
                 {
                     // Message: {0) can't be charmed!
-                    MessageToCaster(LanguageMgr.GetTranslation(casterPlayer.Client, "CharmSpell.EndCast.Fail.CantBeCharmed", charmMob.GetName(0, true)), eChatType.CT_SpellResisted);
+                    Msg("CharmSpell.EndCast.Fail.CantBeCharmed", charmMob.GetName(0, true));
                     return false;
                 }
 
@@ -164,7 +176,7 @@ namespace DOL.GS.Spells
                 if (charmMob.BodyType is < 1 or > 11)
                 {
                     // Message: {0) can't be charmed!
-                    MessageToCaster(LanguageMgr.GetTranslation(casterPlayer.Client, "CharmSpell.EndCast.Fail.CantBeCharmed", charmMob.GetName(0, true)), eChatType.CT_SpellResisted);
+                    Msg("CharmSpell.EndCast.Fail.CantBeCharmed", charmMob.GetName(0, true));
                     return false;
                 }
 
@@ -208,7 +220,7 @@ namespace DOL.GS.Spells
                     if (isCharmable == false)
                     {
                         // Message: {0) can't be charmed!
-                        MessageToCaster(LanguageMgr.GetTranslation(casterPlayer.Client, "CharmSpell.EndCast.Fail.CantBeCharmed", charmMob.GetName(0, true)), eChatType.CT_SpellResisted);
+                        Msg("CharmSpell.EndCast.Fail.CantBeCharmed", charmMob.GetName(0, true));
                         return false;
                     }
                 }
@@ -217,7 +229,7 @@ namespace DOL.GS.Spells
                 if (ServerProperties.Properties.SPELL_CHARM_NAMED_CHECK != 0 && char.IsUpper(charmMob.Name[0]))
                 {
                     // Message: {0) can't be charmed!
-                    MessageToCaster(LanguageMgr.GetTranslation(casterPlayer.Client, "CharmSpell.EndCast.Fail.CantBeCharmed", charmMob.GetName(0, true)), eChatType.CT_SpellResisted);
+                    Msg("CharmSpell.EndCast.Fail.CantBeCharmed", charmMob.GetName(0, true));
                     return false;
                 }
 
@@ -283,7 +295,7 @@ namespace DOL.GS.Spells
                     if (!isCharmable)
                     {
                         // Message: This spell does not charm that type of monster!
-                        MessageToCaster(LanguageMgr.GetTranslation(casterPlayer.Client, "CharmSpell.EndCast.Fail.WrongType"), eChatType.CT_SpellResisted);
+                        Msg("CharmSpell.EndCast.Fail.WrongType");
                         return false;
                     }
                 }
@@ -301,14 +313,14 @@ namespace DOL.GS.Spells
                     if (charmMob.Level > Spell.Value)
                     {
                         // Message: {0} is too strong for you to charm!
-                        MessageToCaster(LanguageMgr.GetTranslation(casterPlayer.Client, "CharmSpell.EndCast.Fail.TooStrong", charmMob.GetName(0, true)), eChatType.CT_SpellResisted);
+                        Msg("CharmSpell.EndCast.Fail.TooStrong", charmMob.GetName(0, true));
                         return false;
                     }
                     // If the target mob's level surpasses 110% of the Caster's modified skill
-                    if (charmMob.Level > casterPlayer.GetModifiedSpecLevel(m_spellLine.Spec) * 1.1)
+                    if (charmMob.Level > Caster.GetModifiedSpecLevel(m_spellLine.Spec) * 1.1)
                     {
                         // Message: {0} is too strong for you to charm!
-                        MessageToCaster(LanguageMgr.GetTranslation(casterPlayer.Client, "CharmSpell.EndCast.Fail.TooStrong", charmMob.GetName(0, true)), eChatType.CT_SpellResisted);
+                        Msg("CharmSpell.EndCast.Fail.TooStrong", charmMob.GetName(0, true));
                         return false;
                     }
                 }
@@ -327,7 +339,7 @@ namespace DOL.GS.Spells
                     if (charmMob.Level > Caster.Level)
                     {
                         // Message: {0} is too strong for you to charm!
-                        MessageToCaster(LanguageMgr.GetTranslation(casterPlayer.Client, "CharmSpell.EndCast.Fail.TooStrong", charmMob.GetName(0, true)), eChatType.CT_SpellResisted);
+                        Msg("CharmSpell.EndCast.Fail.TooStrong", charmMob.GetName(0, true));
                         return false;
                     }
 
@@ -337,7 +349,7 @@ namespace DOL.GS.Spells
                     if (charmMob.Level > Spell.Value)
                     {
                         // Message: {0} is too strong for you to charm!
-                        MessageToCaster(LanguageMgr.GetTranslation(casterPlayer.Client, "CharmSpell.EndCast.Fail.TooStrong", charmMob.GetName(0, true)), eChatType.CT_SpellResisted);
+                        Msg("CharmSpell.EndCast.Fail.TooStrong", charmMob.GetName(0, true));
                         return false;
                     }
 
@@ -345,8 +357,7 @@ namespace DOL.GS.Spells
                     if (charmMob.InCombat)
                     {
                         // Message: You can't charm {0} while {1} is in combat!
-                        MessageToCaster(
-                            LanguageMgr.GetTranslation(casterPlayer.Client, "CharmSpell.EndCast.Fail.InCombat", selectedTarget.GetName(0, false), selectedTarget.GetPronoun(1, false)), eChatType.CT_SpellResisted);
+                        Msg("CharmSpell.EndCast.Fail.InCombat", selectedTarget.GetName(0, false), selectedTarget.GetPronoun(1, false));
                         return false;
                     }
                 }
@@ -359,9 +370,12 @@ namespace DOL.GS.Spells
         {
             GamePlayer playerCaster = Caster as GamePlayer;
 
-            //You should be able to chain pulsing charm on the same mob
-            if (Spell.Pulse != 0 && playerCaster?.ControlledBrain != null && playerCaster.ControlledBrain.Body != target)
-                playerCaster.CommandNpcRelease();
+            // You should be able to chain pulsing charm on the same mob. The
+            // previous code only released for a GamePlayer caster, so a mimic
+            // Sorcerer/Minstrel/Mentalist would silently fail to swap pets on
+            // a re-charm (ControlledBrain stuck on the first victim).
+            if (Spell.Pulse != 0 && Caster.ControlledBrain != null && Caster.ControlledBrain.Body != target)
+                Caster.CommandNpcRelease();
 
             // Make sure the pet is in the same region and alive
             if (target.CurrentRegion != Caster.CurrentRegion || !target.IsAlive || target.ObjectState != GameObject.eObjectState.Active)

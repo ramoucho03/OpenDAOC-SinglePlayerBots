@@ -41,15 +41,25 @@ namespace DOL.GS.Spells
         /// <returns></returns>
         public override bool CheckBeginCast(GameLiving selectedTarget)
         {
+            GamePlayer playerCaster = Caster as GamePlayer;
+
             if (EffectListService.GetAbilityEffectOnTarget(Caster, eEffect.Shade) != null)
             {
-                MessageToCaster(LanguageMgr.GetTranslation((Caster as GamePlayer).Client, "SummonNecromancerPet.CheckBeginCast.ShadeEffectIsNotNull"), eChatType.CT_System);
+                if (playerCaster != null)
+                    MessageToCaster(LanguageMgr.GetTranslation(playerCaster.Client, "SummonNecromancerPet.CheckBeginCast.ShadeEffectIsNotNull"), eChatType.CT_System);
                 return false;
             }
 
-            if (Caster is GamePlayer && Caster.ControlledBrain != null)
+            // The original check only fired for GamePlayer casters, so a
+            // mimic Necromancer could keep summoning while a previous zombie
+            // servant was still alive (one orphaned pet per cast — the
+            // user-visible "necro spawns 2-3 pets" bug). ControlledBrain is
+            // also set for GameNPC casters via GameNPC.AddControlledBrain,
+            // so the gate is valid for both.
+            if (Caster.ControlledBrain?.Body is GameLiving livePet && livePet.IsAlive)
             {
-                MessageToCaster(LanguageMgr.GetTranslation((Caster as GamePlayer).Client, "Summon.CheckBeginCast.AlreadyHaveaPet"), eChatType.CT_SpellResisted);
+                if (playerCaster != null)
+                    MessageToCaster(LanguageMgr.GetTranslation(playerCaster.Client, "Summon.CheckBeginCast.AlreadyHaveaPet"), eChatType.CT_SpellResisted);
                 return false;
             }
 
@@ -71,6 +81,10 @@ namespace DOL.GS.Spells
         {
             base.ApplyEffectOnTarget(target);
 
+            // Shade form is a player-only mechanic (it hides the caster body
+            // and re-routes spell input through the pet). Mimic Necromancers
+            // skip the transformation and stay corporeal — the pet still
+            // spawns and is driven by the mimic brain's DrivePetEveryTick.
             if (Caster is GamePlayer playerCaster)
                 playerCaster.Shade(true);
 

@@ -41,10 +41,16 @@ namespace DOL.GS.Spells
 
 		public override bool CheckEndCast(GameLiving selectedTarget)
 		{
-			if (Caster is GamePlayer && ((GamePlayer)Caster).ControlledBrain != null)
+			// Original check only fired for GamePlayer casters. Mimic Cabalist
+			// shares the same ControlledBrain plumbing (GameNPC sets it via
+			// AddControlledBrain), so the gate is valid for both — without
+			// this, a mimic summons a fresh Amber/Jade/Sapphire Simulacrum
+			// every cycle and orphans the previous one.
+			if (Caster.ControlledBrain?.Body is GameLiving livePet && livePet.IsAlive)
 			{
-                MessageToCaster(LanguageMgr.GetTranslation((Caster as GamePlayer).Client, "Summon.CheckBeginCast.AlreadyHaveaPet"), eChatType.CT_SpellResisted);
-                return false;
+				if (Caster is GamePlayer playerCaster)
+					MessageToCaster(LanguageMgr.GetTranslation(playerCaster.Client, "Summon.CheckBeginCast.AlreadyHaveaPet"), eChatType.CT_SpellResisted);
+				return false;
 			}
 			return base.CheckEndCast(selectedTarget);
 		}

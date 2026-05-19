@@ -5362,6 +5362,18 @@ namespace DOL.AI.Brain
                     {
                         GameLiving liveTarget = Body.TargetObject as GameLiving;
 
+                        // Sorcerer / Minstrel / Mentalist identity: charm a
+                        // useful mob and let it pulp the enemy. The classic
+                        // brain explicitly skipped Charm, so mimic charmers
+                        // never used their core mechanic. Try it first when
+                        // we have no pet — if the spell handler rejects the
+                        // target (wrong body type, too high level, friendly,
+                        // etc.) we just continue to the regular nuke path.
+                        if (liveTarget != null
+                            && Body.ControlledBrain == null
+                            && TryCharmBestTarget(liveTarget))
+                            return true;
+
                         foreach (Spell spell in Body.HarmfulSpells)
                         {
                             if (spell.SpellType == eSpellType.Charm ||
@@ -5582,6 +5594,64 @@ namespace DOL.AI.Brain
                 default:
                     return false;
             }
+        }
+
+        /// <summary>
+        /// Sorcerer / Minstrel / Mentalist charm path. Walks the bot's
+        /// harmful spell list, finds the highest-level Charm we can afford,
+        /// and casts it on <paramref name="target"/> when the target's body
+        /// type and level are within the spell's reach. The engine handler
+        /// will short-circuit if the mob is friendly / already controlled /
+        /// in combat — we don't duplicate every check, just the obvious gates
+        /// so we don't waste a 3-second cast on an impossible target.
+        ///
+        /// Returns true when a charm cast was actually started; caller
+        /// should propagate that back to CheckSpells as "done this tick".
+        /// </summary>
+        protected bool TryCharmBestTarget(GameLiving target)
+        {
+            if (target is not GameNPC charmTarget || !charmTarget.IsAlive)
+                return false;
+
+            // Don't try to charm allies, players, summoned pets, or
+            // anything already on someone's leash.
+            if (charmTarget.Realm != 0)
+                return false;
+            if (charmTarget is GameSummonedPet || charmTarget is GameKeepGuard
+                || charmTarget is GameGuard || charmTarget is GameEpicBoss
+                || charmTarget is GameEpicNPC)
+                return false;
+            if (charmTarget.Brain is IControlledBrain ic && ic.Owner != Body)
+                return false;
+
+            Spell best = null;
+            foreach (Spell spell in Body.HarmfulSpells)
+            {
+                if (spell.SpellType != eSpellType.Charm)
+                    continue;
+                if (!CanCastOffensiveSpell(spell))
+                    continue;
+                // Engine rule: mob level cannot exceed spell.Value cap.
+                if (charmTarget.Level > spell.Value)
+                    continue;
+                // Mentalist/Minstrel (Pulse==1) use 110% modspec ceiling;
+                // Sorcerer (Pulse==0) uses caster level. We approximate
+                // both with caster level since modspec lookup costs more
+                // and a mimic's caster level is the tighter bound anyway.
+                if (charmTarget.Level > Body.Level)
+                    continue;
+                if (best == null || spell.Level > best.Level)
+                    best = spell;
+            }
+
+            if (best == null)
+                return false;
+
+            // Make sure the bot is targeting the charm victim; the offensive
+            // path was already aimed at it via Body.TargetObject upstream,
+            // but be defensive in case a CC pass mutated the target.
+            Body.TargetObject = charmTarget;
+            return Body.CastSpell(best, MimicBody.GetSpellLineForSpell(best));
         }
 
         /// <summary>
