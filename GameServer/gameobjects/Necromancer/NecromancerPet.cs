@@ -430,6 +430,28 @@ namespace DOL.GS
 
             GameNpcInventoryTemplate inventoryTemplate = new();
 
+            // 'barehand_weapon' is a bare-fist template that several installs
+            // never seed into the NpcEquipment table — LoadFromDatabase then
+            // logs "Failed loading NPC inventory template: barehand_weapon"
+            // and the zombie / greater-necroservant ends up with no right-hand
+            // weapon item to stamp its stun / poison proc on. Build the
+            // minimal fist inventory in code so the proc always lands and the
+            // warning disappears, with no DB dependency.
+            if (templateID == "barehand_weapon" && !inventoryTemplate.LoadFromDatabase(templateID))
+            {
+                inventoryTemplate.AddNPCEquipment(eInventorySlot.RightHandWeapon, 0);
+                Inventory = new GameNPCInventory(inventoryTemplate);
+
+                if (ActiveWeapon != null)
+                {
+                    ActiveWeapon.DPS_AF = (int)(Level * 3.3);
+                    ActiveWeapon.SPD_ABS = 37;
+                }
+
+                SwitchWeapon(eActiveWeaponSlot.Standard);
+                return true;
+            }
+
             if (inventoryTemplate.LoadFromDatabase(templateID))
             {
                 Inventory = new GameNPCInventory(inventoryTemplate);

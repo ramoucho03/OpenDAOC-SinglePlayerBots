@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
+using System.Net.Http;
 using System.Net.Sockets;
 using System.Text;
 using System.Xml;
@@ -30,6 +31,10 @@ public class UpnpNat
 
 	private string _serviceUrl;
 
+	// Shared HttpClient replaces the obsolete WebRequest API. Static + reused
+	// so we don't socket-exhaust; UPnP discovery is infrequent anyway.
+	private static readonly HttpClient _http = new();
+
 	private static string _CombineUrls(string resp, string p)
 	{
 		int n = resp.IndexOf("://");
@@ -40,7 +45,8 @@ public class UpnpNat
 	private static string _GetServiceUrl(string resp)
 	{
 		XmlDocument desc = new XmlDocument();
-		desc.Load(WebRequest.Create(resp).GetResponse().GetResponseStream());
+		using (Stream descStream = _http.GetStreamAsync(resp).GetAwaiter().GetResult())
+			desc.Load(descStream);
 		XmlNamespaceManager nsMgr = new XmlNamespaceManager(desc.NameTable);
 		nsMgr.AddNamespace("tns", "urn:schemas-upnp-org:device-1-0");
 		XmlNode typen = desc.SelectSingleNode("//tns:device/tns:deviceType/text()", nsMgr);
@@ -66,17 +72,13 @@ public class UpnpNat
 			soap +
 			"</s:Body>" +
 			"</s:Envelope>";
-		WebRequest r = WebRequest.Create(url);
-		r.Method = "POST";
-		byte[] b = Encoding.UTF8.GetBytes(req);
+		using HttpRequestMessage r = new(HttpMethod.Post, url);
 		r.Headers.Add("SOAPACTION", "\"urn:schemas-upnp-org:service:WANIPConnection:1#" + function + "\"");
-		r.ContentType = "text/xml; charset=\"utf-8\"";
-		r.ContentLength = b.Length;
-		r.GetRequestStream().Write(b, 0, b.Length);
+		r.Content = new StringContent(req, Encoding.UTF8, "text/xml");
+		using HttpResponseMessage wres = _http.Send(r);
 		XmlDocument resp = new XmlDocument();
-		WebResponse wres = r.GetResponse();
-		Stream ress = wres.GetResponseStream();
-		resp.Load(ress);
+		using (Stream ress = wres.Content.ReadAsStream())
+			resp.Load(ress);
 		return resp;
 	}
 

@@ -33,7 +33,7 @@ namespace DOL.Threading
 				// be free. NOTE: Just reading here (as compared to repeatedly 
 				// calling Exchange) improves performance because writing 
 				// forces all CPUs to update this value
-				while (Thread.VolatileRead(ref _lockState) == LockOwned)
+				while (Volatile.Read(ref _lockState) == LockOwned)
 				{
 					StallThread();
 				}

@@ -104,7 +104,7 @@ namespace DOL.Network
 					if (actualLength == -1)
 						actualLength = maxlen;
 
-					Read(buffer, 0, maxlen);
+					ReadExactly(buffer, 0, maxlen);
 					return BaseServer.DefaultEncoding.GetString(buffer, 0, actualLength);
 				}
 				finally

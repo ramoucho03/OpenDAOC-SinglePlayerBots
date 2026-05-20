@@ -97,7 +97,7 @@ namespace DOL.MPK
 			using (FileStream file = fi.OpenRead())
 			{
 				_buf = new byte[fi.Length];
-				file.Read(_buf, 0, _buf.Length);
+				file.ReadExactly(_buf, 0, _buf.Length);
 			}
 
 			_hdr = new MpkFileHeader { Name = fname, UncompressedSize = (uint)fi.Length, TimeStamp = (uint)DateTime.Now.ToFileTime() };

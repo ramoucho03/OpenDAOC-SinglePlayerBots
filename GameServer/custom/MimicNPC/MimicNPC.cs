@@ -5581,9 +5581,27 @@ namespace DOL.GS.Scripts
 
         private bool SetControlledBrain(IControlledBrain controlledBrain)
         {
+            // MimicNPC manages its controlled pet directly — it must NOT
+            // delegate to CharacterClass.SetControlledBrain. CharacterClassBase
+            // assumes a real GamePlayer: its `Player` field is null for a bot
+            // (the class is Init'd without a GamePlayer), and the method body
+            // dereferences Player.ControlledBrain / Player.Out — which threw a
+            // NullReferenceException on EVERY Cabalist / Necromancer / BD /
+            // Enchanter / Spiritmaster pet summon. We replicate the safe array
+            // management GameNPC uses, guarding against the null backing array.
             try
             {
-                CharacterClass.SetControlledBrain(controlledBrain);
+                if (controlledBrain == null)
+                {
+                    // Fresh single-slot array → ControlledBrain reads back null.
+                    InitControlledBrainArray(1);
+                    return true;
+                }
+
+                if (m_controlledBrain == null)
+                    InitControlledBrainArray(1);
+
+                ControlledBrain = controlledBrain;
                 return true;
             }
             catch (Exception e)
