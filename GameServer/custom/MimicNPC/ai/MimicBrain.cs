@@ -5339,6 +5339,20 @@ namespace DOL.AI.Brain
                             spellsToCast.Add(spell);
                     }
 
+                    // Instant mez / instant root feed the same candidate set —
+                    // the best-by-duration pick below chooses between instant
+                    // and cast-time CC. Instants can't be interrupted, so they
+                    // only need the cooldown + freshness gate.
+                    if (MimicBody.CanCastInstantCrowdControlSpells)
+                    {
+                        foreach (Spell spell in MimicBody.InstantCrowdControlSpells)
+                        {
+                            if (Body.GetSkillDisabledDuration(spell) <= 0
+                                && !LivingHasFreshEffect(ccTarget, spell, CC_RECAST_LEAD_MS))
+                                spellsToCast.Add(spell);
+                        }
+                    }
+
                     if (spellsToCast.Count > 0)
                     {
                         // Prefer an AoE mez/stun when at least MIN_AOE_CLUSTER_HOSTILES
@@ -5568,6 +5582,19 @@ namespace DOL.AI.Brain
                                 if (CanCastOffensiveSpell(spell) && !LivingHasEffect(livingTarget, spell))
                                     spellsToCast.Add(spell);
                             }
+
+                            // Instant mez / instant root — usable to lock an
+                            // add without spending a cast. Same effect gate as
+                            // the cast-time CC above; no interrupt check needed.
+                            if (MimicBody.CanCastInstantCrowdControlSpells)
+                            {
+                                foreach (Spell spell in MimicBody.InstantCrowdControlSpells)
+                                {
+                                    if (Body.GetSkillDisabledDuration(spell) <= 0
+                                        && !LivingHasEffect(livingTarget, spell))
+                                        spellsToCast.Add(spell);
+                                }
+                            }
                         }
                     }
                 }
@@ -5787,6 +5814,15 @@ namespace DOL.AI.Brain
                             casted = CheckOffensiveSpells(spellToCast);
                     }
                 }
+
+                // In-combat buff top-up: when the offensive cycle found
+                // nothing to cast this tick (out of range, out of mana,
+                // target down), refresh any self / pulse / proc buff that
+                // dropped mid-fight. FindTargetForDefensiveSpell still gates
+                // one-shot stat buffs and group buffs behind AttackState, so
+                // this never trades away a real attack.
+                if (!casted && !Body.IsCasting && Body.CanCastMiscSpells)
+                    casted = CheckDefensiveSpells(Body.MiscSpells);
             }
 
             return casted || Body.IsCasting;

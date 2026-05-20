@@ -1936,6 +1936,23 @@ namespace DOL.GS.Scripts
                 : target.MaxHealth * spell.Value * -0.01d;
         }
 
+        /// <summary>
+        /// Direct (non-HoT) healing spell types the heal cycle can size with
+        /// HealAmount and treat like a plain Heal. Without this, Spread /
+        /// PBAoE / Combat / Omni / Merc heals were dropped into the HealSpells
+        /// list but never assigned to a named heal slot, so the heal cycle
+        /// never cast them.
+        /// </summary>
+        private static bool IsDirectHealType(eSpellType type)
+        {
+            return type is eSpellType.Heal
+                or eSpellType.SpreadHeal
+                or eSpellType.PBAoEHeal
+                or eSpellType.CombatHeal
+                or eSpellType.OmniHeal
+                or eSpellType.MercHeal;
+        }
+
         public Spell HealBig { get; protected set; } = null;
         public Spell HealEfficient { get; protected set; } = null;
         public Spell HealGroup { get; protected set; } = null;
@@ -2124,7 +2141,7 @@ namespace DOL.GS.Scripts
                                 }
                             }
                         }
-                        else if (spell.SpellType == eSpellType.Heal)
+                        else if (IsDirectHealType(spell.SpellType))
                         {
                             if (spell.Target == eSpellTarget.GROUP || spell.Radius > 0)
                             {
@@ -2183,7 +2200,7 @@ namespace DOL.GS.Scripts
                                 }
                             }
                         }
-                        else if (spell.SpellType == eSpellType.Heal)
+                        else if (IsDirectHealType(spell.SpellType))
                         {
                             if (spell.Target == eSpellTarget.GROUP || spell.Radius > 0)
                             {
