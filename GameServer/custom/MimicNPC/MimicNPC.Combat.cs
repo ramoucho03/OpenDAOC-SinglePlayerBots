@@ -138,6 +138,18 @@ namespace DOL.GS.Scripts
         /// <param name="slot">the new eActiveWeaponSlot</param>
         public override void SwitchWeapon(eActiveWeaponSlot slot)
         {
+            // Idempotent guard: switching to the slot we're already in must
+            // be a no-op. Without it, any caller that re-asserts a weapon slot
+            // every tick (archer range probes, minstrel/bard/skald song
+            // upkeep, combat re-evaluation) re-ran the full switch body each
+            // frame — StopCurrentSpellcast (cancels the in-flight cast), ends
+            // every instrument pulse effect, and broadcasts a fresh equipment
+            // appearance packet to all nearby clients. That packet flood is a
+            // visible NPC "blink"; the cast/song cancellation broke caster and
+            // bard bots outright.
+            if (slot == ActiveWeaponSlot)
+                return;
+
             if (attackComponent.AttackState)
                 attackComponent.StopAttack();
 
@@ -957,6 +969,16 @@ namespace DOL.GS.Scripts
             // "release" path. Announce to the group via chat (best-effort,
             // localized per recipient) then leave + delete the corpse.
             AnnounceReleaseToGroup();
+
+            // Mark _beingDeleted BEFORE RemoveMember. RemoveMember fires
+            // GroupEvent.MemberDisbanded, which MimicManager.OnGroupMember
+            // Disbanded handles — and that handler calls mimic.Delete() when
+            // it sees the bot leave a group "unexpectedly". Without the flag
+            // set first, the handler ran a Delete(), then this method ran a
+            // SECOND Delete() below: a double-delete that flickered the bot
+            // (group-window removal + world removal as two separate events).
+            // The flag tells the disband handler "I'm already tearing down".
+            _beingDeleted = true;
             Group?.RemoveMember(this);
             // Untrack only when the corpse is actually being deleted. This
             // was previously fired unconditionally before the rez-wait

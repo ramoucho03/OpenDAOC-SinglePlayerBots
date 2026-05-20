@@ -317,12 +317,87 @@ namespace DOL.AI.Brain
         }
 
         /// <summary>
+        /// True if <paramref name="t"/> is a legal, live hostile the pet may
+        /// engage. Centralised so every target-resolution branch agrees.
+        /// </summary>
+        private bool IsValidPetTarget(GameLiving t)
+        {
+            return t != null
+                && t.IsAlive
+                && t.ObjectState == GameObject.eObjectState.Active
+                && GameServer.ServerRules.IsAllowedToAttack(Body, t, true);
+        }
+
+        /// <summary>
+        /// Resolves what the controlled pet should attack — fully autonomous,
+        /// driven by the GROUP's combat picture, never by what the human
+        /// player happens to have clicked. Priority:
+        ///   1. Our own TargetObject.
+        ///   2. Our own aggro list.
+        ///   3. The group main-assist's target (group focus).
+        ///   4. Anything ANY group member is currently attacking, casting a
+        ///      harmful spell on, or holds aggro on — this is the path that
+        ///      makes the pet join the fight on its own, exactly like the
+        ///      mimic bots auto-engage via ScanGroupCombat.
+        /// Returns null when the group is genuinely out of combat (the pet
+        /// then just follows; it does NOT pull random mobs).
+        /// </summary>
+        private GameLiving ResolvePetCombatTarget()
+        {
+            if (Body.TargetObject is GameLiving ownTarget && IsValidPetTarget(ownTarget))
+                return ownTarget;
+
+            if (AggroList.Count > 0)
+            {
+                foreach (var kvp in AggroList)
+                    if (IsValidPetTarget(kvp.Key))
+                        return kvp.Key;
+            }
+
+            if (Body.Group?.MimicGroup?.MainAssist?.TargetObject is GameLiving assistTarget
+                && IsValidPetTarget(assistTarget))
+                return assistTarget;
+
+            // Full-autonomy scan: whatever the group is fighting, the pet
+            // fights too — no player click required.
+            Group g = Body.Group;
+            if (g != null)
+            {
+                foreach (GameLiving member in g.GetMembersInTheGroup())
+                {
+                    if (member == null || member == Body || !member.IsAlive)
+                        continue;
+
+                    // Member is auto-attacking a hostile.
+                    if (member.attackComponent?.AttackState == true
+                        && member.TargetObject is GameLiving meleeTgt
+                        && IsValidPetTarget(meleeTgt))
+                        return meleeTgt;
+
+                    // Member is casting a harmful spell at a hostile.
+                    if (member.IsCasting
+                        && member.castingComponent?.SpellHandler?.Spell?.IsHarmful == true
+                        && member.TargetObject is GameLiving castTgt
+                        && IsValidPetTarget(castTgt))
+                        return castTgt;
+
+                    // Member is a mimic that already holds aggro on something.
+                    if (member is MimicNPC mimicMember
+                        && mimicMember.MimicBrain != null
+                        && mimicMember.MimicBrain.AggroList.Count > 0)
+                    {
+                        foreach (var kvp in mimicMember.MimicBrain.AggroList)
+                            if (IsValidPetTarget(kvp.Key))
+                                return kvp.Key;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// Choose the best target for the controlled pet and command it.
-        /// Priority:
-        ///   1. Our own TargetObject (if hostile and alive).
-        ///   2. The group main-assist's target.
-        ///   3. The first aggro-list entry.
-        ///   4. Highest-aggro target on the main tank.
         /// Called every Think tick so the pet stays engaged even when the
         /// owner bot itself is mid-cast / kiting / not yet in AGGRO state.
         /// </summary>
@@ -331,53 +406,10 @@ namespace DOL.AI.Brain
             if (Body?.ControlledBrain?.Body is not GameNPC pet || !pet.IsAlive)
                 return;
 
-            GameLiving target = null;
-
-            if (Body.TargetObject is GameLiving ownTarget
-                && ownTarget.IsAlive
-                && ownTarget.ObjectState == GameObject.eObjectState.Active
-                && GameServer.ServerRules.IsAllowedToAttack(Body, ownTarget, true))
-            {
-                target = ownTarget;
-            }
-
-            if (target == null && Body.Group?.MimicGroup?.MainAssist?.TargetObject is GameLiving assistTarget
-                && assistTarget.IsAlive
-                && assistTarget.ObjectState == GameObject.eObjectState.Active
-                && GameServer.ServerRules.IsAllowedToAttack(Body, assistTarget, true))
-            {
-                target = assistTarget;
-            }
-
-            if (target == null && AggroList.Count > 0)
-            {
-                foreach (var kvp in AggroList)
-                {
-                    if (kvp.Key != null
-                        && kvp.Key.IsAlive
-                        && kvp.Key.ObjectState == GameObject.eObjectState.Active
-                        && GameServer.ServerRules.IsAllowedToAttack(Body, kvp.Key, true))
-                    {
-                        target = kvp.Key;
-                        break;
-                    }
-                }
-            }
-
-            if (target == null && Body.Group?.MimicGroup?.MainTank is GameLiving tank
-                && tank.IsAlive && tank != Body
-                && tank.attackComponent?.AttackState == true
-                && tank.TargetObject is GameLiving tankTarget
-                && tankTarget.IsAlive
-                && GameServer.ServerRules.IsAllowedToAttack(Body, tankTarget, true))
-            {
-                target = tankTarget;
-            }
-
-            if (target != null)
-                EnsurePetCombatReady(target);
-            else
-                EnsurePetCombatReady(null); // still refresh follow/aggressive flags
+            // null is fine — EnsurePetCombatReady still refreshes the pet's
+            // follow / aggressive flags so it's ready the instant a target
+            // appears.
+            EnsurePetCombatReady(ResolvePetCombatTarget());
         }
 
         /// <summary>

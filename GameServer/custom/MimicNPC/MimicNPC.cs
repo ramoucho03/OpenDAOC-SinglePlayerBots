@@ -1747,31 +1747,33 @@ namespace DOL.GS.Scripts
 
         public void SetCasterSpells()
         {
-            IList<Specialization> specs = GetSpecList();
-            List<Spell> spells = new List<Spell>();
+            // GetAllUsableListSpells() already returns every list-cast spell
+            // line across ALL specs. The previous code wrapped it in a
+            // `foreach (spec in GetSpecList())` loop — calling it once per
+            // specialization (each call takes a lock + copy-on-write) and
+            // rebuilding the exact same dictionary N times — then deduped
+            // with an O(n) List.Contains inside a loop, making the whole
+            // method O(n² × specCount). On a level-50 ListCaster that was
+            // a 200-400ms synchronous cost; multiplied by an 8-bot frontier
+            // hydration on the GameLoop thread it stalled the server for
+            // seconds and the client blinked every NPC. One pass + a HashSet
+            // keeps it linear and the construction cheap.
+            var dict = GetAllUsableListSpells();
+            if (dict == null || dict.Count == 0)
+                return;
 
-            foreach (Specialization spec in specs)
+            List<Spell> spells = new();
+            HashSet<Spell> seen = new();
+
+            foreach (var tuple in dict)
             {
-                var dict = GetAllUsableListSpells();
+                if (tuple.Item2 == null)
+                    continue;
 
-                if (dict != null && dict.Count > 0)
+                foreach (Skill skill in tuple.Item2)
                 {
-                    foreach (var tuple in dict)
-                    {
-                        if (tuple.Item2.Count > 0)
-                        {
-                            foreach (Skill skill in tuple.Item2)
-                            {
-                                if (skill is Spell)
-                                {
-                                    Spell spell = skill as Spell;
-
-                                    if (!spells.Contains(spell))
-                                        spells.Add(spell);
-                                }
-                            }
-                        }
-                    }
+                    if (skill is Spell spell && seen.Add(spell))
+                        spells.Add(spell);
                 }
             }
 

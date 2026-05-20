@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Text;
 using DOL.Database;
 using DOL.GS.Housing;
 using DOL.GS.PacketHandler;
@@ -150,6 +151,12 @@ namespace DOL.GS.Scripts
             
             message += "\n\n" +
                        "Perhaps you would like the challenge of the [Epic Dungeon]?";
+
+            // Offer the battlegrounds whenever the player is eligible for at
+            // least one — the actual list is level-filtered in the sub-menu.
+            if (BattlegroundTeleportHelper.GetEligibleBattlegrounds(player).Count > 0)
+                message += "\n" +
+                           "Or test your mettle in the realm [Battlegrounds].";
 
             SayTo(player, message);
 
@@ -422,6 +429,46 @@ namespace DOL.GS.Scripts
                         GetTeleportLocation(player, "Galladoria");
                         return false;
                 }
+            }
+
+            // Battlegrounds sub-menu: list every BG the player is eligible
+            // for, sourced live from the Battleground DB table. Shares its
+            // logic with the dedicated BGTeleporter so both stay consistent.
+            if (text.ToLower() == "battlegrounds")
+            {
+                List<DbBattleground> eligible = BattlegroundTeleportHelper.GetEligibleBattlegrounds(player);
+                if (eligible.Count == 0)
+                {
+                    SayTo(player, "There are no battlegrounds open to you at your current level.");
+                    return false;
+                }
+
+                StringBuilder bgMsg = new();
+                bgMsg.AppendLine("These battlegrounds are open to you:");
+                foreach (DbBattleground bg in eligible)
+                {
+                    bgMsg.Append('[').Append(BattlegroundTeleportHelper.GetBattlegroundLabel(bg)).Append("]  (level ")
+                         .Append(bg.MinLevel).Append('-').Append(bg.MaxLevel);
+                    if (bg.MaxRealmLevel > 0)
+                        bgMsg.Append(", up to RL").Append(bg.MaxRealmLevel);
+                    bgMsg.AppendLine(")");
+                }
+                SayTo(player, bgMsg.ToString());
+                return false;
+            }
+
+            // A specific battleground was picked from the sub-menu above.
+            DbBattleground chosenBg = BattlegroundTeleportHelper.FindEligibleByLabel(player, text);
+            if (chosenBg != null)
+            {
+                DbTeleport bgDest = BattlegroundTeleportHelper.BuildBattlegroundDestination(player, chosenBg);
+                if (bgDest == null)
+                {
+                    SayTo(player, "I cannot resolve a safe arrival point for that battleground.");
+                    return false;
+                }
+                OnDestinationPicked(player, bgDest);
+                return true;
             }
 
             // Find the teleport location in the database.

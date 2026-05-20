@@ -860,6 +860,7 @@ namespace DOL.GS.Scripts
                 IsHydrated = false;
             }
             Roster.Clear();
+            _hydrationCursor = 0;
             State = eFrontierState.Disbanded;
             return n;
         }
@@ -869,12 +870,30 @@ namespace DOL.GS.Scripts
         /// VirtualPosition and binds them into a DAoC group. Idempotent: returns
         /// immediately if already hydrated.
         /// </summary>
+        // Max MimicNPC constructed per Hydrate() call. MimicNPC construction
+        // is CPU-heavy (spec / skill / equipment resolution) and runs on the
+        // GameLoop thread; materialising a whole 8-member group in one tick
+        // froze the server long enough for the client to blink every NPC out
+        // and back in. Staggering the build across a couple of ticks keeps
+        // each frame's cost bounded.
+        private const int HYDRATE_BATCH_PER_TICK = 4;
+
+        // Cursor into Roster for staggered hydration. Advances on every
+        // attempt (success OR skip) so a roster class that fails to build
+        // never wedges the cursor and re-tries forever.
+        private int _hydrationCursor;
+
         public void Hydrate()
         {
             if (IsHydrated || Roster.Count == 0) return;
 
-            foreach (LogicalMember lm in Roster)
+            int attemptsThisCall = 0;
+            while (_hydrationCursor < Roster.Count && attemptsThisCall < HYDRATE_BATCH_PER_TICK)
             {
+                LogicalMember lm = Roster[_hydrationCursor];
+                _hydrationCursor++;
+                attemptsThisCall++;
+
                 Point3D pos = new(VirtualPosition.X + Util.Random(-200, 200),
                                   VirtualPosition.Y + Util.Random(-200, 200),
                                   VirtualPosition.Z);
@@ -882,11 +901,7 @@ namespace DOL.GS.Scripts
                 // Per-member try/catch: a single roster class that fails to
                 // construct (MimicNPC throws on bad EligibleRaces / missing
                 // spec / missing combat profile) must NOT abort the whole
-                // hydration. Without this, the exception unwound out of
-                // Hydrate with IsHydrated still false but partial Members
-                // already added — the group then re-hydrated every tick,
-                // spawning duplicate bots forever (the visible "non-stop
-                // appear" regression).
+                // hydration.
                 MimicNPC m;
                 try
                 {
@@ -920,6 +935,11 @@ namespace DOL.GS.Scripts
 
                 Members.Add(m);
             }
+
+            // Roster not fully processed yet — finish on the next Tick.
+            // The group stays !IsHydrated so Tick() keeps calling Hydrate().
+            if (_hydrationCursor < Roster.Count)
+                return;
 
             if (Members.Count == 0) return;
 
@@ -967,6 +987,12 @@ namespace DOL.GS.Scripts
             Members.Clear();
             DolGroup = null;
             IsHydrated = false;
+            // Reset the staggered-hydration cursor and the hydrated-since
+            // stamp so the NEXT Hydrate() starts a clean batch from roster
+            // index 0 and the MIN_HYDRATED_LIFETIME floor is measured from
+            // the new materialisation, not the stale previous one.
+            _hydrationCursor = 0;
+            _hydratedSinceMs = 0;
             _nextDormantStepMs = GameLoop.GameLoopTime + DORMANT_STEP_MS;
         }
 
