@@ -750,6 +750,14 @@ namespace DOL.GS.Scripts
         private const int DEHYDRATE_RANGE = 6500;
         private const int DEHYDRATE_GRACE_MS = 20_000;
 
+        // Minimum time a group stays materialised once hydrated, regardless of
+        // player distance. Without this floor, a hydrated group that patrols
+        // away from the player who woke it crosses DEHYDRATE_RANGE, dehydrates,
+        // goes dormant, drifts back, and re-hydrates — the bots visibly
+        // appear / disappear / reset on a loop. The floor guarantees a group
+        // lives long enough to be a real encounter before it can be recycled.
+        private const int MIN_HYDRATED_LIFETIME_MS = 60_000;
+
         // Dormant movement: how often we advance VirtualPosition and how far
         // each step covers. 5s tick * 190 (run speed) ≈ 950u per step.
         private const int DORMANT_STEP_MS = 5_000;
@@ -760,6 +768,7 @@ namespace DOL.GS.Scripts
         private long _retreatUntilMs;
         private long _dehydrateAfterMs;   // 0 = no pending dehydration
         private long _nextDormantStepMs;
+        private long _hydratedSinceMs;    // GameLoopTime of the last Hydrate()
 
         // After leaving combat, the group rests this long before scanning for
         // new engagements. Prevents a lone human from being chain-wiped by
@@ -870,7 +879,25 @@ namespace DOL.GS.Scripts
                                   VirtualPosition.Y + Util.Random(-200, 200),
                                   VirtualPosition.Z);
 
-                MimicNPC m = MimicManager.GetMimic(lm.MimicClass, lm.Level, lm.Name, lm.Gender);
+                // Per-member try/catch: a single roster class that fails to
+                // construct (MimicNPC throws on bad EligibleRaces / missing
+                // spec / missing combat profile) must NOT abort the whole
+                // hydration. Without this, the exception unwound out of
+                // Hydrate with IsHydrated still false but partial Members
+                // already added — the group then re-hydrated every tick,
+                // spawning duplicate bots forever (the visible "non-stop
+                // appear" regression).
+                MimicNPC m;
+                try
+                {
+                    m = MimicManager.GetMimic(lm.MimicClass, lm.Level, lm.Name, lm.Gender);
+                }
+                catch (Exception ex)
+                {
+                    log.Error($"PvPFrontier Hydrate: failed to build {lm.MimicClass} — skipping.", ex);
+                    continue;
+                }
+
                 if (m == null) continue;
 
                 if (!MimicManager.AddMimicToWorld(m, pos, Region))
@@ -904,6 +931,8 @@ namespace DOL.GS.Scripts
 
             PvPGroupComposer.AutoAssignPvPRoles(Members);
             IsHydrated = true;
+            _hydratedSinceMs = GameLoop.GameLoopTime;
+            _dehydrateAfterMs = 0;
             OrderGroupToWaypoint();
         }
 
@@ -967,6 +996,11 @@ namespace DOL.GS.Scripts
                 if (playerNear)
                 {
                     Hydrate();
+                    // Settle for this tick: the disband check and the combat
+                    // state machine below would otherwise run against bots
+                    // that were materialised microseconds ago. Resume next
+                    // tick once they're fully in the world.
+                    return;
                 }
                 else
                 {
@@ -981,7 +1015,14 @@ namespace DOL.GS.Scripts
                 // expires, cancel the dehydration.
                 bool farFromAll = !IsPlayerWithin(DEHYDRATE_RANGE);
 
-                if (farFromAll)
+                // Minimum-lifetime floor: a group that hydrated less than
+                // MIN_HYDRATED_LIFETIME_MS ago is NOT allowed to dehydrate,
+                // even if it patrolled out of player range. This is the core
+                // anti-flicker guard — without it a patrolling group hydrate/
+                // dehydrate/re-hydrate loops and the bots visibly reset.
+                bool tooYoungToDehydrate = now - _hydratedSinceMs < MIN_HYDRATED_LIFETIME_MS;
+
+                if (farFromAll && !tooYoungToDehydrate)
                 {
                     if (_dehydrateAfterMs == 0)
                         _dehydrateAfterMs = now + DEHYDRATE_GRACE_MS;
