@@ -35,6 +35,37 @@ namespace DOL.AI.Brain
         { }
 
         /// <summary>
+        /// A grouped non-leader bot belongs in FOLLOW_THE_LEADER (or CAMP when
+        /// a camp anchor is set). The wander states — Roaming, Idle,
+        /// Patrolling, ReturnToSpawn — have no group→follow transition of
+        /// their own, so a bot that lands in one of them while grouped
+        /// (summoned-then-invited race, a combat-end transition, a manual
+        /// state poke) would never start following and would drift away until
+        /// the recall teleports it. Call this at the top of those states'
+        /// Think(); returns true when a transition was issued (caller must
+        /// then return immediately).
+        /// </summary>
+        protected bool TryFollowGroupLeader()
+        {
+            Group group = _brain?.Body?.Group;
+            if (group == null)
+                return false;
+            if (group.LivingLeader == _brain.Body)
+                return false; // we ARE the leader — nothing to follow
+
+            DOL.GS.Scripts.MimicGroup mimicGroup = group.MimicGroup;
+            if (mimicGroup?.CampPoint != null
+                && _brain.Body.IsWithinRadius(mimicGroup.CampPoint, 1500))
+            {
+                _brain.FSM.SetCurrentState(eFSMStateType.CAMP);
+                return true;
+            }
+
+            _brain.FSM.SetCurrentState(eFSMStateType.FOLLOW_THE_LEADER);
+            return true;
+        }
+
+        /// <summary>
         /// Synchronises the bot's sprint state with its leader so the bot can
         /// keep up when the player presses Sprint. Only follows player leaders
         /// (bot leaders never sprint by themselves). Public so it can be called
@@ -234,6 +265,10 @@ namespace DOL.AI.Brain
             if (_brain.CheckResurrect())
                 return;
 
+            // A grouped non-leader bot must follow, not idle in place.
+            if (TryFollowGroupLeader())
+                return;
+
             // Idle still means "no current threat" but we DO want to react if
             // a group member opens fire on something — without this, a bot
             // sitting in IDLE (camp without a CampPoint, or a holding bot)
@@ -402,10 +437,30 @@ namespace DOL.AI.Brain
 
             if (!_brain.Body.InCombat)
             {
-                if (_brain.Body.IsSitting && !_brain.CheckStats(75))
-                    _brain.MimicBody.Sit(false);
+                // Rest ONLY when actually caught up to a stationary leader.
+                //
+                // The old code sat the bot down whenever any stat dipped
+                // below 75% — even mid-follow. A sitting NPC cannot move, so
+                // the bot stopped following the instant it spent mana/endurance
+                // (a caster summoning its pet, anyone refreshing self-buffs),
+                // drifted out of range, and got teleport-recalled every few
+                // seconds. That is the "bot doesn't walk, just TPs / resets
+                // every ~6s" bug, and it hit every class because every class
+                // burns mana or endurance.
+                //
+                // Now: only sit when in formation AND the leader is standing
+                // still; stand back up immediately the moment the leader moves
+                // or we fall out of formation, so follow is never blocked.
+                bool inFormation = _leader != null
+                    && _brain.Body.IsWithinRadius(_leader, _followDistance + 200);
+                bool leaderMoving = _leader != null && _leader.IsMoving;
+                bool mayRest = inFormation && !leaderMoving;
 
-                if (!_brain.Body.IsSitting && !_brain.Body.IsCasting && !_brain.CheckSpells(MimicBrain.eCheckSpellType.Defensive))
+                if (_brain.Body.IsSitting && (!mayRest || !_brain.CheckStats(75)))
+                    _brain.MimicBody.Sit(false);
+                else if (!_brain.Body.IsSitting && mayRest
+                         && !_brain.Body.IsCasting
+                         && !_brain.CheckSpells(MimicBrain.eCheckSpellType.Defensive))
                     _brain.MimicBody.Sit(_brain.CheckStats(75));
             }
 
@@ -414,6 +469,12 @@ namespace DOL.AI.Brain
 
         public override void Exit()
         {
+            // Always stand on leaving FOLLOW — a bot that exits this state
+            // while still seated (e.g. straight into AGGRO) would otherwise
+            // be frozen sitting in combat.
+            if (_brain.Body.IsSitting)
+                _brain.MimicBody.Sit(false);
+
             _brain.Body.StopFollowing();
 
             // NOTE: do NOT call OnExitAggro() here. FollowLeader is the
@@ -693,6 +754,12 @@ namespace DOL.AI.Brain
             // Rez before roaming — a wandering bot should still go pick up
             // dead group members it walks past.
             if (_brain.CheckResurrect())
+                return;
+
+            // A grouped non-leader bot must follow, never roam. ROAMING has
+            // no group→follow transition of its own, so without this a bot
+            // that ended up here while grouped would wander off forever.
+            if (TryFollowGroupLeader())
                 return;
 
             if (_brain.PreventCombat)
@@ -2014,6 +2081,10 @@ namespace DOL.AI.Brain
             // Rez before patrol heals — a dead member on the route should
             // not be skipped just because the bot is wandering.
             if (_brain.CheckResurrect())
+                return;
+
+            // A grouped non-leader bot must follow, not patrol a path.
+            if (TryFollowGroupLeader())
                 return;
 
             if (_brain.CheckHeals())
