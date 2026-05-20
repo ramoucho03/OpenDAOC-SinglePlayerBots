@@ -1769,7 +1769,8 @@ namespace DOL.GS.Scripts
     [CmdAttribute(
         "&mmenu",
         ePrivLevel.Player,
-        "/mmenu - Ouvre le menu cliquable des bots.",
+        "/mmenu - Cible un mimic et tape /mmenu pour ouvrir son menu d'interaction (roles, equipement, etat).",
+        "/mmenu - Sans mimic cible : ouvre le menu cliquable global des bots.",
         "/mmenu <categorie> - Ouvre une categorie : create, orders, camp, roles, modes, strat, bg, info, admin.")]
     public class MimicMenuCommandHandler : AbstractCommandHandler, ICommandHandler
     {
@@ -1779,6 +1780,17 @@ namespace DOL.GS.Scripts
             if (player == null) return;
 
             string category = args.Length >= 2 ? args[1].ToLowerInvariant() : null;
+
+            // No category + a mimic targeted -> open that mimic's per-bot
+            // interaction menu (roles, equipment, state). This replaces the
+            // right-click menu, which the 1.124 client no longer triggers
+            // now that allied mimics render as players client-side.
+            if (category == null && player.TargetObject is MimicNPC targetedMimic)
+            {
+                targetedMimic.Interact(player);
+                return;
+            }
+
             bool isAdmin = client.Account.PrivLevel >= (uint)ePrivLevel.Admin;
 
             System.Text.StringBuilder sb = new();
@@ -1829,7 +1841,7 @@ namespace DOL.GS.Scripts
             sb.AppendLine();
             sb.AppendLine("[help]        Aide textuelle detaillee");
             sb.AppendLine();
-            sb.AppendLine("Astuce : clic droit sur un mimic = menu interaction (roles, equipement, etat).");
+            sb.AppendLine("Astuce : cible un mimic puis tape /mmenu = son menu interaction (roles, equipement, etat).");
         }
 
         // ----- Categories -----

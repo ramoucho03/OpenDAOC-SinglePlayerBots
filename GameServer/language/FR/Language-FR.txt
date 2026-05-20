@@ -19,7 +19,7 @@ System.LanguagesName.IT:					Italien
 
 PlayerPickUpRequestHandler.HandlePacket.Target:		Vous devez avoir une cible valide a ramassé.
 
-## Mimic — sections du menu clic-droit
+## Mimic — sections du menu d'interaction (/mmenu sur un mimic cible)
 Mimic.Menu.Header:					[Menu du Mimic]
 Mimic.Menu.Sec.State:					État
 Mimic.Menu.Sec.Roles:					Rôles
