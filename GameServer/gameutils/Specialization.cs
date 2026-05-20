@@ -130,7 +130,24 @@ namespace DOL.GS
 		{
 			return GetSpellLinesForLiving(living, step);
 		}
-		
+
+		/// <summary>
+		/// Resolves the CharacterClass driving spec resolution. Both real
+		/// GamePlayers and MimicNPC bots carry a CharacterClass and must have
+		/// their spell lines / abilities / styles filtered by class ID. Without
+		/// this, a MimicNPC (a GameNPC, not a GamePlayer) falls into the
+		/// "not a player, add all" branches and inherits every other class's
+		/// spell lines registered under a shared spec keyname.
+		/// </summary>
+		protected static ICharacterClass GetSpecCharacterClass(GameLiving living)
+		{
+			if (living is GamePlayer player)
+				return player.CharacterClass;
+			if (living is DOL.GS.Scripts.MimicNPC mimic)
+				return mimic.CharacterClass;
+			return null;
+		}
+
 		/// <summary>
 		/// Default getter for SpellLines
 		/// Retrieve spell line depending on advanced class and class hint
@@ -145,22 +162,20 @@ namespace DOL.GS
 			IList<Tuple<SpellLine, int>> spsl = SkillBase.GetSpecsSpellLines(KeyName);
 			
 			// Get Spell Lines by order of appearance
-			if (living is GamePlayer)
+			ICharacterClass specClass = GetSpecCharacterClass(living);
+			if (specClass != null)
 			{
-				
-				GamePlayer player = (GamePlayer)living;
-				
 				// select only spec line if is advanced class...
-				var tmp = spsl.Where(item => (item.Item1.IsBaseLine || player.CharacterClass.HasAdvancedFromBaseClass()))
+				var tmp = spsl.Where(item => (item.Item1.IsBaseLine || specClass.HasAdvancedFromBaseClass()))
 					.OrderBy(item => (item.Item1.IsBaseLine ? 0 : 1)).ThenBy(item => item.Item1.ID);
-				
+
 				// try with class hint
-				var baseline = tmp.Where(item => item.Item1.IsBaseLine && item.Item2 == player.CharacterClass.ID);
+				var baseline = tmp.Where(item => item.Item1.IsBaseLine && item.Item2 == specClass.ID);
 				if (baseline.Any())
 				{
 					foreach (Tuple<SpellLine, int> ls in baseline)
 					{
-						ls.Item1.Level = player.Level;
+						ls.Item1.Level = living.Level;
 						list.Add(ls.Item1);
 					}
 				}
@@ -168,13 +183,13 @@ namespace DOL.GS
 				{
 					foreach (Tuple<SpellLine, int> ls in tmp.Where(item => item.Item1.IsBaseLine && item.Item2 == 0))
 					{
-						ls.Item1.Level = player.Level;
+						ls.Item1.Level = living.Level;
 						list.Add(ls.Item1);
 					}
 				}
-				
+
 				// try spec with class hint
-				var specline = tmp.Where(item => !item.Item1.IsBaseLine && item.Item2 == player.CharacterClass.ID);
+				var specline = tmp.Where(item => !item.Item1.IsBaseLine && item.Item2 == specClass.ID);
 				if (specline.Any())
 				{
 					foreach (Tuple<SpellLine, int> ls in specline)
@@ -281,7 +296,7 @@ namespace DOL.GS
 		/// <returns></returns>
 		public virtual List<Ability> PretendAbilitiesForLiving(GameLiving living, int step)
 		{
-			return SkillBase.GetSpecAbilityList(KeyName, living is GamePlayer ? ((GamePlayer)living).CharacterClass.ID : 0)
+			return SkillBase.GetSpecAbilityList(KeyName, GetSpecCharacterClass(living)?.ID ?? 0)
 				.Where(k => k.SpecLevelRequirement <= step)
 				.OrderBy(k => k.SpecLevelRequirement).ToList();
 		}
@@ -297,7 +312,7 @@ namespace DOL.GS
 		protected virtual List<Ability> GetAbilitiesForLiving(GameLiving living, int level)
 		{
 			// Select only Enabled and Max Level Abilities
-			List<Ability> abs = SkillBase.GetSpecAbilityList(KeyName, living is GamePlayer ? ((GamePlayer)living).CharacterClass.ID : 0);
+			List<Ability> abs = SkillBase.GetSpecAbilityList(KeyName, GetSpecCharacterClass(living)?.ID ?? 0);
 			
 			// Get order of first appearing skills
 			IOrderedEnumerable<Ability> order = abs.GroupBy(item => item.KeyName)
@@ -362,11 +377,7 @@ namespace DOL.GS
 		protected virtual List<Style> GetStylesForLiving(GameLiving living, int level)
 		{
 			// Try with Class ID 0 if no class id styles
-			int classid = 0;
-			if (living is GamePlayer)
-			{
-				classid = ((GamePlayer)living).CharacterClass.ID;
-			}
+			int classid = GetSpecCharacterClass(living)?.ID ?? 0;
 			
 			List<Style> styles = null;
 			if (classid == 0)
