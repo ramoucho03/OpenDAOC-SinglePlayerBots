@@ -501,7 +501,14 @@ namespace DOL.GS.Scripts
         {
             Region region = WorldMgr.GetRegion((ushort) destination.RegionID);
 
-            if (region == null || region.IsDisabled)
+            // Reject a destination whose region is missing/disabled, or whose
+            // (X,Y) sits outside every zone of that region. A point in no zone
+            // makes the client report zoneId 65535, and the server kicks the
+            // player to char-select — stranding them, since the bad position
+            // gets saved. One chokepoint guards every LiveTeleporter
+            // destination: BG, personal/guild house, hearth, town, city.
+            if (region == null || region.IsDisabled
+                || region.GetZone(destination.X, destination.Y) == null)
             {
                 player.Out.SendMessage("This destination is not available.", eChatType.CT_System,
                     eChatLoc.CL_SystemWindow);

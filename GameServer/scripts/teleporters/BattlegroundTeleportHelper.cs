@@ -18,17 +18,6 @@ namespace DOL.GS.Scripts
     /// </summary>
     public static class BattlegroundTeleportHelper
     {
-        // Per-realm fallback spawn anchors, used only when a BG region has no
-        // portal keep registered for the player's realm. These match the
-        // realm-corner layout the mimic BG spawner uses (Alb SE, Hib SW,
-        // Mid NE), so the player still lands inside their realm's section.
-        private static readonly Dictionary<eRealm, Point3D> _fallbackSpawns = new()
-        {
-            [eRealm.Albion] = new Point3D(37200, 51200, 3950),
-            [eRealm.Hibernia] = new Point3D(19820, 19305, 4050),
-            [eRealm.Midgard] = new Point3D(53300, 26100, 4270),
-        };
-
         /// <summary>
         /// Every Battleground row the player is currently eligible for,
         /// sorted by MinLevel ascending. Eligibility = level inside the
@@ -103,13 +92,23 @@ namespace DOL.GS.Scripts
         }
 
         /// <summary>
-        /// Builds an in-memory <see cref="DbTeleport"/> destination for a BG,
-        /// targeting the player's realm portal keep inside the BG region.
-        /// Falls back to the realm corner anchor when no portal keep exists.
-        /// Returns null if the destination cannot be resolved at all.
+        /// Builds an in-memory <see cref="DbTeleport"/> destination for a BG.
+        /// Resolution order, most authoritative first:
+        ///   1. A <c>Teleport</c> table row for the BG region and the player's
+        ///      realm — coordinates authored to match the real DAoC client map.
+        ///   2. The realm's portal keep inside the BG region.
+        /// The resolved point is then validated against the region's zones: a
+        /// point outside every zone makes the client report zoneId 65535, which
+        /// the server answers by kicking the player to char-select (also deleting
+        /// their bots via the Quit event).
+        ///
+        /// No hardcoded coordinate anchors are used. A coordinate that isn't
+        /// authored against the real client map cannot be trusted — a wrong
+        /// guess strands the player. Returns null when no safe destination can
+        /// be resolved; callers MUST treat null as "refuse the teleport".
         ///
         /// The DbTeleport is NOT persisted — it only feeds the existing
-        /// teleporter destination pipeline (UniPortal cast + region check).
+        /// teleporter destination pipeline.
         /// </summary>
         public static DbTeleport BuildBattlegroundDestination(GamePlayer player, DbBattleground bg)
         {
@@ -117,47 +116,50 @@ namespace DOL.GS.Scripts
                 return null;
 
             ushort regionId = bg.RegionID;
-            int x, y, z, heading = 0;
+            Region region = WorldMgr.GetRegion(regionId);
+            if (region == null)
+                return null;
 
-            // Prefer the realm's portal keep inside the BG region.
-            AbstractGameKeep portalKeep = null;
-            foreach (AbstractGameKeep keep in GameServer.KeepManager.GetKeepsOfRegion(regionId))
+            int x = 0, y = 0, z = 0, heading = 0;
+            bool resolved = false;
+
+            // 1. Canonical source: a Teleport table row for this BG region and
+            //    the player's realm. These are authored against the client map.
+            DbTeleport teleportRow = FindBattlegroundTeleportRow(regionId, (int) player.Realm);
+            if (teleportRow != null)
             {
-                if (keep.IsPortalKeep && keep.Realm == player.Realm)
+                x = teleportRow.X;
+                y = teleportRow.Y;
+                z = teleportRow.Z;
+                heading = teleportRow.Heading;
+                resolved = true;
+            }
+
+            // 2. Fallback: the realm's portal keep inside the BG region.
+            if (!resolved)
+            {
+                foreach (AbstractGameKeep keep in GameServer.KeepManager.GetKeepsOfRegion(regionId))
                 {
-                    portalKeep = keep;
-                    break;
+                    if (keep.IsPortalKeep && keep.Realm == player.Realm)
+                    {
+                        x = keep.X;
+                        y = keep.Y;
+                        z = keep.Z;
+                        heading = keep.Heading;
+                        resolved = true;
+                        break;
+                    }
                 }
             }
 
-            if (portalKeep != null)
-            {
-                x = portalKeep.X;
-                y = portalKeep.Y;
-                z = portalKeep.Z;
-                heading = portalKeep.Heading;
-            }
-            else if (_fallbackSpawns.TryGetValue(player.Realm, out Point3D anchor))
-            {
-                x = anchor.X;
-                y = anchor.Y;
-                z = anchor.Z;
-            }
-            else
-            {
+            if (!resolved)
                 return null;
-            }
 
-            // Validate the resolved spawn before handing it to the teleport
-            // pipeline. If (x, y) falls outside every zone of the BG region,
-            // the client reports zoneId 65535 on its first position update and
-            // the server kicks the player to char-select — which also deletes
-            // all their bots via the Quit event. The hardcoded per-realm anchors
-            // don't fit every BG region's zone layout, so a missing portal keep
-            // can leave us pointing into the void. Refuse the destination
-            // instead of teleporting the player into an unknown zone.
-            Region region = WorldMgr.GetRegion(regionId);
-            if (region == null || region.GetZone(x, y) == null)
+            // Final guard: never hand the teleport pipeline a point that sits
+            // outside every zone of the region. The client would report zoneId
+            // 65535 on its first position update and the server would kick the
+            // player to char-select.
+            if (region.GetZone(x, y) == null)
                 return null;
 
             return new DbTeleport
@@ -170,6 +172,31 @@ namespace DOL.GS.Scripts
                 Z = z,
                 Heading = heading,
             };
+        }
+
+        /// <summary>
+        /// Finds the best <c>Teleport</c> table row for a BG region: an exact
+        /// realm match wins, otherwise a realm-agnostic (Realm 0) row is used.
+        /// Rows with no coordinates (sub-menu placeholders) are ignored.
+        /// </summary>
+        private static DbTeleport FindBattlegroundTeleportRow(ushort regionId, int realm)
+        {
+            DbTeleport realmAgnostic = null;
+
+            foreach (DbTeleport t in GameServer.Database.SelectAllObjects<DbTeleport>())
+            {
+                if (t == null || t.RegionID != regionId)
+                    continue;
+                if (t.X == 0 && t.Y == 0 && t.Z == 0)
+                    continue; // sub-menu placeholder, not a real destination
+
+                if (t.Realm == realm)
+                    return t;
+                if (t.Realm == 0)
+                    realmAgnostic = t;
+            }
+
+            return realmAgnostic;
         }
     }
 }
