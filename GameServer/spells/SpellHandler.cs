@@ -1123,6 +1123,12 @@ namespace DOL.GS.Spells
 		}
 
 		/// <summary>
+		/// Whether the focus power-cost modifier (which scales the listed cost
+		/// between 80% and 120% depending on the caster's focus) applies to this spell.
+		/// </summary>
+		protected virtual bool UsesFocusPowerModifier => true;
+
+		/// <summary>
 		/// Calculates the power to cast the spell
 		/// </summary>
 		public virtual int PowerCost(GameLiving target)
@@ -1177,7 +1183,7 @@ namespace DOL.GS.Spells
 					powerCost = Caster.MaxMana * powerCost * -0.01;
 			}
 
-			if (playerCaster != null && playerCaster.CharacterClass.IsFocusCaster)
+			if (playerCaster != null && playerCaster.CharacterClass.IsFocusCaster && UsesFocusPowerModifier)
 			{
 				eProperty focusProp = SkillBase.SpecToFocus(SpellLine.Spec);
 

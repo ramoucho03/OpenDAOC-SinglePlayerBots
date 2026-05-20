@@ -60,6 +60,13 @@ namespace DOL.GS.Spells
 		}
 
 		/// <summary>
+		/// Theurgist pets cost the flat percentage listed by the spell (e.g. 12%).
+		/// The focus power-cost modifier must not apply here, otherwise a Theurgist
+		/// with no focus would pay ~15% (120% of the listed cost) instead of 12%.
+		/// </summary>
+		protected override bool UsesFocusPowerModifier => false;
+
+		/// <summary>
 		/// Check whether it's possible to summon a pet.
 		/// </summary>
 		public override bool CheckBeginCast(GameLiving selectedTarget)
