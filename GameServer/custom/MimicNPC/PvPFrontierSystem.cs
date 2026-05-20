@@ -133,6 +133,32 @@ namespace DOL.GS.Scripts
         private const int TICK_MS = 5000;            // population/maintenance tick
         private const int GROUP_TICK_MS = 2000;      // per-group AI tick
 
+        // ----- GLOBAL hydration budget -----
+        // MimicNPC construction (spec/skill/equipment/ROG resolution) is
+        // CPU-heavy and runs synchronously on the GameLoop thread. The
+        // per-group HYDRATE_BATCH_PER_TICK cap bounds ONE group's cost, but
+        // the maintenance tick loops EVERY group: if many groups cross into
+        // hydrate range on the same tick they each build their batch and the
+        // GameLoop stalls for 1-2s — every NPC in the world (player pets,
+        // /mcreate bots, mobs) visibly blinks out and back. This global
+        // budget caps TOTAL constructions per maintenance tick regardless of
+        // how many groups want to hydrate; the rest finish on later ticks.
+        private const int MAX_HYDRATIONS_PER_TICK = 4;
+        internal static int HydrationBudgetRemaining;
+
+        /// <summary>
+        /// Consumes one unit of the global per-tick hydration budget.
+        /// Returns false when the budget for this maintenance tick is spent —
+        /// the caller must defer the remaining construction to a later tick.
+        /// </summary>
+        internal static bool TryConsumeHydrationBudget()
+        {
+            if (HydrationBudgetRemaining <= 0)
+                return false;
+            HydrationBudgetRemaining--;
+            return true;
+        }
+
         public static bool IsRunning => _running;
         public static int TotalLiveBots
         {
@@ -357,6 +383,14 @@ namespace DOL.GS.Scripts
 
             try
             {
+                // Reset the global hydration budget for this tick. No matter
+                // how many groups want to materialise their bots, only
+                // MAX_HYDRATIONS_PER_TICK MimicNPCs are constructed this
+                // maintenance pass — the rest defer to subsequent ticks.
+                // This is what bounds the GameLoop stall and stops the
+                // "every NPC blinks every 5s" freeze.
+                HydrationBudgetRemaining = MAX_HYDRATIONS_PER_TICK;
+
                 // Snapshot player positions ONCE per tick. Every group's
                 // IsPlayerWithin check then consults the snapshot instead of
                 // re-walking ClientService for every group + every range
@@ -890,6 +924,14 @@ namespace DOL.GS.Scripts
             int attemptsThisCall = 0;
             while (_hydrationCursor < Roster.Count && attemptsThisCall < HYDRATE_BATCH_PER_TICK)
             {
+                // Global gate: stop the moment the shared per-tick budget is
+                // spent, even if this group's own batch isn't full. The group
+                // stays !IsHydrated and resumes from _hydrationCursor on a
+                // later tick. This is the cap that prevents N groups × 4 bots
+                // from freezing the GameLoop on a single maintenance pass.
+                if (!PvPFrontierManager.TryConsumeHydrationBudget())
+                    break;
+
                 LogicalMember lm = Roster[_hydrationCursor];
                 _hydrationCursor++;
                 attemptsThisCall++;
