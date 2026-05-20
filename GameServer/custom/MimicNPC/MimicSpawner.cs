@@ -71,15 +71,14 @@ namespace DOL.GS.Scripts
 
         private ECSGameTimer _timer;
         private int _dormantInterval;
-        private int _timerIntervalMin = 1000;
-        private int _timerIntervalMax = 2000;
-        private int spawningGroupSize;
-        // Written from the SpawnMimics task (thread pool) and read from
-        // TimerCallback (ECS timer thread); needs volatile so the timer
-        // thread observes the reset that ends each spawn batch.
-        private volatile bool _isRunning = false;
+        private int _timerIntervalMin = 2000;
+        private int _timerIntervalMax = 3000;
 
-        private Group group;
+        // Group-in-progress state. The spawner builds ONE bot per timer tick;
+        // when a group is rolled, the seed is built immediately and the
+        // remaining members fill in over the next ticks.
+        private Group _currentGroup;
+        private int _groupRemaining;
 
         private List<MimicNPC> _mimics;
 
@@ -104,97 +103,91 @@ namespace DOL.GS.Scripts
             SpawnAndStop = spawnAndStop;
         }
 
+        /// <summary>
+        /// Builds EXACTLY ONE MimicNPC per timer tick, entirely on the timer
+        /// (GameLoop) thread.
+        ///
+        /// The previous implementation spawned a whole group inside an
+        /// `async Task` running on the thread pool — meaning MimicNPC
+        /// construction AND `AddToWorld()` ran off the GameLoop thread.
+        /// `AddToWorld` mutates the region/zone object collections that the
+        /// GameLoop iterates every frame for visibility; doing it from a
+        /// background thread raced the loop and visibly blinked every NPC in
+        /// the area (the "/mcreate bot disappears/reappears every few
+        /// seconds" bug). One-bot-per-tick on the timer thread is correct and
+        /// bounds the per-frame cost to a single construction.
+        /// </summary>
         private int TimerCallback(ECSGameTimer timer)
         {
-            if (_isRunning)
-                return 1000;
-
+            // Cap reached: reset the counter and either idle for the dormant
+            // interval or stop entirely.
             if (SpawnAndStop && _spawnCount >= _spawnCountMax)
             {
                 _spawnCount = 0;
+                _currentGroup = null;
+                _groupRemaining = 0;
 
                 if (_dormantInterval > 0)
                     return _dormantInterval;
-                else
-                    Stop();
+
+                Stop();
+                return 0;
             }
 
-            int interval = Util.Random(_timerIntervalMin, _timerIntervalMax);
-            int groupSize = GetGroupSize();
+            MimicNPC mimic = CreateMimic();
 
-            if (groupSize > 1)
-                interval += 2000 * groupSize;
-
-            _isRunning = true;
-            _ = SpawnMimics(groupSize);
-
-            return interval;
-        }
-
-        async Task SpawnMimics(int numberOfMimics)
-        {
-            try
+            if (_groupRemaining > 0)
             {
-                for (int i = 0; i < numberOfMimics; i++)
+                // Filling a group rolled on a previous tick.
+                if (mimic != null && _currentGroup != null)
+                    _currentGroup.AddMember(mimic);
+
+                // Decrement even on a failed build so a transient
+                // construction failure can't wedge the group forever.
+                _groupRemaining--;
+                if (_groupRemaining <= 0)
+                    _currentGroup = null;
+            }
+            else if (mimic != null)
+            {
+                // Not mid-group: this fresh bot may seed a new group.
+                int groupSize = RollGroupSize();
+                if (groupSize > 1)
                 {
-                    MimicNPC mimic = CreateMimic();
-
-                    if (mimic != null && spawningGroupSize > 0 && group != null)
-                    {
-                        group.AddMember(mimic);
-                        spawningGroupSize--;
-                    }
-
-                    await Task.Yield();
+                    _currentGroup = new Group(mimic);
+                    // Register with GroupMgr so /who, /team and the BG
+                    // presence loop see the spawner's groups.
+                    GroupMgr.AddGroup(_currentGroup);
+                    _currentGroup.AddMember(mimic);
+                    _groupRemaining = groupSize - 1;
                 }
             }
-            finally
-            {
-                _isRunning = false;
-            }
+
+            return Util.Random(_timerIntervalMin, _timerIntervalMax);
         }
 
-        private int GetGroupSize()
+        /// <summary>
+        /// Rolls a target group size in [1..GROUP_MAX_MEMBER] from the
+        /// configured group chance. Pure dice — constructs nothing; the caller
+        /// supplies the seed bot built this tick.
+        /// </summary>
+        private int RollGroupSize()
         {
-            int maxGroupSize = Math.Min(ServerProperties.Properties.GROUP_MAX_MEMBER, _spawnCountMax - _spawnCount);
-            int currentGroupSize = 1;
+            int maxGroupSize = Math.Min(ServerProperties.Properties.GROUP_MAX_MEMBER,
+                                        Math.Max(1, _spawnCountMax - _spawnCount));
+            int size = 1;
             int groupChance = _groupChance;
 
-            for (int i = 0; i < maxGroupSize; i++)
+            for (int i = 1; i < maxGroupSize; i++)
             {
                 if (Util.Chance(groupChance))
                 {
-                    currentGroupSize++;
+                    size++;
                     groupChance -= 5;
                 }
             }
 
-            if (currentGroupSize > 1)
-            {
-                MimicNPC mimic = CreateMimic();
-
-                if (mimic == null)
-                {
-                    // Couldn't seed the group; fall back to solo spawn so the
-                    // tick still produces a bot instead of throwing.
-                    group = null;
-                    spawningGroupSize = 0;
-                    return 1;
-                }
-
-                group = new Group(mimic);
-                // Register the freshly-created Group with GroupMgr so /who,
-                // /team and the BG presence loop see it. Previously the
-                // Group was constructed but never added to the global
-                // registry, so the spawner's groups were invisible to
-                // standard tooling.
-                GroupMgr.AddGroup(group);
-                group.AddMember(mimic);
-
-                spawningGroupSize = currentGroupSize - 1;
-            }
-
-            return currentGroupSize;
+            return size;
         }
 
         private MimicNPC CreateMimic()

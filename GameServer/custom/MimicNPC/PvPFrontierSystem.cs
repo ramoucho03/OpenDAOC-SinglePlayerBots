@@ -143,7 +143,9 @@ namespace DOL.GS.Scripts
         // /mcreate bots, mobs) visibly blinks out and back. This global
         // budget caps TOTAL constructions per maintenance tick regardless of
         // how many groups want to hydrate; the rest finish on later ticks.
-        private const int MAX_HYDRATIONS_PER_TICK = 4;
+        // Kept low (2) so the worst-case GameLoop stall is ~2 constructions
+        // no matter how many enemy groups a player runs into at once.
+        private const int MAX_HYDRATIONS_PER_TICK = 2;
         internal static int HydrationBudgetRemaining;
 
         /// <summary>

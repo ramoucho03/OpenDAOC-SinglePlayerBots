@@ -244,22 +244,9 @@ namespace DOL.GS
 
             try
             {
-                GamePlayer player = null;
-
-                if (killer is GamePlayer)
-                {
-                    player = killer as GamePlayer;
-                }
-                else if (killer is GameNPC && (killer as GameNPC).Brain is IControlledBrain)
-                {
-                    player = ((killer as GameNPC).Brain as ControlledMobBrain).GetPlayerOwner();
-                }
-
-                // allow the leader to decide the loot realm
-                if (player != null && player.Group != null)
-                {
-                    player = player.Group.Leader;
-                }
+                // Resolves the loot-realm player from the killing blow. Handles MimicNPC
+                // bots (not IControlledBrain pets) which would otherwise drop no loot.
+                GamePlayer player = GetLootPlayer(killer);
 
                 if (player != null)
                 {

@@ -239,15 +239,11 @@ namespace DOL.GS
 
 			try
 			{
-				GamePlayer player = killer as GamePlayer;
-				if (killer is GameNPC && ((GameNPC)killer).Brain is IControlledBrain)
-					player = ((ControlledMobBrain)((GameNPC)killer).Brain).GetPlayerOwner();
+				// Resolves the loot-realm player from the killing blow. Handles MimicNPC
+				// bots (not IControlledBrain pets) which would otherwise drop no loot.
+				GamePlayer player = GetLootPlayer(killer);
 				if (player == null)
 					return loot;
-
-				// allow the leader to decide the loot realm
-				if (player.Group != null)
-					player = player.Group.Leader;
 
 				List<DbMobDropTemplate> killedMobXLootTemplates;
 				// MobDropTemplate contains a loot template name and the max number of drops allowed for that template.
