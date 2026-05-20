@@ -377,7 +377,14 @@ namespace DOL.GS.Scripts
                                 grp.Tick();
 
                                 if (grp.IsDisbanded)
+                                {
+                                    // Tick()'s disband paths only flip the state;
+                                    // any hydrated members are still live world
+                                    // objects (corpses included). Delete them
+                                    // before dropping the group reference.
+                                    grp.DisbandAndDelete();
                                     cfg.Groups.RemoveAt(i);
+                                }
                             }
 
                             // Each config carries its own target population

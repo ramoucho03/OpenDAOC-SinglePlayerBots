@@ -20,7 +20,7 @@ namespace DOL.GS.Scripts
             if (!base.Interact(player))
                 return false;
 
-            player.Out.SendMessage("[Duel] [Watch]", eChatType.CT_Say, eChatLoc.CL_PopupWindow);
+            player.Out.SendMessage("[Watch]", eChatType.CT_Say, eChatLoc.CL_PopupWindow);
             return true;
         }
 
@@ -38,33 +38,15 @@ namespace DOL.GS.Scripts
             {
                 case "Duel":
                 {
-                    if (player.Duel != null)
-                    {
-                        string message = "You are already in a duel.";
-                        player.Out.SendMessage(message, eChatType.CT_System, eChatLoc.CL_PopupWindow);
-                    }
-                    else if (m_isDuelRunning)
-                    {
-                        string message = "A duel is in progress, please wait for it to finish.";
-                        player.Out.SendMessage(message, eChatType.CT_System, eChatLoc.CL_PopupWindow);
-                    }
-                    else
-                    {
-                        MimicNPC mimic = MimicManager.GetMimic(MimicManager.GetRandomMimicClass(player.Realm), player.Level);
-
-                        if (mimic == null)
-                        {
-                            player.Out.SendMessage("Failed to spawn duel opponent.", eChatType.CT_System, eChatLoc.CL_PopupWindow);
-                            break;
-                        }
-
-                        int xPos = X + Util.Random(-500, 500);
-                        int yPos = Y + Util.Random(-500, 500);
-                        int zPos = Z;
-
-                        MimicManager.AddMimicToWorld(mimic, new Point3D(xPos, yPos, zPos), CurrentRegionID);
-                        mimic.Duel?.Start();
-                    }
+                    // Player-vs-mimic duels are not supported: GameDuel only
+                    // binds GamePlayer/GamePlayer or MimicNPC/MimicNPC pairs,
+                    // and the server rules block same-realm attacks for a
+                    // MimicNPC attacker. The old code spawned an opponent and
+                    // called the always-null mimic.Duel?.Start(), which just
+                    // leaked a mimic that stood idle. Point the player at the
+                    // working spectator mode instead.
+                    player.Out.SendMessage("Les duels contre un mimic ne sont pas disponibles. Utilisez [Watch] pour observer un duel entre mimics.",
+                        eChatType.CT_System, eChatLoc.CL_PopupWindow);
                     break;
                 }
 
@@ -272,13 +254,6 @@ namespace DOL.GS.Scripts
             m_isDuelRunning = false;
 
             return true;
-        }
-    }
-
-    public static class DuelManager
-    {
-        public class MimicDuel
-        {
         }
     }
 }

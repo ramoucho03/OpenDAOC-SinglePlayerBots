@@ -133,30 +133,13 @@ namespace DOL.GS.Scripts
             if (item is IGameInventoryItem inventoryItem)
                 inventoryItem.OnEquipped((GameLiving)this);
 
-            if ((eInventorySlot)item.Item_Type == eInventorySlot.Horse)
-            {
-                if (item.SlotPosition == Slot.HORSE)
-                {
-                    ActiveHorse.ID = (byte)(item.SPD_ABS == 0 ? 1 : item.SPD_ABS);
-                    ActiveHorse.Name = item.Creator;
-                }
-
+            // Mimics don't support mounts (ActiveHorse is always null), so
+            // horse-related items carry no state and only need to skip the
+            // stat-bonus application below.
+            if ((eInventorySlot)item.Item_Type is eInventorySlot.Horse
+                or eInventorySlot.HorseArmor
+                or eInventorySlot.HorseBarding)
                 return;
-            }
-            else if ((eInventorySlot)item.Item_Type == eInventorySlot.HorseArmor)
-            {
-                if (item.SlotPosition == Slot.HORSEARMOR)
-                    ActiveHorse.Saddle = (byte)item.DPS_AF;
-
-                return;
-            }
-            else if ((eInventorySlot)item.Item_Type == eInventorySlot.HorseBarding)
-            {
-                if (item.SlotPosition == Slot.HORSEBARDING)
-                    ActiveHorse.Barding = (byte)item.DPS_AF;
-
-                return;
-            }
 
             if (item.Bonus1 != 0)
                 ItemBonus[(eProperty)item.Bonus1Type] += item.Bonus1;
@@ -298,25 +281,11 @@ namespace DOL.GS.Scripts
             if (slot == eInventorySlot.Mythical && (eInventorySlot)item.Item_Type == eInventorySlot.Mythical && item is GameMythirian mythirian)
                 ((IGameInventoryItem)mythirian).OnUnEquipped((GameLiving)this);
 
-            if ((eInventorySlot)item.Item_Type == eInventorySlot.Horse)
-            {
-                if (IsOnHorse)
-                    IsOnHorse = false;
-
-                ActiveHorse.ID = 0;
-                ActiveHorse.Name = string.Empty;
+            // Mimics don't support mounts (ActiveHorse is always null).
+            if ((eInventorySlot)item.Item_Type is eInventorySlot.Horse
+                or eInventorySlot.HorseArmor
+                or eInventorySlot.HorseBarding)
                 return;
-            }
-            else if ((eInventorySlot)item.Item_Type == eInventorySlot.HorseArmor)
-            {
-                ActiveHorse.Saddle = 0;
-                return;
-            }
-            else if ((eInventorySlot)item.Item_Type == eInventorySlot.HorseBarding)
-            {
-                ActiveHorse.Barding = 0;
-                return;
-            }
 
             // Cancel any self buffs that are unequipped.
             if (item.SpellID > 0 && SelfBuffChargeIDs.Contains(item.SpellID) && Inventory.EquippedItems.Where(x => x.SpellID == item.SpellID).Count() <= 1)

@@ -1936,6 +1936,23 @@ namespace DOL.GS.Scripts
                 : target.MaxHealth * spell.Value * -0.01d;
         }
 
+        /// <summary>
+        /// Direct (non-HoT) healing spell types the heal cycle can size with
+        /// HealAmount and treat like a plain Heal. Without this, Spread /
+        /// PBAoE / Combat / Omni / Merc heals were dropped into the HealSpells
+        /// list but never assigned to a named heal slot, so the heal cycle
+        /// never cast them.
+        /// </summary>
+        private static bool IsDirectHealType(eSpellType type)
+        {
+            return type is eSpellType.Heal
+                or eSpellType.SpreadHeal
+                or eSpellType.PBAoEHeal
+                or eSpellType.CombatHeal
+                or eSpellType.OmniHeal
+                or eSpellType.MercHeal;
+        }
+
         public Spell HealBig { get; protected set; } = null;
         public Spell HealEfficient { get; protected set; } = null;
         public Spell HealGroup { get; protected set; } = null;
@@ -2124,7 +2141,7 @@ namespace DOL.GS.Scripts
                                 }
                             }
                         }
-                        else if (spell.SpellType == eSpellType.Heal)
+                        else if (IsDirectHealType(spell.SpellType))
                         {
                             if (spell.Target == eSpellTarget.GROUP || spell.Radius > 0)
                             {
@@ -2183,7 +2200,7 @@ namespace DOL.GS.Scripts
                                 }
                             }
                         }
-                        else if (spell.SpellType == eSpellType.Heal)
+                        else if (IsDirectHealType(spell.SpellType))
                         {
                             if (spell.Target == eSpellTarget.GROUP || spell.Radius > 0)
                             {
@@ -2412,6 +2429,8 @@ namespace DOL.GS.Scripts
                 RealmLevel = Util.Random(1, 15);
             else if (level > 29 && level < 35)
                 RealmLevel = Util.Random(1, 25);
+            else if (level > 34 && level < 40)
+                RealmLevel = Util.Random(1, 35);
             else if (level > 39 && level < 50)
                 RealmLevel = Util.Random(1, 45);
             else if (level == 50)
@@ -3215,16 +3234,14 @@ namespace DOL.GS.Scripts
         #endregion Database Accessor
 
         /// <summary>
-        /// Holds the GameLiving that is the steed of this player as weakreference
-        /// </summary>
-        protected WeakReference m_steed;
-        /// <summary>
-        /// Holds the Steed of this player
+        /// Holds the Steed of this player. Mimics don't support mounts, so the
+        /// getter is always null and the setter is a no-op (the previous setter
+        /// dereferenced an uninitialized field and would throw).
         /// </summary>
         public GameNPC Steed
         {
             get { return null; }
-            set { m_steed.Target = value; }
+            set { }
         }
 
         /// <summary>

@@ -475,10 +475,12 @@ namespace DOL.GS.Scripts
                         field.BotGroup = new Group(bot);
                         GroupMgr.AddGroup(field.BotGroup);
                     }
-                    else
-                    {
-                        field.BotGroup.AddMember(bot);
-                    }
+
+                    // The Group ctor only sets LivingLeader — it does NOT add
+                    // the leader to the member list. Every bot (including the
+                    // first) must be joined via AddMember, otherwise the leader
+                    // bot has a null Group and is missing from the roster.
+                    field.BotGroup.AddMember(bot);
                     field.Bots.Add(bot);
                 }
 

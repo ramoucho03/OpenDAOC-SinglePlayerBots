@@ -48,9 +48,9 @@ namespace DOL.GS.Scripts
                 break;
 
                 case 4:
-                Add(Specs.Arboreal_Path, 43, 0.8f);
-                Add(Specs.Parry, 2, 0.1f);
-                Add(ObjToSpec(WeaponOneType), 50, 0.9f);
+                Add(Specs.Arboreal_Path, 38, 0.8f);
+                Add(Specs.Parry, 20, 0.2f);
+                Add(ObjToSpec(WeaponOneType), 45, 0.9f);
                 break;
 
                 case 5:

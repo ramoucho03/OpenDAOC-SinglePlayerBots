@@ -83,7 +83,8 @@ namespace DOL.GS
 				IEnumerable<Spell> lib = SkillBase.GetSpellList(ls.KeyName).Where(item => item.Level <= ls.Level);
 				
 				int take = 1;
-				if ((living is GamePlayer) && AllowMultipleSpellVersions(ls, (GamePlayer)living))
+				ICharacterClass hybridClass = GetSpecCharacterClass(living);
+				if (hybridClass != null && AllowMultipleSpellVersions(ls, hybridClass))
 				{
 					// Get 2-First Better Spell for each type
 					take = 2;
@@ -141,7 +142,7 @@ namespace DOL.GS
 		/// </summary>
 		/// <param name="line"></param>
 		/// <returns></returns>
-		protected virtual bool AllowMultipleSpellVersions(SpellLine line, GamePlayer player)
+		protected virtual bool AllowMultipleSpellVersions(SpellLine line, ICharacterClass charClass)
 		{
 			bool allow = false;
 
@@ -152,13 +153,13 @@ namespace DOL.GS
 					break;
 
 				case Specs.Enhancement:
-					if ((line.IsBaseLine || player.CharacterClass.ID == (int)eCharacterClass.Cleric) && player.CharacterClass.ID != (int)eCharacterClass.Heretic)
+					if ((line.IsBaseLine || charClass.ID == (int)eCharacterClass.Cleric) && charClass.ID != (int)eCharacterClass.Heretic)
 						allow = true;
 
 					break;
 
 				case Specs.Nurture:
-					if (line.IsBaseLine || player.CharacterClass.ID == (int)eCharacterClass.Druid)
+					if (line.IsBaseLine || charClass.ID == (int)eCharacterClass.Druid)
 						allow = true;
 
 					break;

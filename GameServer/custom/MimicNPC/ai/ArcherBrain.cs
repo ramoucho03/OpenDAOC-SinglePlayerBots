@@ -84,7 +84,7 @@ namespace DOL.GS.Scripts
                 if (base.CheckSpells(type))
                     return true;
 
-                if (Body.Group == null || Body.Group.MimicGroup.CampPoint != null && !MimicBody.MimicBrain.IsMainPuller)
+                if (Body.Group == null || Body.Group.MimicGroup?.CampPoint != null && !MimicBody.MimicBrain.IsMainPuller)
                     Body.Stealth(true);
                 else
                     Body.Stealth(false);

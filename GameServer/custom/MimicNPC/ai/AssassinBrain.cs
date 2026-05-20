@@ -100,7 +100,7 @@ namespace DOL.GS.Scripts
                     //  - Otherwise (active pulling / engaged group movement):
                     //    drop stealth so we don't desync from group pace.
                     bool soloOrCampSupport = Body.Group == null
-                        || (Body.Group.MimicGroup.CampPoint != null && !MimicBody.MimicBrain.IsMainPuller);
+                        || (Body.Group.MimicGroup?.CampPoint != null && !MimicBody.MimicBrain.IsMainPuller);
                     bool pvpIdle = PvPMode && !Body.InCombat && Body.TargetObject == null;
 
                     if (soloOrCampSupport || pvpIdle)
@@ -173,7 +173,7 @@ namespace DOL.GS.Scripts
 
         private void PoisonWeapons()
         {
-            if (_envenomSpellIDs.Count > 0)
+            if (_envenomSpellIDs.Count > 0 && Body.Inventory != null)
             {
                 int spellID = 0;
 

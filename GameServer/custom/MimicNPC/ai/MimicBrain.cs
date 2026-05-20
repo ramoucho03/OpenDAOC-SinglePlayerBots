@@ -380,6 +380,52 @@ namespace DOL.AI.Brain
                 EnsurePetCombatReady(null); // still refresh follow/aggressive flags
         }
 
+        /// <summary>
+        /// Mid-combat pet recovery. Permanent-pet summons live in MiscSpells
+        /// and are normally cast only through the Defensive path, which the
+        /// AGGRO combat state never runs. Without this, a pet-caster whose pet
+        /// dies mid-fight stands idle until combat ends — catastrophic for a
+        /// Necromancer, which has no damage of its own. Re-summons the pet
+        /// from inside the combat cycle. Returns true when the bot is a
+        /// pet-caster with no live pet (turn consumed by the summon cast, or
+        /// held while a cast is already in flight) so the caller stops.
+        /// </summary>
+        private bool TryResummonPet()
+        {
+            if (MimicBody?.CombatProfile?.HasRole(eMimicCombatRole.PetCaster) != true)
+                return false;
+
+            // Pet still alive — nothing to do.
+            if (Body.ControlledBrain?.Body is GameNPC pet && pet.IsAlive)
+                return false;
+
+            // A cast is already in flight — hold the turn so the offensive
+            // cycle doesn't interrupt an in-progress summon.
+            if (Body.IsCasting)
+                return true;
+
+            if (MimicBody.MiscSpells == null)
+                return false;
+
+            foreach (Spell spell in MimicBody.MiscSpells)
+            {
+                if (!IsPermanentPetSummon(spell) || !IsSummonSpellAllowedForClass(spell))
+                    continue;
+
+                // CanCastDefensiveSpell covers interrupt state and the summon
+                // cooldown, so a pet on its re-summon timer just falls through
+                // to the normal offensive cycle instead of being spammed.
+                if (!CanCastDefensiveSpell(spell) || Body.Mana < MimicBody.PowerCost(spell))
+                    continue;
+
+                Body.TargetObject = Body;
+                Body.CastSpell(spell, MimicBody.GetSpellLineForSpell(spell));
+                return true;
+            }
+
+            return false;
+        }
+
         public virtual void OnLeaderAggro()
         { }
         public virtual void OnEnterAggro()
@@ -1214,6 +1260,11 @@ namespace DOL.AI.Brain
         // chasing us). Used to gate chain pulls against the group's budget.
         private int _chainPullCount;
 
+        // Throttles the cross-region pet recall in EnsurePetCombatReady so a
+        // MoveTo that doesn't take effect immediately can't be re-issued every
+        // tick (which would teleport-spam the pet).
+        private long _nextPetRecallTick;
+
         /// <summary>
         /// Number of additional shots fired in the current chain-pull cycle
         /// (0 means we are NOT chain-pulling; >0 means the puller has
@@ -1260,6 +1311,10 @@ namespace DOL.AI.Brain
                     IsPulling = false;
                     LastTargetObject = null;
                     _committedPullTarget = null;
+                    // The pull sequence was aborted, so clear the chain counter
+                    // too — otherwise TryChainPull() can read a stale positive
+                    // count on the next tick and fire an extra arrow over budget.
+                    _chainPullCount = 0;
                     Body.StopAttack();
                     ClearAggroList();
                     MimicGroup mgDead = Body.Group?.MimicGroup;
@@ -3468,6 +3523,11 @@ namespace DOL.AI.Brain
                 if (Body.IsAttacking)
                     Body.StopAttack();
 
+                // A shade Necromancer has no damage of its own — if the pet
+                // died, re-summon before anything else.
+                if (TryResummonPet())
+                    return;
+
                 if (!CheckMainTankTarget())
                     Body.TargetObject = CalculateNextAttackTarget();
 
@@ -3520,6 +3580,12 @@ namespace DOL.AI.Brain
                     return;
                 }
             }
+
+            // Pet died mid-fight — re-summon before engaging. The Defensive
+            // cast path that normally summons pets never runs in the AGGRO
+            // combat state, so without this the bot fights petless.
+            if (TryResummonPet())
+                return;
 
             // Pet engagement: command the pet to attack our current target.
             // Pets stay on Defensive by default (DAoC convention) which means
@@ -3982,19 +4048,18 @@ namespace DOL.AI.Brain
 
         private Point3D GetFleePoint(int fleeDistance)
         {
-            ushort heading;
+            int heading;
             if (Body.IsObjectInFront(Body.TargetObject, 120))
-                heading = (ushort)(Body.Heading - 2048);
+                heading = Body.Heading - 2048;
             else
                 heading = Body.Heading;
 
-            if (heading < 0)
-                heading += 4096;
+            // Normalize to the valid 0-4095 heading range. Body.Heading - 2048
+            // can be negative; the previous ushort arithmetic wrapped it to a
+            // huge value and the single "> 4096" subtraction left it invalid.
+            heading = (heading % 4096 + 4096) % 4096;
 
-            if (heading > 4096)
-                heading -= 4096;
-
-            Point2D point = Body.GetPointFromHeading(heading, fleeDistance);
+            Point2D point = Body.GetPointFromHeading((ushort)heading, fleeDistance);
 
             if (Body.CurrentRegion.GetZone(point.X, point.Y) == null)
             {
@@ -4004,12 +4069,9 @@ namespace DOL.AI.Brain
 
                 for (int i = 0; i < 8; i++)
                 {
-                    heading += 512;
+                    heading = (heading + 512) % 4096;
 
-                    if (heading > 4096)
-                        heading -= 4096;
-
-                    validPoint = Body.GetPointFromHeading(heading, fleeDistance);
+                    validPoint = Body.GetPointFromHeading((ushort)heading, fleeDistance);
 
                     if (Body.CurrentRegion.GetZone(validPoint.X, validPoint.Y) != null)
                     {
@@ -4197,9 +4259,11 @@ namespace DOL.AI.Brain
             // region just wastes ticks and the pet rots there until despawn.
             // Best effort: snap the pet onto us. The Owner.AddControlledBrain
             // wiring is already in place — we just need to move the body.
-            if (petBody.CurrentRegion != Body.CurrentRegion)
+            if (petBody.CurrentRegion != Body.CurrentRegion
+                && GameLoop.GameLoopTime >= _nextPetRecallTick)
             {
                 petBody.MoveTo(Body.CurrentRegion.ID, Body.X, Body.Y, Body.Z, Body.Heading);
+                _nextPetRecallTick = GameLoop.GameLoopTime + 2000;
             }
 
             // Force Aggressive: the engine default for new pets is Defensive
@@ -5275,6 +5339,20 @@ namespace DOL.AI.Brain
                             spellsToCast.Add(spell);
                     }
 
+                    // Instant mez / instant root feed the same candidate set —
+                    // the best-by-duration pick below chooses between instant
+                    // and cast-time CC. Instants can't be interrupted, so they
+                    // only need the cooldown + freshness gate.
+                    if (MimicBody.CanCastInstantCrowdControlSpells)
+                    {
+                        foreach (Spell spell in MimicBody.InstantCrowdControlSpells)
+                        {
+                            if (Body.GetSkillDisabledDuration(spell) <= 0
+                                && !LivingHasFreshEffect(ccTarget, spell, CC_RECAST_LEAD_MS))
+                                spellsToCast.Add(spell);
+                        }
+                    }
+
                     if (spellsToCast.Count > 0)
                     {
                         // Prefer an AoE mez/stun when at least MIN_AOE_CLUSTER_HOSTILES
@@ -5300,7 +5378,14 @@ namespace DOL.AI.Brain
                             if (spellsToCast.Count == 0)
                                 return false;
 
-                            spell = spellsToCast[Util.Random(spellsToCast.Count - 1)];
+                            // Pick the strongest single-target CC — longest
+                            // duration, then highest level — instead of a
+                            // random one, so the bot locks the mob down for
+                            // as long as possible.
+                            spell = spellsToCast
+                                .OrderByDescending(static s => s.Duration)
+                                .ThenByDescending(static s => s.Level)
+                                .First();
                         }
 
                         casted = Body.CastSpell(spell, MimicBody.GetSpellLineForSpell(spell));
@@ -5326,17 +5411,23 @@ namespace DOL.AI.Brain
                 if (Body.CanCastMiscSpells)
                     casted = CheckDefensiveSpells(Body.MiscSpells);
 
-                //if (Body.CanCastMiscSpells)
-                //{
-                //    foreach (Spell spell in Body.MiscSpells)
-                //    {
-                //        if (CheckDefensiveSpells(spell))
-                //        {
-                //            casted = true;
-                //            break;
-                //        }
-                //    }
-                //}
+                // Instant misc buffs (Savage self-buffs, Paladin/Skald resist
+                // chants, ablatives, damage-adds) were only ever applied in
+                // the offensive cycle, so a bot could never pre-buff before a
+                // pull. They're instant and CheckInstantDefensiveSpells gates
+                // every cast on LivingHasEffect + cooldown, so maintaining
+                // them out of combat too is safe.
+                if (!casted && Body.CanCastInstantMiscSpells)
+                {
+                    foreach (Spell spell in Body.InstantMiscSpells)
+                    {
+                        if (CheckInstantDefensiveSpells(spell))
+                        {
+                            casted = true;
+                            break;
+                        }
+                    }
+                }
             }
             else if (!casted && type == eCheckSpellType.Offensive)
             {
@@ -5490,6 +5581,19 @@ namespace DOL.AI.Brain
                             {
                                 if (CanCastOffensiveSpell(spell) && !LivingHasEffect(livingTarget, spell))
                                     spellsToCast.Add(spell);
+                            }
+
+                            // Instant mez / instant root — usable to lock an
+                            // add without spending a cast. Same effect gate as
+                            // the cast-time CC above; no interrupt check needed.
+                            if (MimicBody.CanCastInstantCrowdControlSpells)
+                            {
+                                foreach (Spell spell in MimicBody.InstantCrowdControlSpells)
+                                {
+                                    if (Body.GetSkillDisabledDuration(spell) <= 0
+                                        && !LivingHasEffect(livingTarget, spell))
+                                        spellsToCast.Add(spell);
+                                }
                             }
                         }
                     }
@@ -5710,6 +5814,15 @@ namespace DOL.AI.Brain
                             casted = CheckOffensiveSpells(spellToCast);
                     }
                 }
+
+                // In-combat buff top-up: when the offensive cycle found
+                // nothing to cast this tick (out of range, out of mana,
+                // target down), refresh any self / pulse / proc buff that
+                // dropped mid-fight. FindTargetForDefensiveSpell still gates
+                // one-shot stat buffs and group buffs behind AttackState, so
+                // this never trades away a real attack.
+                if (!casted && !Body.IsCasting && Body.CanCastMiscSpells)
+                    casted = CheckDefensiveSpells(Body.MiscSpells);
             }
 
             return casted || Body.IsCasting;
@@ -6312,6 +6425,8 @@ namespace DOL.AI.Brain
                 break;
 
                 case eSpellType.Bladeturn when spell.IsPulsing:
+                if (!LivingHasEffect(Body, spell))
+                    target = Body;
                 break;
 
                 // Long-duration damage shield self-buff (Valewalker Arboreal
@@ -6326,6 +6441,8 @@ namespace DOL.AI.Brain
                 break;
 
                 case eSpellType.MesmerizeDurationBuff when spell.IsPulsing:
+                if (!LivingHasEffect(Body, spell))
+                    target = Body;
                 break;
 
                 #endregion Pulse
@@ -6333,6 +6450,10 @@ namespace DOL.AI.Brain
                 #region Buffs
 
                 case eSpellType.SpeedEnhancement when spell.IsInstantCast:
+                // Instant speed (Skald) is routed to MiscSpells, so this is
+                // the only path that casts it. Empty break left it never cast.
+                if (!LivingHasEffect(Body, spell))
+                    target = Body;
                 break;
 
                 case eSpellType.SpeedEnhancement when spell.IsPulsing:
@@ -6821,7 +6942,10 @@ namespace DOL.AI.Brain
 
                 case eSpellType.Taunt:
 
-                if (Body.Group?.MimicGroup.MainTank == Body)
+                // IsActingAsTank covers the formal MainTank, a solo tank-class
+                // bot, and the "best tank in a player-led group" case, and it
+                // null-guards MimicGroup internally.
+                if (IsActingAsTank)
                     castSpell = true;
 
                 break;
