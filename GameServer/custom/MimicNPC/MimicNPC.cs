@@ -103,6 +103,20 @@ namespace DOL.GS.Scripts
         public const int SPRINT_MIRROR_RANGE = 2500;
 
         /// <summary>
+        /// Max distance at which a bot still inherits its leader's full
+        /// movement-speed ratio (chant / song / mount / sprint) in
+        /// MaxSpeedCalculator. This MUST stay wider than the follow-recall
+        /// threshold (MimicState_FollowLeader.DISTANCE_OVERFLOW = 3500) and
+        /// the follow hard-stop (~5000): otherwise a bot trailing a faster
+        /// leader loses the speed mirror at 2500u, can never close the gap,
+        /// drifts to 3500u, gets teleport-recalled, and the cycle repeats —
+        /// the visible "bot appears / disappears / resets" flicker. 6000u
+        /// keeps the mirror alive across the whole followable range so the
+        /// bot can always physically catch up before any recall fires.
+        /// </summary>
+        public const int SPEED_MIRROR_RANGE = 6000;
+
+        /// <summary>
         /// Resolves the owning <see cref="GamePlayer"/> to mirror sprint from
         /// when this bot is NOT in a group (personal pet / /mfollow / /msummon
         /// scenario). Returns null when the bot is grouped (the grouped path
@@ -2542,6 +2556,33 @@ namespace DOL.GS.Scripts
                     case 2:
                         return Capitalize(capitalize, LanguageMgr.GetTranslation(Client.Account.Language, "GamePlayer.Pronoun.Female.Objective"));
                 }
+        }
+
+        /// <summary>
+        /// Adds messages sent when the mimic is targeted. Overridden so a mimic
+        /// examines like a real player ("... is a member of the X class in your
+        /// realm" / "... is a member of an enemy realm!") instead of the generic
+        /// NPC "friendly/neutral/aggressive" line. Purely cosmetic.
+        /// </summary>
+        public override IList GetExamineMessages(GamePlayer player)
+        {
+            // Build the list directly (GameObject-level "You target ...") rather
+            // than chaining base.GetExamineMessages, which is GameNPC's aggro-level
+            // variant — that's exactly the NPC wording we want to avoid here.
+            IList list = new ArrayList(4);
+            list.Add(LanguageMgr.GetTranslation(player.Client.Account.Language, "GameObject.GetExamineMessages.YouTarget", GetName(0, false)));
+
+            string message;
+
+            if (Realm == player.Realm || player.Client.Account.PrivLevel > 1)
+                message = LanguageMgr.GetTranslation(player.Client.Account.Language, "GamePlayer.GetExamineMessages.RealmMember",
+                    GetName(0, false), GetPronoun(player.Client, 0, true), CharacterClass.Name);
+            else
+                message = LanguageMgr.GetTranslation(player.Client.Account.Language, "GamePlayer.GetExamineMessages.EnemyRealmMember",
+                    GetName(0, false), GetPronoun(player.Client, 0, true));
+
+            list.Add(message);
+            return list;
         }
 
         public override void StartAttack(GameObject target)

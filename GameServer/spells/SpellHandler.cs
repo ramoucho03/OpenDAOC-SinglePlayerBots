@@ -2827,8 +2827,14 @@ namespace DOL.GS.Spells
 					max = 1.0;
 
 					// Spells casted by a necromancer pet use the owner's spec.
+					// GetPlayerOwner() returns null when the pet belongs to a
+					// Mimic (NPC owner) rather than a real player — dereferencing
+					// it then NRE'd CastingService and despawned the pet. Fall
+					// back to the brain's direct owner (the Mimic, which carries
+					// the Necromancer spec) and finally to the pet itself so
+					// the spec lookup is always made against a non-null living.
 					if (m_caster is NecromancerPet necromancerPet && necromancerPet.Brain is IControlledBrain brain)
-						casterToUse = brain.GetPlayerOwner();
+						casterToUse = brain.GetPlayerOwner() ?? brain.Owner ?? m_caster;
 
 					min = CalculateLowerVarianceBound(casterToUse.GetModifiedSpecLevel(m_spellLine.Spec), target.Level);
 					break;

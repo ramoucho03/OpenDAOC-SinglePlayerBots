@@ -418,9 +418,12 @@ namespace DOL.GS.Scripts
             // Prune dead/stale bots.
             city.Bots.RemoveAll(b => b == null || !b.IsAlive || b.ObjectState != GameObject.eObjectState.Active);
 
-            // Spawn up to N at a time per tick (avoid burst).
+            // Spawn at most 1 bot per tick. MimicNPC construction runs on the
+            // GameLoop thread; even with the ItemTemplate cache in place a
+            // batch of constructions in a single tick is a needless hitch.
+            // One per tick fills the city smoothly over a few seconds.
             int missing = city.TargetBots - city.Bots.Count;
-            int spawnNow = Math.Min(missing, 3);
+            int spawnNow = Math.Min(missing, 1);
             for (int i = 0; i < spawnNow; i++)
             {
                 MimicNPC bot = CreateCityIdleBot(city);
@@ -464,7 +467,7 @@ namespace DOL.GS.Scripts
                     field.BotGroup = null;
                 }
 
-                int spawnNow = Math.Min(missing, 2); // gentle ramp
+                int spawnNow = Math.Min(missing, 1); // one bot/tick — no GameLoop hitch
                 for (int i = 0; i < spawnNow; i++)
                 {
                     MimicNPC bot = CreateFieldBot(field);

@@ -843,18 +843,57 @@ namespace DOL.GS.Scripts
             living.Inventory.AddItem(slot, item);
         }
 
+        // ----------------------------------------------------------------
+        // ItemTemplate cache.
+        //
+        // Every MimicNPC constructor equips weapon/shield/ranged/armor/jewelry,
+        // each running a SelectObjects<DbItemTemplate>. On this server those
+        // queries resolve to a full `SELECT ... FROM ItemTemplate` table scan
+        // (~134ms each, visible in the server log). A constructor therefore
+        // cost ~1s of synchronous DB work; the PvE/PvP population managers
+        // build batches of bots inside their 5s maintenance tick ON THE
+        // GAMELOOP THREAD, so the whole server froze for 1-3s every 5s and
+        // the client blinked every NPC out and back in ("all bots reset every
+        // 3-5s" regression).
+        //
+        // Fix: load the ItemTemplate table ONCE, then filter it in memory.
+        // First mimic build pays the 134ms; every build after is microseconds.
+        // ----------------------------------------------------------------
+        private static DbItemTemplate[] _itemTemplateCache;
+        private static readonly object _itemTemplateCacheLock = new();
+
+        private static DbItemTemplate[] GetItemTemplates()
+        {
+            DbItemTemplate[] cache = _itemTemplateCache;
+            if (cache != null)
+                return cache;
+
+            lock (_itemTemplateCacheLock)
+            {
+                if (_itemTemplateCache == null)
+                {
+                    var all = GameServer.Database.SelectAllObjects<DbItemTemplate>();
+                    _itemTemplateCache = all != null ? all.ToArray() : Array.Empty<DbItemTemplate>();
+
+                    if (log.IsInfoEnabled)
+                        log.Info($"MimicManager: cached {_itemTemplateCache.Length} ItemTemplate rows for bot equipment.");
+                }
+
+                return _itemTemplateCache;
+            }
+        }
+
         public static void SetMeleeWeapon(IGamePlayer player, eObjectType weapType, eHand hand, eWeaponDamageType damageType = 0)
         {
             int min = Math.Max(1, player.Level - 6);
             int max = Math.Min(51, player.Level + 4);
 
-            IList<DbItemTemplate> itemList;
-
-            itemList = GameServer.Database.SelectObjects<DbItemTemplate>(DB.Column("Level").IsGreaterOrEqualTo(min).And(
-                                                                       DB.Column("Level").IsLessOrEqualTo(max).And(
-                                                                       DB.Column("Object_Type").IsEqualTo((int)weapType).And(
-                                                                       DB.Column("Realm").IsEqualTo((int)player.Realm)).And(
-                                                                       DB.Column("IsPickable").IsEqualTo(1)))));
+            IList<DbItemTemplate> itemList = GetItemTemplates()
+                .Where(t => t.Level >= min && t.Level <= max
+                            && t.Object_Type == (int)weapType
+                            && t.Realm == (int)player.Realm
+                            && t.IsPickable)
+                .ToList();
             List<DbItemTemplate> itemsToKeep = new List<DbItemTemplate>();
 
             if (itemList.Count != 0)
@@ -922,13 +961,13 @@ namespace DOL.GS.Scripts
             int min = Math.Max(1, player.Level - 6);
             int max = Math.Min(51, player.Level + 3);
 
-            IList<DbItemTemplate> itemList;
-            itemList = GameServer.Database.SelectObjects<DbItemTemplate>(DB.Column("Level").IsGreaterOrEqualTo(min).And(
-                                                                       DB.Column("Level").IsLessOrEqualTo(max).And(
-                                                                       DB.Column("Object_Type").IsEqualTo((int)weapType).And(
-                                                                       DB.Column("Item_Type").IsEqualTo(13).And(
-                                                                       DB.Column("Realm").IsEqualTo((int)player.Realm)).And(
-                                                                       DB.Column("IsPickable").IsEqualTo(1))))));
+            IList<DbItemTemplate> itemList = GetItemTemplates()
+                .Where(t => t.Level >= min && t.Level <= max
+                            && t.Object_Type == (int)weapType
+                            && t.Item_Type == 13
+                            && t.Realm == (int)player.Realm
+                            && t.IsPickable)
+                .ToList();
 
             if (itemList.Count != 0)
             {
@@ -961,14 +1000,13 @@ namespace DOL.GS.Scripts
             int min = Math.Max(1, player.Level - 6);
             int max = Math.Min(51, player.Level + 3);
 
-            IList<DbItemTemplate> itemList;
-
-            itemList = GameServer.Database.SelectObjects<DbItemTemplate>(DB.Column("Level").IsGreaterOrEqualTo(min).And(
-                                                                       DB.Column("Level").IsLessOrEqualTo(max).And(
-                                                                       DB.Column("Object_Type").IsEqualTo((int)eObjectType.Shield).And(
-                                                                       DB.Column("Realm").IsEqualTo((int)player.Realm)).And(
-                                                                       DB.Column("Type_Damage").IsEqualTo(shieldSize).And(
-                                                                       DB.Column("IsPickable").IsEqualTo(1))))));
+            IList<DbItemTemplate> itemList = GetItemTemplates()
+                .Where(t => t.Level >= min && t.Level <= max
+                            && t.Object_Type == (int)eObjectType.Shield
+                            && t.Realm == (int)player.Realm
+                            && t.Type_Damage == shieldSize
+                            && t.IsPickable)
+                .ToList();
 
             if (itemList.Count != 0)
             {
@@ -986,13 +1024,12 @@ namespace DOL.GS.Scripts
             int min = Math.Max(1, player.Level - 6);
             int max = Math.Min(51, player.Level + 3);
 
-            IList<DbItemTemplate> itemList;
-
-            itemList = GameServer.Database.SelectObjects<DbItemTemplate>(DB.Column("Level").IsGreaterOrEqualTo(min).And(
-                                                                       DB.Column("Level").IsLessOrEqualTo(max).And(
-                                                                       DB.Column("Object_Type").IsEqualTo((int)armorType).And(
-                                                                       DB.Column("Realm").IsEqualTo((int)player.Realm)).And(
-                                                                       DB.Column("IsPickable").IsEqualTo(1)))));
+            IList<DbItemTemplate> itemList = GetItemTemplates()
+                .Where(t => t.Level >= min && t.Level <= max
+                            && t.Object_Type == (int)armorType
+                            && t.Realm == (int)player.Realm
+                            && t.IsPickable)
+                .ToList();
 
             if (itemList.Count != 0)
             {
@@ -1027,13 +1064,13 @@ namespace DOL.GS.Scripts
             int min = Math.Max(1, player.Level - 6);
             int max = Math.Min(51, player.Level + 3);
 
-            IList<DbItemTemplate> itemList;
-            itemList = GameServer.Database.SelectObjects<DbItemTemplate>(DB.Column("Level").IsGreaterOrEqualTo(min).And(
-                                                                       DB.Column("Level").IsLessOrEqualTo(max).And(
-                                                                       DB.Column("Object_Type").IsEqualTo((int)weapType).And(
-                                                                       DB.Column("DPS_AF").IsEqualTo((int)instrumentType).And(
-                                                                       DB.Column("Realm").IsEqualTo((int)player.Realm)).And(
-                                                                       DB.Column("IsPickable").IsEqualTo(1))))));
+            IList<DbItemTemplate> itemList = GetItemTemplates()
+                .Where(t => t.Level >= min && t.Level <= max
+                            && t.Object_Type == (int)weapType
+                            && t.DPS_AF == (int)instrumentType
+                            && t.Realm == (int)player.Realm
+                            && t.IsPickable)
+                .ToList();
 
             if (itemList.Count != 0)
             {
@@ -1052,7 +1089,6 @@ namespace DOL.GS.Scripts
             int min = Math.Max(1, player.Level - 30);
             int max = Math.Min(51, player.Level + 3);
 
-            IList<DbItemTemplate> itemList;
             List<DbItemTemplate> cloakList = new List<DbItemTemplate>();
             List<DbItemTemplate> jewelryList = new List<DbItemTemplate>();
             List<DbItemTemplate> ringList = new List<DbItemTemplate>();
@@ -1060,11 +1096,12 @@ namespace DOL.GS.Scripts
             List<DbItemTemplate> neckList = new List<DbItemTemplate>();
             List<DbItemTemplate> waistList = new List<DbItemTemplate>();
 
-            itemList = GameServer.Database.SelectObjects<DbItemTemplate>(DB.Column("Level").IsGreaterOrEqualTo(min).And(
-                                                                       DB.Column("Level").IsLessOrEqualTo(max).And(
-                                                                       DB.Column("Object_Type").IsEqualTo((int)eObjectType.Magical).And(
-                                                                       DB.Column("Realm").IsEqualTo((int)player.Realm)).And(
-                                                                       DB.Column("IsPickable").IsEqualTo(1)))));
+            IList<DbItemTemplate> itemList = GetItemTemplates()
+                .Where(t => t.Level >= min && t.Level <= max
+                            && t.Object_Type == (int)eObjectType.Magical
+                            && t.Realm == (int)player.Realm
+                            && t.IsPickable)
+                .ToList();
             if (itemList.Count != 0)
             {
                 foreach (DbItemTemplate template in itemList)

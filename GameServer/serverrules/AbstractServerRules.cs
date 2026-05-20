@@ -1156,9 +1156,8 @@ namespace DOL.GS.ServerRules
                     // MimicNPC: contribute damage to its group's pooled damage so real players
                     // in the same group get a meaningful XP share. Mimics aren't player-like
                     // loot owners — skip playerCountAndDamage / mostDamagingPlayer for them.
-                    // Count is not bumped here: it accrues from the real players' propagated
-                    // 0-damage entries (added in GameLiving.TakeDamage), which keeps the XP
-                    // split based on real-player count rather than dividing among mimics.
+                    // Count IS bumped here so mimics count as group members: the base XP is
+                    // divided among the full group size (real players + mimics).
                     if (pair.Key is DOL.GS.Scripts.MimicNPC mimic)
                     {
                         Group mimicGroup = mimic.Group;
@@ -1206,6 +1205,7 @@ namespace DOL.GS.ServerRules
 
                     if (groupCountAndDamage.TryGetValue(mimicGroup, out EntityCountTotalDamagePair value))
                     {
+                        value.Count++; // Mimic counts as a group member for XP division.
                         value.Damage += damage;
                         totalDamage = value.Damage;
                     }
@@ -1229,7 +1229,7 @@ namespace DOL.GS.ServerRules
                             return;
 
                         totalDamage = damage;
-                        groupCountAndDamage[mimicGroup] = new(0, totalDamage, highestLevelPlayer);
+                        groupCountAndDamage[mimicGroup] = new(1, totalDamage, highestLevelPlayer);
                     }
 
                     if (mostDamagingGroup.Damage == 0 || totalDamage > mostDamagingGroup.Damage)

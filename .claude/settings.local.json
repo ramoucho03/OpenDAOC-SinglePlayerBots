@@ -37,7 +37,12 @@
       "Bash(git log *)",
       "Bash(powershell -Command \"Select-String -Path 'c:\\\\Users\\\\Olivier\\\\botdaoc\\\\OpenDAOC-SinglePlayerBots\\\\GameServer\\\\packets\\\\Server\\\\PacketLib168.cs' -Pattern 'SendUpdateWeaponAndArmorStats' -Context 50 | Select-Object -First 100\")",
       "Bash(cd \"/c/Users/Olivier/botdaoc/OpenDAOC-SinglePlayerBots/\" && find . -type f -name \"*.cs\" | grep -E \"\\(GameLoop|ECS|GameLiving|GamePlayer|SpellHandler|StandardMob\\)\" | head -30)",
-      "Read(//c/c/Users/Olivier/botdaoc/**)"
+      "Read(//c/c/Users/Olivier/botdaoc/**)",
+      "Bash(git --no-pager grep -n \"Stealth\\(true\\)\\\\|Stealth\\(false\\)\\\\|\\\\.Stealth\\(\" -- GameServer/custom/MimicNPC/)",
+      "Bash(git --no-pager log --oneline -S \"5000\" -- GameServer/custom/MimicNPC/ai/MimicState.cs)",
+      "Bash(git --no-pager log -p --all -L 282,282:GameServer/custom/MimicNPC/ai/MimicState.cs)",
+      "Bash(git --no-pager show c94d753e4 --stat)",
+      "Bash(git --no-pager show c94d753e4 -- GameServer/propertycalc/MaxSpeedCalculator.cs)"
     ]
   }
 }

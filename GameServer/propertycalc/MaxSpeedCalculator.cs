@@ -157,10 +157,17 @@ namespace DOL.GS.PropertyCalc
                                        ?? mimic.GetOwnerPlayerForSprintMirror();
                     }
 
+                    // Gate on SPEED_MIRROR_RANGE (6000u), NOT SPRINT_MIRROR_RANGE
+                    // (2500u). The narrow 2500u gate created a dead zone: a bot
+                    // trailing a faster leader lost the speed mirror at 2500u,
+                    // could not close the gap, drifted to the 3500u recall
+                    // threshold and got teleport-recalled — over and over,
+                    // producing the visible appear/disappear/reset flicker. The
+                    // mirror must stay live across the whole followable range.
                     if (leaderPlayer != null
                         && leaderPlayer.IsAlive
                         && leaderPlayer.CurrentRegion == mimic.CurrentRegion
-                        && mimic.IsWithinRadius(leaderPlayer, Scripts.MimicNPC.SPRINT_MIRROR_RANGE))
+                        && mimic.IsWithinRadius(leaderPlayer, Scripts.MimicNPC.SPEED_MIRROR_RANGE))
                     {
                         // Inherit the leader's MaxSpeed ratio (already contains
                         // their chant + sprint + mount). Take the max with the
@@ -170,6 +177,16 @@ namespace DOL.GS.PropertyCalc
                         double leaderRatio = leaderPlayer.MaxSpeed / (double) Math.Max((short) 1, leaderPlayer.MaxSpeedBase);
                         if (leaderRatio > speedIncrease)
                             speedIncrease = leaderRatio;
+
+                        // Catch-up boost: matching the leader's speed exactly
+                        // only holds a constant gap — it never closes one. When
+                        // the bot has fallen meaningfully behind, give it a
+                        // bounded sprint-style bonus so it physically reels the
+                        // leader back in (the pet branch does the same with a
+                        // flat SPRINT multiplier). Inside formation range the
+                        // bonus is off so bots don't overshoot and jitter.
+                        if (!mimic.IsWithinRadius(leaderPlayer, 600))
+                            speedIncrease *= 1.25;
 
                         // Per-bot Sprint multiplier is intentionally NOT applied
                         // when we mirror the leader: if the leader is sprinting,
