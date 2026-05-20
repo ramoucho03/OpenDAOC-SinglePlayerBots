@@ -671,9 +671,16 @@ namespace DOL.GS
                         }
                         catch (Exception e)
                         {
+                            // Skip this single mob and keep loading the rest.
+                            // The previous `throw;` re-raised the failure out of
+                            // the Parallel.ForEach, which aborted WorldMgr init
+                            // and made the server refuse to boot — one bad DB
+                            // row (e.g. a keep guard at coordinates outside
+                            // every zone) took the entire world down. The
+                            // failure is still logged so the data stays visible.
                             if (log.IsErrorEnabled)
-                                log.Error("Failed: " + myMob.GetType().FullName + ":LoadFromDatabase(" + mob.GetType().FullName + ");", e);
-                            throw;
+                                log.Error("Failed: " + myMob.GetType().FullName + ":LoadFromDatabase(" + mob.GetType().FullName + "); mob skipped.", e);
+                            return;
                         }
 
                         myMob.AddToWorld();

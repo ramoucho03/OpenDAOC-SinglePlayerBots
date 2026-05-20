@@ -428,7 +428,10 @@ namespace DOL.GS.Keeps
         {
             if (Component == null)
             {
-                Name = LanguageMgr.GetTranslation(Properties.SERV_LANGUAGE, "SetGuardName.Commander", CurrentZone.Description);
+                // CurrentZone is null for a lord whose DB coordinates fall
+                // outside every zone (bad spawn data) — guard the deref so the
+                // name lookup can't NRE and abort the region load.
+                Name = LanguageMgr.GetTranslation(Properties.SERV_LANGUAGE, "SetGuardName.Commander", CurrentZone?.Description ?? string.Empty);
                 return;
             }
             else if (IsTowerGuard)
