@@ -1617,7 +1617,9 @@ namespace DOL.AI.Brain
         /// </summary>
         private int ComputeGroupAggroRange()
         {
-            bool dungeon = _brain.Body.CurrentRegion.IsDungeon;
+            // CurrentRegion can be transiently null during a world transfer;
+            // fall back to the outdoor profile rather than throwing.
+            bool dungeon = _brain.Body.CurrentRegion?.IsDungeon == true;
 
             int range = dungeon ? 250 : 550;
 
@@ -1688,7 +1690,8 @@ namespace DOL.AI.Brain
         /// </summary>
         private void PickCampSlotOffset()
         {
-            bool dungeon = _brain.Body.CurrentRegion.IsDungeon;
+            // CurrentRegion can be transiently null during a world transfer.
+            bool dungeon = _brain.Body.CurrentRegion?.IsDungeon == true;
             int spread = dungeon ? 50 : 100;
 
             // Default scatter for generic DPS.

@@ -505,6 +505,10 @@ namespace DOL.GS.Scripts
                     case "false":
                     toggle = false;
                     break;
+
+                    default:
+                    client.Player.Out.SendMessage("Argument invalide. Utilisez : /mpvp (true/false).", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    return;
                 }
 
                 if (mimic != null)
@@ -557,6 +561,10 @@ namespace DOL.GS.Scripts
                     case "false":
                     toggle = false;
                     break;
+
+                    default:
+                    client.Player.Out.SendMessage("Argument invalide. Utilisez : /mpc (true/false) [group].", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    return;
                 }
 
                 if (mimic != null)
@@ -1081,6 +1089,10 @@ namespace DOL.GS.Scripts
                                 case "yellow": player.Group.MimicGroup.ConLevelFilter = 0; break;
                                 case "blue": player.Group.MimicGroup.ConLevelFilter = -1; break;
                                 case "green": player.Group.MimicGroup.ConLevelFilter = -2; break;
+
+                                default:
+                                player.Out.SendMessage("Couleur invalide. Utilisez : purple, red, orange, yellow, blue, green.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                                break;
                             }
                         }
                     }

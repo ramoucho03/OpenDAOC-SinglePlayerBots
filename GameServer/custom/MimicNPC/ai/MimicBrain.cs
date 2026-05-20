@@ -1214,6 +1214,11 @@ namespace DOL.AI.Brain
         // chasing us). Used to gate chain pulls against the group's budget.
         private int _chainPullCount;
 
+        // Throttles the cross-region pet recall in EnsurePetCombatReady so a
+        // MoveTo that doesn't take effect immediately can't be re-issued every
+        // tick (which would teleport-spam the pet).
+        private long _nextPetRecallTick;
+
         /// <summary>
         /// Number of additional shots fired in the current chain-pull cycle
         /// (0 means we are NOT chain-pulling; >0 means the puller has
@@ -1260,6 +1265,10 @@ namespace DOL.AI.Brain
                     IsPulling = false;
                     LastTargetObject = null;
                     _committedPullTarget = null;
+                    // The pull sequence was aborted, so clear the chain counter
+                    // too — otherwise TryChainPull() can read a stale positive
+                    // count on the next tick and fire an extra arrow over budget.
+                    _chainPullCount = 0;
                     Body.StopAttack();
                     ClearAggroList();
                     MimicGroup mgDead = Body.Group?.MimicGroup;
@@ -3982,19 +3991,18 @@ namespace DOL.AI.Brain
 
         private Point3D GetFleePoint(int fleeDistance)
         {
-            ushort heading;
+            int heading;
             if (Body.IsObjectInFront(Body.TargetObject, 120))
-                heading = (ushort)(Body.Heading - 2048);
+                heading = Body.Heading - 2048;
             else
                 heading = Body.Heading;
 
-            if (heading < 0)
-                heading += 4096;
+            // Normalize to the valid 0-4095 heading range. Body.Heading - 2048
+            // can be negative; the previous ushort arithmetic wrapped it to a
+            // huge value and the single "> 4096" subtraction left it invalid.
+            heading = (heading % 4096 + 4096) % 4096;
 
-            if (heading > 4096)
-                heading -= 4096;
-
-            Point2D point = Body.GetPointFromHeading(heading, fleeDistance);
+            Point2D point = Body.GetPointFromHeading((ushort)heading, fleeDistance);
 
             if (Body.CurrentRegion.GetZone(point.X, point.Y) == null)
             {
@@ -4004,12 +4012,9 @@ namespace DOL.AI.Brain
 
                 for (int i = 0; i < 8; i++)
                 {
-                    heading += 512;
+                    heading = (heading + 512) % 4096;
 
-                    if (heading > 4096)
-                        heading -= 4096;
-
-                    validPoint = Body.GetPointFromHeading(heading, fleeDistance);
+                    validPoint = Body.GetPointFromHeading((ushort)heading, fleeDistance);
 
                     if (Body.CurrentRegion.GetZone(validPoint.X, validPoint.Y) != null)
                     {
@@ -4197,9 +4202,11 @@ namespace DOL.AI.Brain
             // region just wastes ticks and the pet rots there until despawn.
             // Best effort: snap the pet onto us. The Owner.AddControlledBrain
             // wiring is already in place — we just need to move the body.
-            if (petBody.CurrentRegion != Body.CurrentRegion)
+            if (petBody.CurrentRegion != Body.CurrentRegion
+                && GameLoop.GameLoopTime >= _nextPetRecallTick)
             {
                 petBody.MoveTo(Body.CurrentRegion.ID, Body.X, Body.Y, Body.Z, Body.Heading);
+                _nextPetRecallTick = GameLoop.GameLoopTime + 2000;
             }
 
             // Force Aggressive: the engine default for new pets is Defensive
@@ -6312,6 +6319,8 @@ namespace DOL.AI.Brain
                 break;
 
                 case eSpellType.Bladeturn when spell.IsPulsing:
+                if (!LivingHasEffect(Body, spell))
+                    target = Body;
                 break;
 
                 // Long-duration damage shield self-buff (Valewalker Arboreal
@@ -6326,6 +6335,8 @@ namespace DOL.AI.Brain
                 break;
 
                 case eSpellType.MesmerizeDurationBuff when spell.IsPulsing:
+                if (!LivingHasEffect(Body, spell))
+                    target = Body;
                 break;
 
                 #endregion Pulse
@@ -6821,7 +6832,10 @@ namespace DOL.AI.Brain
 
                 case eSpellType.Taunt:
 
-                if (Body.Group?.MimicGroup.MainTank == Body)
+                // IsActingAsTank covers the formal MainTank, a solo tank-class
+                // bot, and the "best tank in a player-led group" case, and it
+                // null-guards MimicGroup internally.
+                if (IsActingAsTank)
                     castSpell = true;
 
                 break;

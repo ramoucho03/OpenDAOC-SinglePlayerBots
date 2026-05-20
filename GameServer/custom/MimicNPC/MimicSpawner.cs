@@ -109,7 +109,7 @@ namespace DOL.GS.Scripts
             if (_isRunning)
                 return 1000;
 
-            if (SpawnAndStop && _spawnCount > _spawnCountMax)
+            if (SpawnAndStop && _spawnCount >= _spawnCountMax)
             {
                 _spawnCount = 0;
 

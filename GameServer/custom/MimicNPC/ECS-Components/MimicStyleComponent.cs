@@ -252,7 +252,10 @@ namespace DOL.GS
             {
                 foreach (Style s in mimic.StylesTaunt)
                 {
-                    if (s.WeaponTypeRequirement == weapon.Object_Type)
+                    // WeaponTypeRequirement 0 means "any weapon" — those styles
+                    // were silently skipped by the strict equality check.
+                    // CanUseStyle does the authoritative weapon validation.
+                    if (s.WeaponTypeRequirement == 0 || s.WeaponTypeRequirement == weapon.Object_Type)
                         if (StyleProcessor.CanUseStyle(lastAttackData, mimic, s, weapon))
                             return s;
                 }

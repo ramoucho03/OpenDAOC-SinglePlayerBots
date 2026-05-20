@@ -157,7 +157,7 @@ namespace DOL.GS.Scripts
         /// </summary>
         public void GainRealmPoints(long amount, bool modify, bool sendMessage)
         {
-            GainRealmPoints(amount, modify, true, true);
+            GainRealmPoints(amount, modify, sendMessage, true);
         }
 
         /// <summary>
@@ -305,7 +305,7 @@ namespace DOL.GS.Scripts
         /// <param name="sendMessage"></param>
         public void GainBountyPoints(long amount, bool modify, bool sendMessage)
         {
-            GainBountyPoints(amount, modify, true, true);
+            GainBountyPoints(amount, modify, sendMessage, true);
         }
 
         /// <summary>

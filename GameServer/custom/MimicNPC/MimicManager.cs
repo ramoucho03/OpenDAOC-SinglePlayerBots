@@ -1070,10 +1070,7 @@ namespace DOL.GS.Scripts
                 foreach (DbItemTemplate template in itemList)
                 {
                     if (template.Item_Type == Slot.CLOAK)
-                    {
-                        template.Color = Util.Random((Enum.GetValues(typeof(eColor)).Length));
                         cloakList.Add(template);
-                    }
                     else if (template.Item_Type == Slot.JEWELRY)
                         jewelryList.Add(template);
                     else if (template.Item_Type == Slot.LEFTRING || template.Item_Type == Slot.RIGHTRING)
@@ -1099,7 +1096,10 @@ namespace DOL.GS.Scripts
                     if (list.Count != 0)
                     {
                         DbItemTemplate itemTemplate = list[Util.Random(list.Count - 1)];
-                        AddItem(player, itemTemplate);
+                        int color = list == cloakList
+                            ? Util.Random(Enum.GetValues(typeof(eColor)).Length - 1)
+                            : -1;
+                        AddItem(player, itemTemplate, color: color);
                     }
                 }
 
@@ -1123,8 +1123,7 @@ namespace DOL.GS.Scripts
                 if (player.Inventory.GetItem(eInventorySlot.Cloak) == null)
                 {
                     DbItemTemplate cloak = GameServer.Database.FindObjectByKey<DbItemTemplate>("cloak");
-                    cloak.Color = Util.Random((Enum.GetValues(typeof(eColor)).Length));
-                    AddItem(player, cloak);
+                    AddItem(player, cloak, color: Util.Random(Enum.GetValues(typeof(eColor)).Length - 1));
                 }
             }
             else
@@ -1156,15 +1155,24 @@ namespace DOL.GS.Scripts
                 || id == (int)eCharacterClass.Savage;
         }
 
-        private static void AddItem(IGamePlayer player, DbItemTemplate itemTemplate, eHand hand = eHand.None)
+        private static void AddItem(IGamePlayer player, DbItemTemplate itemTemplate, eHand hand = eHand.None, int color = -1)
         {
             if (itemTemplate == null)
+            {
                 log.Info("itemTemplate in AddItem is null");
+                return;
+            }
 
             DbInventoryItem item = GameInventoryItem.Create(itemTemplate);
 
             if (item != null)
             {
+                // Apply a randomized colour to the created item — never to the
+                // shared DB template, which is cached and would tint the item
+                // for every other consumer.
+                if (color >= 0)
+                    item.Color = color;
+
                 if (item.Item_Type == Slot.LEFTRING || item.Item_Type == Slot.RIGHTRING)
                 {
                     player.Inventory.AddItem(player.Inventory.FindFirstEmptySlot(eInventorySlot.LeftRing, eInventorySlot.RightRing), item);
