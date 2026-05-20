@@ -5397,17 +5397,23 @@ namespace DOL.AI.Brain
                 if (Body.CanCastMiscSpells)
                     casted = CheckDefensiveSpells(Body.MiscSpells);
 
-                //if (Body.CanCastMiscSpells)
-                //{
-                //    foreach (Spell spell in Body.MiscSpells)
-                //    {
-                //        if (CheckDefensiveSpells(spell))
-                //        {
-                //            casted = true;
-                //            break;
-                //        }
-                //    }
-                //}
+                // Instant misc buffs (Savage self-buffs, Paladin/Skald resist
+                // chants, ablatives, damage-adds) were only ever applied in
+                // the offensive cycle, so a bot could never pre-buff before a
+                // pull. They're instant and CheckInstantDefensiveSpells gates
+                // every cast on LivingHasEffect + cooldown, so maintaining
+                // them out of combat too is safe.
+                if (!casted && Body.CanCastInstantMiscSpells)
+                {
+                    foreach (Spell spell in Body.InstantMiscSpells)
+                    {
+                        if (CheckInstantDefensiveSpells(spell))
+                        {
+                            casted = true;
+                            break;
+                        }
+                    }
+                }
             }
             else if (!casted && type == eCheckSpellType.Offensive)
             {
