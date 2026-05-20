@@ -184,12 +184,20 @@ namespace DOL.GS
 		/// </summary>
 		public virtual bool IsUnderwater => CurrentZone?.IsUnderwater(X, Y, Z) == true;
 
+		private static readonly List<IArea> _emptyAreas = new();
+
 		/// <summary>
 		/// Holds all areas this object is currently within
 		/// </summary>
 		public virtual List<IArea> CurrentAreas
 		{
-			get => CurrentZone.GetAreasOfSpot(this);
+			// CurrentZone is null when the object's coordinates fall outside
+			// every zone of its region — bad DB spawn data, the same rows that
+			// produce the "Couldn't find a zone for ..." load warnings.
+			// Returning an empty list instead of dereferencing null keeps
+			// callers such as GameKeepGuard.LoadFromDatabase from throwing a
+			// NullReferenceException and aborting the entire region load.
+			get => CurrentZone?.GetAreasOfSpot(this) ?? _emptyAreas;
 			set { }
 		}
 

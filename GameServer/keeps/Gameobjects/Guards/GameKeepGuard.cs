@@ -483,8 +483,22 @@ namespace DOL.GS.Keeps
 
 			RefreshTemplate();
 
-			// Guards are immune to confusion effects.
-			AddAbility(SkillBase.GetAbility(GS.Abilities.ConfusionImmunity));
+		}
+
+		/// <summary>
+		/// Guards are immune to confusion effects. Done with a HasAbility
+		/// override — the same pattern GameEpicNPC / GameEpicBoss use — instead
+		/// of AddAbility(SkillBase.GetAbility(...)): "ConfusionImmunity" is a
+		/// code-only ability with no row in the Ability DB table, so the
+		/// GetAbility lookup logged "Ability 'ConfusionImmunity' unknown" once
+		/// for every keep guard at region load (hundreds of lines of noise).
+		/// </summary>
+		public override bool HasAbility(string keyName)
+		{
+			if (IsAlive && keyName == GS.Abilities.ConfusionImmunity)
+				return true;
+
+			return base.HasAbility(keyName);
 		}
 
 		public void DeleteObject()
