@@ -380,6 +380,52 @@ namespace DOL.AI.Brain
                 EnsurePetCombatReady(null); // still refresh follow/aggressive flags
         }
 
+        /// <summary>
+        /// Mid-combat pet recovery. Permanent-pet summons live in MiscSpells
+        /// and are normally cast only through the Defensive path, which the
+        /// AGGRO combat state never runs. Without this, a pet-caster whose pet
+        /// dies mid-fight stands idle until combat ends — catastrophic for a
+        /// Necromancer, which has no damage of its own. Re-summons the pet
+        /// from inside the combat cycle. Returns true when the bot is a
+        /// pet-caster with no live pet (turn consumed by the summon cast, or
+        /// held while a cast is already in flight) so the caller stops.
+        /// </summary>
+        private bool TryResummonPet()
+        {
+            if (MimicBody?.CombatProfile?.HasRole(eMimicCombatRole.PetCaster) != true)
+                return false;
+
+            // Pet still alive — nothing to do.
+            if (Body.ControlledBrain?.Body is GameNPC pet && pet.IsAlive)
+                return false;
+
+            // A cast is already in flight — hold the turn so the offensive
+            // cycle doesn't interrupt an in-progress summon.
+            if (Body.IsCasting)
+                return true;
+
+            if (MimicBody.MiscSpells == null)
+                return false;
+
+            foreach (Spell spell in MimicBody.MiscSpells)
+            {
+                if (!IsPermanentPetSummon(spell) || !IsSummonSpellAllowedForClass(spell))
+                    continue;
+
+                // CanCastDefensiveSpell covers interrupt state and the summon
+                // cooldown, so a pet on its re-summon timer just falls through
+                // to the normal offensive cycle instead of being spammed.
+                if (!CanCastDefensiveSpell(spell) || Body.Mana < MimicBody.PowerCost(spell))
+                    continue;
+
+                Body.TargetObject = Body;
+                Body.CastSpell(spell, MimicBody.GetSpellLineForSpell(spell));
+                return true;
+            }
+
+            return false;
+        }
+
         public virtual void OnLeaderAggro()
         { }
         public virtual void OnEnterAggro()
@@ -3477,6 +3523,11 @@ namespace DOL.AI.Brain
                 if (Body.IsAttacking)
                     Body.StopAttack();
 
+                // A shade Necromancer has no damage of its own — if the pet
+                // died, re-summon before anything else.
+                if (TryResummonPet())
+                    return;
+
                 if (!CheckMainTankTarget())
                     Body.TargetObject = CalculateNextAttackTarget();
 
@@ -3529,6 +3580,12 @@ namespace DOL.AI.Brain
                     return;
                 }
             }
+
+            // Pet died mid-fight — re-summon before engaging. The Defensive
+            // cast path that normally summons pets never runs in the AGGRO
+            // combat state, so without this the bot fights petless.
+            if (TryResummonPet())
+                return;
 
             // Pet engagement: command the pet to attack our current target.
             // Pets stay on Defensive by default (DAoC convention) which means
@@ -5307,7 +5364,14 @@ namespace DOL.AI.Brain
                             if (spellsToCast.Count == 0)
                                 return false;
 
-                            spell = spellsToCast[Util.Random(spellsToCast.Count - 1)];
+                            // Pick the strongest single-target CC — longest
+                            // duration, then highest level — instead of a
+                            // random one, so the bot locks the mob down for
+                            // as long as possible.
+                            spell = spellsToCast
+                                .OrderByDescending(static s => s.Duration)
+                                .ThenByDescending(static s => s.Level)
+                                .First();
                         }
 
                         casted = Body.CastSpell(spell, MimicBody.GetSpellLineForSpell(spell));
@@ -6344,6 +6408,10 @@ namespace DOL.AI.Brain
                 #region Buffs
 
                 case eSpellType.SpeedEnhancement when spell.IsInstantCast:
+                // Instant speed (Skald) is routed to MiscSpells, so this is
+                // the only path that casts it. Empty break left it never cast.
+                if (!LivingHasEffect(Body, spell))
+                    target = Body;
                 break;
 
                 case eSpellType.SpeedEnhancement when spell.IsPulsing:
