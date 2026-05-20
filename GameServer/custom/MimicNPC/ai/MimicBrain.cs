@@ -439,6 +439,12 @@ namespace DOL.AI.Brain
             if (MimicBody.MiscSpells == null)
                 return false;
 
+            // Pick the HIGHEST-level eligible summon, not the first match.
+            // A Cabalist's Spirit Magic line carries a summon at nearly every
+            // spell level (4..50) and MiscSpells preserves load order, so
+            // casting the first match handed a level-50 Cabalist a bottom-tier
+            // spirit that died on the first hit. Walk them all, keep the best.
+            Spell bestSummon = null;
             foreach (Spell spell in MimicBody.MiscSpells)
             {
                 if (!IsPermanentPetSummon(spell) || !IsSummonSpellAllowedForClass(spell))
@@ -450,12 +456,16 @@ namespace DOL.AI.Brain
                 if (!CanCastDefensiveSpell(spell) || Body.Mana < MimicBody.PowerCost(spell))
                     continue;
 
-                Body.TargetObject = Body;
-                Body.CastSpell(spell, MimicBody.GetSpellLineForSpell(spell));
-                return true;
+                if (bestSummon == null || spell.Level > bestSummon.Level)
+                    bestSummon = spell;
             }
 
-            return false;
+            if (bestSummon == null)
+                return false;
+
+            Body.TargetObject = Body;
+            Body.CastSpell(bestSummon, MimicBody.GetSpellLineForSpell(bestSummon));
+            return true;
         }
 
         public virtual void OnLeaderAggro()
@@ -5089,6 +5099,12 @@ namespace DOL.AI.Brain
         // that the duplicate doesn't waste mana.
         private const int CC_RECAST_LEAD_MS = 3000;
 
+        // Lead time for re-applying a DoT / debuff before it fully expires.
+        // A non-instant DoT/debuff cast (~3 s) started at this mark lands the
+        // refresh right as the old effect drops, holding ~100% uptime — how a
+        // real caster maintains DoTs instead of letting them lapse every cycle.
+        private const int DOT_REFRESH_LEAD_MS = 3000;
+
         /// <summary>
         /// Variant of <see cref="LivingHasEffect"/> that only returns true when
         /// the target carries the relevant effect AND it still has more than
@@ -5653,8 +5669,17 @@ namespace DOL.AI.Brain
                         // we have no pet — if the spell handler rejects the
                         // target (wrong body type, too high level, friendly,
                         // etc.) we just continue to the regular nuke path.
+                        //
+                        // But NEVER charm the mob the group is focus-killing:
+                        // that yanks the group's kill target out of the fight
+                        // and flips it friendly. Charm is for grabbing a
+                        // SEPARATE pet (a roaming mob, an add) — the group's
+                        // CurrentTarget is off-limits, exactly like the CC
+                        // picker refuses to mez the focus target. Solo bots
+                        // (no group / no CurrentTarget) charm freely.
                         if (liveTarget != null
                             && Body.ControlledBrain == null
+                            && liveTarget != Body.Group?.MimicGroup?.CurrentTarget
                             && TryCharmBestTarget(liveTarget))
                             return true;
 
@@ -5695,9 +5720,15 @@ namespace DOL.AI.Brain
                                     continue;
                             }
 
-                            // Skip debuffs / DoTs already applied on the target. We
-                            // would just refresh-stomp our own effect for no gain.
-                            if (liveTarget != null && spell.Duration > 0 && LivingHasEffect(liveTarget, spell))
+                            // Skip debuffs / DoTs still comfortably active — re-
+                            // stomping our own effect wastes a cast. But DO re-
+                            // apply once it is within DOT_REFRESH_LEAD_MS of
+                            // expiring: starting the recast ~3 s out lands it as
+                            // the old effect drops, so DoTs/debuffs hold full
+                            // uptime instead of lapsing for a few seconds every
+                            // cycle (the old check waited for a complete expiry).
+                            if (liveTarget != null && spell.Duration > 0
+                                && LivingHasFreshEffect(liveTarget, spell, DOT_REFRESH_LEAD_MS))
                                 continue;
 
                             // Don't try a spell we cannot afford. Saves mana for

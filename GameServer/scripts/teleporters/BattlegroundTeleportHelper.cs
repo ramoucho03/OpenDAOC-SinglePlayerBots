@@ -148,6 +148,18 @@ namespace DOL.GS.Scripts
                 return null;
             }
 
+            // Validate the resolved spawn before handing it to the teleport
+            // pipeline. If (x, y) falls outside every zone of the BG region,
+            // the client reports zoneId 65535 on its first position update and
+            // the server kicks the player to char-select — which also deletes
+            // all their bots via the Quit event. The hardcoded per-realm anchors
+            // don't fit every BG region's zone layout, so a missing portal keep
+            // can leave us pointing into the void. Refuse the destination
+            // instead of teleporting the player into an unknown zone.
+            Region region = WorldMgr.GetRegion(regionId);
+            if (region == null || region.GetZone(x, y) == null)
+                return null;
+
             return new DbTeleport
             {
                 TeleportID = GetBattlegroundLabel(bg),

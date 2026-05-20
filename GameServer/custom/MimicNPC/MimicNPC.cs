@@ -2387,7 +2387,17 @@ namespace DOL.GS.Scripts
                                 {
                                     if (proc.Spell.SpellType == eSpellType.StyleTaunt)
                                     {
-                                        if (proc.Spell.ID == 20000)
+                                        // Taunt vs detaunt is decided by the SIGN of the
+                                        // proc spell's Value — exactly how the engine's
+                                        // own StyleTaunt handler reads it (Value > 0 adds
+                                        // threat, < 0 sheds it). The previous check keyed
+                                        // off hardcoded spell IDs 20000/20001 which do not
+                                        // match this server's spell data, so every taunt
+                                        // style fell through to StylesAnytime — where
+                                        // GetBestStyle (damage-ranked) never picks the
+                                        // low-damage taunt. Net result: the tank never
+                                        // taunted. Sign-based detection is ID-independent.
+                                        if (proc.Spell.Value > 0)
                                         {
                                             if (StylesTaunt == null)
                                                 StylesTaunt = new List<Style>(1);
@@ -2395,7 +2405,7 @@ namespace DOL.GS.Scripts
                                             StylesTaunt.Add(s);
                                             added = true;
                                         }
-                                        else if (proc.Spell.ID == 20001)
+                                        else if (proc.Spell.Value < 0)
                                         {
                                             if (StylesDetaunt == null)
                                                 StylesDetaunt = new List<Style>(1);

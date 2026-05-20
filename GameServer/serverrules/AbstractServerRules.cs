@@ -1149,15 +1149,17 @@ namespace DOL.GS.ServerRules
                 {
                     totalDamage += pair.Value; // Should be done before excluding players.
 
-                    // If the killed NPC is gray to any of the entities, or if a guard is involved, don't give any XP, drop any loot, change faction relations, etc.
-                    if (pair.Key.IsObjectGreyCon(killedNpc) || pair.Key is GameGuard)
-                        return false;
-
                     // MimicNPC: contribute damage to its group's pooled damage so real players
                     // in the same group get a meaningful XP share. Mimics aren't player-like
                     // loot owners — skip playerCountAndDamage / mostDamagingPlayer for them.
                     // Count IS bumped here so mimics count as group members: the base XP is
                     // divided among the full group size (real players + mimics).
+                    //
+                    // This MUST run BEFORE the grey-con gate below. A mimic bot is often a
+                    // higher level than the content the player is farming, so the mob cons
+                    // grey to the bot. If mimics went through IsObjectGreyCon, a single
+                    // high-level bot in the group would deny XP, loot, and faction change
+                    // for the entire kill. Grey-con must only consider the real player(s).
                     if (pair.Key is DOL.GS.Scripts.MimicNPC mimic)
                     {
                         Group mimicGroup = mimic.Group;
@@ -1171,6 +1173,10 @@ namespace DOL.GS.ServerRules
 
                         continue;
                     }
+
+                    // If the killed NPC is grey to any of the entities, or if a guard is involved, don't give any XP, drop any loot, change faction relations, etc.
+                    if (pair.Key.IsObjectGreyCon(killedNpc) || pair.Key is GameGuard)
+                        return false;
 
                     // We only care about players in range.
                     if (pair.Key is not GamePlayer player || player.ObjectState is not GameObject.eObjectState.Active || !player.IsWithinRadius(killedNpc, WorldMgr.MAX_EXPFORKILL_DISTANCE))

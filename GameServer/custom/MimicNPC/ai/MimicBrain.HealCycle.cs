@@ -759,6 +759,23 @@ namespace DOL.AI.Brain
 
             GameObject oldTarget = Body.TargetObject;
             (Spell spell, GameLiving target) spellToCast = spellsToCast[0];
+
+            // Pet-caster priority: when one or more permanent-pet summons are
+            // queued, cast the BEST (highest-level) one. A class that carries a
+            // summon at many spell levels (Cabalist Spirit Magic spans 4..50)
+            // would otherwise summon whichever tier sorted first in MiscSpells
+            // — a level-50 Cabalist ending up with a bottom-tier spirit. The
+            // summon also outranks any other misc buff while the bot is petless.
+            for (int i = 0; i < spellsToCast.Count; i++)
+            {
+                Spell candidate = spellsToCast[i].Item1;
+                if (!IsPermanentPetSummon(candidate))
+                    continue;
+                if (!IsPermanentPetSummon(spellToCast.spell)
+                    || candidate.Level > spellToCast.spell.Level)
+                    spellToCast = spellsToCast[i];
+            }
+
             Body.TargetObject = spellToCast.target;
 
             // Instrument spells (Minstrel/Bard songs) require Distance slot —

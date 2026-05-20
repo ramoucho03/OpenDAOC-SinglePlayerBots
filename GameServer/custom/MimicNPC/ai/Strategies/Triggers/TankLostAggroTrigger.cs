@@ -1,11 +1,15 @@
 namespace DOL.GS.Scripts.AI.Strategies.Triggers
 {
     /// <summary>
-    /// Fires when the bot is the group's main tank, has a current target,
+    /// Fires when the bot is acting as the group's tank, has a current target,
     /// is in combat, and that target is currently attacking another group
     /// member instead of the tank. Used by the immersion / coordination
     /// layer so the tank publicly calls out lost aggro and the group can
     /// react (caster pauses nukes, healer prepares an off-target heal).
+    ///
+    /// Gated on IsActingAsTank (not IsMainTank): in a player-led group the
+    /// de-facto tank mimic is rarely the formally-assigned MainTank, and the
+    /// lost-aggro recovery cycle must still run for it.
     ///
     /// Reactive callout only — the tank's own taunt rotation lives in
     /// <see cref="DOL.AI.Brain.MimicBrain.CheckSpells"/> with
@@ -17,7 +21,7 @@ namespace DOL.GS.Scripts.AI.Strategies.Triggers
 
         public bool Check(BotContext ctx)
         {
-            if (!ctx.Brain.IsMainTank || !ctx.Bot.InCombat)
+            if (!ctx.Brain.IsActingAsTank || !ctx.Bot.InCombat)
                 return false;
 
             if (ctx.Bot.TargetObject is not GameLiving target || !target.IsAlive)

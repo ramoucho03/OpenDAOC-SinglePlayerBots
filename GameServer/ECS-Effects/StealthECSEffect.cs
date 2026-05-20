@@ -17,6 +17,14 @@ namespace DOL.GS
 
         public override void OnStartEffect()
         {
+            // OwnerPlayer is null when the effect owner is an NPC (e.g. a
+            // MimicNPC stealth-class bot). Every call below is GamePlayer-only
+            // (Client, Out, packet sends), so without this guard a bot entering
+            // stealth throws an NRE here. NPC stealth is driven by GameNPC
+            // flags, not this player effect.
+            if (OwnerPlayer == null)
+                return;
+
             OwnerPlayer.StartStealthUncoverAction();
 
             if (OwnerPlayer.ObjectState is GameObject.eObjectState.Active)
@@ -44,6 +52,9 @@ namespace DOL.GS
 
         public override void OnStopEffect()
         {
+            if (OwnerPlayer == null)
+                return;
+
             OwnerPlayer.StopStealthUncoverAction();
 
             if (OwnerPlayer.ObjectState == GameObject.eObjectState.Active)
