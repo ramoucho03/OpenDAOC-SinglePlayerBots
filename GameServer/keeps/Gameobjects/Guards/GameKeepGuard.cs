@@ -778,7 +778,14 @@ namespace DOL.GS.Keeps
 			}
 			else
 			{
-				Realm = CurrentZone.Realm;
+				// CurrentZone is null when the guard's DB coordinates fall
+				// outside every zone of its region (bad spawn data — the same
+				// rows that log "Couldn't find a zone for ..."). Without this
+				// guard SetRealm threw a NullReferenceException that propagated
+				// out of LoadFromDatabase; Region.cs re-throws load failures,
+				// so a single misplaced guard aborted WorldMgr init and the
+				// whole server refused to start. Fall back to a realmless guard.
+				Realm = CurrentZone?.Realm ?? eRealm.None;
 			}
 
 			if (Realm != eRealm.None)
