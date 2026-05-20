@@ -437,31 +437,35 @@ namespace DOL.AI.Brain
 
             if (!_brain.Body.InCombat)
             {
-                // Rest ONLY when actually caught up to a stationary leader.
+                // A bot in FOLLOW must NEVER sit.
                 //
-                // The old code sat the bot down whenever any stat dipped
-                // below 75% — even mid-follow. A sitting NPC cannot move, so
-                // the bot stopped following the instant it spent mana/endurance
-                // (a caster summoning its pet, anyone refreshing self-buffs),
-                // drifted out of range, and got teleport-recalled every few
-                // seconds. That is the "bot doesn't walk, just TPs / resets
-                // every ~6s" bug, and it hit every class because every class
-                // burns mana or endurance.
+                // The old sit-to-regen logic here was the root cause of the
+                // "bot flickers / resets / TPs every ~6s, even when the player
+                // stands still" bug. Mechanism:
+                //   - CheckStats(75) returns true the instant ANY stat (HP,
+                //     mana OR endurance) dips below 75%. A caster's mana is
+                //     almost always below 75% out of combat, so the bot was
+                //     perpetually "eligible to rest".
+                //   - It sat down. The IsSitting setter cancels the current
+                //     spellcast; Sit() fires an emote and stops attack/sprint.
+                //   - Next tick it stood to recast / because a stat crossed
+                //     the single 75% threshold, then sat again — an endless
+                //     sit/stand/emote/cast-cancel thrash on the ~6s regen
+                //     cadence that the player sees as the bot bugging out.
+                //   - While seated the bot cannot move, so the moment the
+                //     player walked it fell behind and got teleport-recalled.
                 //
-                // Now: only sit when in formation AND the leader is standing
-                // still; stand back up immediately the moment the leader moves
-                // or we fall out of formation, so follow is never blocked.
-                bool inFormation = _leader != null
-                    && _brain.Body.IsWithinRadius(_leader, _followDistance + 200);
-                bool leaderMoving = _leader != null && _leader.IsMoving;
-                bool mayRest = inFormation && !leaderMoving;
-
-                if (_brain.Body.IsSitting && (!mayRest || !_brain.CheckStats(75)))
+                // A following group member simply stands and keeps up.
+                // Resting belongs to the CAMP state, which is a stable
+                // dedicated rest state with no oscillation.
+                if (_brain.Body.IsSitting)
                     _brain.MimicBody.Sit(false);
-                else if (!_brain.Body.IsSitting && mayRest
-                         && !_brain.Body.IsCasting
-                         && !_brain.CheckSpells(MimicBrain.eCheckSpellType.Defensive))
-                    _brain.MimicBody.Sit(_brain.CheckStats(75));
+
+                // Still keep self-buffs topped up while following — this only
+                // actually casts when a buff has genuinely expired (minutes
+                // timescale), so it cannot oscillate.
+                if (!_brain.Body.IsSitting && !_brain.Body.IsCasting)
+                    _brain.CheckSpells(MimicBrain.eCheckSpellType.Defensive);
             }
 
             base.Think();
