@@ -2592,11 +2592,6 @@ namespace DOL.GS.Scripts
             base.StartAttack(target);
         }
 
-        // Diagnostic flag: set after the very first successful AddToWorld so
-        // the instrumentation below only fires on RE-adds (the flicker), not
-        // the legitimate initial spawn.
-        private bool _diagHasBeenAdded;
-
         public override bool AddToWorld()
         {
             if (!(base.AddToWorld()))
@@ -2604,23 +2599,6 @@ namespace DOL.GS.Scripts
 
             UpdateNPCEquipmentAppearance();
             UpdateEncumbrance(true);
-
-            // ---- FLICKER DIAGNOSTIC ----
-            // A player-summoned bot (OwnerAccount set) should be AddToWorld'd
-            // exactly once. Any re-add is the "bot blinks / resets every ~6s"
-            // bug. Log the re-add with a full stack trace so the exact caller
-            // is identified. Remove this block once the bug is fixed.
-            if (!string.IsNullOrEmpty(OwnerAccount))
-            {
-                if (_diagHasBeenAdded)
-                {
-                    if (log.IsErrorEnabled)
-                        log.Error($"[MIMIC-FLICKER] AddToWorld RE-ADD on owned bot '{Name}' "
-                                  + $"(owner={OwnerAccount}, region={CurrentRegionID}, pos={X},{Y},{Z})\n"
-                                  + Environment.StackTrace);
-                }
-                _diagHasBeenAdded = true;
-            }
 
             return true;
         }
@@ -2833,16 +2811,6 @@ namespace DOL.GS.Scripts
 
         public override void Delete()
         {
-            // ---- FLICKER DIAGNOSTIC ----
-            // If an owned bot is deleted (and the player didn't dismiss it),
-            // something is wrongly tearing it down. Stack trace names the
-            // caller. Remove once the flicker bug is fixed.
-            if (!string.IsNullOrEmpty(OwnerAccount) && !_beingDeleted && log.IsErrorEnabled)
-            {
-                log.Error($"[MIMIC-FLICKER] Delete on owned bot '{Name}' "
-                          + $"(owner={OwnerAccount})\n" + Environment.StackTrace);
-            }
-
             _beingDeleted = true;
 
             // Stop the rez-wait timer if the bot is being deleted while still
@@ -2873,20 +2841,6 @@ namespace DOL.GS.Scripts
 
         public override bool RemoveFromWorld()
         {
-            // ---- FLICKER DIAGNOSTIC ----
-            // Logged BEFORE base.RemoveFromWorld so we catch it even if the
-            // remove is part of a MoveTo. A player-summoned bot should only
-            // ever be removed when the player dismisses it / logs out — never
-            // periodically. The stack trace names the exact caller. Remove
-            // this block once the flicker bug is fixed.
-            if (!string.IsNullOrEmpty(OwnerAccount) && !_beingDeleted
-                && ObjectState == eObjectState.Active && log.IsErrorEnabled)
-            {
-                log.Error($"[MIMIC-FLICKER] RemoveFromWorld on owned bot '{Name}' "
-                          + $"(owner={OwnerAccount}, region={CurrentRegionID}, pos={X},{Y},{Z})\n"
-                          + Environment.StackTrace);
-            }
-
             if (!base.RemoveFromWorld())
                 return false;
 

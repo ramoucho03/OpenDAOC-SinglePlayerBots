@@ -131,24 +131,14 @@ namespace DOL.GS.PacketHandler
 					return;
 			}
 
-			// Allied Mimics render as players client-side: name color (yellow
-			// NPC → gray/blue/green player), /target by name in the group panel,
-			// and the right-click player menu. The PvP disguise path below is
-			// preserved for enemy mimics — they still appear as "race + RR title"
-			// NPCs to opposing realms (otherwise frontier bots would be trivially
-			// distinguishable from real opponents).
-			//
-			// Visibility movement updates still flow through the NPC path. The
-			// client tolerates that mix because PlayerCreate establishes the
-			// rendering layer up-front; subsequent NPCUpdate packets just shift
-			// the visible position.
-			if (npc is DOL.GS.Scripts.MimicNPC mimicAlly
-			    && GameServer.ServerRules.IsSameRealm(m_gameClient.Player, mimicAlly, true))
-			{
-				SendMimicAsPlayer(mimicAlly);
-				return;
-			}
-
+			// Mimics render as NPCs (player model + equipment), NEVER via a
+			// PlayerCreate packet. A bot created as a player but then updated
+			// through the NPC ObjectUpdate path — ClientService.UpdateNpcs
+			// sends one every WORLD_NPC_UPDATE_INTERVAL (~5s) plus one per
+			// movement — is an inconsistent client-side entity: the client
+			// dropped and re-created it on every such update, the visible
+			// "bot blinks / teleport-steps / resets every ~5-6s" bug. Create
+			// and update MUST both use the NPC protocol to stay stable.
 			if (npc is GameMovingObject)
 				SendMovingObjectCreate(npc as GameMovingObject);
 			else
@@ -357,82 +347,12 @@ namespace DOL.GS.PacketHandler
 			}
 		}
 
-		/// <summary>
-		/// Renders a Mimic as a player to the viewing client. Mirrors
-		/// <see cref="SendPlayerCreate"/> with a few substitutions for fields
-		/// that only a real GamePlayer carries:
-		///   - SessionID  → MimicNPC.ObjectID (stable per region, ushort)
-		///   - LastName / PrefixName / Title → empty (Mimic doesn't carry them)
-		///   - Steed / GuildBanner / IsOnHorse → skipped (Mimics never mount)
-		/// Everything else (face attributes, model, level, realm, name, guild)
-		/// is sourced from MimicNPC directly since it already implements
-		/// IGamePlayer for those fields.
-		///
-		/// The client treats the resulting object as a player for naming
-		/// colour, the right-click player menu, group panel display, and
-		/// /target by name. Movement updates continue to flow through the
-		/// NPC packet path — clients handle that mix fine because PlayerCreate
-		/// establishes the render type up-front and subsequent NPCUpdate
-		/// packets just move the visible position.
-		/// </summary>
-		private void SendMimicAsPlayer(DOL.GS.Scripts.MimicNPC mimic)
-		{
-			if (mimic.CurrentRegion == null || mimic.CurrentZone == null)
-				return;
-
-			using (var pak = PooledObjectFactory.GetForTick<GSTCPPacketOut>().Init(GetPacketCode(eServerPackets.PlayerCreate172)))
-			{
-				pak.WriteFloatLowEndian(mimic.X);
-				pak.WriteFloatLowEndian(mimic.Y);
-				pak.WriteFloatLowEndian(mimic.Z);
-
-				// SessionID has no meaning for a NPC; the ObjectID is stable
-				// within the region and unique across the world, so we use it
-				// as a substitute. The cost is that /target by exact name
-				// goes through the NPC ObjectID lookup path (still works) —
-				// the session-id-keyed shortcuts (e.g. /target name#sid) are
-				// not available, which is acceptable for bot UX.
-				pak.WriteShort((ushort) mimic.ObjectID);
-				pak.WriteShort((ushort) mimic.ObjectID);
-				pak.WriteShort(mimic.Heading);
-				pak.WriteShort(mimic.Model);
-				pak.WriteByte(mimic.GetDisplayLevel(m_gameClient.Player));
-
-				int flags = (GameServer.ServerRules.GetLivingRealm(m_gameClient.Player, mimic) & 0x03) << 2;
-				if (!mimic.IsAlive) flags |= 0x01;
-				if (mimic.IsUnderwater) flags |= 0x02;
-				if (mimic.IsStealthed) flags |= 0x10;
-				// IsWireframe / Vampiir-fly are player-only flags. Mimics don't
-				// expose them, so the 0x20 / 0x40 bits stay clear — matches
-				// what a level-50 non-stealth, non-flying mimic should render as.
-				pak.WriteByte((byte) flags);
-
-				pak.WriteByte(mimic.GetFaceAttribute(eCharFacePart.EyeSize));
-				pak.WriteByte(mimic.GetFaceAttribute(eCharFacePart.LipSize));
-				pak.WriteByte(mimic.GetFaceAttribute(eCharFacePart.MoodType));
-				pak.WriteByte(mimic.GetFaceAttribute(eCharFacePart.EyeColor));
-				pak.WriteByte(mimic.GetFaceAttribute(eCharFacePart.HairColor));
-				pak.WriteByte(mimic.GetFaceAttribute(eCharFacePart.FaceType));
-				pak.WriteByte(mimic.GetFaceAttribute(eCharFacePart.HairStyle));
-
-				pak.WriteByte(0x00); // new in 1.74
-				pak.WriteByte(0x00); // unknown
-				pak.WriteByte(0x00); // unknown
-				pak.WritePascalString(mimic.Name ?? string.Empty);
-				pak.WritePascalString(mimic.GuildName ?? string.Empty);
-				pak.WritePascalString(string.Empty); // LastName
-				pak.WritePascalString(string.Empty); // PrefixName (RR title)
-				pak.WritePascalString(string.Empty); // Title (1.74+ NewTitle)
-				pak.WriteByte(0); // not mounted: trailing zero
-
-				SendTCP(pak);
-			}
-
-			// Same treatment as SendPlayerCreate so the client paints the
-			// name in the right guild colour and the group panel resolves
-			// emblems. Falls back to DummyGuild when the mimic has no guild.
-			SendObjectGuildID(mimic, mimic.Guild ?? Guild.DummyGuild);
-		}
+		// SendMimicAsPlayer was removed. Rendering a mimic via a PlayerCreate
+		// packet while updating it through the NPC ObjectUpdate path produced
+		// an inconsistent client-side entity that blinked / reset every ~5s
+		// (the WORLD_NPC_UPDATE_INTERVAL cadence) and teleport-stepped on every
+		// move. Mimics now render purely as NPCs with a player model +
+		// equipment — see SendNPCCreate above.
 
 		public override void SendPlayerCreate(GamePlayer playerToCreate)
 		{

@@ -367,18 +367,6 @@ namespace DOL.AI.Brain
                 bool tooFar = _brain.Body.GetDistanceTo(_leader) > DISTANCE_OVERFLOW;
                 if (regionMismatch || tooFar)
                 {
-                    // ---- FLICKER DIAGNOSTIC ----
-                    // The recall is a MoveTo = RemoveFromWorld+AddToWorld =
-                    // a visible blink. Log WHY it fired so we know if the bug
-                    // is a region mismatch or a bogus distance. Remove once
-                    // the flicker bug is fixed.
-                    if (log.IsErrorEnabled)
-                        log.Error($"[MIMIC-FLICKER] FollowLeader recall on '{_brain.Body.Name}' "
-                                  + $"regionMismatch={regionMismatch} tooFar={tooFar} "
-                                  + $"dist={_brain.Body.GetDistanceTo(_leader)} "
-                                  + $"botRegion={_brain.Body.CurrentRegionID} leaderRegion={_leader.CurrentRegionID} "
-                                  + $"leader='{_leader.Name}'");
-
                     _brain.Body.MoveTo(_leader.CurrentRegionID, _leader.X, _leader.Y, _leader.Z, _leader.Heading);
                     _lastRecallTick = GameLoop.GameLoopTime;
                     _lastStuckSampleTick = GameLoop.GameLoopTime; // reset stuck baseline post-recall
