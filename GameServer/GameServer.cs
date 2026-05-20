@@ -291,6 +291,20 @@ namespace DOL.GS
 				ThreadPool.GetMinThreads(out int minWorkerThreads, out int minIOCThreads);
 				ThreadPool.GetMaxThreads(out int maxWorkerThreads, out int maxIOCThreads);
 
+				// Raise the .NET ThreadPool floor. The pool grows by only one
+				// thread per ~500ms when starved, which throttles bursty work
+				// (mass logins, zone-ins, async DB calls). Pre-seeding the floor
+				// at 2x the core count removes that ramp-up latency. The game
+				// loop runs on its own dedicated thread pool and is unaffected.
+				int threadPoolFloor = Environment.ProcessorCount * 2;
+				ThreadPool.SetMinThreads(Math.Max(minWorkerThreads, threadPoolFloor), Math.Max(minIOCThreads, threadPoolFloor));
+
+				// Trade memory for fewer GC hitches: SustainedLowLatency tells
+				// the GC to avoid blocking gen2 collections while the server is
+				// live. Combined with Server GC this keeps the real-time game
+				// loop free of multi-millisecond collection pauses.
+				System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
+
 				if (log.IsDebugEnabled)
 				{
 					log.Debug($"Default ThreadPool minworkthreads {minWorkerThreads} minIOCThreads {minIOCThreads} maxworkthreads {maxWorkerThreads} maxIOCThreads {maxIOCThreads}");
