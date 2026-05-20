@@ -71,6 +71,13 @@ namespace DOL.GS
                     ticks.Add(tick);
             }
 
+            // No samples yet (server just booted, or the ring buffer holds
+            // only zero-initialised slots). The interval loop below indexes
+            // ticks[^1] unconditionally, which throws ArgumentOutOfRangeException
+            // on an empty list — guard it.
+            if (ticks.Count == 0)
+                return;
+
             int startIndex = 0;
 
             // Count ticks per interval and calculate averages.

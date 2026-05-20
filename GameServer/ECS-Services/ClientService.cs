@@ -802,12 +802,32 @@ namespace DOL.GS
                     inRangeSet.Add(npc);
             }
 
+            // Evict cached NPCs that are no longer in range.
+            //
+            // BUG FIX: the previous code called npcUpdateCache.Remove() INSIDE
+            // a `foreach` over that same Dictionary. Mutating a Dictionary
+            // mid-enumeration throws InvalidOperationException on the next
+            // MoveNext() — which happens whenever a non-last cached NPC is
+            // evicted (a mob wandering out of range — and mobs wander even
+            // when the PLAYER stands still). When it threw, UpdateNpcs aborted
+            // before the create/update loop below: every in-range NPC,
+            // including the player's own mimic bot, silently missed its
+            // periodic update/create packet that tick. Enough consecutive
+            // misses and the client drops the entity and re-creates it on the
+            // next clean tick — the "bot disappears ~1-2s / resets / TPs
+            // every few seconds, even when standing still" bug.
+            //
+            // Fix: snapshot the keys to evict, then remove after enumeration.
+            List<GameNPC> toEvict = null;
             foreach (var pair in npcUpdateCache)
             {
-                GameNPC cachedNpc = pair.Key;
-
-                if (!inRangeSet.Contains(cachedNpc))
-                    npcUpdateCache.Remove(cachedNpc);
+                if (!inRangeSet.Contains(pair.Key))
+                    (toEvict ??= new List<GameNPC>()).Add(pair.Key);
+            }
+            if (toEvict != null)
+            {
+                for (int i = 0; i < toEvict.Count; i++)
+                    npcUpdateCache.Remove(toEvict[i]);
             }
 
             GameObject targetObject = player.TargetObject;
@@ -844,12 +864,18 @@ namespace DOL.GS
                     inRangeSet.Add(item);
             }
 
+            // Snapshot-then-remove: never mutate the Dictionary inside its own
+            // foreach (throws InvalidOperationException — see UpdateNpcs).
+            List<GameStaticItem> itemsToEvict = null;
             foreach (var item in itemUpdateCache)
             {
-                GameStaticItem cachedItem = item.Key;
-
-                if (!inRangeSet.Contains(cachedItem))
-                    itemUpdateCache.Remove(cachedItem);
+                if (!inRangeSet.Contains(item.Key))
+                    (itemsToEvict ??= new List<GameStaticItem>()).Add(item.Key);
+            }
+            if (itemsToEvict != null)
+            {
+                for (int i = 0; i < itemsToEvict.Count; i++)
+                    itemUpdateCache.Remove(itemsToEvict[i]);
             }
 
             foreach (GameStaticItem itemInRange in inRangeSet)
@@ -876,12 +902,18 @@ namespace DOL.GS
                     inRangeSet.Add(door);
             }
 
+            // Snapshot-then-remove: never mutate the Dictionary inside its own
+            // foreach (throws InvalidOperationException — see UpdateNpcs).
+            List<GameDoorBase> doorsToEvict = null;
             foreach (var door in doorUpdateCache)
             {
-                GameDoorBase doorInCache = door.Key;
-
-                if (!inRangeSet.Contains(doorInCache))
-                    doorUpdateCache.Remove(doorInCache);
+                if (!inRangeSet.Contains(door.Key))
+                    (doorsToEvict ??= new List<GameDoorBase>()).Add(door.Key);
+            }
+            if (doorsToEvict != null)
+            {
+                for (int i = 0; i < doorsToEvict.Count; i++)
+                    doorUpdateCache.Remove(doorsToEvict[i]);
             }
 
             foreach (GameDoorBase doorInRange in inRangeSet)
@@ -908,12 +940,18 @@ namespace DOL.GS
 
             HouseMgr.AddHousesInViewRange(player, inRangeSet);
 
+            // Snapshot-then-remove: never mutate the Dictionary inside its own
+            // foreach (throws InvalidOperationException — see UpdateNpcs).
+            List<House> housesToEvict = null;
             foreach (var house in houseUpdateCache)
             {
-                House houseInCache = house.Key;
-
-                if (!inRangeSet.Contains(houseInCache))
-                    houseUpdateCache.Remove(houseInCache);
+                if (!inRangeSet.Contains(house.Key))
+                    (housesToEvict ??= new List<House>()).Add(house.Key);
+            }
+            if (housesToEvict != null)
+            {
+                for (int i = 0; i < housesToEvict.Count; i++)
+                    houseUpdateCache.Remove(housesToEvict[i]);
             }
 
             foreach (House house in inRangeSet)
