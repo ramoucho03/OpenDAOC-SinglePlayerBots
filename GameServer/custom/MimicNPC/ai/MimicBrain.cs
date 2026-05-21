@@ -4308,13 +4308,17 @@ namespace DOL.AI.Brain
                 _nextPetRecallTick = GameLoop.GameLoopTime + 2000;
             }
 
-            // Force Aggressive: the engine default for new pets is Defensive
-            // (only attacks after being attacked). For caster Mimics we want
-            // the pet to play the role of the bot's auto-attack, so it must
-            // be Aggressive — otherwise the pet just stands at heel until a
-            // mob happens to swing at it.
-            if (petBrain.AggressionState != eAggressionState.Aggressive)
-                petBrain.AggressionState = eAggressionState.Aggressive;
+            // Keep the pet Defensive — never force Aggressive. An Aggressive
+            // pet autonomously charges any enemy that wanders into its aggro
+            // radius: it pulls extra mobs, breaks the group's mez, and bleeds
+            // damage off the focus target. The brain already DIRECTS the pet
+            // every tick — ResolvePetCombatTarget picks the correct victim
+            // (the bot's target / the group's focus) and the explicit
+            // petBrain.Attack(...) call below sends the pet at it. Defensive
+            // obeys that command and still lets the pet defend its owner if
+            // jumped; it just never freelances a pull.
+            if (petBrain.AggressionState != eAggressionState.Defensive)
+                petBrain.AggressionState = eAggressionState.Defensive;
 
             if (petBrain.WalkState != eWalkState.Follow)
                 petBrain.Follow(Body);
@@ -6482,7 +6486,12 @@ namespace DOL.AI.Brain
 
                 case eSpellType.SpeedEnhancement when spell.IsPulsing:
 
-                if (!LivingHasEffect(Body, spell))
+                // Only run the speed song while actually travelling. A bot can
+                // sustain just one pulsing song, so casting speed while parked
+                // (camp) would fight the regen song every tick — a speed →
+                // regen → speed oscillation. Stationary, leave the pulse slot
+                // free for regen; moving, keep speed up.
+                if (!LivingHasEffect(Body, spell) && Body.IsMoving)
                     target = Body;
 
                 break;
@@ -6936,7 +6945,12 @@ namespace DOL.AI.Brain
                 // re-summons when ControlledBrain is null. Leaving it here
                 // caused redundant cast attempts that did nothing.
 
-                if (spell.UsePulsePower)
+                // Pulse-power chants aren't worth their power drain while idle
+                // — EXCEPT the endurance-regen chant, whose whole purpose is to
+                // keep the group's endurance (and therefore Sprint) topped up
+                // while travelling. A Paladin must hold that chant in follow
+                // mode, so exempt it from the out-of-combat skip.
+                if (spell.UsePulsePower && spell.SpellType != eSpellType.EnduranceRegenBuff)
                 {
                     if (!Body.InCombat)
                         break;

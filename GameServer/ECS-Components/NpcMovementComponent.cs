@@ -661,8 +661,17 @@ namespace DOL.GS
 
         private int FollowTick()
         {
-            // Stop moving if the NPC is casting or using ranged weapons.
-            if (Owner.IsCasting || (Owner.IsAttacking && Owner.ActiveWeaponSlot is eActiveWeaponSlot.Distance))
+            // Only a NON-instant (cast-time) spell forces the NPC to hold
+            // still — the engine interrupts a cast-time spell on movement.
+            // An instant cast, and any pulsing song, lands regardless of
+            // movement, so it must NOT stop a following NPC: that is what
+            // made Minstrel-type bots brake to a halt every time they
+            // refreshed a speed / regen song. Ranged auto-attack still
+            // requires the stop.
+            bool castingNonInstant = Owner.IsCasting
+                && Owner.castingComponent?.SpellHandler?.Spell?.IsInstantCast == false;
+
+            if (castingNonInstant || (Owner.IsAttacking && Owner.ActiveWeaponSlot is eActiveWeaponSlot.Distance))
             {
                 StopMoving();
                 return Properties.GAMENPC_FOLLOWCHECK_TIME;

@@ -5667,12 +5667,19 @@ namespace DOL.GS.Scripts
         }
 
         /// <summary>
-        /// Releases controlled object
-        /// (delegates to CharacterClass)
+        /// Releases the mimic's controlled pet.
         /// </summary>
         public virtual void CommandNpcRelease()
         {
-            CharacterClass.CommandNpcRelease();
+            // Do NOT delegate to CharacterClass.CommandNpcRelease(): that path
+            // dereferences CharacterClassBase.Player (a GamePlayer), which is
+            // null for a mimic's character class — a mimic is a GameNPC, not a
+            // GamePlayer. The null deref threw a NullReferenceException during
+            // the player-quit teardown that deletes owned bots (OnPlayerQuit →
+            // Delete → RemoveFromWorld → here). Release the mimic's own
+            // controlled pet directly instead.
+            if (ControlledBrain is ControlledMobBrain controlledBrain)
+                controlledBrain.OnRelease();
         }
 
         /// <summary>

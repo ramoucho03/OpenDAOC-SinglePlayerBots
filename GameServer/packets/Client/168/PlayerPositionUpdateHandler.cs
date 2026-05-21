@@ -97,9 +97,20 @@ namespace DOL.GS.PacketHandler.Client.v168
                         return;
 
                     if (log.IsErrorEnabled)
-                        log.Error($"{client.Player.Name}'s position in unknown zone! => {zoneId}");
+                        log.Error($"{player.Name}'s position in unknown zone! => {zoneId} — porting to bind point.");
 
-                    GameServiceUtils.KickPlayerToCharScreen(player);
+                    // Safety net for a bad teleport (e.g. a battleground jump
+                    // that lands on coordinates outside every zone). The old
+                    // behaviour KICKED the player to char-select — but their
+                    // saved position was still invalid, so they got kicked
+                    // again on every relog: permanently stuck. MoveToBind()
+                    // validates the bind point (and resets it to a starting
+                    // location if it too is bad), then ports there — a
+                    // guaranteed-safe recovery. The char-select kick stays
+                    // only as a last resort, if the move is disallowed.
+                    if (!player.MoveToBind())
+                        GameServiceUtils.KickPlayerToCharScreen(player);
+
                     return;
                 }
 
@@ -228,9 +239,20 @@ namespace DOL.GS.PacketHandler.Client.v168
                         return;
 
                     if (log.IsErrorEnabled)
-                        log.Error($"{client.Player.Name}'s position in unknown zone! => {zoneId}");
+                        log.Error($"{player.Name}'s position in unknown zone! => {zoneId} — porting to bind point.");
 
-                    GameServiceUtils.KickPlayerToCharScreen(player);
+                    // Safety net for a bad teleport (e.g. a battleground jump
+                    // that lands on coordinates outside every zone). The old
+                    // behaviour KICKED the player to char-select — but their
+                    // saved position was still invalid, so they got kicked
+                    // again on every relog: permanently stuck. MoveToBind()
+                    // validates the bind point (and resets it to a starting
+                    // location if it too is bad), then ports there — a
+                    // guaranteed-safe recovery. The char-select kick stays
+                    // only as a last resort, if the move is disallowed.
+                    if (!player.MoveToBind())
+                        GameServiceUtils.KickPlayerToCharScreen(player);
+
                     return;
                 }
 
