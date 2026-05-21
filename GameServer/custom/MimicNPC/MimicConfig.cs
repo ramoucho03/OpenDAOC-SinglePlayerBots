@@ -58,11 +58,11 @@ namespace DOL.GS.Scripts
         public static int MIMIC_MAX_MANA_THROTTLE_MS;
 
         [ServerProperty("npc", "mimic_pull_mana_stop_pct",
-            "Puller stops when ANY caster in the group drops below this mana %. Default 25 (was 30 — too eager to throttle).", 25)]
+            "Puller stops chain-pulling when ANY caster in the group drops below this mana %. Default 30 — the chain breaks here and the group rests back up to the resume %.", 30)]
         public static int MIMIC_PULL_MANA_STOP_PCT;
 
         [ServerProperty("npc", "mimic_pull_mana_resume_pct",
-            "Puller resumes only when EVERY caster is back above this mana %. Must be >= stop. Default 30 (was 35).", 30)]
+            "Puller resumes pulling only when EVERY caster is back above this mana %. Must be >= stop. Default 85 — the group rests to near-full before starting a new pull cycle.", 85)]
         public static int MIMIC_PULL_MANA_RESUME_PCT;
 
         [ServerProperty("npc", "mimic_pull_scan_radius",

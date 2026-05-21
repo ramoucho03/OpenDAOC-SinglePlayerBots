@@ -1525,10 +1525,14 @@ namespace DOL.AI.Brain
                         mg.SetCampPhase(MimicGroup.eCampPhase.Combat);
                         break;
                     }
-                    // Healthy group → skip PostCombat entirely so the next
-                    // pull fires the same tick the last mob dies. The 30%
-                    // mana floor is the only safety net, applied below.
-                    if (IsGroupReady(mg))
+                    // Group still has a healthy mana buffer → chain straight
+                    // into the next pull. Use IsGroupStillFresh (the STOP-%
+                    // gate), NOT IsGroupReady (the near-full RESUME gate):
+                    // chaining must continue while mana is merely healthy and
+                    // only break for a real rest once a caster drops below the
+                    // stop %. Gating chain-pull on near-full mana would force a
+                    // full rest after literally every single pull.
+                    if (IsGroupStillFresh(mg))
                     {
                         mg.SetCampPhase(MimicGroup.eCampPhase.Ready);
                         break;
@@ -1613,13 +1617,15 @@ namespace DOL.AI.Brain
         /// </summary>
         private bool IsGroupReady(MimicGroup mg)
         {
-            // Aggressive chain-pull pacing per user spec: the only hard gate
-            // is "no caster mimic below 30% mana". HP and endurance are NOT
-            // gated — heals and slot-regen ramp during the next pull anyway,
-            // and stopping the cycle for them produced visible idle gaps the
-            // user explicitly wants gone. The human leader is also excluded:
-            // their mana/end flow is decoupled from the bot regen cycle.
-            const int READY_MANA_PCT = 30;
+            // Regen -> Ready gate: the group may only START a new pull cycle
+            // once every caster mimic has rested back to the RESUME mana % —
+            // i.e. near-full. Pulling again the instant a caster scraped past
+            // a low floor (the old hard-coded 30%) sent the group into fights
+            // with no mana reserve, the healer ran dry, and the group wiped.
+            // HP / endurance are not gated (they ramp back during the fight).
+            // The human leader is excluded — their resource flow is decoupled
+            // from the bot regen cycle.
+            int readyManaPct = MimicConfig.MIMIC_PULL_MANA_RESUME_PCT;
 
             if (_brain.Body.Group == null)
                 return true;
@@ -1630,7 +1636,7 @@ namespace DOL.AI.Brain
                     continue;
                 if (gl is GamePlayer)
                     continue;
-                if (gl.MaxMana > 0 && gl.ManaPercent < READY_MANA_PCT)
+                if (gl.MaxMana > 0 && gl.ManaPercent < readyManaPct)
                     return false;
             }
             return true;
@@ -1646,11 +1652,14 @@ namespace DOL.AI.Brain
         /// </summary>
         private bool IsGroupStillFresh(MimicGroup mg)
         {
-            // Matches IsGroupReady: only the 30% mana floor blocks pulling.
-            // The Pulling phase machine drops to Regen when this returns
-            // false; aligning both gates on the same threshold removes the
-            // flap-zone where Ready and Regen could ping-pong.
-            const int FRESH_MANA_PCT = 30;
+            // "Keep chain-pulling" gate: the camp stays in Ready (puller may
+            // chain straight into the next pull) until a caster mimic drops
+            // below the STOP mana % — then it falls to Regen for a real rest.
+            // STOP is well below RESUME, so the chain runs RESUME% -> STOP%
+            // and the wide gap between them is the rest window (no Ready <->
+            // Regen flapping). STOP stays high enough that the last fight of
+            // a chain still begins with a usable mana buffer.
+            int freshManaPct = MimicConfig.MIMIC_PULL_MANA_STOP_PCT;
 
             if (_brain.Body.Group == null)
                 return true;
@@ -1661,7 +1670,7 @@ namespace DOL.AI.Brain
                     continue;
                 if (gl is GamePlayer)
                     continue;
-                if (gl.MaxMana > 0 && gl.ManaPercent < FRESH_MANA_PCT)
+                if (gl.MaxMana > 0 && gl.ManaPercent < freshManaPct)
                     return false;
             }
             return true;

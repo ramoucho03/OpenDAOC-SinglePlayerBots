@@ -6514,9 +6514,93 @@ namespace DOL.AI.Brain
         }
 
 
+        /// <summary>
+        /// While the bot is travelling (FollowLeader) it must hold exactly ONE
+        /// pulsing chant — its travel buff — not cycle through every chant it
+        /// owns. A bot sustains only one pulsing chant; each new one replaces
+        /// the last, so several "eligible" chants make it recast non-stop. The
+        /// travel buff is the speed song for a class that has one (Minstrel,
+        /// Bard, Skald), otherwise the endurance-regen chant (Paladin). Returns
+        /// true when <paramref name="spell"/> is a pulsing chant to suppress.
+        /// Camp and combat keep their normal chant logic.
+        /// </summary>
+        private bool IsSuppressedTravelChant(Spell spell)
+        {
+            if (spell == null || !spell.IsPulsing)
+                return false;
+
+            if (FSM.GetCurrentState() != FSM.GetState(eFSMStateType.FOLLOW_THE_LEADER))
+                return false;
+
+            switch (spell.SpellType)
+            {
+                // Combat-only pulse chants — resist chants, armour factor,
+                // damage-add, procs, damage shield, bladeturn — are useless
+                // while travelling and churn the single pulse slot. Always
+                // suppressed in follow mode.
+                case eSpellType.BodyResistBuff:
+                case eSpellType.ColdResistBuff:
+                case eSpellType.HeatResistBuff:
+                case eSpellType.MatterResistBuff:
+                case eSpellType.EnergyResistBuff:
+                case eSpellType.SpiritResistBuff:
+                case eSpellType.BodySpiritEnergyBuff:
+                case eSpellType.HeatColdMatterBuff:
+                case eSpellType.AllMagicResistBuff:
+                case eSpellType.PaladinArmorFactorBuff:
+                case eSpellType.BaseArmorFactorBuff:
+                case eSpellType.SpecArmorFactorBuff:
+                case eSpellType.DamageAdd:
+                case eSpellType.DamageShield:
+                case eSpellType.OffensiveProc:
+                case eSpellType.DefensiveProc:
+                case eSpellType.Bladeturn:
+                    return true;
+
+                // Regen pulses (endurance / power / health) ARE travel-useful
+                // — a Sorcerer must keep its power-regen buff running while it
+                // travels. Keep them, UNLESS the bot also owns a speed song:
+                // a class with speed (Minstrel) runs speed as its travel buff,
+                // so its regen songs must be suppressed or they would cycle
+                // against speed. A class without speed (Paladin → endurance,
+                // Sorcerer → power-regen) keeps its regen pulse as the travel
+                // buff.
+                case eSpellType.EnduranceRegenBuff:
+                case eSpellType.PowerRegenBuff:
+                case eSpellType.HealthRegenBuff:
+                case eSpellType.PowerHealthEnduranceRegenBuff:
+                    return HasPulsingSpeedBuff();
+
+                // Speed itself, and any other beneficial pulse self-buff
+                // (acuity, etc.), stay up while travelling.
+                default:
+                    return false;
+            }
+        }
+
+        private bool HasPulsingSpeedBuff()
+        {
+            if (Body?.Spells == null)
+                return false;
+
+            foreach (Spell s in Body.Spells)
+            {
+                if (s != null && s.IsPulsing && s.SpellType == eSpellType.SpeedEnhancement)
+                    return true;
+            }
+
+            return false;
+        }
+
         protected virtual GameLiving FindTargetForDefensiveSpell(Spell spell)
         {
             GameLiving target = null;
+
+            // In follow mode, only the single travel chant may be (re)cast —
+            // see IsSuppressedTravelChant. Stops the Paladin / Minstrel from
+            // recasting their whole chant set on a loop while travelling.
+            if (IsSuppressedTravelChant(spell))
+                return null;
 
             switch (spell.SpellType)
             {
@@ -6915,6 +6999,11 @@ namespace DOL.AI.Brain
         protected virtual bool CheckInstantDefensiveSpells(Spell spell)
         {
             if (spell.HasRecastDelay && Body.GetSkillDisabledDuration(spell) > 0)
+                return false;
+
+            // In follow mode, suppress every pulsing chant except the single
+            // travel buff (see IsSuppressedTravelChant) — no chant cycling.
+            if (IsSuppressedTravelChant(spell))
                 return false;
 
             bool castSpell = false;
