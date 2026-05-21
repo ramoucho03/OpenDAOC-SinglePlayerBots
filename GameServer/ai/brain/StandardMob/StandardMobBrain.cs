@@ -158,7 +158,23 @@ namespace DOL.AI.Brain
 
         public virtual void FireAmbientSentence()
         {
-            if (Body.ambientTexts != null && Body.ambientTexts.Any(item => item.Trigger == "seeing"))
+            bool hasSeeingTrigger = false;
+
+            if (Body.ambientTexts != null)
+            {
+                // Indexed loop instead of LINQ .Any(): avoids allocating an
+                // enumerator on every think of every mob with ambient texts.
+                for (int i = 0; i < Body.ambientTexts.Count; i++)
+                {
+                    if (Body.ambientTexts[i].Trigger == "seeing")
+                    {
+                        hasSeeingTrigger = true;
+                        break;
+                    }
+                }
+            }
+
+            if (hasSeeingTrigger)
             {
                 // Check if we can "see" players and fire off ambient text
                 List<GamePlayer> currentPlayersSeen = GameLoop.GetListForTick<GamePlayer>();

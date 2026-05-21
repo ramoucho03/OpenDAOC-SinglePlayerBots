@@ -39,7 +39,10 @@ namespace ECS.Debug
         private static int _notifyProfilingIntervalRequest;
 
         public static bool CheckServiceObjectCount { get; private set; }
-        public static bool EnableTickProfiling { get; set; } = true;
+        // Disabled by default: when on, every entity tick reads the monotonic
+        // clock twice (TickMonitor ctor + IsLongTick) solely to log long ticks.
+        // Re-enable at runtime with the `/diag tick on` command.
+        public static bool EnableTickProfiling { get; set; } = false;
         public static int LongTickThreshold { get; set; } = 25;
 
         public static void PrintServiceObjectCount(string serviceName, ref int nonNull, int total)

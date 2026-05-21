@@ -135,6 +135,22 @@ namespace DOL.GS.Styles
         public List<StyleProcInfo> Procs { get; } = new();
 
         /// <summary>
+        /// Returns the first proc whose spell is of the given type, or null.
+        /// Indexed loop — avoids the LINQ enumerator + closure that a
+        /// Procs.Where(...).FirstOrDefault() allocates on every attack swing.
+        /// </summary>
+        public StyleProcInfo GetProcOfType(eSpellType spellType)
+        {
+            for (int i = 0; i < Procs.Count; i++)
+            {
+                if (Procs[i].Spell.SpellType == spellType)
+                    return Procs[i];
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// (readonly) The Specialization's name required to execute this style
         /// </summary>
         public string Spec => baseStyle.SpecKeyName;

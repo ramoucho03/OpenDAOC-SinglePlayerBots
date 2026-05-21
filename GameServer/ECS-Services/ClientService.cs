@@ -818,17 +818,16 @@ namespace DOL.GS
             // every few seconds, even when standing still" bug.
             //
             // Fix: snapshot the keys to evict, then remove after enumeration.
-            List<GameNPC> toEvict = null;
+            // Per-tick pooled list instead of `new List`: no gen0 allocation
+            // on the (frequent) ticks where a cached NPC has wandered off.
+            List<GameNPC> toEvict = GameLoop.GetListForTick<GameNPC>();
             foreach (var pair in npcUpdateCache)
             {
                 if (!inRangeSet.Contains(pair.Key))
-                    (toEvict ??= new List<GameNPC>()).Add(pair.Key);
+                    toEvict.Add(pair.Key);
             }
-            if (toEvict != null)
-            {
-                for (int i = 0; i < toEvict.Count; i++)
-                    npcUpdateCache.Remove(toEvict[i]);
-            }
+            for (int i = 0; i < toEvict.Count; i++)
+                npcUpdateCache.Remove(toEvict[i]);
 
             GameObject targetObject = player.TargetObject;
             GameNPC pet = player.ControlledBrain?.Body;
@@ -866,17 +865,15 @@ namespace DOL.GS
 
             // Snapshot-then-remove: never mutate the Dictionary inside its own
             // foreach (throws InvalidOperationException — see UpdateNpcs).
-            List<GameStaticItem> itemsToEvict = null;
+            // Per-tick pooled list instead of `new List` (see UpdateNpcs).
+            List<GameStaticItem> itemsToEvict = GameLoop.GetListForTick<GameStaticItem>();
             foreach (var item in itemUpdateCache)
             {
                 if (!inRangeSet.Contains(item.Key))
-                    (itemsToEvict ??= new List<GameStaticItem>()).Add(item.Key);
+                    itemsToEvict.Add(item.Key);
             }
-            if (itemsToEvict != null)
-            {
-                for (int i = 0; i < itemsToEvict.Count; i++)
-                    itemUpdateCache.Remove(itemsToEvict[i]);
-            }
+            for (int i = 0; i < itemsToEvict.Count; i++)
+                itemUpdateCache.Remove(itemsToEvict[i]);
 
             foreach (GameStaticItem itemInRange in inRangeSet)
             {
@@ -904,17 +901,15 @@ namespace DOL.GS
 
             // Snapshot-then-remove: never mutate the Dictionary inside its own
             // foreach (throws InvalidOperationException — see UpdateNpcs).
-            List<GameDoorBase> doorsToEvict = null;
+            // Per-tick pooled list instead of `new List` (see UpdateNpcs).
+            List<GameDoorBase> doorsToEvict = GameLoop.GetListForTick<GameDoorBase>();
             foreach (var door in doorUpdateCache)
             {
                 if (!inRangeSet.Contains(door.Key))
-                    (doorsToEvict ??= new List<GameDoorBase>()).Add(door.Key);
+                    doorsToEvict.Add(door.Key);
             }
-            if (doorsToEvict != null)
-            {
-                for (int i = 0; i < doorsToEvict.Count; i++)
-                    doorUpdateCache.Remove(doorsToEvict[i]);
-            }
+            for (int i = 0; i < doorsToEvict.Count; i++)
+                doorUpdateCache.Remove(doorsToEvict[i]);
 
             foreach (GameDoorBase doorInRange in inRangeSet)
             {
@@ -942,17 +937,15 @@ namespace DOL.GS
 
             // Snapshot-then-remove: never mutate the Dictionary inside its own
             // foreach (throws InvalidOperationException — see UpdateNpcs).
-            List<House> housesToEvict = null;
+            // Per-tick pooled list instead of `new List` (see UpdateNpcs).
+            List<House> housesToEvict = GameLoop.GetListForTick<House>();
             foreach (var house in houseUpdateCache)
             {
                 if (!inRangeSet.Contains(house.Key))
-                    (housesToEvict ??= new List<House>()).Add(house.Key);
+                    housesToEvict.Add(house.Key);
             }
-            if (housesToEvict != null)
-            {
-                for (int i = 0; i < housesToEvict.Count; i++)
-                    houseUpdateCache.Remove(housesToEvict[i]);
-            }
+            for (int i = 0; i < housesToEvict.Count; i++)
+                houseUpdateCache.Remove(housesToEvict[i]);
 
             foreach (House house in inRangeSet)
             {

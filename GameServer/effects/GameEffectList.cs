@@ -307,7 +307,14 @@ namespace DOL.GS.Effects
 
 			lock (Lock)
 			{
-				return (T)m_effects.FirstOrDefault(effect => effect.GetType().Equals(typeof(T)));
+				// Indexed loop instead of LINQ FirstOrDefault: no enumerator/closure alloc.
+				for (int i = 0; i < m_effects.Count; i++)
+				{
+					if (m_effects[i].GetType().Equals(typeof(T)))
+						return (T) m_effects[i];
+				}
+
+				return default(T);
 			}
 		}
 
@@ -339,7 +346,16 @@ namespace DOL.GS.Effects
 
 			lock (Lock)
 			{
-				return m_effects.Count(effect => effect.GetType().Equals(typeof(T)));
+				// Indexed loop instead of LINQ Count: no enumerator/closure alloc.
+				int count = 0;
+
+				for (int i = 0; i < m_effects.Count; i++)
+				{
+					if (m_effects[i].GetType().Equals(typeof(T)))
+						count++;
+				}
+
+				return count;
 			}
 		}
 

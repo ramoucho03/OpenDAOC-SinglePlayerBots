@@ -12,7 +12,10 @@ namespace DOL.GS
         private static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
         public int EntityCount; // Used for diagnostics.
-        private readonly ConcurrentBag<PostedAction> _actionPool = new();
+        // ConcurrentQueue, not ConcurrentBag: the usage is an asymmetric
+        // producer/consumer (workers return actions, callers take them), the
+        // worst case for ConcurrentBag's per-thread work-stealing deques.
+        private readonly ConcurrentQueue<PostedAction> _actionPool = new();
         private readonly ConcurrentQueue<PostedAction> _actions = new();
         private readonly List<PostedAction> _work = new();
         private bool _hasActions;
@@ -31,7 +34,7 @@ namespace DOL.GS
             // service waits for it to complete. Since the target service cannot process posted
             // actions until it ticks, neither side can make progress.
 
-            if (!_actionPool.TryTake(out PostedAction pooledAction))
+            if (!_actionPool.TryDequeue(out PostedAction pooledAction))
                 pooledAction = new PostedAction();
 
             pooledAction.Init(this, action, state, Invoker<TState>.Invoke);
@@ -78,7 +81,7 @@ namespace DOL.GS
             {
                 GameServiceBase service = action.Service;
                 action.Reset();
-                service._actionPool.Add(action);
+                service._actionPool.Enqueue(action);
             }
         }
 

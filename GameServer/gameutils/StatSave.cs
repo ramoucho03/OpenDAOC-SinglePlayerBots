@@ -71,8 +71,9 @@ namespace DOL.GS.GameEvents
                     HiberniaPlayers = ClientService.Instance.GetPlayersOfRealm(eRealm.Hibernia).Count
                 };
 
+                // AddObject already performs the INSERT and clears the dirty
+                // flag — a following SaveObject would be a no-op round-trip.
                 GameServer.Database.AddObject(newStat);
-                GameServer.Database.SaveObject(newStat);
             }
             catch (Exception e)
             {

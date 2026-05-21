@@ -715,6 +715,13 @@ namespace DOL.Database
 		public TObject FindObjectByKey<TObject>(object key)
 			where TObject : DataObject
 		{
+			// Fast path for pre-cached tables: a pre-cached lookup is just a
+			// dictionary read, so skip the object[]/LINQ/array allocations that
+			// FindObjectsByKey incurs. Hit on every loot-item resolution.
+			var tableHandler = GetTableOrViewHandler(typeof(TObject));
+			if (tableHandler != null && tableHandler.UsesPreCaching)
+				return (TObject) tableHandler.GetPreCachedObject(key);
+
 			return FindObjectsByKey<TObject>(new [] { key }).FirstOrDefault();
 		}
 		

@@ -43,8 +43,12 @@ namespace DOL.GS
         [StructLayout(LayoutKind.Explicit)]
         private class WorkState
         {
-            [FieldOffset(0)]   public int RemainingWork;         // Total items left to process.
-            [FieldOffset(128)] public int CompletedWorkerCount;  // Count of workers finished for current iteration.
+            // Each hot field sits alone on its own cache line. RemainingWork is
+            // hammered by Interlocked.Add from every worker; offset 64 isolates
+            // it from the object header. CompletedWorkerCount follows two cache
+            // lines later so the two never share a line (false sharing).
+            [FieldOffset(64)]  public int RemainingWork;         // Total items left to process.
+            [FieldOffset(192)] public int CompletedWorkerCount;  // Count of workers finished for current iteration.
         }
 
         public GameLoopThreadPoolMultiThreaded(int degreeOfParallelism)

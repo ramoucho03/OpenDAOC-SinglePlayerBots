@@ -3250,7 +3250,7 @@ namespace DOL.GS
             lock (_specializationLock)
             {
                 if (m_specialization.TryGetValue(keyName, out spec))
-                    level = m_specialization[keyName].Level;
+                    level = spec.Level;
             }
 
             return level;

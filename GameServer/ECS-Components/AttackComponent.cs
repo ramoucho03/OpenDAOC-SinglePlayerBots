@@ -934,7 +934,7 @@ namespace DOL.GS
                                 numTargetsCanHit = 255;
                             else
                             {
-                                StyleProcInfo styleProcInfo = style.Procs.Where(x => x.Spell.SpellType is eSpellType.MultiTarget).FirstOrDefault();
+                                StyleProcInfo styleProcInfo = style.GetProcOfType(eSpellType.MultiTarget);
                                 numTargetsCanHit = styleProcInfo == null ? 0 : (int) styleProcInfo.Spell.Value;
                             }
 
@@ -1022,7 +1022,7 @@ namespace DOL.GS
 
             if (style != null)
             {
-                StyleProcInfo styleProcInfo = style?.Procs.Where(x => x.Spell.SpellType is eSpellType.StyleRange).FirstOrDefault();
+                StyleProcInfo styleProcInfo = style?.GetProcOfType(eSpellType.StyleRange);
 
                 if (styleProcInfo != null)
                     attackRange = (int) styleProcInfo.Spell.Value; // Fixed range for some reason, don't add to attack range.
@@ -1481,8 +1481,8 @@ namespace DOL.GS
             {
                 // Nature's shield, 100% block chance, 120° frontal angle.
                 StyleProcInfo styleProcInfo =
-                    owner.styleComponent.NextCombatStyle?.Procs.Where(x => x.Spell.SpellType is eSpellType.NaturesShield).FirstOrDefault() ??
-                    owner.styleComponent.NextCombatBackupStyle?.Procs.Where(x => x.Spell.SpellType is eSpellType.NaturesShield).FirstOrDefault();
+                    owner.styleComponent.NextCombatStyle?.GetProcOfType(eSpellType.NaturesShield) ??
+                    owner.styleComponent.NextCombatBackupStyle?.GetProcOfType(eSpellType.NaturesShield);
 
                 if (styleProcInfo != null && owner.IsObjectInFront(ad.Attacker, 120))
                 {
