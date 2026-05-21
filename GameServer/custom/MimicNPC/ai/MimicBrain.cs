@@ -3728,14 +3728,20 @@ namespace DOL.AI.Brain
             // melee swap happens cleanly when no song is active.
             bool isSoloSkald = charClassId == (int)eCharacterClass.Skald && Body.Group == null;
 
-            // Switch to melee weapon ONLY if no instrument pulse song is
-            // active. Songs require the instrument to remain equipped; the
-            // pulsing effect stops the moment we swap. The previous blind
-            // switch every tick prevented a Minstrel/Bard from ever holding
-            // an instrument long enough to fire (let alone maintain) a song.
+            // Reaching this point means the brain has committed to MELEE this
+            // target, so equip the melee weapon. A pulsing song (speed / regen)
+            // needs the instrument equipped and stops the instant we swap — and
+            // that is correct here: this is combat, and actually meleeing the
+            // target beats clinging to a travel buff. The old "skip the swap
+            // while any song pulses" guard, combined with the bot now always
+            // keeping a song up, meant the Minstrel / Bard NEVER engaged melee
+            // — it just stood there with an instrument equipped. Out-of-combat
+            // singing is unaffected: it runs from the defensive cycle, not from
+            // AttackMostWanted. The ActiveWeaponSlot guard keeps this a
+            // one-time swap, and a mez cast still switches to the instrument on
+            // its own (CheckSpells CC path) and back to melee here next tick.
             if ((isMinstrel || isSoloBard || isSoloSkald)
-                && Body.ActiveWeaponSlot != eActiveWeaponSlot.Standard
-                && !IsAnyPulseSongActive())
+                && Body.ActiveWeaponSlot != eActiveWeaponSlot.Standard)
             {
                 Body.SwitchWeapon(eActiveWeaponSlot.Standard);
             }
@@ -5503,21 +5509,36 @@ namespace DOL.AI.Brain
                     return false;
 
                 // ----------------------------------------------------------------
-                // Generic mana throttle.
-                // Below 20% mana, all caster archetypes stop nuking entirely so the
-                // group's healer/buffer can still cast emergency spells. Between 20%
-                // and 50%, casters skip every other tick (chance scales with mana).
-                // The previous hard-coded Cleric-only check is now subsumed by this
-                // generic rule.
+                // Mana management for caster archetypes.
+                //
+                // Hard floor: no caster nukes its bar to empty — always leave a
+                // sliver for an emergency cast and to let regen restart.
+                //
+                // The sub-50% taper, however, must apply ONLY to support / healer
+                // casters, which have to keep a mana reserve for their utility and
+                // heal duties. A PURE DPS caster (Wizard, Cabalist, Sorcerer,
+                // Theurgist, ...) has no such duty — its entire job is damage, so
+                // it nukes at full rate down to the hard floor. The old code
+                // taper-gated EVERY PrefersCasting bot: at 49% mana that skipped
+                // ~71% of a Wizard's casts, ~85% at 35%, ~95% at 25% — i.e. it
+                // gutted the nuker's DPS for the bulk of every fight ("wizard DPS
+                // is really mushy").
                 // ----------------------------------------------------------------
-                if (combatProfile?.PrefersCasting == true
+                bool isCasterArchetype = combatProfile?.PrefersCasting == true
                     || combatProfile?.HasRole(eMimicCombatRole.Healer) == true
-                    || combatProfile?.HasRole(eMimicCombatRole.Support) == true)
+                    || combatProfile?.HasRole(eMimicCombatRole.Support) == true;
+
+                if (isCasterArchetype)
                 {
                     if (Body.ManaPercent < 20)
                         return false;
 
-                    if (Body.ManaPercent < 50 && !Util.Chance(Math.Max(5, Body.ManaPercent - 20)))
+                    bool keepsManaReserve = combatProfile?.HasRole(eMimicCombatRole.Healer) == true
+                        || combatProfile?.HasRole(eMimicCombatRole.Support) == true;
+
+                    if (keepsManaReserve
+                        && Body.ManaPercent < 50
+                        && !Util.Chance(Math.Max(5, Body.ManaPercent - 20)))
                         return false;
                 }
 
