@@ -291,6 +291,19 @@ namespace DOL.AI.Brain
             if (Body.IsConfused || !Body.IsAlive || living == null)
                 return;
 
+            // Mimic tanks generate +20% threat so they out-aggro the group's
+            // own DPS more reliably and keep mobs glued to them. This is the
+            // single choke point for every threat source — melee damage,
+            // taunt styles, taunt shouts — so the boost covers them all. Only
+            // positive amounts are scaled; detaunts and 0-amount propagation
+            // entries are left untouched.
+            if (aggroAmount > 0
+                && living is DOL.GS.Scripts.MimicNPC mimicTank
+                && mimicTank.MimicBrain?.IsActingAsTank == true)
+            {
+                aggroAmount = (long) (aggroAmount * 1.2);
+            }
+
             ForceAddToAggroList(living, aggroAmount);
         }
 
