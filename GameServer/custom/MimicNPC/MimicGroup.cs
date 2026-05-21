@@ -595,8 +595,14 @@ namespace DOL.GS.Scripts
         }
 
         /// <summary>
-        /// True if the living can act as puller: it must have either a distance
-        /// weapon (archer-style pull) or harmful spells (caster-style pull).
+        /// True if the living can act as puller. Three valid pull styles:
+        ///   - distance weapon equipped (archer-style ranged pull),
+        ///   - harmful spells (caster-style pull),
+        ///   - the Puller combat role (melee body-pull: walk in, hit once,
+        ///     retreat — implemented in MimicBrain.PerformPull).
+        /// The melee body-pull path means tank/melee classes such as the
+        /// Mercenary and Reaver remain valid pullers even though they no
+        /// longer carry a crossbow.
         /// </summary>
         public static bool CanPull(GameLiving living)
         {
@@ -606,8 +612,14 @@ namespace DOL.GS.Scripts
             if (living.Inventory?.GetItem(eInventorySlot.DistanceWeapon) != null)
                 return true;
 
-            if (living is MimicNPC mimic && (mimic.CanCastHarmfulSpells || mimic.CanCastInstantHarmfulSpells))
-                return true;
+            if (living is MimicNPC mimic)
+            {
+                if (mimic.CanCastHarmfulSpells || mimic.CanCastInstantHarmfulSpells)
+                    return true;
+
+                if (mimic.CombatProfile?.HasRole(eMimicCombatRole.Puller) == true)
+                    return true;
+            }
 
             return false;
         }

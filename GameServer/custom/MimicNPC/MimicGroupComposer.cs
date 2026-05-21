@@ -143,7 +143,11 @@ namespace DOL.GS.Scripts
             MimicNPC tank = mimics.FirstOrDefault(m => IsTankClass(m));
             MimicNPC healer = mimics.FirstOrDefault(m => IsHealerClass(m));
             MimicNPC cc = mimics.FirstOrDefault(m => IsCCClass(m));
-            MimicNPC puller = mimics.FirstOrDefault(m => MimicGroup.CanPull(m));
+            // Pick the BEST puller (archer > caster-with-pull-spell > caster >
+            // melee body-pull), not just the first list entry that happens to
+            // pass CanPull — otherwise a melee body-puller earlier in the list
+            // would be chosen over an archer further down.
+            MimicNPC puller = PickBestPuller(mimics);
 
             // Leader & main assist default to the tank; the player remains the group leader
             // if they own the group, but inside the MimicGroup we still want a tank-focused assist.

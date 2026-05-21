@@ -358,7 +358,12 @@ namespace DOL.GS.Scripts
             Add(Profile(eMimicClass.Cleric, healer, eMimicCombatRole.Healer, eMimicAoePolicy.Never, HealerPve, HealerPvp));
             Add(Profile(eMimicClass.Friar, healer | eMimicCombatRole.MeleeDps, eMimicCombatRole.Healer, eMimicAoePolicy.Never, HealerPve, HealerPvp));
             Add(Profile(eMimicClass.Infiltrator, assassin, eMimicCombatRole.Assassin, eMimicAoePolicy.Never, DpsPve, SupportHunterPvp));
-            Add(Profile(eMimicClass.Mercenary, tankMelee, eMimicCombatRole.MeleeDps, eMimicAoePolicy.Never, TankPve, TankPvp));
+            // Mercenary: primary role is melee DPS, not tank. It keeps the
+            // tankMelee role flags so it can off-tank when a group has no real
+            // tank, but its target selection follows the DPS priorities —
+            // assist the kill target in PvE, and dive healers / casters / CC
+            // in RvR — instead of the tank's peel-first ordering.
+            Add(Profile(eMimicClass.Mercenary, tankMelee, eMimicCombatRole.MeleeDps, eMimicAoePolicy.Never, DpsPve, DpsPvp));
             Add(Profile(eMimicClass.Minstrel, supportCc | eMimicCombatRole.MeleeDps, eMimicCombatRole.CrowdControl, eMimicAoePolicy.CrowdControlWhenClustered, CcPve, CcPvp));
             Add(Profile(eMimicClass.Necromancer, petCaster | eMimicCombatRole.Debuffer, eMimicCombatRole.PetCaster, eMimicAoePolicy.DamageWhenClustered, DpsPve, DpsPvp, 3));
             Add(Profile(eMimicClass.Paladin, tankMelee | eMimicCombatRole.Support, eMimicCombatRole.Tank, eMimicAoePolicy.Never, TankPve, TankPvp));

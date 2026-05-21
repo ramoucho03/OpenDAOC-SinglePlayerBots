@@ -328,6 +328,17 @@ namespace DOL.GS.Scripts
 
         private void SetRanged()
         {
+            // Only true archer-role classes (Scout / Ranger / Hunter) carry a
+            // ranged weapon. Melee and tank classes — Mercenary, Reaver and
+            // every Albion fighter that trains Crossbow — would otherwise be
+            // handed a bow/crossbow/thrown weapon here, and the puller AI keys
+            // off the DistanceWeapon slot to open every pull at range. That is
+            // what made melee bots "shoot a bow" instead of playing their
+            // dual-wield / shield spec. Pure melee classes body-pull and fight
+            // in melee, which is their actual META.
+            if (CombatProfile?.HasRole(eMimicCombatRole.Archer) != true)
+                return;
+
             foreach (Ability ability in GetAllAbilities())
             {
                 switch (ability.KeyName)
