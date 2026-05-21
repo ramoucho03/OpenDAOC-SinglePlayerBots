@@ -344,7 +344,10 @@ namespace DOL.AI.Brain
         /// </summary>
         private GameLiving ResolvePetCombatTarget()
         {
-            if (Body.TargetObject is GameLiving ownTarget && IsValidPetTarget(ownTarget))
+            // The bot's own target only commands the pet when the bot is
+            // actually IN COMBAT. A merely-selected target (examine, a buff-
+            // target check, a leftover selection) must not send the pet in.
+            if (Body.InCombat && Body.TargetObject is GameLiving ownTarget && IsValidPetTarget(ownTarget))
                 return ownTarget;
 
             if (AggroList.Count > 0)
@@ -354,7 +357,14 @@ namespace DOL.AI.Brain
                         return kvp.Key;
             }
 
-            if (Body.Group?.MimicGroup?.MainAssist?.TargetObject is GameLiving assistTarget
+            // Assist target — but ONLY while the assist is genuinely in
+            // combat. Without the InCombat gate the pet charged whatever the
+            // group leader merely had SELECTED (targeting is not attacking),
+            // so the Cabalist's pet ran off the instant the player clicked a
+            // mob even though nobody had engaged it.
+            if (Body.Group?.MimicGroup?.MainAssist is GameLiving assist
+                && assist.InCombat
+                && assist.TargetObject is GameLiving assistTarget
                 && IsValidPetTarget(assistTarget))
                 return assistTarget;
 
@@ -1514,10 +1524,14 @@ namespace DOL.AI.Brain
             if (Body.IsAttacking || Body.IsCasting)
                 return false;
 
-            // Honour the same mana gate as initial pulls — without this the
-            // puller would keep chain-firing until everyone is OOM, and the
-            // group would end up in over-extended combat with no resources.
-            if (_pullManaThrottled)
+            // Honour the mana gate. The _pullManaThrottled latch is only
+            // refreshed inside CheckDelayPull — but a running chain-pull
+            // short-circuits CheckPuller (this method returns true) BEFORE
+            // CheckDelayPull is ever reached, so the latch goes stale and the
+            // chain ran the whole group to OOM regardless of it. Re-scan group
+            // mana FRESH here so the chain breaks the instant a caster drops
+            // below the pull STOP %.
+            if (_pullManaThrottled || AnyGroupCasterLowMana())
                 return false;
 
             GameLiving chainTarget = GetPullTarget();
@@ -1722,6 +1736,33 @@ namespace DOL.AI.Brain
                     }
                     return true;
                 }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Fresh scan: true if any caster mimic in the group is below the pull
+        /// STOP mana %. TryChainPull needs this because the _pullManaThrottled
+        /// latch is only refreshed inside CheckDelayPull — which a running
+        /// chain-pull short-circuits past — leaving the latch stale while the
+        /// chain drains the whole group dry.
+        /// </summary>
+        private bool AnyGroupCasterLowMana()
+        {
+            if (Body.Group == null)
+                return false;
+
+            int stopPct = MimicConfig.MIMIC_PULL_MANA_STOP_PCT;
+
+            foreach (GameLiving gl in Body.Group.GetMembersInTheGroup())
+            {
+                if (gl == null || !gl.IsAlive || gl.MaxMana <= 0)
+                    continue;
+                if (gl is GamePlayer)
+                    continue;
+                if (gl.ManaPercent < stopPct)
+                    return true;
             }
 
             return false;
@@ -4314,17 +4355,18 @@ namespace DOL.AI.Brain
                 _nextPetRecallTick = GameLoop.GameLoopTime + 2000;
             }
 
-            // Keep the pet Defensive — never force Aggressive. An Aggressive
-            // pet autonomously charges any enemy that wanders into its aggro
-            // radius: it pulls extra mobs, breaks the group's mez, and bleeds
-            // damage off the focus target. The brain already DIRECTS the pet
-            // every tick — ResolvePetCombatTarget picks the correct victim
-            // (the bot's target / the group's focus) and the explicit
-            // petBrain.Attack(...) call below sends the pet at it. Defensive
-            // obeys that command and still lets the pet defend its owner if
-            // jumped; it just never freelances a pull.
-            if (petBrain.AggressionState != eAggressionState.Defensive)
-                petBrain.AggressionState = eAggressionState.Defensive;
+            // Keep the pet PASSIVE — zero autonomy. The brain DIRECTS the pet
+            // entirely: ResolvePetCombatTarget picks the victim (the group's
+            // combat target, or whatever is attacking the bot — that attacker
+            // is on the bot's own aggro list) and the explicit petBrain.Attack
+            // call below sends the pet at it. A Passive pet still obeys that
+            // command, but never engages anything on its own — no proximity
+            // charging, no auto-defend freelancing. Aggressive AND Defensive
+            // both let the pet pick its own fights, which the operator reads
+            // as the pet "being in aggro mode"; Passive is the only state that
+            // is genuinely 100% bot-directed.
+            if (petBrain.AggressionState != eAggressionState.Passive)
+                petBrain.AggressionState = eAggressionState.Passive;
 
             if (petBrain.WalkState != eWalkState.Follow)
                 petBrain.Follow(Body);
