@@ -282,7 +282,15 @@ namespace DOL.GS.Scripts
 
                 case eSpecType.OneHandHybrid:
                 case eSpecType.TwoHandHybrid:
-                case eSpecType.TwoHanded when CharacterClass.ID != (int)eCharacterClass.Valewalker:
+                // Valewalker (Scythe) and Necromancer (Staff) carry a single
+                // two-handed weapon in WeaponOneType and never set
+                // WeaponTwoType. This hybrid branch would equip WeaponOneType
+                // one-handed plus an unset WeaponTwoType (GenericItem) two-
+                // handed — literally a bag in the weapon slot. Exclude them so
+                // they fall through to the ListCaster / default branch, which
+                // two-hands WeaponOneType correctly.
+                case eSpecType.TwoHanded when CharacterClass.ID != (int)eCharacterClass.Valewalker
+                                              && CharacterClass.ID != (int)eCharacterClass.Necromancer:
                 MimicEquipment.SetMeleeWeapon(this, MimicSpec.WeaponOneType, eHand.oneHand);
                 MimicEquipment.SetMeleeWeapon(this, MimicSpec.WeaponTwoType, eHand.twoHand, MimicSpec.DamageType);
                 break;
