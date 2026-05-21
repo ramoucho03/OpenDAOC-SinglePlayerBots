@@ -5533,8 +5533,17 @@ namespace DOL.AI.Brain
                     if (Body.ManaPercent < 20)
                         return false;
 
-                    bool keepsManaReserve = combatProfile?.HasRole(eMimicCombatRole.Healer) == true
-                        || combatProfile?.HasRole(eMimicCombatRole.Support) == true;
+                    // A caster whose role set includes CasterDps exists to deal
+                    // damage — it nukes at full rate down to the hard floor even
+                    // if it ALSO carries a Support / CC tag. The Sorcerer is
+                    // Support + CrowdControl + CasterDps: the lone Support tag
+                    // was wrongly keeping it on the heavy taper, so it skipped
+                    // most of its nukes below 50% mana and "felt ineffective".
+                    // Only a NON-damage caster (pure healer / pure support)
+                    // holds back a mana reserve.
+                    bool keepsManaReserve = combatProfile?.HasRole(eMimicCombatRole.CasterDps) != true
+                        && (combatProfile?.HasRole(eMimicCombatRole.Healer) == true
+                            || combatProfile?.HasRole(eMimicCombatRole.Support) == true);
 
                     if (keepsManaReserve
                         && Body.ManaPercent < 50
@@ -5849,13 +5858,21 @@ namespace DOL.AI.Brain
                         if (isWoundedVampiir && s.SpellType == eSpellType.Lifedrain)
                             score -= 4;
 
-                        // Bias toward primary-spec spells. Convert Level to a
-                        // [0..-2] adjustment so a Level-45 spell beats a
-                        // Level-25 within the same priority tier.
-                        if (s.Level >= 30)
-                            score -= 1;
-                        if (s.Level >= 45)
-                            score -= 1;
+                        // Strongly favour the bot's PRIMARY specced line. An
+                        // off-spec spell is always low-level — capped at the
+                        // off-spec spec level (a Fire wizard's Cold line tops
+                        // out around level 20) — while the main line reaches
+                        // the bot's own level. This proportional level bias
+                        // spans a wider range (0..-7) than the ENTIRE type-
+                        // priority spread (2..7), so a high-level in-spec nuke
+                        // is never passed over for a low-level off-spec
+                        // utility-nuke. Without it a Fire wizard kept casting
+                        // its weak low-level Cold debuff-nuke (type score 4)
+                        // instead of its level-50 Fire nuke (type score 7) —
+                        // "the wizard switches to the wrong spell after the
+                        // bolt". The Damage tie-break still settles same-score
+                        // spells, so the strongest in-spec nuke wins.
+                        score -= s.Level / 7;
 
                         return score;
                     }

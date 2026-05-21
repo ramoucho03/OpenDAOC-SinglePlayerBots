@@ -22,14 +22,18 @@ services:
       - --innodb_large_prefix=1
       - --innodb_file_format=Barracuda
       - --innodb_file_per_table=1
-      # --- Performance InnoDB : ajustez innodb_buffer_pool_size à 50-70% de
-      # la RAM dédiée à la DB. 2G met déjà toute la base (~70 Mo) en cache,
-      # bien au-delà du défaut MariaDB (128 Mo). Aucune concession ACID :
-      # flush_log_at_trx_commit reste à 1 (durabilité complète).
+      # --- Performance InnoDB : ajustez innodb_buffer_pool_size a 50-70% de
+      # la RAM dediee a la DB. 2G met deja toute la base (~70 Mo) en cache.
       - --innodb_buffer_pool_size=2G
       - --innodb_log_file_size=512M
       - --innodb_flush_method=O_DIRECT
       - --max_connections=200
+      # flush_log_at_trx_commit=2 : supprime le fsync disque a chaque commit
+      # (cause directe des INSERT/DELETE Inventory a 100+ ms). Le redo log est
+      # flushe 1x/s -> au pire 1s de transactions perdues sur crash OS/courant
+      # (jamais sur crash du serveur de jeu). Negligeable : l'autosave tourne
+      # deja toutes les 10 min.
+      - --innodb_flush_log_at_trx_commit=2
     restart: always
     environment:
       MYSQL_DATABASE: opendaoc
