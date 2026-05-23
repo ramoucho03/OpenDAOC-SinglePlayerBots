@@ -2458,6 +2458,30 @@ namespace DOL.GS.Scripts
             //Experience = ExperienceForNextLevel - 1;
             Experience = ExperienceForCurrentLevel;
 
+            // Manually apply the per-level stat increments that a real player
+            // would accrue between level 6 and `level`. The Level setter only
+            // calls OnLevelUp when oldLevel > 0, so a fresh /mcreate at level
+            // N (oldLevel was 0) silently skips ~N stat points on each of the
+            // class's primary/secondary/tertiary stats. The visible symptom
+            // was a level-41 Wizard mimic running ~70 Int (race base + the
+            // +10 from SetRaceAndName) instead of the ~106 a leveled player
+            // would have — driving spell damage 20-30 % below expected before
+            // any items/spec contribution. Mirrors the OnLevelUp formula
+            // (line ~469 in MimicNPC.Experience.cs) exactly so the per-stat
+            // ratios stay class-consistent.
+            if (level > 5 && CharacterClass != null)
+            {
+                for (int i = level; i > 5; i--)
+                {
+                    if (CharacterClass.PrimaryStat != eStat.UNDEFINED)
+                        ChangeBaseStat(CharacterClass.PrimaryStat, 1);
+                    if (CharacterClass.SecondaryStat != eStat.UNDEFINED && ((i - 6) % 2 == 0))
+                        ChangeBaseStat(CharacterClass.SecondaryStat, 1);
+                    if (CharacterClass.TertiaryStat != eStat.UNDEFINED && ((i - 6) % 3 == 0))
+                        ChangeBaseStat(CharacterClass.TertiaryStat, 1);
+                }
+            }
+
             if (level >= 20 && level < 25)
                 RealmLevel = Util.Random(1, 10);
             else if (level > 24 && level < 30)

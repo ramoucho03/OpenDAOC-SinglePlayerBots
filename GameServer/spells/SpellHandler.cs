@@ -3038,7 +3038,19 @@ namespace DOL.GS.Spells
 
 			GamePlayer playerCaster = Caster as GamePlayer;
 
-			if (playerCaster != null || (Caster is GameNPC casterNpc && casterNpc.Brain is IControlledBrain && Caster.Realm != 0))
+			// Mimics are player surrogates and must benefit from the same
+			// PvE/PvP spell-damage multipliers as real players. The legacy
+			// gate only fired for GamePlayer + controlled pets (IControlledBrain),
+			// so a MimicNPC bolt skipped the multiplier entirely — on a server
+			// running pve_spell_damage > 1.0 that capped bot caster damage at
+			// a fraction of a real player's at the same level / gear, which is
+			// exactly the "Wizard mimic does 5 % while my Theurgist player
+			// does 15-20 %" symptom reported in the field.
+			bool isMimicCaster = Caster is DOL.GS.Scripts.MimicNPC;
+
+			if (playerCaster != null
+				|| isMimicCaster
+				|| (Caster is GameNPC casterNpc && casterNpc.Brain is IControlledBrain && Caster.Realm != 0))
 			{
 				if (target is GamePlayer)
 					finalDamage *= Properties.PVP_SPELL_DAMAGE;
