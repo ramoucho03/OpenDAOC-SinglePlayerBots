@@ -278,6 +278,18 @@ namespace DOL.AI.Brain
             else
                 _healManaConserving = false;
 
+            // Force conservation during the camp Regen phase regardless of
+            // the healer's own mana %. Without this, a healer above
+            // HEAL_RESUME_PCT (default 30 %) keeps top-up healing partially
+            // injured allies, burning the very mana the group is trying to
+            // recover. The puller is waiting for everyone at the higher
+            // PULL_RESUME threshold (default 85 %), so the healer's mana
+            // never climbs there and Regen drags on indefinitely.
+            // Emergencies still pass — line ~559 keeps numEmergency > 0
+            // pierces the latch.
+            if (mGroup != null && mGroup.CampPhase == MimicGroup.eCampPhase.Regen)
+                _healManaConserving = true;
+
             lock (mGroup?.HealLock ?? _ungroupedHealLock)
             {
                 #region Check Health

@@ -2805,6 +2805,20 @@ namespace DOL.GS.Spells
 				case GlobalSpellsLines.Mob_Spells:
 				case GlobalSpellsLines.Nightshade:
 				{
+					// Mimics cast through the Mob_Spells line because their spells
+					// aren't loaded onto class-specific lines, but they ARE level-
+					// specced casters and shouldn't eat the fixed mob variance
+					// range (0.6/1.0, average 0.8). Use the bot's level as a
+					// synthetic spec — matches a real player at full spec for that
+					// level. Real mobs and Nightshade poisons keep the original
+					// fixed range below.
+					if (casterToUse is DOL.GS.Scripts.MimicNPC)
+					{
+						max = 1.0;
+						min = CalculateLowerVarianceBound(casterToUse.Level, target.Level);
+						break;
+					}
+
 					// Mob spells are modified by acuity stats.
 					// Nightshade spells aren't tied to any trainable specialization and thus require a fixed variance.
 					// Lower bound is similar to what the variance calculation would return if we used 26 for the specialization and 50 for the target level.
@@ -2908,9 +2922,15 @@ namespace DOL.GS.Spells
 			// Other pets use their own stats and level.
 			GameLiving modifiedCaster = Caster is NecromancerPet necromancerPet ? necromancerPet.Owner : Caster;
 
-			if (modifiedCaster is GameNPC)
-				stat = modifiedCaster.GetModified(eProperty.Intelligence);
-			else if (modifiedCaster is GamePlayer playerCaster)
+			// Mimics emulate players for spell damage: same ManaStat surface,
+			// same GetModifiedFromItems machinery for spec bonuses. The
+			// previous GameNPC catch-all forced them through Intelligence-only
+			// with no spec contribution, which on any non-Int caster mimic
+			// (Cleric/Healer use Piety, Druid uses Empathy, etc.) cost
+			// ~30-50% of a real player's spell damage. Player branch comes
+			// first and stays byte-identical for zero regression; mimic
+			// branch mirrors it; real NPCs still get the Intelligence path.
+			if (modifiedCaster is GamePlayer playerCaster)
 			{
 				switch ((eCharacterClass) playerCaster.CharacterClass.ID)
 				{
@@ -2939,6 +2959,32 @@ namespace DOL.GS.Spells
 					}
 				}
 			}
+			else if (modifiedCaster is DOL.GS.Scripts.MimicNPC mimicCaster)
+			{
+				switch ((eCharacterClass) mimicCaster.CharacterClass.ID)
+				{
+					case eCharacterClass.MaulerAlb:
+					case eCharacterClass.MaulerMid:
+					case eCharacterClass.MaulerHib:
+					case eCharacterClass.Vampiir:
+						break;
+					case eCharacterClass.Nightshade:
+					{
+						stat = mimicCaster.GetModified(eProperty.Strength) + mimicCaster.AbilityBonus[eProperty.Acuity];
+						break;
+					}
+					default:
+					{
+						if (mimicCaster.CharacterClass.ManaStat is not eStat.UNDEFINED)
+							stat = mimicCaster.GetModified((eProperty) mimicCaster.CharacterClass.ManaStat);
+
+						spec = mimicCaster.GetModifiedFromItems(SkillBase.SpecToSkill(m_spellLine.Spec));
+						break;
+					}
+				}
+			}
+			else if (modifiedCaster is GameNPC)
+				stat = modifiedCaster.GetModified(eProperty.Intelligence);
 
 			// A nerf of about 10% to spell damage was supposedly applied around 2014. We are not applying it.
 			// This formula is also somewhat inaccurate. Even with that nerf applied, the intelligence modifier is too high when comparing damage on live at low level.

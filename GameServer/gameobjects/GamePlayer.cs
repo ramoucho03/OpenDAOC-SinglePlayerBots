@@ -1443,8 +1443,13 @@ namespace DOL.GS
             }
             else if (releaseCommand is eReleaseType.Normal)
             {
-                // Check for NF or battleground (RvR release).
-                if (CurrentRegionID is 163)
+                // Check for frontier (RvR) release or battleground release.
+                // "Frontier" covers both legacy NF (163) and the three Old
+                // Frontier regions (1/100/200) when the death happened in an
+                // RvR zone — Emain Macha, Hadrian's Wall, Odin's Gate, etc.
+                bool inOldFrontierRvR = CurrentRegionID is 1 or 100 or 200
+                    && CurrentZone != null && CurrentZone.IsRvR;
+                if (CurrentRegionID is 163 || inOldFrontierRvR)
                     releaseCommand = eReleaseType.NewFrontiers;
                 else
                 {
@@ -1578,8 +1583,12 @@ namespace DOL.GS
                 }
                 case eReleaseType.NewFrontiers:
                 {
-                    // `GetBorderKeepLocation` works with NF only.
-                    if (GameServer.KeepManager.GetBorderKeepLocation((byte) Realm * 2 - 1, out relX, out relY, out relZ, out relHeading))
+                    // Region-aware: GetFrontierReleaseLocation returns NF
+                    // border-keep coords for region 163 and the right
+                    // per-realm safe spot inside the three Old Frontier
+                    // regions (home realm → friendly relic keep, invaders →
+                    // their portal keep).
+                    if (GameServer.KeepManager.GetFrontierReleaseLocation(Realm, CurrentRegion.ID, out relX, out relY, out relZ, out relHeading))
                     {
                         relRegion = CurrentRegion.ID;
                         break;

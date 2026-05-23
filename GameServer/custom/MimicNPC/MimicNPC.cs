@@ -1933,6 +1933,15 @@ namespace DOL.GS.Scripts
                 powerCost *= 2;
             */
 
+            // Mimic DPS casters get a 30% mana-cost reduction to balance their
+            // higher per-cast consumption against their burst-DPS role. Applied
+            // uniformly to every spell cast by these classes (nukes, debuffs,
+            // snares) since the role is class-defined, not spell-defined.
+            // Healers and hybrids are NOT in BOT_AI_V2_CASTER_DPS_CLASSES so
+            // their cost stays intact.
+            if (MimicConfig.IsCasterDpsClass((int) CharacterClass.ID))
+                powerCost = (int) Math.Round(powerCost * 0.7);
+
             return powerCost;
         }
 

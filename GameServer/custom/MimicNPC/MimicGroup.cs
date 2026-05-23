@@ -534,10 +534,23 @@ namespace DOL.GS.Scripts
             return true;
         }
 
-        // Higher score = better tank candidate. Real tanks (shield + plate class)
-        // outrank Reaver-ish hybrids, which outrank pure melee DPS, which outrank
-        // casters/healers. Players are slightly preferred over mimics so a real
-        // tank in the group always gets the role back.
+        /// <summary>
+        /// Ranks a candidate by their suitability to anchor the group's aggro.
+        /// Higher score = better tank: shield + plate first, hybrids second,
+        /// off-tank heavy melee last, others minimal. The +5 player bonus
+        /// guarantees a real-player tank reclaims the role.
+        ///
+        /// Intentionally diverges from MimicConfig.IsTankClass (the CSV that
+        /// auto-enables TankStrategy). The CSV gates the taunt-rotation /
+        /// shield-Slam bundle on classes that actually own those styles. This
+        /// score, by contrast, lets an off-tank class (Mercenary, Berserker,
+        /// Friar, Savage, Valkyrie, Blademaster) become the de-facto tank when
+        /// no plate-tank is around — picked up by MimicBrain.IsActingAsTank,
+        /// which then triggers the +40% threat boost in
+        /// StandardMobBrain.AddToAggroList. They hold aggro via damage + boost;
+        /// they do NOT get the TankStrategy bindings (which assume taunt styles
+        /// and a shield).
+        /// </summary>
         public static int ScoreTankCandidate(GameLiving member)
         {
             int score = 0;

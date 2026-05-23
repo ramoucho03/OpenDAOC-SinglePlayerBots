@@ -241,9 +241,21 @@ namespace DOL.GS
         {
             get
             {
+                // NOTE: This is intentionally NOT a whole-region flag for the
+                // three Old Frontier realm regions (1 Albion / 100 Midgard / 200
+                // Hibernia). Those regions contain the entire realm (Camelot,
+                // leveling zones, capital) plus the frontier — making the whole
+                // region RvR would turn PvE leveling into RvR. The 12 classic
+                // frontier zones (Forest Sauvage, Emain Macha, Odin's Gate, etc.)
+                // are RvR at the ZONE level instead (see Zone.IsRvR), which is
+                // the correct granularity.
+                //
+                // Region 163 (legacy NF) is no longer listed here: on this
+                // server its keeps, relics and IsFrontier flag all live on
+                // 1/100/200, leaving 163 as empty terrain — pretending it is
+                // RvR was misleading.
                 switch (RegionData.Id)
                 {
-                    case 163: //new frontiers
                     case 165: //Cathal Valley
                     case 233: //Summoners Hall
                     case 234: //1to4BG

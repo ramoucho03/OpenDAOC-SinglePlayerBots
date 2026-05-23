@@ -25,6 +25,12 @@ namespace DOL.AI.Brain
         private const int EFFECTIVE_AGGRO_DISTANCE_THRESHOLD = 250; // Should be higher than players' melee range.
         private static readonly double EFFECTIVE_AGGRO_EXPONENT = Math.Log(1 / 3.0) / (1500 - EFFECTIVE_AGGRO_DISTANCE_THRESHOLD);
 
+        // Aggro stickiness: the mob keeps its current target until a challenger
+        // beats its effective threat by more than this factor. Without the
+        // margin the mob flips target the instant anyone ticks 1 aggro above,
+        // so a tank can never hold aggro against bursty group DPS.
+        private const double AGGRO_STICKINESS_FACTOR = 1.2;
+
         // Used for AmbientBehaviour "Seeing" - maintains a list of GamePlayer in range
         public List<GamePlayer> PlayersSeen = new();
 
@@ -291,7 +297,7 @@ namespace DOL.AI.Brain
             if (Body.IsConfused || !Body.IsAlive || living == null)
                 return;
 
-            // Mimic tanks generate +20% threat so they out-aggro the group's
+            // Mimic tanks generate +40% threat so they out-aggro the group's
             // own DPS more reliably and keep mobs glued to them. This is the
             // single choke point for every threat source — melee damage,
             // taunt styles, taunt shouts — so the boost covers them all. Only
@@ -301,7 +307,7 @@ namespace DOL.AI.Brain
                 && living is DOL.GS.Scripts.MimicNPC mimicTank
                 && mimicTank.MimicBrain?.IsActingAsTank == true)
             {
-                aggroAmount = (long) (aggroAmount * 1.2);
+                aggroAmount = (long) (aggroAmount * 1.4);
             }
 
             ForceAddToAggroList(living, aggroAmount);
@@ -593,9 +599,12 @@ namespace DOL.AI.Brain
 
             if (highestThreat != null)
             {
-                // Don't change target if our new found highest threat has the same effective aggro.
-                // This helps with BAF code to make mobs actually go to their intended target.
-                if (currentTarget.Key != null && currentTarget.Key != highestThreat && currentTarget.Value.Effective >= highestEffectiveAggro)
+                // Keep the current target unless a challenger beats its effective
+                // threat by more than AGGRO_STICKINESS_FACTOR. Without this margin
+                // the mob flips target on a 1-aggro lead and tanks can't hold.
+                // The tie case also helps BAF send mobs to their intended target.
+                if (currentTarget.Key != null && currentTarget.Key != highestThreat
+                    && currentTarget.Value.Effective * AGGRO_STICKINESS_FACTOR >= highestEffectiveAggro)
                     highestThreat = currentTarget.Key;
             }
             else

@@ -52,6 +52,7 @@ namespace DOL.GS.Keeps
 		bool IsEnemy(GameKeepComponent checker, GamePlayer target);
 		byte GetHeightFromLevel(byte level);
 		bool GetBorderKeepLocation(int keepid, out int x, out int y, out int z, out ushort heading);
+		bool GetFrontierReleaseLocation(eRealm realm, ushort region, out int x, out int y, out int z, out ushort heading);
 		int GetRealmKeepBonusLevel(eRealm realm);
 		int GetRealmTowerBonusLevel(eRealm realm);
 		void UpdateBaseLevels();

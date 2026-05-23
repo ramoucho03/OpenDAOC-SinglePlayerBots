@@ -383,7 +383,21 @@ namespace DOL.GS
 
         public double WeaponDamage(DbInventoryItem weapon, WeaponAction action, double effectiveness, out double damageCap)
         {
-            double damage = owner is GamePlayer player ? CalculatePlayerDamage(player, weapon, action) : CalculateNpcDamage(weapon);
+            // Mimics emulate players. Routing them through CalculateNpcDamage
+            // (level^2 scaling via PVE_MOB_DAMAGE_F1/F2 + DamageFactor) ignored
+            // the weapon's DPS_AF, the bot's spec, and GetModified(eProperty.DPS)
+            // — capping a mimic's hit at ~20% of a real player's at equal level
+            // and gear. They expose the same WeaponDamageWithoutQualityAndCondition
+            // / ActiveLeftWeapon surface as GamePlayer, so they go through the
+            // player formula.
+            double damage;
+
+            if (owner is GamePlayer player)
+                damage = CalculatePlayerDamage(player, weapon, action);
+            else if (owner is DOL.GS.Scripts.MimicNPC mimic)
+                damage = CalculateMimicDamage(mimic, weapon, action);
+            else
+                damage = CalculateNpcDamage(weapon);
             damage *= effectiveness;
             damageCap = CalculateDamageCap(damage);
             damage *= GetWeaponQualityConditionModifier(weapon); // Quality and condition don't affect damage cap.
@@ -431,6 +445,33 @@ namespace DOL.GS
             };
         }
 
+        // Mirrors CalculatePlayerDamage but takes a MimicNPC. Kept as a sibling
+        // (rather than via a shared helper) so the GamePlayer path stays
+        // byte-for-byte identical to its current proven behaviour.
+        private double CalculateMimicDamage(DOL.GS.Scripts.MimicNPC mimic, DbInventoryItem weapon, WeaponAction action)
+        {
+            if (weapon == null)
+                return 0;
+
+            double damage = mimic.WeaponDamageWithoutQualityAndCondition(weapon) * weapon.SPD_ABS * 0.1 * CalculateSlowWeaponDamageModifier(weapon);
+
+            if (weapon.Item_Type is Slot.RIGHTHAND or Slot.LEFTHAND or Slot.TWOHAND)
+            {
+                if (mimic.ActiveLeftWeapon != null)
+                    damage *= CalculateLeftAxeModifier();
+
+                if (weapon.Item_Type is Slot.TWOHAND)
+                    damage *= CalculateTwoHandedDamageModifier(weapon);
+            }
+            else if (weapon.Item_Type is Slot.RANGED)
+            {
+                damage *= CalculateTwoHandedDamageModifier(weapon);
+                damage *= GetAmmoModifier(action);
+            }
+
+            return damage;
+        }
+
         private double CalculateNpcDamage(DbInventoryItem weapon)
         {
             double damage = (1.0 + owner.Level / Properties.PVE_MOB_DAMAGE_F1 + owner.Level * owner.Level / Properties.PVE_MOB_DAMAGE_F2) * NpcWeaponSpeed(weapon) * 0.1;
@@ -456,10 +497,15 @@ namespace DOL.GS
 
         public double GetWeaponQualityConditionModifier(DbInventoryItem weapon)
         {
-            if (owner is not GamePlayer || weapon == null)
+            if (weapon == null)
                 return 1.0;
 
-            return weapon.Quality * weapon.ConditionPercent * 0.0001;
+            // Players AND mimics use the quality * condition modifier — both
+            // wield real items with those properties. NPCs keep a flat 1.0.
+            if (owner is GamePlayer || owner is DOL.GS.Scripts.MimicNPC)
+                return weapon.Quality * weapon.ConditionPercent * 0.0001;
+
+            return 1.0;
         }
 
         public void RequestStartAttack(GameObject attackTarget = null)

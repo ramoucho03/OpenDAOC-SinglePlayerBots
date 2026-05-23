@@ -707,6 +707,10 @@ namespace DOL.GS.Scripts
             {
                 if (mimic != null && mimic.ObjectState == GameObject.eObjectState.Active)
                 {
+                    // Pre-flag this teardown as expected so the [MIMIC-FLICKER]
+                    // diagnostic in MimicNPC.Delete doesn't log a stack trace —
+                    // quit/linkdeath cleanup is a legitimate delete, not flicker.
+                    mimic._beingDeleted = true;
                     mimic.Delete();
                     deleted++;
                 }
@@ -732,6 +736,9 @@ namespace DOL.GS.Scripts
             {
                 if (mimic != null && mimic.ObjectState == GameObject.eObjectState.Active)
                 {
+                    // Pre-flag this teardown as expected so the [MIMIC-FLICKER]
+                    // diagnostic doesn't log a stack trace — /mclear is voluntary.
+                    mimic._beingDeleted = true;
                     mimic.Delete();
                     count++;
                 }
@@ -745,6 +752,9 @@ namespace DOL.GS.Scripts
             GameEventMgr.AddHandler(GamePlayerEvent.Quit, OnPlayerQuit);
             GameEventMgr.AddHandler(GamePlayerEvent.Linkdeath, OnPlayerLinkdeath);
             GameEventMgr.AddHandler(GroupEvent.MemberDisbanded, OnGroupMemberDisbanded);
+            // GroupEvent.MemberJoined is registered separately in the
+            // OnScriptsCompiled bootstrap class because its handler
+            // (OnGroupMemberJoined) lives in that other class, not here.
         }
 
         /// <summary>
@@ -1578,7 +1588,9 @@ namespace DOL.GS.Scripts
             // initialized to (usually the human leader), and mimic tanks never
             // act as tank because IsMainTank is false for them. Global handler
             // — fires for player-led groups, full-bot groups, and LFG recruits
-            // alike.
+            // alike. Registered here (not in MimicManager.RegisterPlayer
+            // LifecycleHandlers) because OnGroupMemberJoined is private to
+            // this class.
             GameEventMgr.AddHandler(GroupEvent.MemberJoined, OnGroupMemberJoined);
         }
 

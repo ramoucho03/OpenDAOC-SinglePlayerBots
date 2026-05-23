@@ -1036,9 +1036,17 @@ namespace DOL.AI.Brain
             {
                 if (!_brain.CheckSpells(MimicBrain.eCheckSpellType.Defensive))
                 {
-                    // Healers stay standing & alert; everyone else sits to regen.
+                    // Healers normally stay standing & alert so they react
+                    // instantly. During the Regen camp phase the group is
+                    // paused waiting for mana to climb back to the pull-
+                    // resume threshold — letting the healer sit then
+                    // accelerates that recovery (sitting ≈ 2-3× mana regen)
+                    // with no reactivity cost, since combat isn't imminent
+                    // by definition of the phase. Damage or an emergency
+                    // cast auto-stands the bot, so this is safe.
+                    bool inCampRegen = mg != null && mg.CampPhase == MimicGroup.eCampPhase.Regen;
                     if (_brain.IsHealer)
-                        _brain.MimicBody.Sit(false);
+                        _brain.MimicBody.Sit(inCampRegen);
                     else
                         _brain.MimicBody.Sit(_brain.CheckStats(75));
                 }
@@ -1324,10 +1332,19 @@ namespace DOL.AI.Brain
             switch (mg.CampPhase)
             {
                 case MimicGroup.eCampPhase.Ready:
-                case MimicGroup.eCampPhase.Regen:
                 case MimicGroup.eCampPhase.PostCombat:
                     mg.SetCampPhase(MimicGroup.eCampPhase.Pulling);
                     break;
+                // INTENTIONALLY OMITTED: Regen.
+                // When the group is in Regen the mana floor was breached;
+                // the only way out is the RESUME gate (IsGroupReady, ~85 %).
+                // Letting a player-initiated pull yank the group out of
+                // Regen is the bypass that broke "sans faille" — the
+                // puller would re-engage before mana had actually climbed
+                // back, and the next fight wiped. Bots will still defend
+                // reactively if the mob aggros them (groupInCombat flips
+                // Regen → Combat at line ~1439); they just won't initiate
+                // a NEW pull while the group is supposed to be resting.
             }
         }
 
@@ -1525,21 +1542,22 @@ namespace DOL.AI.Brain
                         mg.SetCampPhase(MimicGroup.eCampPhase.Combat);
                         break;
                     }
-                    // Group still has a healthy mana buffer → chain straight
-                    // into the next pull. Use IsGroupStillFresh (the STOP-%
-                    // gate), NOT IsGroupReady (the near-full RESUME gate):
-                    // chaining must continue while mana is merely healthy and
-                    // only break for a real rest once a caster drops below the
-                    // stop %. Gating chain-pull on near-full mana would force a
-                    // full rest after literally every single pull.
+                    // Chain-pull while EVERY caster is still above the STOP
+                    // floor (~30 %, IsGroupStillFresh). Above the floor the
+                    // group is good to keep going — no needless Regen pause.
+                    // Below the floor we fall through to Regen, and from
+                    // there the only exit is the RESUME gate (~85 %,
+                    // IsGroupReady) — that's where "sans faille" lives:
+                    // once Regen kicks in, nothing lets the puller out
+                    // until everyone is properly topped.
                     if (IsGroupStillFresh(mg))
                     {
                         mg.SetCampPhase(MimicGroup.eCampPhase.Ready);
                         break;
                     }
-                    // Group still has residual aggro (a stray mob coming
-                    // back, a dot ticking, etc.) — short 1s window before
-                    // we drop to Regen so the next pull isn't pre-empted.
+                    // Residual aggro (stray mob walking back, a DoT ticking)
+                    // gets a short 1 s grace so the still-resolving fight
+                    // isn't pre-empted by an early Regen transition.
                     int grace = AnyGroupMemberHasAggro() ? 1000 : 0;
                     if (now - mg.CampPhaseSinceTick > grace)
                         mg.SetCampPhase(MimicGroup.eCampPhase.Regen);
