@@ -1036,33 +1036,33 @@ namespace DOL.AI.Brain
             {
                 bool inCampRegen = mg != null && mg.CampPhase == MimicGroup.eCampPhase.Regen;
 
-                // Healer Regen-phase priority: sit FIRST, then maybe cast.
-                // Previously CheckSpells(Defensive) ran first — if a healer
-                // had any defensive cast ready every tick (HoT refresh on a
-                // lightly injured ally, rebuff cycle), it would consume the
-                // branch every tick and Sit() was never reached. The healer
-                // stayed standing, mana regen was slow, the Regen→Ready gate
-                // (every caster ≥ MIMIC_PULL_MANA_RESUME_PCT) was never met,
-                // and the camp froze in Regen indefinitely. In Regen we own
-                // the rest window — sit unconditionally; emergencies and
-                // damage will auto-stand the bot anyway.
-                bool sitFirst = _brain.IsHealer && inCampRegen;
-                if (sitFirst)
-                    _brain.MimicBody.Sit(true);
+                // Healer sit-state: sync to phase intent EVERY tick,
+                // unconditionally. Sit during Regen (mana regen ≈ 2-3×),
+                // stand otherwise so CheckSpells(Defensive) is not skipped
+                // by the !IsSitting guard below and so the bot reacts on
+                // the next pull without waiting for an emergency to auto-
+                // stand it.
+                //
+                // The previous design forced Sit(true) only on entry to
+                // Regen and tried to flip back to Sit(false) inside the
+                // `!IsSitting && !CheckSpells(...)` block — but that block
+                // is short-circuited the moment the bot is already sitting,
+                // so a healer who sat during Regen never got the chance to
+                // stand back up when the phase advanced. The observable
+                // symptom was a healer frozen mid-camp, not moving and not
+                // healing anything below the emergency threshold, until a
+                // FOLLOW switch + brain reset (Body.Follow() / Enter()
+                // force a movement that auto-stands the bot).
+                //
+                // For non-healers, keep the original "sit when low stats"
+                // heuristic but place it next to the cast attempt so the
+                // CheckSpells(Defensive) path is preserved.
+                if (_brain.IsHealer)
+                    _brain.MimicBody.Sit(inCampRegen);
 
                 if (!_brain.Body.IsSitting && !_brain.CheckSpells(MimicBrain.eCheckSpellType.Defensive))
                 {
-                    // Healers normally stay standing & alert so they react
-                    // instantly. During the Regen camp phase the group is
-                    // paused waiting for mana to climb back to the pull-
-                    // resume threshold — letting the healer sit then
-                    // accelerates that recovery (sitting ≈ 2-3× mana regen)
-                    // with no reactivity cost, since combat isn't imminent
-                    // by definition of the phase. Damage or an emergency
-                    // cast auto-stands the bot, so this is safe.
-                    if (_brain.IsHealer)
-                        _brain.MimicBody.Sit(inCampRegen);
-                    else
+                    if (!_brain.IsHealer)
                         _brain.MimicBody.Sit(_brain.CheckStats(75));
                 }
 
