@@ -3861,6 +3861,32 @@ namespace DOL.GS.Scripts
             return GetHealthRegenerationInterval();
         }
 
+        // Mimic-specific +35 % passive mana regen. The default formula was too
+        // slow for the bot group regen cycle: the Regen→Ready gate waits for
+        // every caster to reach MIMIC_PULL_MANA_RESUME_PCT (85 %) and a healer
+        // who couldn't sit (defensive cast loop) crawled to that threshold,
+        // freezing the camp. Boosting the amount per tick by 35 % shortens
+        // every regen window without changing the threshold tuning.
+        protected override int PowerRegenerationTimerCallback(ECSGameTimer selfRegenerationTimer)
+        {
+            int maxMana = MaxMana;
+
+            if (Mana >= maxMana)
+            {
+                Mana = maxMana;
+                return 0;
+            }
+
+            int baseRegen = GetModified(eProperty.PowerRegenerationAmount);
+            int boosted = (int)Math.Ceiling(baseRegen * 1.35);
+            // Guarantee at least +1 even if rounding ate the bonus on tiny regen values.
+            if (baseRegen > 0 && boosted <= baseRegen)
+                boosted = baseRegen + 1;
+
+            ChangeMana(this, eManaChangeType.Regenerate, boosted);
+            return GetPowerRegenerationInterval();
+        }
+
         protected override int EnduranceRegenerationTimerCallback(ECSGameTimer selfRegenerationTimer)
         {
             int maxEndurance = MaxEndurance;

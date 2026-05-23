@@ -1034,7 +1034,23 @@ namespace DOL.AI.Brain
 
             if (!_brain.Body.IsMoving && !_brain.Body.InCombat)
             {
-                if (!_brain.CheckSpells(MimicBrain.eCheckSpellType.Defensive))
+                bool inCampRegen = mg != null && mg.CampPhase == MimicGroup.eCampPhase.Regen;
+
+                // Healer Regen-phase priority: sit FIRST, then maybe cast.
+                // Previously CheckSpells(Defensive) ran first — if a healer
+                // had any defensive cast ready every tick (HoT refresh on a
+                // lightly injured ally, rebuff cycle), it would consume the
+                // branch every tick and Sit() was never reached. The healer
+                // stayed standing, mana regen was slow, the Regen→Ready gate
+                // (every caster ≥ MIMIC_PULL_MANA_RESUME_PCT) was never met,
+                // and the camp froze in Regen indefinitely. In Regen we own
+                // the rest window — sit unconditionally; emergencies and
+                // damage will auto-stand the bot anyway.
+                bool sitFirst = _brain.IsHealer && inCampRegen;
+                if (sitFirst)
+                    _brain.MimicBody.Sit(true);
+
+                if (!_brain.Body.IsSitting && !_brain.CheckSpells(MimicBrain.eCheckSpellType.Defensive))
                 {
                     // Healers normally stay standing & alert so they react
                     // instantly. During the Regen camp phase the group is
@@ -1044,7 +1060,6 @@ namespace DOL.AI.Brain
                     // with no reactivity cost, since combat isn't imminent
                     // by definition of the phase. Damage or an emergency
                     // cast auto-stands the bot, so this is safe.
-                    bool inCampRegen = mg != null && mg.CampPhase == MimicGroup.eCampPhase.Regen;
                     if (_brain.IsHealer)
                         _brain.MimicBody.Sit(inCampRegen);
                     else
@@ -1184,8 +1199,21 @@ namespace DOL.AI.Brain
             //    Bound the scan to a wider camp-aware radius (3000u) so a
             //    side-fight at the line still triggers the rest of the camp,
             //    without sucking in remote brawls across the zone.
+            //
+            // Tank gate during Pulling: skip the group-combat assist while a
+            // pull is in flight. ScanGroupCombat would otherwise pick up the
+            // puller engaging the pull target (puller takes a hit / casts
+            // harmful) and drop the mob into the tank's aggro list. Once in
+            // AGGRO, AttackMostWanted chases with StickMaximumRange=5000 and
+            // the tank runs out to meet the mob mid-route — i.e. it pulls in
+            // the puller's place. Case 5 (proximity) and Case 1 (HasAggro
+            // from a direct hit) still engage the tank when the mob actually
+            // reaches camp.
             const int CAMP_ASSIST_RADIUS = 3000;
-            if (_brain.ScanGroupCombat(CAMP_ASSIST_RADIUS))
+            bool tankSkipScan = _brain.IsMainTank
+                                && mg != null
+                                && mg.CampPhase == MimicGroup.eCampPhase.Pulling;
+            if (!tankSkipScan && _brain.ScanGroupCombat(CAMP_ASSIST_RADIUS))
             {
                 _brain.Body.StopMoving();
                 _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
