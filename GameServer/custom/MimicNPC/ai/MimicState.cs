@@ -1109,7 +1109,25 @@ namespace DOL.AI.Brain
                 int effective = Math.Min(distToMob, distToPuller);
 
                 const int CAMP_ENGAGE_RANGE = 2500;
-                if (effective <= CAMP_ENGAGE_RANGE)
+
+                // Tank-specific gate: only engage when the MOB itself is close.
+                // The original "mob OR puller within 2500u" triggered as soon
+                // as the puller fired (the puller is always right next to the
+                // tank in camp), so the tank charged out with Follow(…, 5000)
+                // and effectively pulled in the puller's place. Restricting
+                // the tank to distToMob keeps the tank in camp until the mob
+                // actually arrives; DPS / CC / ranged still pre-arm via the
+                // wider gate below.
+                if (_brain.IsMainTank)
+                {
+                    const int TANK_ENGAGE_RANGE = 700;
+                    if (distToMob <= TANK_ENGAGE_RANGE)
+                    {
+                        EngageIncomingTarget(incoming, mg.MainPuller);
+                        return true;
+                    }
+                }
+                else if (effective <= CAMP_ENGAGE_RANGE)
                 {
                     EngageIncomingTarget(incoming, mg.MainPuller);
                     return true;
