@@ -1206,15 +1206,37 @@ namespace DOL.AI.Brain
 
             if (_brain.IsMainTank)
             {
-                // Proactive charge: kick off Follow + auto-attack THIS tick
-                // so the tank visibly closes the gap before the mob reaches
-                // camp. The default AGGRO path also chases but only after a
-                // Think → AttackMostWanted → StartAttack round-trip — enough
-                // latency that the tank looks reactive instead of pro-active.
+                // Pre-target the incoming mob so the AGGRO state's first tick
+                // resolves the right threat instantly. We do NOT charge the
+                // mob here: an unconditional Follow(…, 5000) + StartAttack
+                // sent the tank out to meet the mob mid-route (the puller is
+                // always right next to the tank, so Case 2's "puller within
+                // 2500u" gate triggered the instant the pull arrow flew),
+                // effectively turning the tank into the puller. The tank's
+                // forward motion is handled by MaintainTankIntercept (1Hz,
+                // capped at ~220u along the camp→puller axis) and by the
+                // natural AGGRO chase once the mob is actually close.
                 _brain.Body.TargetObject = incoming;
-                int attackRange = _brain.Body.attackComponent?.AttackRange ?? 200;
-                _brain.Body.Follow(incoming, Math.Max(80, attackRange - 30), 5000);
-                _brain.Body.StartAttack(incoming);
+
+                // Exception: if the mob is already in melee/charge range,
+                // engaging this tick is correct — there's no "pull" to
+                // hijack at that distance, just normal aggro pickup.
+                int distToMob = _brain.Body.GetDistanceTo(incoming);
+                const int TANK_IMMEDIATE_ENGAGE_RANGE = 700;
+                if (distToMob <= TANK_IMMEDIATE_ENGAGE_RANGE)
+                {
+                    int attackRange = _brain.Body.attackComponent?.AttackRange ?? 200;
+                    _brain.Body.Follow(incoming, Math.Max(80, attackRange - 30), TANK_IMMEDIATE_ENGAGE_RANGE);
+                    _brain.Body.StartAttack(incoming);
+                }
+                else
+                {
+                    // Mob still far: hold camp, let MaintainTankIntercept do
+                    // the contained forward step. Don't StartAttack — that
+                    // wires up auto-attack on a target out of range and the
+                    // tank starts sprinting after it.
+                    _brain.Body.StopFollowing();
+                }
             }
             else if (_brain.MimicBody != null
                      && _brain.MimicBody.Inventory?.GetItem(eInventorySlot.DistanceWeapon) != null
