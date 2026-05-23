@@ -1268,7 +1268,29 @@ namespace DOL.AI.Brain
             }
 
             // 5. Passive proximity scan (camp's small AggroRange).
-            if (_brain.CheckProximityAggro(_brain.AggroRange))
+            //
+            // Camp-rest suppression: during Ready / Regen / PostCombat, the
+            // group is supposed to be at rest waiting for the puller. A
+            // proximity scan that aggros on any hostile in range turns the
+            // tank into a magnet — visible as "the tank pulls every mob in
+            // sight". Suppress the scan during those phases; the camp will
+            // still react to:
+            //   - mobs that actually hit a group member (Case 1: HasAggro
+            //     for the bot that took the hit, Case 4: assist via
+            //     ScanGroupCombat for the rest of the camp)
+            //   - the puller's intentional pull (Case 2 / 3)
+            // Pulling / Engaging / Combat phases keep the proximity scan
+            // so adds wandering in during an active fight get picked up.
+            // The safety floor (`groupUnsafe`) also disables the scan
+            // regardless of phase, so a wounded group never voluntarily
+            // grabs a new mob.
+            bool restPhase = mg != null
+                             && (mg.CampPhase == MimicGroup.eCampPhase.Ready
+                                 || mg.CampPhase == MimicGroup.eCampPhase.Regen
+                                 || mg.CampPhase == MimicGroup.eCampPhase.PostCombat);
+
+            if (!groupUnsafe && !restPhase
+                && _brain.CheckProximityAggro(_brain.AggroRange))
             {
                 _brain.Body.StopMoving();
                 _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
