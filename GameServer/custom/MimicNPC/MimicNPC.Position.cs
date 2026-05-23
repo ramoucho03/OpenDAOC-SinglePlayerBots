@@ -434,35 +434,30 @@ namespace DOL.GS.Scripts
         {
             Sprint(false);
 
-            if (IsSitting == sit)
-                return sit;
-
-            if (!IsAlive)
-                return false;
-
-            if (IsCrowdControlled)
-                return false;
-
-            if (sit && (CurrentSpeed > 0 || IsStrafing))
-                return false;
-
-            // Stop attacking if the player sits down.
-            if (sit && attackComponent.AttackState)
-                attackComponent.StopAttack();
-
-            IsSitting = sit;
-
+            // Mimics never sit. Every observed "frozen healer / frozen
+            // group" incident traced back to a bot stuck with IsSitting=true
+            // (camp Regen carry-over, CheckDelayRoam latching, idle-stat
+            // sit, strategy action SitDownAction, etc.). The downside of
+            // sitting (≈2-3× mana regen) is not worth the bug surface:
+            // mimics regen mana via natural tick like any NPC out of
+            // combat. Short-circuit sit=true unconditionally; stand-up
+            // calls (Sit(false)) still flow through normally so we can
+            // recover any bot that somehow ended up seated already.
             if (sit)
             {
-                Emote(eEmote.Drink);
-                return true;
-            }
-            else
-            {
-                Emote(eEmote.LetsGo);
-
+                if (IsSitting)
+                    IsSitting = false; // force any stale seated state back to standing
                 return false;
             }
+
+            // Stand-up path (sit=false). Idempotent and always allowed —
+            // we want to be able to recover a seated bot even mid-CC.
+            if (!IsSitting)
+                return false;
+
+            IsSitting = false;
+            Emote(eEmote.LetsGo);
+            return false;
         }
 
         protected override bool CanSetGroundTarget()

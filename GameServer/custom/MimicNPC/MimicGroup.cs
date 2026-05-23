@@ -238,7 +238,18 @@ namespace DOL.GS.Scripts
             CampPhase = phase;
             CampPhaseSinceTick = GameLoop.GameLoopTime;
 
-            if (phase == eCampPhase.Inactive || phase == eCampPhase.Regen)
+            // Clear IncomingPullTarget at EVERY end-of-encounter transition,
+            // not just Regen/Inactive. Previously a stale reference (mob died
+            // before reaching camp / despawned / engaged without contact)
+            // survived through PostCombat and was still observable when the
+            // phase machine later re-entered Ready — the Ready→Pulling bridge
+            // (`if (IncomingPullTarget is GameLiving ppt && ppt.IsAlive)`)
+            // would then re-fire on the now-dead reference and produce the
+            // "no pause between fights" symptom because the camp never sat in
+            // Regen at all. Clearing on PostCombat closes that loop.
+            if (phase == eCampPhase.Inactive
+                || phase == eCampPhase.Regen
+                || phase == eCampPhase.PostCombat)
                 IncomingPullTarget = null;
         }
 

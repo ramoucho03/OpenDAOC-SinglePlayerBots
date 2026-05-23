@@ -1249,11 +1249,16 @@ namespace DOL.GS.Scripts
                 player.Out.SendMessage("Vous devez désigner un puller pour utiliser /mpull.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
             else if (puller.Inventory.GetItem(eInventorySlot.DistanceWeapon) == null)
                 puller.Whisper(player, "Je n'ai pas d'arme à distance équipée.");
+            else if (mGroup.IsGroupHealthCritical())
+                player.Out.SendMessage("Le groupe est trop blessé pour engager un nouveau pull (sous le seuil de sécurité HP).", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+            else if (mGroup.CampPhase == MimicGroup.eCampPhase.Regen
+                     || mGroup.CampPhase == MimicGroup.eCampPhase.PostCombat)
+                player.Out.SendMessage("Le camp récupère encore. Attendre la phase Ready.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
             else
             {
                 mGroup.SetCampPoint(new Point3D(player.X, player.Y, player.Z));
                 mGroup.SetPullPoint(new Point2D(player.X, player.Y));
-                    
+
                 foreach (GameLiving groupMember in player.Group.GetMembersInTheGroup())
                     if (groupMember is MimicNPC mimic)
                         mimic.Brain.FSM.SetCurrentState(eFSMStateType.CAMP);

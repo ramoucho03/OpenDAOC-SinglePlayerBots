@@ -1724,7 +1724,6 @@ namespace DOL.AI.Brain
             // i.e. near-full. Pulling again the instant a caster scraped past
             // a low floor (the old hard-coded 30%) sent the group into fights
             // with no mana reserve, the healer ran dry, and the group wiped.
-            // HP / endurance are not gated (they ramp back during the fight).
             // The human leader is excluded — their resource flow is decoupled
             // from the bot regen cycle.
             int readyManaPct = MimicConfig.MIMIC_PULL_MANA_RESUME_PCT;
@@ -1732,15 +1731,47 @@ namespace DOL.AI.Brain
             if (_brain.Body.Group == null)
                 return true;
 
+            // HP gate: respect the same safety floor CheckDelayPull uses
+            // (default 35 %). Without this the camp could phase-transition
+            // Regen → Ready with the tank at 30 % HP; the player-puller
+            // bridge would then fire a pull on the wounded group because
+            // the phase machine had already said "Ready".
+            if (mg != null && mg.IsGroupHealthCritical())
+                return false;
+
+            // Minimum rest window: even when nobody in the group has a mana
+            // pool (pure-melee composition) we still want a short pause
+            // between consecutive fights — otherwise the camp chain-pulls
+            // continuously and the healer (which itself is a caster) never
+            // gets to climb past RESUME %. The check below ran the mana
+            // loop and short-circuited to true on every melee-only group.
+            // 8s matches what a real DAoC group spends "buffing up" between
+            // pulls and is short enough to feel natural.
+            const long MIN_REGEN_WINDOW_MS = 8000;
+            if (mg != null && mg.CampPhase == MimicGroup.eCampPhase.Regen
+                && GameLoop.GameLoopTime - mg.CampPhaseSinceTick < MIN_REGEN_WINDOW_MS)
+                return false;
+
+            // Mana gate: every caster mimic must be back above RESUME %.
+            // Skipped for non-mimic players (their mana flow is decoupled).
+            bool anyMimicCaster = false;
             foreach (GameLiving gl in _brain.Body.Group.GetMembersInTheGroup())
             {
                 if (gl == null || !gl.IsAlive)
                     continue;
                 if (gl is GamePlayer)
                     continue;
-                if (gl.MaxMana > 0 && gl.ManaPercent < readyManaPct)
+                if (gl.MaxMana <= 0)
+                    continue;
+                anyMimicCaster = true;
+                if (gl.ManaPercent < readyManaPct)
                     return false;
             }
+
+            // Pure-melee mimic groups (no member with MaxMana > 0) fall
+            // through to true here — but the MIN_REGEN_WINDOW_MS gate above
+            // already forced an 8s pause, so the pause is enforced.
+            _ = anyMimicCaster;
             return true;
         }
 

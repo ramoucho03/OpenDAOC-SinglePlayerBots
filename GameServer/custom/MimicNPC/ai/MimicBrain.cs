@@ -1534,6 +1534,45 @@ namespace DOL.AI.Brain
             if (_pullManaThrottled || AnyGroupCasterLowMana())
                 return false;
 
+            // Chain pulls must also respect the camp phase gate, the group
+            // health safety floor, AND the full mana RESUME threshold (not
+            // just the STOP threshold AnyGroupCasterLowMana checks). Without
+            // these the chain fires the instant the puller's own mana ticks
+            // past 30 % — even though every OTHER caster in the group is
+            // still depleted and the phase machine is still in Regen.
+            // That was the visible "no pause between pulls" behaviour the
+            // user reported, because the fast-path returns BEFORE the full
+            // CheckDelayPull at MimicBrain.cs:1444.
+            MimicGroup mgChainGate = Body.Group?.MimicGroup;
+            if (mgChainGate != null)
+            {
+                if (mgChainGate.CampPhase == MimicGroup.eCampPhase.Regen
+                    || mgChainGate.CampPhase == MimicGroup.eCampPhase.PostCombat
+                    || mgChainGate.CampPhase == MimicGroup.eCampPhase.Inactive)
+                    return false;
+
+                if (mgChainGate.IsGroupHealthCritical())
+                    return false;
+
+                // Full RESUME check: even mid-chain, if any caster (not just
+                // the puller) is below RESUME % we should not stack another
+                // mob on top of the group. STOP check above only catches the
+                // floor; RESUME enforces the ceiling so chains stay safe.
+                int resumePct = MimicConfig.MIMIC_PULL_MANA_RESUME_PCT;
+                if (resumePct > 0 && Body.Group != null)
+                {
+                    foreach (GameLiving gl in Body.Group.GetMembersInTheGroup())
+                    {
+                        if (gl == null || !gl.IsAlive || gl.MaxMana <= 0)
+                            continue;
+                        if (gl is GamePlayer)
+                            continue;
+                        if (gl.ManaPercent < resumePct)
+                            return false;
+                    }
+                }
+            }
+
             GameLiving chainTarget = GetPullTarget();
             if (chainTarget == null)
                 return false;
@@ -1741,6 +1780,19 @@ namespace DOL.AI.Brain
                     {
                         _pullManaThrottled = false;
                         _manaThrottleSinceTick = 0;
+
+                        // Couple the watchdog with the phase machine. Without
+                        // this, the watchdog lifted the mana throttle but the
+                        // camp phase was still Regen — the phase gate above
+                        // (`CampPhase == Regen → return true`) would re-block
+                        // on the next tick. With partial recovery (some
+                        // casters at RESUME %, others below), the watchdog
+                        // fires every tick after 90 s and produces a
+                        // stuttering one-shot-per-tick pull stream. Force
+                        // the phase to Ready here so the camp truly resumes.
+                        if (mg != null && mg.CampPhase == MimicGroup.eCampPhase.Regen)
+                            mg.SetCampPhase(MimicGroup.eCampPhase.Ready);
+
                         return false;
                     }
                     return true;
@@ -2161,8 +2213,15 @@ namespace DOL.AI.Brain
             if (mg != null)
             {
                 mg.IncomingPullTarget = target;
-                if (mg.CampPhase == MimicGroup.eCampPhase.Regen
-                    || mg.CampPhase == MimicGroup.eCampPhase.Ready)
+                // Only advance from Ready/PostCombat. Regen is the explicit
+                // rest window — a code path that reaches CommitPullStart
+                // while the camp is in Regen is a leak we don't want to
+                // paper over. CheckDelayPull blocks new pulls in Regen, and
+                // the /mpull command has its own gate. If we ever land here
+                // in Regen, it's a bug somewhere upstream — leave the phase
+                // alone instead of silently bypassing the pause.
+                if (mg.CampPhase == MimicGroup.eCampPhase.Ready
+                    || mg.CampPhase == MimicGroup.eCampPhase.PostCombat)
                     mg.SetCampPhase(MimicGroup.eCampPhase.Pulling);
             }
         }
