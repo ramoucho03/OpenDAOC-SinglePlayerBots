@@ -753,6 +753,14 @@ namespace DOL.GS.Scripts
         public int NumNeedHealing { get; private set; }
         /// <summary>How many group members are below max health</summary>
         public int NumInjured { get; private set; }
+        /// <summary>
+        /// Health % of the most wounded living group member at the last
+        /// CheckGroupHealth scan. 100 when everyone is at full HP, lower when
+        /// any member is hurt. Read by the safety gates that suppress new
+        /// pulls / proactive engagement when the group is below the configured
+        /// danger threshold.
+        /// </summary>
+        public int LowestMemberHealthPct { get; private set; } = 100;
         /// <summary>Most injured group member</summary>
         public GameLiving MemberToHeal { get; private set; }
         /// <summary>Mezzed group member</summary>
@@ -819,6 +827,7 @@ namespace DOL.GS.Scripts
                 NumNeedEmergencyHealing = 0;
                 NumNeedHealing = 0;
                 NumInjured = 0;
+                LowestMemberHealthPct = 100;
                 MemberToHeal = null;
                 MemberToCureMezz = null;
                 NumNeedCureDisease = 0;
@@ -865,6 +874,9 @@ namespace DOL.GS.Scripts
                             m_healthPercent = m_percentCurrent;
                             MemberToHeal = groupMember;
                         }
+
+                        if (m_percentCurrent < LowestMemberHealthPct)
+                            LowestMemberHealthPct = m_percentCurrent;
 
                         if (groupMember.IsMezzed)
                             MemberToCureMezz = groupMember;
@@ -930,6 +942,46 @@ namespace DOL.GS.Scripts
                 if (MainTank != null && MainTank.IsAlive && MainTank.HealthPercent < HealThreshold)
                     MemberToHeal = MainTank;
             }
+        }
+
+        /// <summary>
+        /// Fresh group-health snapshot for safety gates (pull/engage). Independent
+        /// of <see cref="CheckGroupHealth"/> because that scan only runs when a
+        /// healer thinks — a groupless or healer-less party would never refresh
+        /// the cached <see cref="LowestMemberHealthPct"/>. Cheap O(members) walk.
+        /// Returns 100 when nobody is hurt (or the group is null).
+        /// </summary>
+        public int ComputeLowestMemberHealthPct()
+        {
+            Group group = MainLeader?.Group;
+            if (group == null)
+                return 100;
+
+            int lowest = 100;
+            foreach (GameLiving gl in group.GetMembersInTheGroup())
+            {
+                if (gl == null || !gl.IsAlive)
+                    continue;
+                int pct = gl.HealthPercent;
+                if (pct < lowest)
+                    lowest = pct;
+            }
+            return lowest;
+        }
+
+        /// <summary>
+        /// Safety gate: are we below the configured group-health danger floor
+        /// (default 35 %)? Used by <see cref="MimicBrain.CheckDelayPull"/> and
+        /// the camp aggro triggers to block new pulls / proactive engagement
+        /// while the group is recovering. Bots ALREADY in combat (HasAggro)
+        /// keep fighting — this only suppresses voluntary new contact.
+        /// </summary>
+        public bool IsGroupHealthCritical()
+        {
+            int floor = MimicConfig.MIMIC_GROUP_SAFETY_HEALTH_PCT > 0
+                ? MimicConfig.MIMIC_GROUP_SAFETY_HEALTH_PCT
+                : 35;
+            return ComputeLowestMemberHealthPct() < floor;
         }
 
         public void MarkSingleHealInProgress(GameLiving target)

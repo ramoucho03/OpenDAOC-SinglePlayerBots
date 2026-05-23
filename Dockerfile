@@ -22,8 +22,10 @@ RUN cat *.sql > combined.sql
 
 # Copy our custom SQL patches alongside combined.sql so they get applied
 # by mariadb's docker-entrypoint-initdb.d on FIRST DB init (clean install).
-# Filename ordering matters: combined.sql (c) runs before heretic_*.sql (h).
-RUN cp /build/sql/heretic_live.sql /tmp/opendaoc-db/opendaoc-db-core/zz_heretic_live.sql
+# Filename ordering matters: combined.sql (c) runs before zz_*.sql (z), so
+# our patches always apply *after* the upstream seed has been loaded.
+RUN cp /build/sql/heretic_live.sql       /tmp/opendaoc-db/opendaoc-db-core/zz_heretic_live.sql && \
+    cp /build/sql/battlegrounds_live.sql /tmp/opendaoc-db/opendaoc-db-core/zz_battlegrounds_live.sql
 
 # Set the working directory back to the build container
 WORKDIR /build
@@ -51,10 +53,11 @@ COPY --from=build /build/Release /app
 # Copy the combined.sql file from the build stage
 COPY --from=build /tmp/opendaoc-db/opendaoc-db-core/combined.sql /tmp/opendaoc-db/combined.sql
 
-# Copy our Heretic Live SQL patch into the runtime image so the entrypoint
-# can re-apply it on every startup (idempotent) — necessary because mariadb
+# Copy our custom SQL patches into the runtime image so the entrypoint
+# can re-apply them on every startup (idempotent) — necessary because mariadb
 # only runs /docker-entrypoint-initdb.d/ on first init, not on existing DBs.
-COPY --from=build /build/sql/heretic_live.sql /app/sql/heretic_live.sql
+COPY --from=build /build/sql/heretic_live.sql       /app/sql/heretic_live.sql
+COPY --from=build /build/sql/battlegrounds_live.sql /app/sql/battlegrounds_live.sql
 
 # Copy the entrypoint script
 COPY --from=build /build/entrypoint.sh /app

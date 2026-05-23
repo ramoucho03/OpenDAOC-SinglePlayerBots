@@ -69,6 +69,10 @@ namespace DOL.GS.Scripts
             "Maximum distance (units) the puller scans for a pull target. Default 3600.", 3600)]
         public static int MIMIC_PULL_SCAN_RADIUS;
 
+        [ServerProperty("npc", "mimic_group_safety_health_pct",
+            "Group safety floor — no mimic starts a new pull or proactive engagement while any group member's HP % is below this threshold. Bots already in combat (HasAggro) keep fighting. Default 35.", 35)]
+        public static int MIMIC_GROUP_SAFETY_HEALTH_PCT;
+
         [ServerProperty("npc", "mimic_pull_pack_radius",
             "Approximate BAF radius (units) used to estimate pack size around a pull candidate. Default 500.", 500)]
         public static int MIMIC_PULL_PACK_RADIUS;

@@ -1680,6 +1680,15 @@ namespace DOL.AI.Brain
                     return true;
             }
 
+            // Group safety floor (per user spec): never start a new pull while
+            // any group member is below MIMIC_GROUP_SAFETY_HEALTH_PCT (default
+            // 35%). Pulling on top of an already-wounded group cascades into
+            // a wipe — the healer can't catch up before the next mob lands.
+            // Bots already in combat keep fighting via HasAggro; this gate
+            // only suppresses *voluntary* new contact.
+            if (mg != null && mg.IsGroupHealthCritical())
+                return true;
+
             // Group regen gate (per user spec): puller stops the moment any
             // caster drops below MimicConfig.MIMIC_PULL_MANA_STOP_PCT (default 30%),
             // resumes the moment every caster recovers back above

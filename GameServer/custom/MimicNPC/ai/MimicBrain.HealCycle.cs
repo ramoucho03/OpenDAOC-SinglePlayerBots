@@ -442,11 +442,7 @@ namespace DOL.AI.Brain
                 if (spellToCast == null
                     && IsHealer
                     && mGroup != null
-                    && mGroup.MainTank != null
-                    && mGroup.MainTank.IsAlive
                     && encounterImminent
-                    && !mGroup.AlreadyCastingHoT
-                    && !mGroup.AlreadyCastingRegen
                     && !_healManaConserving
                     && _nextProactiveHotScanTime < GameLoop.GameLoopTime)
                 {
@@ -456,27 +452,68 @@ namespace DOL.AI.Brain
                     // tank's effect list every Think-tick.
                     _nextProactiveHotScanTime = GameLoop.GameLoopTime + 1500;
 
+                    // Per-target HoT cover. The previous gate `AlreadyCastingHoT`
+                    // was a per-group flag — once any healer fired a HoT, every
+                    // OTHER healer in the group skipped this block until the
+                    // next CheckGroupHealth cleared it. With 2+ healers that
+                    // collapsed to "one healer keeps the tank covered, the rest
+                    // do nothing proactive" — exactly the "only 1 healer is
+                    // active" complaint. We now walk the group and let each
+                    // healer cover a DIFFERENT in-combat member that has no
+                    // HoT/regen yet. Effect-list check prevents double-stacking.
+                    bool TargetHasProactive(GameLiving target)
+                    {
+                        return target.effectListComponent.ContainsEffectForEffectType(eEffect.HealOverTime)
+                            || target.effectListComponent.ContainsEffectForEffectType(eEffect.HealthRegenBuff);
+                    }
+
+                    GameLiving pickedTarget = null;
+
+                    // Tank gets first priority (anchors melee, takes most hits).
                     GameLiving tank = mGroup.MainTank;
+                    if (tank != null && tank.IsAlive && !TargetHasProactive(tank))
+                        pickedTarget = tank;
 
-                    // Check BOTH effect types: hybrid healers (Friar/Warden)
-                    // run HealthRegenBuff, dedicated healers run HealOverTime.
-                    // Without the regen check, a Friar would re-cast regen on
-                    // a tank who already has it because the existing check
-                    // only looked at eEffect.HealOverTime.
-                    bool tankHasProactive = tank.effectListComponent.ContainsEffectForEffectType(eEffect.HealOverTime)
-                        || tank.effectListComponent.ContainsEffectForEffectType(eEffect.HealthRegenBuff);
+                    // Spread to other combat-engaged members. A member counts
+                    // as "engaged" if they're actually in combat OR are being
+                    // attacked (an add on the healer / caster). We avoid the
+                    // healer's own body — self-HoT is rarely the priority and
+                    // burns mana that could heal the line.
+                    if (pickedTarget == null && Body.Group != null)
+                    {
+                        foreach (GameLiving member in Body.Group.GetMembersInTheGroup())
+                        {
+                            if (member == null || !member.IsAlive || member == Body)
+                                continue;
+                            if (member == tank) // already considered above
+                                continue;
+                            bool inCombat = member.InCombatInLast(3000)
+                                            || (member.attackComponent?.AttackerTracker?.Count ?? 0) > 0;
+                            if (!inCombat)
+                                continue;
+                            if (TargetHasProactive(member))
+                                continue;
+                            pickedTarget = member;
+                            break;
+                        }
+                    }
 
-                    if (!tankHasProactive)
+                    if (pickedTarget != null)
                     {
                         if (CanCastInstantHot())
                         {
                             spellToCast = MimicBody.HealOverTimeInstant;
-                            spellTarget = tank;
+                            spellTarget = pickedTarget;
                         }
-                        else if (!MimicBody.IsCasting && CanCastHot())
+                        else if (!MimicBody.IsCasting && CanCastHot()
+                                 && (!mGroup.AlreadyCastingHoT || pickedTarget != mGroup.MemberBeingSingleHealed))
                         {
+                            // Allow cast-time HoT to fire on a DIFFERENT target
+                            // even if another healer is HoT-casting elsewhere —
+                            // the per-target effect check above guarantees we
+                            // don't double-stack on the same member.
                             spellToCast = MimicBody.HealOverTime;
-                            spellTarget = tank;
+                            spellTarget = pickedTarget;
                         }
                     }
                 }
@@ -594,10 +631,15 @@ namespace DOL.AI.Brain
                             else if (CanCastGroupHeal())
                             {
                                 // Two conditions accept the AoE heal:
-                                //   - 3+ are below heal threshold (broad spread of damage), or
-                                //   - the per-mana value still beats single-target efficient
-                                //     (historical heuristic, kept for sustained heal economy).
-                                bool manyWounded = numNeedHealing >= 3;
+                                //   - 2+ are below heal threshold (lowered from
+                                //     3 so a 4-6 member camp triggers a group
+                                //     heal as soon as the damage spreads — the
+                                //     old "wait for a third casualty" gate is
+                                //     why the group felt under-healed)
+                                //   - the per-mana value still beats single-target
+                                //     efficient (historical heuristic, kept for
+                                //     sustained heal economy).
+                                bool manyWounded = numNeedHealing >= 2;
                                 bool moreEfficientThanSingle = !CanCastEfficientHeal()
                                     || (GetGroupHealVal() / MimicBody.PowerCost(MimicBody.HealGroup))
                                        > (MimicNPC.HealAmount(MimicBody.HealEfficient, spellTarget) / MimicBody.PowerCost(MimicBody.HealEfficient));

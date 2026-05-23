@@ -1096,6 +1096,13 @@ namespace DOL.AI.Brain
             if (_brain.IsHealer)
                 return false; // healers engage reactively via aggro propagation only
 
+            // Group safety floor (per user spec): if any member is below
+            // MIMIC_GROUP_SAFETY_HEALTH_PCT (default 35 %), don't *start* a
+            // new fight via Cases 2/4 (proactive engage). Case 1 (HasAggro —
+            // bot is already being attacked) still fires below so an already-
+            // engaged bot keeps fighting.
+            bool groupUnsafe = mg != null && mg.IsGroupHealthCritical();
+
             // 1. We already have aggro (took a hit, group member relayed aggro).
             if (_brain.HasAggro)
             {
@@ -1108,7 +1115,11 @@ namespace DOL.AI.Brain
             //    IncomingPullTarget is set by the puller as soon as the shot
             //    lands; using it here means DPS and tank converge BEFORE the
             //    mob reaches the camp instead of waiting for first blood.
-            if (mg != null && mg.IncomingPullTarget is GameLiving incoming
+            //    Skipped entirely under the safety floor — we don't want any
+            //    bot voluntarily walking into a fresh fight while a member is
+            //    critically wounded.
+            if (!groupUnsafe
+                && mg != null && mg.IncomingPullTarget is GameLiving incoming
                 && incoming.IsAlive
                 && incoming.ObjectState == GameObject.eObjectState.Active
                 && _brain.CanAggroTarget(incoming))
@@ -1209,11 +1220,16 @@ namespace DOL.AI.Brain
             // the puller's place. Case 5 (proximity) and Case 1 (HasAggro
             // from a direct hit) still engage the tank when the mob actually
             // reaches camp.
+            //
+            // Safety floor: when the group is critically wounded, suppress
+            // the assist scan entirely — joining an unrelated fight while a
+            // member is at <35 % HP is exactly how a camp wipes. Case 1
+            // (already in combat) still keeps engaged bots fighting.
             const int CAMP_ASSIST_RADIUS = 3000;
             bool tankSkipScan = _brain.IsMainTank
                                 && mg != null
                                 && mg.CampPhase == MimicGroup.eCampPhase.Pulling;
-            if (!tankSkipScan && _brain.ScanGroupCombat(CAMP_ASSIST_RADIUS))
+            if (!groupUnsafe && !tankSkipScan && _brain.ScanGroupCombat(CAMP_ASSIST_RADIUS))
             {
                 _brain.Body.StopMoving();
                 _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
