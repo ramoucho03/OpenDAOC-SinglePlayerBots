@@ -3432,9 +3432,66 @@ namespace DOL.AI.Brain
         }
 
         /// <summary>
-        /// Checks whether living has someone on its aggrolist
+        /// Checks whether living has at least one LIVE / ACTIVE entry on its
+        /// aggro list. The previous `!AggroList.IsEmpty` check was the root
+        /// cause of the "tank keeps attacking after combat" symptom: once
+        /// the last mob died, its entry stayed in AggroList until the AGGRO
+        /// state's Exit soft-decay (10 s), so HasAggro stayed true, the
+        /// AGGRO state's leave condition (line ~606 in MimicState.cs)
+        /// `!HasAggro` never fired, and AttackMostWanted kept re-issuing
+        /// swings on the corpse. Filtering at the property level fixes
+        /// EVERY downstream consumer (state exit, phase machine, group
+        /// combat scan) with a single change.
         /// </summary>
-        public virtual bool HasAggro => !AggroList.IsEmpty;
+        public virtual bool HasAggro
+        {
+            get
+            {
+                if (AggroList.IsEmpty)
+                    return false;
+
+                foreach (var pair in AggroList)
+                {
+                    GameLiving target = pair.Key;
+                    if (target == null)
+                        continue;
+                    if (!target.IsAlive)
+                        continue;
+                    if (target.ObjectState != GameObject.eObjectState.Active)
+                        continue;
+                    return true;
+                }
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Sweep dead / despawned / out-of-region entries out of the aggro
+        /// list. Cheap O(n) walk that we run at the top of AGGRO.Think so
+        /// AttackMostWanted, CheckMainTankTarget and CalculateNextAttackTarget
+        /// never see corpses through the race window between "target died" and
+        /// "ShouldBeRemovedFromAggroList runs". Returns the count pruned.
+        /// </summary>
+        public int PruneDeadAggroEntries()
+        {
+            if (AggroList.IsEmpty)
+                return 0;
+
+            int dropped = 0;
+            foreach (var pair in AggroList)
+            {
+                GameLiving target = pair.Key;
+                if (target == null
+                    || !target.IsAlive
+                    || target.ObjectState != GameObject.eObjectState.Active
+                    || target.CurrentRegionID != Body.CurrentRegionID)
+                {
+                    if (AggroList.TryRemove(target, out _))
+                        dropped++;
+                }
+            }
+            return dropped;
+        }
 
         /// <summary>
         /// Add aggro table of this brain to that of another living.

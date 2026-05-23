@@ -240,6 +240,21 @@ namespace DOL.GS
                 return false;
             }
 
+            // Reject swings against a dead / despawned target. Without this
+            // guard the AttackAction would fire one more time on the corpse
+            // before the brain's next Think tick clears TargetObject —
+            // visible as the bot "swinging at nothing" right after the kill.
+            // The TargetDead enum result above already clears styles, but
+            // doesn't prevent the swing from being scheduled in the first
+            // place. Returning false here drops the tick and lets the
+            // brain clean up TargetObject before the next swing window.
+            if (_target.ObjectState != GameObject.eObjectState.Active
+                || (_target is GameLiving liveTarget && !liveTarget.IsAlive))
+            {
+                _interval = TICK_INTERVAL_FOR_NON_ATTACK;
+                return false;
+            }
+
             // Damage is doubled on sitting players, but only with melee weapons; arrows and magic do normal damage.
             if (_target is GamePlayer playerTarget && playerTarget.IsSitting)
                 _effectiveness *= 2;

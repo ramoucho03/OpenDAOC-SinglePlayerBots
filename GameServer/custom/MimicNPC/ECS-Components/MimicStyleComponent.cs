@@ -42,6 +42,18 @@ namespace DOL.GS
             if (mimic == null || mimic.Styles == null || mimic.Styles.Count < 1 || mimic.TargetObject == null)
                 return null;
 
+            // Reject styles queued on a dead/despawned target. Without this
+            // guard, a swing that killed the mob would still let the next
+            // tick pick a chain/follow-up style that AttackAction then
+            // dispatches on the corpse — visible as the tank "swinging at
+            // air" for a beat after the kill. The TargetDead path in
+            // PrepareMeleeAttack only fires AFTER GetStyleToUse() has
+            // already locked in a style, so we need the early bail here.
+            if (mimic.TargetObject is GameLiving liveTarget
+                && (!liveTarget.IsAlive
+                    || liveTarget.ObjectState != GameObject.eObjectState.Active))
+                return null;
+
             // attackComponent.attackAction is null until the first swing
             // initiates the AttackComponent's action. Reading LastAttackData
             // through a null chain NPE'd whenever GetStyleToUse was invoked

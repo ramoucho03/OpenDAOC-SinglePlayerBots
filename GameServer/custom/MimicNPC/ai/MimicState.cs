@@ -538,7 +538,18 @@ namespace DOL.AI.Brain
         {
             _brain.Body.StopAttack();
             _brain.Body.StopMoving();
+            // StopMoving doesn't always release the FollowTarget reference
+            // (Follow is set by AttackComponent.StartAttack with a separate
+            // movementComponent flag). Without an explicit StopFollowing the
+            // tank can keep drifting toward a corpse's last position after
+            // leaving AGGRO. Call it explicitly here.
+            _brain.Body.StopFollowing();
             _brain.Body.StopCurrentSpellcast();
+            // Hard-prune dead entries first so the decay sweep below only
+            // weighs LIVE threats. Without this, a recently-killed mob's
+            // 10 s soft-decay window would carry its entry into the next
+            // engagement and could mislead the AggroList threat ranking.
+            _brain.PruneDeadAggroEntries();
             // Soft-decay instead of full wipe: keep entries refreshed within
             // the last 10s so a brief out-of-combat blip → Follow → re-aggro
             // doesn't erase the threat picture. Stop()/ForcePullerRecovery
@@ -583,6 +594,26 @@ namespace DOL.AI.Brain
         public override void Think()
         {
             _brain.AlreadyCheckedHeals = false;
+
+            // Proactive aggro-list cleanup. Without this, dead/despawned
+            // entries linger until the AGGRO.Exit soft-decay (10 s), keeping
+            // HasAggro true and causing the tank to keep swinging on the
+            // corpse — exactly the "tank attacks after combat is over"
+            // symptom. Running it at the TOP of Think guarantees every
+            // downstream call (AttackMostWanted, CheckMainTankTarget,
+            // CalculateNextAttackTarget) sees a clean list.
+            _brain.PruneDeadAggroEntries();
+
+            // Also actively retire the body's auto-attack if it's still
+            // wired up to a dead/inactive target. AttackAction can run on
+            // the next ECS tick before Think fires again, so we stop the
+            // attack here as a belt-and-suspenders measure.
+            if (_brain.Body.TargetObject is GameLiving curTgt
+                && (!curTgt.IsAlive || curTgt.ObjectState != GameObject.eObjectState.Active))
+            {
+                _brain.Body.StopAttack();
+                _brain.Body.TargetObject = null;
+            }
 
             if (_brain.PvPMode && _checkAggroTime < GameLoop.GameLoopTime)
             {
