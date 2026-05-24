@@ -759,7 +759,22 @@ namespace DOL.AI.Brain
                         for (int i = 0; i < ordered.Count; i++)
                         {
                             GameLiving aggroed = ordered[i].Living;
-                            if (aggroed != null && g.IsInTheGroup(aggroed))
+                            // Skip self. Without this exclusion, the loop here
+                            // turned ScanGroupCombat into an auto-engage cycle:
+                            // the mob's own proximity-aggro scan added Body
+                            // (this bot) to its aggro list as soon as Body
+                            // came in range; the loop then saw "a group member
+                            // (= Body itself) is in this mob's aggro list" and
+                            // returned true; ScanGroupCombat returned true,
+                            // the CAMP-state path put the mob in our own
+                            // aggro list, and the bot engaged a mob that had
+                            // NEVER actually attacked anyone. We only want
+                            // path-3 to fire when a DIFFERENT group member is
+                            // being targeted by the mob — that's a real "peel
+                            // the healer / DPS" signal worth pre-engaging on.
+                            // A direct hit on Body is still handled by Case 1
+                            // (HasAggro) the moment a swing lands.
+                            if (aggroed != null && aggroed != Body && g.IsInTheGroup(aggroed))
                             {
                                 targetsGroup = true;
                                 break;

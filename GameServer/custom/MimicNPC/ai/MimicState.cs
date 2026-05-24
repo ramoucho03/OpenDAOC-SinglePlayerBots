@@ -1257,45 +1257,58 @@ namespace DOL.AI.Brain
             // member is at <35 % HP is exactly how a camp wipes. Case 1
             // (already in combat) still keeps engaged bots fighting.
             const int CAMP_ASSIST_RADIUS = 3000;
+
+            // Camp-rest suppression for the assist scan: during Ready /
+            // Regen / PostCombat / Pulling, the camp is supposed to be at
+            // rest waiting for the puller. ScanGroupCombat's path-3 pre-hit
+            // detection treats "mob has any group member in its aggro list"
+            // as a signal to engage — but every hostile mob whose own
+            // proximity-aggro scan picked up the tank (because the tank is
+            // in its range) qualifies. Net result: the tank "aggros every
+            // mob in sight" without any swing being exchanged.
+            //
+            // The camp still defends: a bot actually hit by a mob has
+            // HasAggro = true and Case 1 above engages them, propagating
+            // aggro to the rest of the camp via the standard combat-tracker
+            // path on the NEXT tick. We just don't pre-engage on a passive
+            // signal during rest / staging phases.
+            bool assistRestPhase = mg != null
+                                   && (mg.CampPhase == MimicGroup.eCampPhase.Ready
+                                       || mg.CampPhase == MimicGroup.eCampPhase.Regen
+                                       || mg.CampPhase == MimicGroup.eCampPhase.PostCombat
+                                       || mg.CampPhase == MimicGroup.eCampPhase.Pulling);
+
             bool tankSkipScan = _brain.IsMainTank
                                 && mg != null
                                 && mg.CampPhase == MimicGroup.eCampPhase.Pulling;
-            if (!groupUnsafe && !tankSkipScan && _brain.ScanGroupCombat(CAMP_ASSIST_RADIUS))
+            if (!groupUnsafe && !assistRestPhase && !tankSkipScan
+                && _brain.ScanGroupCombat(CAMP_ASSIST_RADIUS))
             {
                 _brain.Body.StopMoving();
                 _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
                 return true;
             }
 
-            // 5. Passive proximity scan (camp's small AggroRange).
+            // 5. Passive proximity scan — DISABLED in CAMP state.
             //
-            // Camp-rest suppression: during Ready / Regen / PostCombat, the
-            // group is supposed to be at rest waiting for the puller. A
-            // proximity scan that aggros on any hostile in range turns the
-            // tank into a magnet — visible as "the tank pulls every mob in
-            // sight". Suppress the scan during those phases; the camp will
-            // still react to:
-            //   - mobs that actually hit a group member (Case 1: HasAggro
-            //     for the bot that took the hit, Case 4: assist via
-            //     ScanGroupCombat for the rest of the camp)
-            //   - the puller's intentional pull (Case 2 / 3)
-            // Pulling / Engaging / Combat phases keep the proximity scan
-            // so adds wandering in during an active fight get picked up.
-            // The safety floor (`groupUnsafe`) also disables the scan
-            // regardless of phase, so a wounded group never voluntarily
-            // grabs a new mob.
-            bool restPhase = mg != null
-                             && (mg.CampPhase == MimicGroup.eCampPhase.Ready
-                                 || mg.CampPhase == MimicGroup.eCampPhase.Regen
-                                 || mg.CampPhase == MimicGroup.eCampPhase.PostCombat);
-
-            if (!groupUnsafe && !restPhase
-                && _brain.CheckProximityAggro(_brain.AggroRange))
-            {
-                _brain.Body.StopMoving();
-                _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
-                return true;
-            }
+            // Previously CheckProximityAggro would add ANY hostile NPC in
+            // the bot's AggroRange to its own list and the bot would engage.
+            // Combined with the mob's symmetric proximity scan (mobs auto-
+            // add bots in their range), this produced a cyclic auto-aggro:
+            // a mob walks past the camp at 1300u → mob adds tank to its
+            // list → tank's CheckProximityAggro adds mob back → tank
+            // engages a mob that never attacked anyone. Especially nasty
+            // in the Combat → PostCombat transition window (2 s after the
+            // last kill) where Combat phase is still active but the tank's
+            // AggroList is empty, so it greedily picks up the next mob.
+            //
+            // A bot at camp should only enter combat through:
+            //   - Case 1 (HasAggro): it was actually hit
+            //   - Case 2/3: the puller intentionally initiated a pull
+            //   - Case 4 paths 1/2: a group member is actively engaging
+            //     or being hit by a hostile
+            // All four are deliberate signals. Pure proximity aggro is
+            // never a "real" reason to start a fight from camp.
 
             return false;
         }
