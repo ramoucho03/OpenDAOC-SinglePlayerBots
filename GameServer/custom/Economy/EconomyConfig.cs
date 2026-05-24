@@ -53,6 +53,13 @@ namespace DOL.GS.Economy
         [ServerProperty("economy", "economy_weight_resource", "Selection weight for crafting resources / materials.", 12)]
         public static int ECONOMY_WEIGHT_RESOURCE;
 
+        // Epic bucket is dual-indexed (these templates also live in their natural
+        // category). Its weight controls how often the picker rolls into the "guaranteed
+        // exciting" pool. Keep small so the AH isn't 100 % BiS, but high enough that a
+        // player browsing the market sees fresh artifacts/proc pieces throughout a session.
+        [ServerProperty("economy", "economy_weight_epic", "Selection weight for high-utility / proc / artifact pieces (dual-indexed pool).", 8)]
+        public static int ECONOMY_WEIGHT_EPIC;
+
         // Pricing
         [ServerProperty("economy", "economy_price_min_multiplier", "Lower bound of the random pricing multiplier (percent of base).", 70)]
         public static int ECONOMY_PRICE_MIN_MULTIPLIER;
@@ -66,7 +73,11 @@ namespace DOL.GS.Economy
         // Solo-server economies need pricier loot than the live RvR baseline so gold remains
         // meaningful. Applied to both bot listings and the fair-value reference used to judge
         // player listings, so the inflation is consistent across both sides of the market.
-        [ServerProperty("economy", "economy_price_global_multiplier", "Global price multiplier (percent). 100 = unchanged, 150 = +50%, 250 = 2.5x.", 150)]
+        // Default 400 (4×) is calibrated so a top-tier L50 Q100 SC+35 utility-100 proc weapon
+        // resolves around 10 platines, in line with live-server BiS pricing. Low-end stays
+        // affordable because every other factor (level, quality, utility) is multiplicative
+        // and a trivial L10 craft still resolves to a few silver.
+        [ServerProperty("economy", "economy_price_global_multiplier", "Global price multiplier (percent). 100 = unchanged, 400 = 4x (default, calibrated for BiS ≈ 10p).", 400)]
         public static int ECONOMY_PRICE_GLOBAL_MULTIPLIER;
 
         [ServerProperty("economy", "economy_seller_count_per_realm", "Number of virtual NPC sellers spawned per realm. Items are spread across them.", 334)]
@@ -118,5 +129,28 @@ namespace DOL.GS.Economy
 
         [ServerProperty("economy", "economy_db_flush_seconds", "Period between batched DB flushes for bot listings (seconds).", 180)]
         public static int ECONOMY_DB_FLUSH_SECONDS;
+
+        // ---- Demand-driven dynamic pricing. EconomyManager keeps a per-template recent-
+        // sales counter (decayed every tick). New listings have their price multiplied by
+        // a factor in [markdownPct/100 .. markupPct/100] depending on recent demand. The
+        // tracker resets on server start; values are tuned so a single popular template
+        // can't 10× the market by itself.
+        [ServerProperty("economy", "economy_demand_tracking_enabled", "If true, recent player buys boost the price of subsequent listings of the same template (and slow-movers are marked down).", true)]
+        public static bool ECONOMY_DEMAND_TRACKING_ENABLED;
+
+        [ServerProperty("economy", "economy_demand_max_markup_percent", "Upper bound of the per-template demand multiplier (percent). 160 = up to +60 % on hot templates.", 160)]
+        public static int ECONOMY_DEMAND_MAX_MARKUP_PERCENT;
+
+        [ServerProperty("economy", "economy_demand_min_markdown_percent", "Lower bound of the per-template demand multiplier (percent). 70 = down to -30 % on shelf-warmers.", 70)]
+        public static int ECONOMY_DEMAND_MIN_MARKDOWN_PERCENT;
+
+        [ServerProperty("economy", "economy_demand_decay_minutes", "Half-life (minutes) of the recent-sales counter. Lower = faster forgetting, more reactive.", 60)]
+        public static int ECONOMY_DEMAND_DECAY_MINUTES;
+
+        // ---- Stack-listing sanity. Without an absolute cap on (SellPrice * Count) a
+        // random 999-stack of L50 potions can list at hundreds of platines and clog the
+        // AH. Cap is total copper for the whole stack; set 0 to disable.
+        [ServerProperty("economy", "economy_max_stack_listing_copper", "Absolute cap (in copper) on a single stacked listing's total value. 0 disables. Default 100000000 = 10 platines per stack.", 100000000)]
+        public static int ECONOMY_MAX_STACK_LISTING_COPPER;
     }
 }

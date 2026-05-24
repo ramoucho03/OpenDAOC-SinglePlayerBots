@@ -167,6 +167,12 @@ namespace DOL.GS.Economy
             TryMigrateIntMulti("economy_tick_seconds",            newDefault: 300,    60, 120);
             TryMigrateIntMulti("economy_turnover_percent_per_hour", newDefault: 2,    16, 6);
             TryMigrateIntMulti("economy_db_flush_seconds",        newDefault: 180,    30, 90);
+
+            // Pricing overhaul (utility/level/Bonus/DPS rewrite). Bump the global
+            // multiplier so the new exponential formula resolves a top-tier L50
+            // BiS to ~10 platines instead of ~25 gold. Existing admin overrides
+            // are preserved by the matches-default guard inside TryMigrateIntMulti.
+            TryMigrateIntMulti("economy_price_global_multiplier", newDefault: 400,    150);
         }
 
         private static void TryMigrateIntMulti(string key, int newDefault, params int[] oldDefaults)
@@ -226,6 +232,7 @@ namespace DOL.GS.Economy
                 case "economy_tick_seconds":            EconomyConfig.ECONOMY_TICK_SECONDS = value; break;
                 case "economy_turnover_percent_per_hour": EconomyConfig.ECONOMY_TURNOVER_PERCENT_PER_HOUR = value; break;
                 case "economy_db_flush_seconds":        EconomyConfig.ECONOMY_DB_FLUSH_SECONDS = value; break;
+                case "economy_price_global_multiplier": EconomyConfig.ECONOMY_PRICE_GLOBAL_MULTIPLIER = value; break;
             }
         }
 
@@ -989,6 +996,7 @@ namespace DOL.GS.Economy
             s += Math.Max(0, EconomyConfig.ECONOMY_WEIGHT_JEWELRY);
             s += Math.Max(0, EconomyConfig.ECONOMY_WEIGHT_CONSUMABLE);
             s += Math.Max(0, EconomyConfig.ECONOMY_WEIGHT_RESOURCE);
+            s += Math.Max(0, EconomyConfig.ECONOMY_WEIGHT_EPIC);
             return s;
         }
 
@@ -1006,7 +1014,10 @@ namespace DOL.GS.Economy
             roll -= w;
             w = Math.Max(0, EconomyConfig.ECONOMY_WEIGHT_CONSUMABLE);
             if (roll <= w) return EconomyItemPool.Category.Consumable;
-            return EconomyItemPool.Category.Resource;
+            roll -= w;
+            w = Math.Max(0, EconomyConfig.ECONOMY_WEIGHT_RESOURCE);
+            if (roll <= w) return EconomyItemPool.Category.Resource;
+            return EconomyItemPool.Category.Epic;
         }
 
         private static eRealm RollRealm() => Util.Random(1, 3) switch
@@ -1155,6 +1166,171 @@ namespace DOL.GS.Economy
             _listingsPerTemplate.Clear();
         }
 
+        // ---- Demand tracker. Player buys of a bot listing call OnListingSold(id_nb)
+        // which adds 1.0 to the template's score. The score decays exponentially with a
+        // half-life of ECONOMY_DEMAND_DECAY_MINUTES. GetDemandMultiplier returns a
+        // factor in [markdown/100 .. markup/100] interpolated from the score using a
+        // soft logistic, applied multiplicatively by EconomyPricing.ComputeSellPrice
+        // on every NEW listing. Existing listings keep their frozen price until they
+        // rotate (or the admin runs /economy recompute).
+        private sealed class DemandEntry
+        {
+            public double Score;
+            public long LastUpdateTickMs;
+        }
+
+        private static readonly ConcurrentDictionary<string, DemandEntry> _demandByTemplate
+            = new(StringComparer.Ordinal);
+
+        /// <summary>
+        /// Called only when a real player buys a bot listing — NOT for rotation pops
+        /// or admin wipes. Increments the per-template demand score.
+        /// </summary>
+        internal static void OnListingSold(string idNb)
+        {
+            if (string.IsNullOrEmpty(idNb))
+                return;
+            if (!EconomyConfig.ECONOMY_DEMAND_TRACKING_ENABLED)
+                return;
+            long now = GameLoop.GameLoopTime;
+            _demandByTemplate.AddOrUpdate(idNb,
+                static (_) => new DemandEntry { Score = 1.0, LastUpdateTickMs = GameLoop.GameLoopTime },
+                (_, e) =>
+                {
+                    DecayInPlace(e, now);
+                    e.Score += 1.0;
+                    return e;
+                });
+        }
+
+        /// <summary>
+        /// Read-side query consumed by EconomyPricing.ComputeSellPrice. Returns 1.0
+        /// when tracking is disabled or the template has no recorded activity.
+        /// </summary>
+        public static double GetDemandMultiplier(string idNb)
+        {
+            if (!EconomyConfig.ECONOMY_DEMAND_TRACKING_ENABLED || string.IsNullOrEmpty(idNb))
+                return 1.0;
+            if (!_demandByTemplate.TryGetValue(idNb, out var e))
+                return 1.0;
+
+            long now = GameLoop.GameLoopTime;
+            // Read-only decay: compute the decayed score for THIS read without
+            // mutating the stored value (avoids cross-thread write contention on
+            // the hot pricing path; the OnListingSold path will fold the decay in
+            // next time it touches this entry).
+            double minutes = (now - e.LastUpdateTickMs) / 60000.0;
+            int half = Math.Max(1, EconomyConfig.ECONOMY_DEMAND_DECAY_MINUTES);
+            double decayed = e.Score * Math.Pow(0.5, minutes / half);
+
+            // Bounded soft logistic. score=0 → 1.0 ; score=1 → ~markup-mid ; score=5+ → markup max.
+            double markupMaxPct = Math.Max(100, EconomyConfig.ECONOMY_DEMAND_MAX_MARKUP_PERCENT);
+            double markdownMinPct = Math.Clamp(EconomyConfig.ECONOMY_DEMAND_MIN_MARKDOWN_PERCENT, 1, 100);
+            double markupMax = markupMaxPct / 100.0;       // e.g. 1.60
+            double markdownMin = markdownMinPct / 100.0;   // e.g. 0.70
+
+            if (decayed > 0)
+            {
+                // 1 - exp(-x/3) saturates around x=10 → ~0.965
+                double up = 1.0 - Math.Exp(-decayed / 3.0);
+                return 1.0 + (markupMax - 1.0) * up;
+            }
+            else
+            {
+                // Score never goes negative in this model. Hooks for "long-stagnant
+                // template" markdown live in RecomputeAllListings (Phase 5) which
+                // walks every listing and applies an age-based malus if no sale has
+                // been recorded for a long while. Until then we keep neutral.
+                return 1.0;
+            }
+        }
+
+        private static void DecayInPlace(DemandEntry e, long now)
+        {
+            double minutes = (now - e.LastUpdateTickMs) / 60000.0;
+            int half = Math.Max(1, EconomyConfig.ECONOMY_DEMAND_DECAY_MINUTES);
+            e.Score *= Math.Pow(0.5, minutes / half);
+            e.LastUpdateTickMs = now;
+            // Suppress so the markdown branch in GetDemandMultiplier sees 0 cleanly.
+            if (e.Score < 1e-4) e.Score = 0;
+        }
+
+        internal static void ResetDemand()
+        {
+            _demandByTemplate.Clear();
+        }
+
+        /// <summary>
+        /// Diagnostic snapshot for /economy stats / /economy velocity.
+        /// </summary>
+        public static (int trackedTemplates, double totalScore) GetDemandStats()
+        {
+            int n = 0;
+            double sum = 0;
+            long now = GameLoop.GameLoopTime;
+            foreach (var kv in _demandByTemplate)
+            {
+                double minutes = (now - kv.Value.LastUpdateTickMs) / 60000.0;
+                int half = Math.Max(1, EconomyConfig.ECONOMY_DEMAND_DECAY_MINUTES);
+                double decayed = kv.Value.Score * Math.Pow(0.5, minutes / half);
+                if (decayed >= 0.01)
+                {
+                    n++;
+                    sum += decayed;
+                }
+            }
+            return (n, sum);
+        }
+
+        /// <summary>
+        /// Recompute SellPrice for every live bot listing using the current pricing
+        /// formula and demand multipliers. Returns the number of listings updated.
+        /// In-memory prices are visible immediately to subsequent market searches;
+        /// DB persistence (when ECONOMY_PERSIST=true) is flushed in chunks afterward
+        /// to keep the operation off the merchant locks.
+        /// Intended for the /economy recompute admin command after a formula tweak.
+        /// </summary>
+        public static int RecomputeAllListings()
+        {
+            int updated = 0;
+            var allChanged = new List<DbInventoryItem>();
+            foreach (EconomyConsignmentMerchant m in _merchants)
+            {
+                var changed = m.RecomputeAllPrices();
+                if (changed == null) continue;
+                updated += changed.Count;
+                allChanged.AddRange(changed);
+            }
+
+            if (EconomyConfig.ECONOMY_PERSIST && allChanged.Count > 0)
+            {
+                int chunk = MAX_FLUSH_CHUNK;
+                int idx = 0;
+                while (idx < allChanged.Count)
+                {
+                    int take = Math.Min(chunk, allChanged.Count - idx);
+                    var slice = allChanged.GetRange(idx, take);
+                    try { GameServer.Database.SaveObject(slice); }
+                    catch (Exception ex) { log.Error("Economy: SaveObject chunk failed during recompute.", ex); }
+                    idx += take;
+                }
+            }
+            return updated;
+        }
+
+        /// <summary>
+        /// Drop the EconomyItemPool's buckets and rebuild them from the current
+        /// itemtemplate table. Useful after pushing new templates without restarting
+        /// the server. Caller should follow with /economy clear + /economy topup if
+        /// the new templates should immediately appear in active listings.
+        /// </summary>
+        public static int RebuildItemPool()
+        {
+            EconomyItemPool.Reset();
+            EconomyItemPool.Build();
+            return EconomyItemPool.TotalTemplates;
+        }
+
         // Walks the immutable merchants snapshot. Two-pass reservoir to pick a random
         // capacity-having seller in the requested realm, without allocating.
         private static EconomyConsignmentMerchant PickSellerWithCapacity(eRealm realm)
@@ -1253,15 +1429,7 @@ namespace DOL.GS.Economy
 
             if (item.IsStackable)
             {
-                int max = template.MaxCount > 0 ? template.MaxCount : 20;
-                int count;
-                if (category == EconomyItemPool.Category.Consumable)
-                    count = Util.Random(1, Math.Min(max, 20));
-                else if (category == EconomyItemPool.Category.Resource)
-                    count = Util.Random(1, Math.Min(max, 50));
-                else
-                    count = Math.Max(1, template.PackSize);
-                item.Count = count;
+                item.Count = PickStackCount(template, category);
             }
 
             item.IsCrafted = false;
@@ -1270,8 +1438,74 @@ namespace DOL.GS.Economy
             item.AllowAdd = true;
             item.IsPersisted = false;
 
-            item.SellPrice = EconomyPricing.ComputeSellPrice(template);
+            int unitPrice = EconomyPricing.ComputeSellPrice(template);
+
+            // SellPrice is per-unit, but the stacked listing's TOTAL value is
+            // unitPrice * Count. Without a cap, a random L50 potion stack of 999 at
+            // 30k cu/unit would list at ~3 platines per pop and clog the AH search
+            // with eye-watering numbers. Cap the total in copper, scale Count down
+            // (keeping unit price) when needed so the displayed unit price still
+            // reflects the per-item value the formula computed.
+            int cap = EconomyConfig.ECONOMY_MAX_STACK_LISTING_COPPER;
+            if (cap > 0 && item.Count > 1 && unitPrice > 0)
+            {
+                long total = (long) unitPrice * item.Count;
+                if (total > cap)
+                {
+                    int reducedCount = Math.Max(1, (int) (cap / unitPrice));
+                    item.Count = reducedCount;
+                }
+            }
+
+            item.SellPrice = unitPrice;
             return item;
+        }
+
+        /// <summary>
+        /// Realistic stack counts per item class. Earlier behaviour stacked everything
+        /// 1..20 which left ammo at "5 arrows" instead of the canonical 50-200 stack and
+        /// stacked potions (which do NOT stack in DAoC retail) up to 20. This routine
+        /// honours template.PackSize / MaxCount and clamps to per-class sane caps.
+        /// </summary>
+        private static int PickStackCount(DbItemTemplate template, EconomyItemPool.Category category)
+        {
+            int max = template.MaxCount > 0 ? template.MaxCount : 1;
+            eObjectType ot = (eObjectType) template.Object_Type;
+
+            // Potions and charge items (eObjectType.Magical) are single-instance in
+            // DAoC retail. Force Count=1 regardless of MaxCount on the template.
+            if (ot == eObjectType.Magical)
+                return 1;
+
+            // Ammunition: realistic stack sizes (50/100/200 typical).
+            if (ot == eObjectType.Arrow || ot == eObjectType.Bolt)
+            {
+                int floor = 50;
+                int ceiling = Math.Min(max, 200);
+                if (ceiling < floor)
+                    return Math.Max(1, ceiling);
+                return Util.Random(floor, ceiling);
+            }
+
+            // Poisons: small stack (1..5 vials).
+            if (ot == eObjectType.Poison)
+                return Util.Random(1, Math.Min(max, 5));
+
+            // Crafting components / resources. Bigger stacks (50..100) so players
+            // sourcing materials don't have to buy ten listings to make one recipe.
+            if (category == EconomyItemPool.Category.Resource
+                || ot == eObjectType.GenericItem
+                || ot == eObjectType.AlchemyTincture
+                || ot == eObjectType.SpellcraftGem)
+            {
+                int floor = max >= 50 ? 20 : 1;
+                int ceiling = Math.Min(max, 100);
+                if (ceiling < floor) return Math.Max(1, ceiling);
+                return Util.Random(floor, ceiling);
+            }
+
+            // Default: respect PackSize when set, otherwise single instance.
+            return Math.Max(1, template.PackSize);
         }
     }
 }

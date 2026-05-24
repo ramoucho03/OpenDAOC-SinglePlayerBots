@@ -95,6 +95,76 @@ apply_sql_patch() {
 apply_sql_patch /app/sql/heretic_live.sql       "Heretic Live SQL patch"
 apply_sql_patch /app/sql/battlegrounds_live.sql "Battlegrounds Live SQL patch"
 
+# --- Larogoth + Eve-of-Darkness migrations (one-shot, checksum-tracked) ---
+# 5 files applied IN ORDER (numbering = dependency order):
+#   10_larogoth_items.sql        strategy 3 — INSERT IGNORE missing items
+#                                             (must run before 20/30 so they
+#                                              can match these by Name+Realm).
+#   20_larogoth_ext.sql          strategy 1 — extended metadata (delve_text).
+#   30_larogoth_loot.sql         strategy 2 — ItemLootSource (raw drop info).
+#   40_larogoth_loot_wiring.sql  strategy 4 — ItemLootSource → LootTemplate +
+#                                             MobXLootTemplate + LootOTD so the
+#                                             loot generators actually drop.
+#   50_eveofdarkness_fill.sql    strategy 5 — Eve-of-Darkness/db-public bulk
+#                                             import in 'fill the gaps' mode
+#                                             (INSERT IGNORE everywhere, our DB
+#                                             stays authoritative). ~85 MB, first
+#                                             apply can take 5-15 min.
+# Marker table LarogothMigrationState stores sha256 of each applied file so the
+# heavy INSERTs run exactly once per (DB, file content) — re-runs are skipped
+# silently. Re-applies automatically if a file's checksum changes (image rebuild
+# with a newer Larogoth or Eve-of-Darkness release).
+MARIADB_LAROGOTH_OPTS="--default-character-set=utf8mb3 --max_allowed_packet=128M"
+
+mariadb ${MARIADB_LAROGOTH_OPTS} -h "${DB_HOST}" -P "${DB_PORT}" -u "${DB_USER}" -p"${DB_PASS}" "${DB_NAME}" \
+    -e "CREATE TABLE IF NOT EXISTS LarogothMigrationState (
+            Name VARCHAR(64) NOT NULL PRIMARY KEY,
+            Checksum CHAR(64) NOT NULL,
+            AppliedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            RowsAffected INT
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;" >/dev/null 2>&1 \
+    || echo "[entrypoint] WARN: could not create LarogothMigrationState table — Larogoth migrations skipped." >&2
+
+apply_larogoth_migration() {
+    file="$1"
+    # Optional 2nd arg: "force" -> pass --force to mariadb so it continues past
+    # per-statement errors (used for Eve-of-Darkness fill where column-count
+    # drift between vanilla DOL and OpenDAoC is expected on some tables).
+    extra_flag=""
+    if [ "$2" = "force" ]; then
+        extra_flag="--force"
+    fi
+    name=$(basename "${file}")
+    if [ ! -f "${file}" ]; then
+        return 0
+    fi
+    new_sum=$(sha256sum "${file}" | awk '{print $1}')
+    cur_sum=$(mariadb ${MARIADB_LAROGOTH_OPTS} -N -B -h "${DB_HOST}" -P "${DB_PORT}" -u "${DB_USER}" -p"${DB_PASS}" "${DB_NAME}" \
+        -e "SELECT Checksum FROM LarogothMigrationState WHERE Name='${name}';" 2>/dev/null || true)
+    if [ "${cur_sum}" = "${new_sum}" ]; then
+        echo "[entrypoint] Larogoth ${name} already applied (sha256 match) — skipped."
+        return 0
+    fi
+    echo "[entrypoint] Applying Larogoth ${name} (this may take a minute)..."
+    if mariadb ${MARIADB_LAROGOTH_OPTS} ${extra_flag} -h "${DB_HOST}" -P "${DB_PORT}" -u "${DB_USER}" -p"${DB_PASS}" "${DB_NAME}" < "${file}"; then
+        mariadb ${MARIADB_LAROGOTH_OPTS} -h "${DB_HOST}" -P "${DB_PORT}" -u "${DB_USER}" -p"${DB_PASS}" "${DB_NAME}" \
+            -e "REPLACE INTO LarogothMigrationState (Name, Checksum, AppliedAt) VALUES ('${name}', '${new_sum}', NOW());" \
+            >/dev/null 2>&1
+        echo "[entrypoint] Larogoth ${name} applied (sha256=${new_sum})."
+    else
+        echo "[entrypoint] WARN: Larogoth ${name} apply failed — gameserver will start anyway." >&2
+    fi
+}
+
+# Order matters: items first (so 20/30 can match the new rows by Name+Realm),
+# then ext/loot (both join on ItemTemplate), then wiring (joins on ItemLootSource),
+# finally Eve-of-Darkness bulk fill last so it doesn't overwrite anything above.
+apply_larogoth_migration /app/sql/larogoth/10_larogoth_items.sql
+apply_larogoth_migration /app/sql/larogoth/20_larogoth_ext.sql
+apply_larogoth_migration /app/sql/larogoth/30_larogoth_loot.sql
+apply_larogoth_migration /app/sql/larogoth/40_larogoth_loot_wiring.sql
+apply_larogoth_migration /app/sql/larogoth/50_eveofdarkness_fill.sql force
+
 # Change ownership of the /app directory
 chown -R appuser:appgroup /app
 

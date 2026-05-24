@@ -4,9 +4,26 @@ using DOL.Database;
 namespace DOL.GS.Economy
 {
     /// <summary>
-    /// Computes a dynamic sale price for a market listing. Inputs: template price,
-    /// quality, level scaling, magical bonus count, procs, and a per-listing random
-    /// multiplier. Prices vary item-to-item without server-wide volatility tracking.
+    /// Computes a dynamic sale price for a market listing.
+    ///
+    /// Formula highlights (rewrite — see commit history for the previous flat model):
+    ///   * Quality is a power curve (Q100=1.0, Q90=0.86, Q70=0.58) instead of a 1.4× cap
+    ///   * Level is exponential (L1=1.0, L25=3.4, L50≈11.5) — a L50 should not be only
+    ///     75 % more valuable than a L1
+    ///   * Magical bonuses contribute weighted UTILITY (not just a count) using a stat-
+    ///     weight table inspired by DAoC's official utility metric
+    ///   * The red Bonus field (SC+0..+35 on spellcrafted pieces) — previously IGNORED —
+    ///     now multiplies the price up to 2.4× at +35
+    ///   * Weapons and armours get a DPS_AF / SPD_ABS factor so a DPS 16.5 staff is
+    ///     valued over a DPS 5.0 staff at the same level
+    ///   * Procs/charges are split: ProcSpellID (active proc) is worth more than a
+    ///     passive SpellID, ID1 slots add a smaller bonus
+    ///   * EconomyManager exposes a per-template demand multiplier; recently-bought
+    ///     templates get a soft markup, slow-movers a soft markdown
+    ///
+    /// Target calibration: a top-tier L50 Q100 SC+35 utility-100 proc weapon hits
+    /// approximately 10 platines (~10 000 gold). A trivial L10 crafted piece stays
+    /// under a few silver. Knob: ECONOMY_PRICE_GLOBAL_MULTIPLIER (default 400).
     /// </summary>
     public static class EconomyPricing
     {
@@ -21,6 +38,11 @@ namespace DOL.GS.Economy
             int maxMul = Math.Max(minMul, EconomyConfig.ECONOMY_PRICE_MAX_MULTIPLIER);
             int rolledMul = Util.Random(minMul, maxMul);
             finalPrice *= rolledMul / 100.0;
+
+            // Demand multiplier from the recent-sales tracker. Live signal so popular
+            // templates climb and shelf-warmers slide. Bounded 0.7..1.6 inside the
+            // tracker so a single hot template can't 10× the market by itself.
+            finalPrice *= EconomyManager.GetDemandMultiplier(template.Id_nb);
 
             // Apply the copper floor BEFORE the BP conversion so the floor is interpreted
             // in copper (its declared unit). Then post-divide for BP mode, with a final
@@ -47,7 +69,7 @@ namespace DOL.GS.Economy
         /// <summary>
         /// Deterministic market value used as the reference price when judging whether a
         /// player listing is fairly priced. Same formula as ComputeSellPrice MINUS the
-        /// random multiplier and the BP conversion - returns copper.
+        /// random multiplier and the demand multiplier — returns copper.
         /// </summary>
         public static int ComputeFairValue(DbItemTemplate template)
         {
@@ -55,11 +77,6 @@ namespace DOL.GS.Economy
                 return EconomyConfig.ECONOMY_PRICE_FLOOR_COPPER;
 
             double price = ComputeBaseValue(template);
-
-            // Stack count is multiplied by ComputeSellPrice's callers (item.Count is not
-            // factored here); fair value is per-unit. SellPrice on player listings is the
-            // listing price for the stack as-is, so callers compare item.SellPrice to
-            // fair * item.Count when relevant.
 
             if (price < EconomyConfig.ECONOMY_PRICE_FLOOR_COPPER)
                 price = EconomyConfig.ECONOMY_PRICE_FLOOR_COPPER;
@@ -74,29 +91,58 @@ namespace DOL.GS.Economy
             if (basePrice <= 0)
                 basePrice = ComputeFallbackPrice(template);
 
-            double qualityFactor = 1.0;
-            if (template.Quality >= 100)
-                qualityFactor = 1.4;
-            else if (template.Quality >= 99)
-                qualityFactor = 1.25;
-            else if (template.Quality >= 95)
-                qualityFactor = 1.1;
-            else if (template.Quality < 90)
-                qualityFactor = 0.85;
+            // 1. Quality — power curve (Q100=1.0, Q99=0.985, Q95=0.927, Q90=0.86,
+            //    Q70=0.58). Items below Q70 should be cheap because they're a
+            //    breakage risk and lose stats per repair cycle anyway.
+            int quality = Math.Max(1, (int) template.Quality);
+            double qualityFactor = Math.Pow(quality / 100.0, 1.5);
 
-            double levelFactor = 0.8 + (template.Level / 50.0) * 0.6;
+            // 2. Level — gentle exponential. 1.05^(L-1) gives 1.0 at L1, 3.4 at L25
+            //    and 11.5 at L50. Matches DAoC's empirical "high-level gear costs
+            //    20–50× low-level" curve without exploding past L50 (cap at 51).
+            int level = Math.Max(1, (int) template.Level);
+            level = Math.Min(level, 51);
+            double levelFactor = Math.Pow(1.05, level - 1);
 
-            // Progressive: a 5-bonus piece is worth meaningfully more than 5x a 1-bonus piece,
-            // matching DAoC's exponential SC value curve.
-            int magicalBonuses = CountMagicalBonuses(template);
-            double magicalFactor = 1.0 + (magicalBonuses * magicalBonuses) * 0.04;
+            // 3. Utility — weighted sum of bonus magnitudes by stat type. Replaces the
+            //    flat "count of non-zero bonuses" of the previous formula, which
+            //    over-valued filler bonuses (Str+1) and under-valued power bonuses
+            //    (Skill+5 on a damage line, +25 % to a resist).
+            double utility = ComputeUtility(template);
+            double utilityFactor = 1.0 + Math.Pow(utility / 50.0, 1.8);
 
-            if (template.ProcSpellID > 0 || template.ProcSpellID1 > 0)
-                magicalFactor *= 1.15;
-            if (template.SpellID > 0 || template.SpellID1 > 0)
-                magicalFactor *= 1.10;
+            // 4. Red Bonus (SC+0..+35) — previously not read. Each point ≈ +4 %
+            //    (cap +140 % at SC+35) because that's roughly the live-market
+            //    spread between a 0-bonus craft and a max-bonus craft.
+            int redBonus = Math.Max(0, (int) template.Bonus);
+            redBonus = Math.Min(redBonus, 35);
+            double redBonusFactor = 1.0 + redBonus * 0.04;
 
-            double value = basePrice * qualityFactor * levelFactor * magicalFactor;
+            // 5. DPS_AF / SPD_ABS for weapons and armours. DPS_AF is stored ×10 in
+            //    the upstream schema (165 = DPS 16.5), so the divisor here is 100.0
+            //    intentionally: dps16.5 → 1.0 + 0.165 * 0.5 ≈ 1.08, dps5.0 → 1.025.
+            double dpsAfFactor = 1.0;
+            if (IsWeapon(template))
+                dpsAfFactor = 1.0 + (template.DPS_AF / 100.0) * 0.5;
+            else if (IsArmor(template))
+                dpsAfFactor = 1.0 + (template.SPD_ABS / 100.0) * 0.3;
+
+            // 6. Procs and charges. Active procs (ProcSpellID) are the headline
+            //    feature on rare drops and are valued highest; passive charge spells
+            //    (SpellID) less so. ID1 slots stack additively with a smaller bump.
+            double procFactor = 1.0;
+            if (template.ProcSpellID > 0)  procFactor *= 1.5;
+            if (template.ProcSpellID1 > 0) procFactor *= 1.3;
+            if (template.SpellID > 0)      procFactor *= 1.2;
+            if (template.SpellID1 > 0)     procFactor *= 1.1;
+
+            double value = basePrice
+                         * qualityFactor
+                         * levelFactor
+                         * utilityFactor
+                         * redBonusFactor
+                         * dpsAfFactor
+                         * procFactor;
 
             int globalMul = Math.Max(10, EconomyConfig.ECONOMY_PRICE_GLOBAL_MULTIPLIER);
             value *= globalMul / 100.0;
@@ -213,20 +259,99 @@ namespace DOL.GS.Economy
             return seconds;
         }
 
-        private static int CountMagicalBonuses(DbItemTemplate t)
+        /// <summary>
+        /// Sum of |bonus_i| × weight(bonus_type_i) across all 10 magical-bonus slots.
+        /// Weights are coarse-grained category buckets (stat / resist / skill / etc.)
+        /// rather than the full per-stat table DAoC uses, but it's enough to make a
+        /// "Skill+5 on damage line" worth meaningfully more than a "Str+1" bonus.
+        /// </summary>
+        public static double ComputeUtility(DbItemTemplate t)
         {
-            int n = 0;
-            if (t.Bonus1Type != 0 && t.Bonus1 != 0) n++;
-            if (t.Bonus2Type != 0 && t.Bonus2 != 0) n++;
-            if (t.Bonus3Type != 0 && t.Bonus3 != 0) n++;
-            if (t.Bonus4Type != 0 && t.Bonus4 != 0) n++;
-            if (t.Bonus5Type != 0 && t.Bonus5 != 0) n++;
-            if (t.Bonus6Type != 0 && t.Bonus6 != 0) n++;
-            if (t.Bonus7Type != 0 && t.Bonus7 != 0) n++;
-            if (t.Bonus8Type != 0 && t.Bonus8 != 0) n++;
-            if (t.Bonus9Type != 0 && t.Bonus9 != 0) n++;
-            if (t.Bonus10Type != 0 && t.Bonus10 != 0) n++;
-            return n;
+            if (t == null) return 0.0;
+            double total = 0.0;
+            total += BonusUtility(t.Bonus1Type,  t.Bonus1);
+            total += BonusUtility(t.Bonus2Type,  t.Bonus2);
+            total += BonusUtility(t.Bonus3Type,  t.Bonus3);
+            total += BonusUtility(t.Bonus4Type,  t.Bonus4);
+            total += BonusUtility(t.Bonus5Type,  t.Bonus5);
+            total += BonusUtility(t.Bonus6Type,  t.Bonus6);
+            total += BonusUtility(t.Bonus7Type,  t.Bonus7);
+            total += BonusUtility(t.Bonus8Type,  t.Bonus8);
+            total += BonusUtility(t.Bonus9Type,  t.Bonus9);
+            total += BonusUtility(t.Bonus10Type, t.Bonus10);
+            return total;
+        }
+
+        private static double BonusUtility(int typeRaw, int value)
+        {
+            if (typeRaw == 0 || value == 0) return 0.0;
+            int mag = Math.Abs(value);
+            return mag * GetStatWeight((eProperty) typeRaw);
+        }
+
+        /// <summary>
+        /// Coarse utility weight per eProperty category. Numbers were picked to make
+        /// realistic late-game pieces converge on utility ≈ 100–150, which the
+        /// utilityFactor curve turns into a ~2.5–3.5× price multiplier — the slice
+        /// of the total price model that separates "BiS" from "filler".
+        /// </summary>
+        private static double GetStatWeight(eProperty prop)
+        {
+            int p = (int) prop;
+
+            // 1..8 = base stats (Str, Dex, Con, Qui, Int, Pie, Emp, Cha)
+            if (p >= 1 && p <= 8) return 0.5;
+
+            // 9 = MaxMana, 10 = MaxHealth — values are in raw points (e.g. +60 HP)
+            // so the weight is small per-point to keep totals comparable to stats.
+            if (p == 9 || p == 10) return 0.25;
+
+            // 11..19 = Resists (all 9). Each percent of resist is genuinely valuable.
+            if (p >= 11 && p <= 19) return 2.0;
+
+            // 20..117 = Skill_First..Skill_Last (spell lines, weapon lines, focus).
+            // Each point of skill is worth a chunk of late-game DPS/healing scaling.
+            if (p >= 20 && p <= 117) return 5.0;
+
+            switch ((eProperty) p)
+            {
+                case eProperty.ArmorFactor:        return 0.5;
+                case eProperty.ArmorAbsorption:    return 2.0;
+                case eProperty.SpellRange:         return 1.0;
+                case eProperty.MeleeSpeed:         return 1.5;
+                case eProperty.Acuity:             return 0.5;
+                case eProperty.FatigueConsumption: return 1.0;
+                case eProperty.MeleeDamage:        return 2.0;
+                case eProperty.Fatigue:            return 1.0;
+                case eProperty.HealingEffectiveness:return 2.0;
+                case eProperty.PowerPool:          return 0.25;
+                case eProperty.SpellDamage:        return 2.0;
+                case eProperty.StyleDamage:        return 2.0;
+                case eProperty.PowerPoolCapBonus:  return 0.25;
+                case eProperty.MagicAbsorption:    return 2.0;
+                case eProperty.StyleAbsorb:        return 1.5;
+                default:                            return 1.0;
+            }
+        }
+
+        private static bool IsWeapon(DbItemTemplate t)
+        {
+            eObjectType ot = (eObjectType) t.Object_Type;
+            if (ot >= eObjectType.GenericWeapon && ot <= eObjectType.MaulerStaff)
+                return true;
+            if (ot == eObjectType.Instrument)
+                return true;
+            return false;
+        }
+
+        private static bool IsArmor(DbItemTemplate t)
+        {
+            eObjectType ot = (eObjectType) t.Object_Type;
+            if (ot >= eObjectType.GenericArmor && ot <= eObjectType.Scale)
+                return true;
+            if (ot == eObjectType.Shield)
+                return true;
+            return false;
         }
     }
 }

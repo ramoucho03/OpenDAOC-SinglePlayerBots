@@ -197,6 +197,36 @@ namespace DOL.GS.Economy
         }
 
         /// <summary>
+        /// Walk every live listing and recompute SellPrice using the current pricing
+        /// formula (template + demand multiplier). Returns the list of items whose
+        /// price changed so the caller can SaveObject them in batches outside the
+        /// merchant lock — keeps DB I/O off the hot path. The in-memory price is
+        /// updated immediately so market searches reflect the new price right away
+        /// even before the DB sync completes.
+        /// </summary>
+        public List<DbInventoryItem> RecomputeAllPrices()
+        {
+            List<DbInventoryItem> changed = null;
+            lock (_itemsLock)
+            {
+                for (int i = 0; i < _occupied.Count; i++)
+                {
+                    DbInventoryItem item = _items[_occupied[i]];
+                    if (item == null) continue;
+                    DbItemTemplate tpl = item.Template;
+                    if (tpl == null) continue;
+                    int newPrice = EconomyPricing.ComputeSellPrice(tpl);
+                    if (newPrice == item.SellPrice) continue;
+
+                    item.SellPrice = newPrice;
+                    changed ??= new List<DbInventoryItem>();
+                    changed.Add(item);
+                }
+            }
+            return changed;
+        }
+
+        /// <summary>
         /// Removes every listing this merchant owns from the MarketCache. In-memory only.
         /// </summary>
         public int ClearStock()
@@ -409,6 +439,9 @@ namespace DOL.GS.Economy
                         if (idx < _nextFreeHint)
                             _nextFreeHint = idx;
                         MarketCache.RemoveItem(item);
+                        // OnRemoveItem fires only on player purchase — feed the demand
+                        // tracker so the next listing of this template gets a markup.
+                        EconomyManager.OnListingSold(item.Id_nb);
                         EconomyManager.OnListingRemoved(item.Id_nb);
 
                         // If still queued for insert (never flushed), drop it. The player

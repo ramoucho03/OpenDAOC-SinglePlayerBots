@@ -42,7 +42,10 @@
       "Bash(git --no-pager log --oneline -S \"5000\" -- GameServer/custom/MimicNPC/ai/MimicState.cs)",
       "Bash(git --no-pager log -p --all -L 282,282:GameServer/custom/MimicNPC/ai/MimicState.cs)",
       "Bash(git --no-pager show c94d753e4 --stat)",
-      "Bash(git --no-pager show c94d753e4 -- GameServer/propertycalc/MaxSpeedCalculator.cs)"
+      "Bash(git --no-pager show c94d753e4 -- GameServer/propertycalc/MaxSpeedCalculator.cs)",
+      "Bash(git -C c:/Users/Olivier/botdaoc/OpenDAOC-SinglePlayerBots log --oneline -5 -- sql/)",
+      "PowerShell(gh api repos/Larogoth/DAoCDatabase 2>&1)",
+      "PowerShell($tmp = \"$env:TEMP\\\\daoc_items.json\"; if \\(-not \\(Test-Path $tmp\\)\\) { Invoke-WebRequest -Uri \"https://raw.githubusercontent.com/Larogoth/DAoCDatabase/main/daoc_item_database.json\" -OutFile $tmp -UseBasicParsing }; $f = Get-Item $tmp; \"Size: $\\([math]::Round\\($f.Length/1MB,2\\)\\) MB\"; \"First 4000 chars:\"; \\(Get-Content $tmp -Raw\\).Substring\\(0, 4000\\))"
     ]
   }
 }

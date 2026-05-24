@@ -1,6 +1,7 @@
 using System;
 using System.Reflection;
 using System.Threading.Tasks;
+using DOL.Database;
 using DOL.GS.Commands;
 using DOL.GS.PacketHandler;
 using DOL.Logging;
@@ -10,13 +11,17 @@ namespace DOL.GS.Economy
     [CmdAttribute(
         "&economy",
         ePrivLevel.GM,
-        "/economy <stats|refresh|clear|suspend|resume|topup> - Manages the dynamic auction-house economy.",
+        "/economy <stats|refresh|clear|suspend|resume|topup|price|recompute|rebuild-pool|velocity> - Manages the dynamic auction-house economy.",
         "/economy stats - shows merchant counts and listings.",
         "/economy topup - top up to target stock (background, serialized).",
         "/economy refresh - rotate a slice of stock now (background, serialized).",
         "/economy clear confirm - remove all bot listings (requires the 'confirm' keyword).",
         "/economy suspend - pause periodic rotations.",
-        "/economy resume - resume periodic rotations.")]
+        "/economy resume - resume periodic rotations.",
+        "/economy price <Id_nb> - preview the price the formula computes for a template.",
+        "/economy recompute - recalculate SellPrice for every live listing using the current formula.",
+        "/economy rebuild-pool - drop and reload the item-template pool (after a content push).",
+        "/economy velocity - dump demand-tracker stats (recently bought templates).")]
     public class EconomyCommand : AbstractCommandHandler, ICommandHandler
     {
         private static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
@@ -132,10 +137,89 @@ namespace DOL.GS.Economy
                     EconomyManager.Suspend(false);
                     player.Out.SendMessage("Economy: rotations resumed.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
                     break;
+                case "price":
+                {
+                    if (args.Length < 3)
+                    {
+                        player.Out.SendMessage("Usage: /economy price <Id_nb>", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                        break;
+                    }
+                    string idNb = args[2];
+                    DbItemTemplate tpl = GameServer.Database.FindObjectByKey<DbItemTemplate>(idNb);
+                    if (tpl == null)
+                    {
+                        player.Out.SendMessage($"Economy: template '{idNb}' not found.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                        break;
+                    }
+                    int fair = EconomyPricing.ComputeFairValue(tpl);
+                    double demand = EconomyManager.GetDemandMultiplier(idNb);
+                    double utility = EconomyPricing.ComputeUtility(tpl);
+                    int sampleSell = EconomyPricing.ComputeSellPrice(tpl);
+                    player.Out.SendMessage($"Economy: {tpl.Id_nb} ({tpl.Name})", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    player.Out.SendMessage($"  level={tpl.Level} quality={tpl.Quality} bonus(SC)={tpl.Bonus} utility={utility:F1}", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    player.Out.SendMessage($"  DPS_AF={tpl.DPS_AF} SPD_ABS={tpl.SPD_ABS} proc={tpl.ProcSpellID}/{tpl.ProcSpellID1} charge={tpl.SpellID}/{tpl.SpellID1}", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    player.Out.SendMessage($"  fair value = {FormatCopper(fair)}", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    player.Out.SendMessage($"  demand multiplier = {demand:F2}× (range {EconomyConfig.ECONOMY_DEMAND_MIN_MARKDOWN_PERCENT}–{EconomyConfig.ECONOMY_DEMAND_MAX_MARKUP_PERCENT}%)", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    player.Out.SendMessage($"  sample listing price = {FormatCopper(sampleSell)} (rolled, includes random {EconomyConfig.ECONOMY_PRICE_MIN_MULTIPLIER}–{EconomyConfig.ECONOMY_PRICE_MAX_MULTIPLIER}%)", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    break;
+                }
+                case "recompute":
+                {
+                    if (!EconomyManager.IsInitialized)
+                    {
+                        player.Out.SendMessage("Economy: not initialized.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                        break;
+                    }
+                    player.Out.SendMessage("Economy: recomputing all listing prices...", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    RunBackgroundCommand(player, "recompute", () =>
+                    {
+                        int n = EconomyManager.RecomputeAllListings();
+                        return $"Economy: recompute done. {n} listings updated.";
+                    });
+                    break;
+                }
+                case "rebuild-pool":
+                case "rebuildpool":
+                {
+                    player.Out.SendMessage("Economy: rebuilding template pool...", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    RunBackgroundCommand(player, "rebuild-pool", () =>
+                    {
+                        int n = EconomyManager.RebuildItemPool();
+                        return $"Economy: pool rebuilt. {n} eligible templates loaded.";
+                    });
+                    break;
+                }
+                case "velocity":
+                {
+                    var (n, total) = EconomyManager.GetDemandStats();
+                    player.Out.SendMessage($"Economy: demand tracking enabled={EconomyConfig.ECONOMY_DEMAND_TRACKING_ENABLED}, half-life={EconomyConfig.ECONOMY_DEMAND_DECAY_MINUTES}min.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    player.Out.SendMessage($"Economy: {n} templates with non-trivial demand score (sum={total:F1}).", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    player.Out.SendMessage($"Economy: bounds: markdown floor={EconomyConfig.ECONOMY_DEMAND_MIN_MARKDOWN_PERCENT}%, markup ceiling={EconomyConfig.ECONOMY_DEMAND_MAX_MARKUP_PERCENT}%.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    break;
+                }
                 default:
                     DisplaySyntax(client);
                     break;
             }
+        }
+
+        /// <summary>
+        /// Formats a copper amount as plat/gold/silver/copper for at-a-glance reads.
+        /// 10_000_000 copper = 10 platines. Always shows non-zero leading denomination.
+        /// </summary>
+        private static string FormatCopper(long copper)
+        {
+            if (copper <= 0) return "0c";
+            long c = copper;
+            long plat = c / 10_000_000L;       c %= 10_000_000L;
+            long gold = c / 10_000L;           c %= 10_000L;
+            long silver = c / 100L;            c %= 100L;
+            var parts = new System.Text.StringBuilder();
+            if (plat   > 0) parts.Append(plat).Append("p ");
+            if (gold   > 0) parts.Append(gold).Append("g ");
+            if (silver > 0) parts.Append(silver).Append("s ");
+            if (c      > 0 || parts.Length == 0) parts.Append(c).Append("c");
+            return parts.ToString().TrimEnd();
         }
     }
 }
