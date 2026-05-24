@@ -444,7 +444,16 @@ namespace DOL.GS.Spells
 				// NPCs initial LoS checks are handled by the casting component before ticking the spell handler.
 				HasLos = true;
 
-				if (!Spell.IsInstantCast)
+				// Instrument-required spells (Minstrel / Bard / Skald songs,
+				// including cast-time mez/charm songs) and MoveCast spells
+				// are designed to be cast while moving — the engine has a
+				// dedicated CasterMoves override that returns early for them.
+				// The legacy NPC start-of-cast stop fired unconditionally and
+				// froze the Minstrel mimic the instant it began any song,
+				// instead of walking alongside the group.
+				if (!Spell.IsInstantCast
+				    && Spell.InstrumentRequirement == 0
+				    && !Spell.MoveCast)
 				{
 					if (npcOwner.IsMoving)
 						npcOwner.StopMoving();

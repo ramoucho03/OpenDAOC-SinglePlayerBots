@@ -6784,6 +6784,36 @@ namespace DOL.AI.Brain
             if (IsSuppressedTravelChant(spell))
                 return null;
 
+            // One-pulse-slot rule. A bot can sustain only ONE pulsing chant /
+            // instrument song; every new pulse replaces the previous one in
+            // the pulse slot. With multiple eligible pulse spells in the
+            // spellbook (Minstrel: speed song + mez-duration chant + AF chant
+            // + resist chants + bladeturn; Bard / Paladin similar), the
+            // defensive cycle would see "speed is gone (because mez-dur
+            // replaced it)" → cast speed → "mez-dur is gone (because speed
+            // replaced it)" → cast mez-dur → cycle infinitely. Visible as
+            // "the bot casts songs non-stop and never engages combat".
+            // Suppress every additional pulse spell while a NeedInstrument
+            // pulse is already running. The active one keeps refreshing
+            // through the normal LivingHasEffect path; everything else waits.
+            if (spell.IsPulsing && spell.NeedInstrument && IsAnyPulseSongActive())
+            {
+                // Allow refresh of the SAME spell so its effect doesn't
+                // expire (effect refresh hits LivingHasEffect == true and
+                // bails downstream anyway, but be explicit).
+                bool isCurrentlyActiveSong = false;
+                foreach (ECSPulseEffect pulse in Body.effectListComponent.GetPulseEffects())
+                {
+                    if (pulse?.SpellHandler?.Spell?.ID == spell.ID)
+                    {
+                        isCurrentlyActiveSong = true;
+                        break;
+                    }
+                }
+                if (!isCurrentlyActiveSong)
+                    return null;
+            }
+
             switch (spell.SpellType)
             {
                 #region Pulse

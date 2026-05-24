@@ -2818,17 +2818,29 @@ namespace DOL.GS.Scripts
 
             foreach (GameNPC npc in fire.GetNPCsInRadius(CAMPFIRE_REGEN_RANGE))
             {
-                if (npc is not MimicNPC mimic || !mimic.IsAlive || mimic.InCombat)
+                if (npc is not MimicNPC mimic || !mimic.IsAlive)
                     continue;
 
+                // Mimic-specific +200 % campfire boost (final = 3× base) and
+                // the InCombat gate is dropped so the boost applies even
+                // mid-fight. Real players keep the original tuning (line 2802
+                // loop) and stay OOC-only. Without the bonus, the puller's
+                // RESUME gate (85 % mana) was effectively unreachable inside
+                // a single fight and the group spent disproportionate idle
+                // time between pulls — the campfire is supposed to be the
+                // mechanic that compresses regen windows for bot groups.
+                int boostedMana = CAMPFIRE_MANA_PER_TICK * 3;
+                int boostedHealth = CAMPFIRE_HEALTH_PER_TICK * 3;
+                int boostedEnd = CAMPFIRE_END_PER_TICK * 3;
+
                 if (mimic.MaxMana > 0 && mimic.Mana < mimic.MaxMana)
-                    mimic.Mana = Math.Min(mimic.MaxMana, mimic.Mana + CAMPFIRE_MANA_PER_TICK);
+                    mimic.Mana = Math.Min(mimic.MaxMana, mimic.Mana + boostedMana);
 
                 if (mimic.Health < mimic.MaxHealth)
-                    mimic.ChangeHealth(this, eHealthChangeType.Regenerate, CAMPFIRE_HEALTH_PER_TICK);
+                    mimic.ChangeHealth(this, eHealthChangeType.Regenerate, boostedHealth);
 
                 if (mimic.Endurance < mimic.MaxEndurance)
-                    mimic.Endurance = Math.Min(mimic.MaxEndurance, mimic.Endurance + CAMPFIRE_END_PER_TICK);
+                    mimic.Endurance = Math.Min(mimic.MaxEndurance, mimic.Endurance + boostedEnd);
             }
 
             return CAMPFIRE_REGEN_INTERVAL_MS;

@@ -1367,13 +1367,25 @@ namespace DOL.AI.Brain
                 }
             }
             else if (_brain.MimicBody != null
-                     && _brain.MimicBody.Inventory?.GetItem(eInventorySlot.DistanceWeapon) != null
+                     && _brain.MimicBody.Inventory?.GetItem(eInventorySlot.DistanceWeapon) is DbInventoryItem distItem
+                     && distItem.Object_Type != (int)eObjectType.Instrument
                      && !_brain.IsMainPuller)
             {
                 // Ranged DPS (Scout/Ranger/Hunter not pulling): pre-arm the
                 // bow, pre-target, and step forward toward the anchor for LoS
                 // / range. They'll still hold-fire if the tank hasn't
                 // established aggro (DPS hold-fire in CalculateNextAttackTarget).
+                //
+                // Instrument check: Minstrel / Bard / Skald carry an INSTRUMENT
+                // in the DistanceWeapon slot, but instruments are NOT ranged
+                // damage weapons — they're for songs / mez. The previous
+                // legacy gate treated any DistanceWeapon as a bow, locked the
+                // Minstrel onto the instrument slot, and the bot would just
+                // stand there with the lute up instead of switching to its
+                // melee weapon when the mob arrived. Exclude instruments here
+                // so the song classes fall through to the generic DPS branch
+                // below (pre-target + step forward) and AttackMostWanted's
+                // weapon-swap path then engages the standard melee weapon.
                 _brain.Body.TargetObject = incoming;
                 _brain.Body.SwitchWeapon(eActiveWeaponSlot.Distance);
                 AdvanceTowardAnchor(anchor, 180);
@@ -1692,22 +1704,18 @@ namespace DOL.AI.Brain
                         mg.SetCampPhase(MimicGroup.eCampPhase.Combat);
                         break;
                     }
-                    // Chain-pull while EVERY caster is still above the STOP
-                    // floor (~30 %, IsGroupStillFresh). Above the floor the
-                    // group is good to keep going — no needless Regen pause.
-                    // Below the floor we fall through to Regen, and from
-                    // there the only exit is the RESUME gate (~85 %,
-                    // IsGroupReady) — that's where "sans faille" lives:
-                    // once Regen kicks in, nothing lets the puller out
-                    // until everyone is properly topped.
-                    if (IsGroupStillFresh(mg))
-                    {
-                        mg.SetCampPhase(MimicGroup.eCampPhase.Ready);
-                        break;
-                    }
-                    // Residual aggro (stray mob walking back, a DoT ticking)
-                    // gets a short 1 s grace so the still-resolving fight
-                    // isn't pre-empted by an early Regen transition.
+                    // Always route post-combat through Regen. The previous
+                    // chain-pull shortcut (PostCombat → Ready whenever every
+                    // caster was still above the STOP floor ~30 %) was the
+                    // root of the "regen stops at 30 % instead of resuming at
+                    // 85 %" symptom: the camp would skip the Regen pause
+                    // entirely as long as nobody was critically drained, and
+                    // the puller would chain another pull on a half-empty
+                    // group. Even at 30-50 % we want a real rest pass so the
+                    // healer climbs back to the RESUME gate (85 %) before
+                    // the next pull. Only the residual-aggro grace stays
+                    // (1 s if a DoT is still resolving) so we don't slam
+                    // the still-finishing fight into Regen prematurely.
                     int grace = AnyGroupMemberHasAggro() ? 1000 : 0;
                     if (now - mg.CampPhaseSinceTick > grace)
                         mg.SetCampPhase(MimicGroup.eCampPhase.Regen);
