@@ -265,8 +265,12 @@ namespace DOL.GS.Housing
                     return house.ConsignmentMerchant;
             }
 
-            // couldn't find the house, return null
-            return null;
+            // Fall back to the virtual auction-bot merchants (EconomyManager owns
+            // them; they have no backing House but the Market Explorer's BuyItem
+            // path resolves listings through this method). Without this, the
+            // bot-listed items are visible in the search results but produce
+            // "I can't find the consignment merchant for this item!" on click.
+            return Economy.EconomyManager.GetVirtualMerchant(houseNumber);
         }
 
         public static void AddHouse(House house)
