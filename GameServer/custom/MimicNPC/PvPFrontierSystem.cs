@@ -85,6 +85,33 @@ namespace DOL.GS.Scripts
         [ServerProperty("pvpfrontier", "pvp_frontier_bg_population_per_realm",
             "Target number of mimic bots maintained per realm in each Battleground region (separate from the main frontier population). Default 30 — keeps BGs lively without saturating a low-pop server.", 30)]
         public static int PVP_FRONTIER_BG_POPULATION_PER_REALM;
+
+        // ---- Dynamic spawn (spawn-near-player) ----
+        // Spawns frontier groups around active players in the region instead of
+        // at fixed realm anchors. Out-of-vision but close enough to be reached
+        // by foot in a couple of minutes — the player feels "encounters happen"
+        // without the server pinning hundreds of bots out in empty corners of
+        // the map.
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_dynamic_spawn",
+            "Enable dynamic spawn: new frontier groups materialise in a ring around real players in the region (out of visibility) instead of at fixed realm anchors. Default true — saves CPU/memory by not maintaining far-away bots.", true)]
+        public static bool PVP_FRONTIER_DYNAMIC_SPAWN;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_dynamic_spawn_inner",
+            "Minimum distance (units) between a dynamic-spawn point and the anchor player. Should stay above visibility range (~3500u) so groups appear by walking in, not popping into view. Default 4000.", 4000)]
+        public static int PVP_FRONTIER_DYNAMIC_SPAWN_INNER;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_dynamic_spawn_outer",
+            "Maximum distance (units) between a dynamic-spawn point and the anchor player. Wider = more dispersed groups, narrower = denser encounters. Default 6500 (~2 min walk).", 6500)]
+        public static int PVP_FRONTIER_DYNAMIC_SPAWN_OUTER;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_dynamic_spawn_skip_if_empty",
+            "When true and dynamic spawn is on, skip spawning entirely in regions where no real player is present. Saves CPU when the frontier is deserted. Default true.", true)]
+        public static bool PVP_FRONTIER_DYNAMIC_SPAWN_SKIP_IF_EMPTY;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_dynamic_spawn_prefer_opposite",
+            "When true, dynamic spawn prefers placing groups around players of an OPPOSING realm so encounters happen quickly. Falls back to any player if no opposing realm is in the region. Default true.", true)]
+        public static bool PVP_FRONTIER_DYNAMIC_SPAWN_PREFER_OPPOSITE;
     }
 
     #endregion
@@ -443,6 +470,33 @@ namespace DOL.GS.Scripts
                                 PvPFrontierGroup grp = cfg.Groups[i];
                                 grp.Tick();
 
+                                // Defensive corpse sweep. Frontier mimics
+                                // normally die through MimicNPC.ProcessDeath
+                                // → base.ProcessDeath → Delete() (the rez-
+                                // wait branch is gated on OwnerAccount which
+                                // frontier bots never have). However a
+                                // reported symptom shows dead bodies with
+                                // grey names lingering permanently in the
+                                // Old Frontier regions, which means at least
+                                // one death path is leaving the GameObject
+                                // Active. Walk every hydrated group's roster
+                                // here and force-delete anything that is
+                                // simultaneously NOT alive and STILL active
+                                // — that's the corpse signature.
+                                if (grp.IsHydrated)
+                                {
+                                    foreach (var member in grp.Members)
+                                    {
+                                        if (member == null) continue;
+                                        if (member.IsAlive) continue;
+                                        if (member.ObjectState != GameObject.eObjectState.Active) continue;
+                                        try { member.Delete(); } catch (Exception delEx)
+                                        {
+                                            log.Warn("PvPFrontier: corpse sweep failed to delete " + member.Name, delEx);
+                                        }
+                                    }
+                                }
+
                                 if (grp.IsDisbanded)
                                 {
                                     // Tick()'s disband paths only flip the state;
@@ -475,7 +529,31 @@ namespace DOL.GS.Scripts
                             int maxSize = Math.Clamp(PvPFrontierProperties.PVP_FRONTIER_MAX_GROUP_SIZE, minSize, 8);
                             int rolledSize = RollWeightedGroupSize(minSize, maxSize);
                             int groupSize = Math.Min(rolledSize, Math.Max(1, missing));
-                            PvPFrontierGroup newGroup = PvPFrontierGroup.Spawn(cfg, groupSize);
+
+                            // Dynamic-spawn pick. The picker is gated on the
+                            // PVP_FRONTIER_DYNAMIC_SPAWN property and returns
+                            // a ring-around-a-real-player position when at
+                            // least one player is in the region's snapshot.
+                            Point3D dynamicAnchor = null;
+                            bool gotDynamic = TryPickDynamicSpawnPosition(cfg, out Point3D pickedPos);
+                            if (gotDynamic)
+                                dynamicAnchor = pickedPos;
+
+                            // Resource-saver: when dynamic spawn is enabled,
+                            // skip-if-empty is on, AND no player anchor was
+                            // found, we DON'T fall back to the static realm
+                            // anchor. The frontier is deserted in this region
+                            // — there's nobody to discover the new group, so
+                            // building bots only to have them dehydrate
+                            // immediately wastes CPU and memory. The group
+                            // slot stays "missing" in this config; the next
+                            // tick re-tries when a player may have arrived.
+                            if (PvPFrontierProperties.PVP_FRONTIER_DYNAMIC_SPAWN
+                                && PvPFrontierProperties.PVP_FRONTIER_DYNAMIC_SPAWN_SKIP_IF_EMPTY
+                                && !gotDynamic)
+                                continue;
+
+                            PvPFrontierGroup newGroup = PvPFrontierGroup.Spawn(cfg, groupSize, dynamicAnchor);
                             if (newGroup != null)
                                 cfg.Groups.Add(newGroup);
                         }
@@ -564,6 +642,8 @@ namespace DOL.GS.Scripts
         {
             public int X;
             public int Y;
+            public int Z;
+            public eRealm Realm;
         }
 
         internal static readonly Dictionary<ushort, PlayerSnapshot> _playerSnapshotByRegion = new();
@@ -606,7 +686,7 @@ namespace DOL.GS.Scripts
                             continue;
                         if (p.Client?.Account != null && p.Client.Account.PrivLevel > 1)
                             continue;
-                        snap.Sampled.Add(new PlayerSampledPos { X = p.X, Y = p.Y });
+                        snap.Sampled.Add(new PlayerSampledPos { X = p.X, Y = p.Y, Z = p.Z, Realm = p.Realm });
                     }
 
                     _playerSnapshotByRegion[regId] = snap;
@@ -620,6 +700,76 @@ namespace DOL.GS.Scripts
         {
             lock (_playerSnapshotLock)
                 return _playerSnapshotByRegion.TryGetValue(regionId, out PlayerSnapshot s) ? s : null;
+        }
+
+        /// <summary>
+        /// Picks a spawn position near (but out of vision of) a real player in
+        /// the config's region. The position sits on a ring around the chosen
+        /// player: inner radius keeps the spawn invisible at materialisation
+        /// time, outer radius keeps it close enough that the group will reach
+        /// the player by walking in within a couple of minutes.
+        ///
+        /// Returns false (and `position` is undefined) when:
+        ///   - dynamic spawn is disabled,
+        ///   - no real player is registered in the region's snapshot,
+        ///   - no candidate passes the opposing-realm filter (when enabled)
+        ///     and no fallback candidate exists.
+        ///
+        /// Caller (<see cref="MaintenanceTick"/>) treats a `false` return as
+        /// "skip spawning this group for now" — the static-anchor fallback is
+        /// optional and gated by <see cref="PvPFrontierProperties.PVP_FRONTIER_DYNAMIC_SPAWN_SKIP_IF_EMPTY"/>.
+        /// </summary>
+        internal static bool TryPickDynamicSpawnPosition(RealmConfig cfg, out Point3D position)
+        {
+            position = default;
+            if (cfg == null) return false;
+            if (!PvPFrontierProperties.PVP_FRONTIER_DYNAMIC_SPAWN) return false;
+
+            PlayerSnapshot snap = GetPlayerSnapshot(cfg.Region);
+            if (snap == null || snap.Sampled.Count == 0) return false;
+
+            int inner = Math.Max(500, PvPFrontierProperties.PVP_FRONTIER_DYNAMIC_SPAWN_INNER);
+            int outer = Math.Max(inner + 100, PvPFrontierProperties.PVP_FRONTIER_DYNAMIC_SPAWN_OUTER);
+            int ringWidth = outer - inner;
+
+            // Candidate filter: prefer players whose realm is NOT this group's
+            // realm so encounters happen quickly. Fall back to any player if
+            // the opposing filter empties the pool (e.g. only home-realm
+            // players around). Track the indices of the two pools so the random
+            // pick stays O(1) instead of allocating two filtered lists.
+            List<int> opposing = null;
+            List<int> any = null;
+            for (int i = 0; i < snap.Sampled.Count; i++)
+            {
+                PlayerSampledPos sp = snap.Sampled[i];
+                (any ??= new List<int>(snap.Sampled.Count)).Add(i);
+                if (PvPFrontierProperties.PVP_FRONTIER_DYNAMIC_SPAWN_PREFER_OPPOSITE
+                    && sp.Realm != cfg.Realm && sp.Realm != eRealm.None)
+                {
+                    (opposing ??= new List<int>(snap.Sampled.Count)).Add(i);
+                }
+            }
+
+            List<int> pool = opposing != null && opposing.Count > 0 ? opposing : any;
+            if (pool == null || pool.Count == 0) return false;
+
+            PlayerSampledPos anchor = snap.Sampled[pool[Util.Random(pool.Count - 1)]];
+
+            // Random angle + random radius in [inner, outer]. Uniform on the
+            // ring without bias toward the inner edge: sqrt() correction on the
+            // 0..1 radius factor keeps the area-density flat.
+            double angle = Util.Random(0, 359) * Math.PI / 180.0;
+            double radiusFactor = Math.Sqrt(Util.RandomDouble());
+            double radius = inner + radiusFactor * ringWidth;
+
+            int sx = anchor.X + (int)Math.Round(Math.Cos(angle) * radius);
+            int sy = anchor.Y + (int)Math.Round(Math.Sin(angle) * radius);
+
+            // Reuse the anchor player's Z. The picked point is on the same map
+            // sheet within ~6.5k units, so the Z is normally close enough; the
+            // bot's first patrol-step path resolves the real terrain Z anyway.
+            position = new Point3D(sx, sy, anchor.Z);
+            return true;
         }
 
         // ----- Recent enemy hotspots -----
@@ -851,7 +1001,7 @@ namespace DOL.GS.Scripts
         /// that happens lazily on hydration. Returns null only if the composer
         /// produces no classes (catalog edge case).
         /// </summary>
-        public static PvPFrontierGroup Spawn(PvPFrontierManager.RealmConfig cfg, int groupSize)
+        public static PvPFrontierGroup Spawn(PvPFrontierManager.RealmConfig cfg, int groupSize, Point3D overrideAnchor = null)
         {
             PvPFrontierGroup g = new(cfg);
 
@@ -887,9 +1037,26 @@ namespace DOL.GS.Scripts
             g.Region = cfg.Region != 0
                 ? cfg.Region
                 : (ushort)PvPFrontierProperties.PVP_FRONTIER_REGION;
-            g.VirtualPosition = new Point3D(cfg.SpawnAnchor.X + Util.Random(-250, 250),
-                                            cfg.SpawnAnchor.Y + Util.Random(-250, 250),
-                                            cfg.SpawnAnchor.Z);
+
+            // Dynamic spawn: when the caller supplied an override anchor (a
+            // point on a ring around a real player, picked by
+            // TryPickDynamicSpawnPosition), use it directly with a tiny
+            // jitter so consecutive spawns aren't stacked on the same tile.
+            // Falls back to the static realm anchor when no override was
+            // provided — keeps the original behaviour intact for any caller
+            // that doesn't opt in.
+            if (overrideAnchor != null)
+            {
+                g.VirtualPosition = new Point3D(overrideAnchor.X + Util.Random(-150, 150),
+                                                overrideAnchor.Y + Util.Random(-150, 150),
+                                                overrideAnchor.Z);
+            }
+            else
+            {
+                g.VirtualPosition = new Point3D(cfg.SpawnAnchor.X + Util.Random(-250, 250),
+                                                cfg.SpawnAnchor.Y + Util.Random(-250, 250),
+                                                cfg.SpawnAnchor.Z);
+            }
 
             g.PickNextWaypoint();
             g.State = eFrontierState.Patrolling;
