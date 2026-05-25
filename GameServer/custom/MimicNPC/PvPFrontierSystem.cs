@@ -715,8 +715,16 @@ namespace DOL.GS.Scripts
                     {
                         if (p == null || !p.IsAlive)
                             continue;
-                        if (p.Client?.Account != null && p.Client.Account.PrivLevel > 1)
-                            continue;
+                        // GMs / admins (PrivLevel > 1) are KEPT in the
+                        // snapshot. They count as presence for hydration
+                        // triggers and dynamic-spawn anchoring — without
+                        // this an admin patrolling NF to verify the system
+                        // never sees a single mimic group, because the
+                        // skip-if-empty path treats the region as deserted
+                        // (no PrivLevel-1 player anchor → no spawn → no
+                        // encounters). Aggro / kill / RP paths have their
+                        // own PrivLevel guards downstream so admins still
+                        // can't be targeted or farmed for points by bots.
                         snap.Sampled.Add(new PlayerSampledPos { X = p.X, Y = p.Y, Z = p.Z, Realm = p.Realm });
                     }
 
