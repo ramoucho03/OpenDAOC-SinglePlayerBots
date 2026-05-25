@@ -354,14 +354,14 @@
         }
       }
     },
-    "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreDatabase\\CoreDatabase.csproj": {
+    "c:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreDatabase\\CoreDatabase.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreDatabase\\CoreDatabase.csproj",
+        "projectUniqueName": "c:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreDatabase\\CoreDatabase.csproj",
         "projectName": "CoreDatabase",
-        "projectPath": "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreDatabase\\CoreDatabase.csproj",
+        "projectPath": "c:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreDatabase\\CoreDatabase.csproj",
         "packagesPath": "C:\\Users\\Olivier\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreDatabase\\..\\build\\CoreDatabase\\\\",
+        "outputPath": "c:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreDatabase\\..\\build\\CoreDatabase\\\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -740,8 +740,8 @@
               "c:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreBase\\CoreBase.csproj": {
                 "projectPath": "c:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreBase\\CoreBase.csproj"
               },
-              "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreDatabase\\CoreDatabase.csproj": {
-                "projectPath": "C:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreDatabase\\CoreDatabase.csproj"
+              "c:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreDatabase\\CoreDatabase.csproj": {
+                "projectPath": "c:\\Users\\Olivier\\botdaoc\\OpenDAOC-SinglePlayerBots\\CoreDatabase\\CoreDatabase.csproj"
               }
             }
           }

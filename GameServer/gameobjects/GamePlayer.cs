@@ -1583,11 +1583,15 @@ namespace DOL.GS
                 }
                 case eReleaseType.NewFrontiers:
                 {
-                    // Region-aware: GetFrontierReleaseLocation returns NF
-                    // border-keep coords for region 163 and the right
-                    // per-realm safe spot inside the three Old Frontier
-                    // regions (home realm → friendly relic keep, invaders →
-                    // their portal keep).
+                    // Region-aware: GetFrontierReleaseLocation returns the NF
+                    // border-keep coords (per realm) when the player died in
+                    // region 163. Players who die in a classic frontier zone
+                    // inside their realm region (e.g. Forest Sauvage in
+                    // region 1, marked Zone.IsRvR) hit this case via the
+                    // selector above too — for those, GetFrontierReleaseLocation
+                    // returns false and we fall back to bind, which is the
+                    // intended behaviour now that NF (163) is the primary RvR
+                    // theatre and the realm regions host PvE leveling content.
                     if (GameServer.KeepManager.GetFrontierReleaseLocation(Realm, CurrentRegion.ID, out relX, out relY, out relZ, out relHeading))
                     {
                         relRegion = CurrentRegion.ID;

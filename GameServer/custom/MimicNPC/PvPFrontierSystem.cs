@@ -45,7 +45,7 @@ namespace DOL.GS.Scripts
         public static int PVP_FRONTIER_POPULATION_PER_REALM;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_region",
-            "Legacy fallback region ID. The mimic RvR now runs across the three Old Frontier regions (Albion 1, Midgard 100, Hibernia 200); this value is only consulted as a fallback when no frontier config could be built.", 163)]
+            "Region ID for the shared PvP frontier zone. Default 163 (New Frontiers — the unified NF region on OpenDAOC). All three realms run on this single region and converge on the contested center.", 163)]
         public static int PVP_FRONTIER_REGION;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_min_level",
@@ -124,11 +124,10 @@ namespace DOL.GS.Scripts
 
         // Per-realm spawn anchors. Bots spawn in a radius around these and pick
         // patrol waypoints from the realm's waypoint list.
-        // These coordinates target the classic Old Frontier RvR zones, which
-        // live inside the three realm home regions (Albion 1, Midgard 100,
-        // Hibernia 200). Every frontier region hosts all three realms — home
-        // defenders plus two invading realms — so groups always find enemies.
-        // An admin can override per-realm anchors at runtime via SetSpawnAnchor.
+        // These coordinates target the New Frontiers map (region 163). The
+        // three realms have distinct corners that converge toward the contested
+        // center where encounters happen. An admin can override per-realm
+        // anchors at runtime via SetSpawnAnchor.
         public sealed class RealmConfig
         {
             public eRealm Realm;
@@ -138,7 +137,7 @@ namespace DOL.GS.Scripts
 
             // Per-config region / level / population. Carried on the config so
             // every BG region runs its own population scaled to its bracket.
-            // Every Old Frontier and BG config sets these explicitly.
+            // Defaults match the single-region NF behaviour when not set.
             public ushort Region;
             public byte MinLevel;
             public byte MaxLevel;
@@ -151,9 +150,9 @@ namespace DOL.GS.Scripts
         }
 
         // Two-level storage: region → (realm → config). Lets the manager run
-        // one independent population per BG region in parallel with the three
-        // Old Frontier regions. Lookups stay O(1) and the maintenance loop is
-        // just a nested foreach.
+        // one independent population per BG region in parallel with the main
+        // NF frontier. Lookups stay O(1) and the maintenance loop is just a
+        // nested foreach.
         internal static readonly Dictionary<ushort, Dictionary<eRealm, RealmConfig>> _configs = new();
         internal static readonly object _configsLock = new();
         private static ECSGameTimer _tickTimer;
@@ -161,14 +160,15 @@ namespace DOL.GS.Scripts
         private const int TICK_MS = 5000;            // population/maintenance tick
         private const int GROUP_TICK_MS = 2000;      // per-group AI tick
 
-        // ----- Old Frontier regions -----
-        // The classic (pre-NF) RvR theatre spans the three realm home regions
-        // rather than one unified NF region. Each hosts all three realms — the
-        // home realm defends, the other two invade — so every frontier always
-        // has enemy groups for the bot-vs-bot RvR to engage.
-        private const ushort REGION_ALBION_FRONTIER = 1;     // Forest Sauvage / Snowdonia / Pennine Mtns / Hadrian's Wall
-        private const ushort REGION_MIDGARD_FRONTIER = 100;  // Uppland / Yggdra Forest / Jamtland Mtns / Odin's Gate
-        private const ushort REGION_HIBERNIA_FRONTIER = 200; // Mount Collory / Cruachan Gorge / Breifine / Emain Macha
+        // ----- New Frontiers (the active RvR region) -----
+        // Region 163 (NF) is the unified frontier theatre — all three realms
+        // share the same map and converge at the contested center. Keeps,
+        // relics, and the mimic-frontier population all live here. The legacy
+        // realm-home regions (1 Albion / 100 Midgard / 200 Hibernia) carry
+        // their normal PvE leveling content and are NOT part of the RvR map.
+        // The BG auto-discovery (see BuildBattlegroundConfigs) skips this
+        // region so we don't duplicate the NF config.
+        internal const ushort REGION_NEW_FRONTIERS = 163;
 
         // ----- GLOBAL hydration budget -----
         // MimicNPC construction (spec/skill/equipment/ROG resolution) is
@@ -232,64 +232,100 @@ namespace DOL.GS.Scripts
 
         private static void BuildDefaultConfig()
         {
-            // Split each realm's target population across the three frontier
-            // regions: the realm's HOME region gets the bulk, the two regions
-            // it invades get a quarter each (home + away + away == total).
-            int pop = Math.Max(0, PvPFrontierProperties.PVP_FRONTIER_POPULATION_PER_REALM);
-            int awayPop = pop / 4;
-            int homePop = pop - 2 * awayPop;
+            // New Frontiers (region 163). All three realms share one map and
+            // converge on a contested center zone, so every realm sees both
+            // others on a single config — exactly what makes a populated NF
+            // feel populated. Each realm gets the full target population in
+            // this region (no inter-region split, unlike the old per-realm
+            // home-region setup), so 3 × PVP_FRONTIER_POPULATION_PER_REALM
+            // bots roam the same map.
+            ushort nfRegion = (ushort)PvPFrontierProperties.PVP_FRONTIER_REGION;
+            int nfPop = Math.Max(0, PvPFrontierProperties.PVP_FRONTIER_POPULATION_PER_REALM);
 
             lock (_configsLock)
             {
                 _configs.Clear();
 
-                // ===== Albion frontier (region 1) =====
-                // Zone centres of the four classic Albion RvR zones.
-                Point3D albHadrian = new(630_784, 319_488, 3_000);  // Hadrian's Wall (plain)
-                Point3D albSauvage = new(598_016, 450_560, 4_500);  // Forest Sauvage
-                Point3D albPennine = new(598_016, 385_024, 3_600);  // Pennine Mountains
-                Point3D albSnowdon = new(532_480, 335_872, 6_500);  // Snowdonia
-                _configs[REGION_ALBION_FRONTIER] = new()
+                // ===== New Frontiers (region 163) =====
+                //
+                // Coordinate map (units, all at z=3500 on the open plain):
+                //
+                //                       (Mid: 55,25)           (Alb: 45,55)
+                //                       /                       \
+                //                      / mid mid (45,30)         \
+                //                     /                  alb mid (45,42)
+                //         contested center (40,35) <----- all three realms converge here
+                //                     \                 hib mid (32,32)
+                //                      \  hib raid (35,40)  /
+                //                       (Hib: 25,22) ------/
+                //
+                // The shared "contested" waypoint at (40_000, 35_000) is the
+                // canonical convergence point — every realm's loop includes
+                // it. The deeper "raid" waypoints push one realm well past
+                // center into enemy territory so bot groups regularly cross
+                // patrols deep in the other realms' lanes (creates rolling
+                // skirmishes instead of one giant deathball at center).
+
+                Point3D contestedCenter = new(40_000, 35_000, 3_500);
+
+                // Albion (NE corner)
+                Point3D albHome      = new(45_000, 55_000, 3_500);
+                Point3D albMid       = new(45_000, 42_000, 3_500);  // forward staging
+                Point3D albMidRaid   = new(50_000, 30_000, 3_500);  // deep mid territory
+                Point3D albHibRaid   = new(32_000, 30_000, 3_500);  // deep hib territory
+
+                // Midgard (E corner)
+                Point3D midHome      = new(55_000, 25_000, 3_500);
+                Point3D midMid       = new(48_000, 30_000, 3_500);  // forward staging
+                Point3D midAlbRaid   = new(45_000, 48_000, 3_500);  // deep alb territory
+                Point3D midHibRaid   = new(28_000, 28_000, 3_500);  // deep hib territory
+
+                // Hibernia (SW corner)
+                Point3D hibHome      = new(25_000, 22_000, 3_500);
+                Point3D hibMid       = new(32_000, 32_000, 3_500);  // forward staging
+                Point3D hibAlbRaid   = new(45_000, 50_000, 3_500);  // deep alb territory
+                Point3D hibMidRaid   = new(50_000, 28_000, 3_500);  // deep mid territory
+
+                Dictionary<eRealm, RealmConfig> nfConfigs = new()
                 {
-                    [eRealm.Albion] = MakeFrontierConfig(eRealm.Albion, REGION_ALBION_FRONTIER, "Albion Frontier",
-                        albHadrian, new() { albHadrian, albPennine, albSauvage, albSnowdon }, homePop),
-                    [eRealm.Midgard] = MakeFrontierConfig(eRealm.Midgard, REGION_ALBION_FRONTIER, "Albion Frontier",
-                        albSnowdon, new() { albSnowdon, albPennine, albHadrian, albSauvage }, awayPop),
-                    [eRealm.Hibernia] = MakeFrontierConfig(eRealm.Hibernia, REGION_ALBION_FRONTIER, "Albion Frontier",
-                        albSauvage, new() { albSauvage, albPennine, albHadrian, albSnowdon }, awayPop),
+                    [eRealm.Albion] = MakeFrontierConfig(eRealm.Albion, nfRegion, "New Frontiers",
+                        albHome, new()
+                        {
+                            albHome,        // 1. regroup at home anchor
+                            albMid,         // 2. forward staging
+                            contestedCenter,// 3. converge at center
+                            albMidRaid,     // 4. push into Mid territory
+                            albMid,         // 5. swing back through staging
+                            contestedCenter,// 6. back through center
+                            albHibRaid,     // 7. push into Hib territory
+                        }, nfPop),
+
+                    [eRealm.Midgard] = MakeFrontierConfig(eRealm.Midgard, nfRegion, "New Frontiers",
+                        midHome, new()
+                        {
+                            midHome,
+                            midMid,
+                            contestedCenter,
+                            midAlbRaid,
+                            midMid,
+                            contestedCenter,
+                            midHibRaid,
+                        }, nfPop),
+
+                    [eRealm.Hibernia] = MakeFrontierConfig(eRealm.Hibernia, nfRegion, "New Frontiers",
+                        hibHome, new()
+                        {
+                            hibHome,
+                            hibMid,
+                            contestedCenter,
+                            hibAlbRaid,
+                            hibMid,
+                            contestedCenter,
+                            hibMidRaid,
+                        }, nfPop),
                 };
 
-                // ===== Midgard frontier (region 100) =====
-                // Zone centres of the four classic Midgard RvR zones.
-                Point3D midOdin = new(622_592, 606_208, 4_800);     // Odin's Gate
-                Point3D midUppland = new(753_664, 638_976, 5_000);  // Uppland
-                Point3D midYggdra = new(688_128, 704_512, 5_200);   // Yggdra Forest
-                Point3D midJamtland = new(688_128, 638_976, 6_000); // Jamtland Mountains
-                _configs[REGION_MIDGARD_FRONTIER] = new()
-                {
-                    [eRealm.Midgard] = MakeFrontierConfig(eRealm.Midgard, REGION_MIDGARD_FRONTIER, "Midgard Frontier",
-                        midOdin, new() { midOdin, midJamtland, midUppland, midYggdra }, homePop),
-                    [eRealm.Albion] = MakeFrontierConfig(eRealm.Albion, REGION_MIDGARD_FRONTIER, "Midgard Frontier",
-                        midJamtland, new() { midJamtland, midUppland, midOdin, midYggdra }, awayPop),
-                    [eRealm.Hibernia] = MakeFrontierConfig(eRealm.Hibernia, REGION_MIDGARD_FRONTIER, "Midgard Frontier",
-                        midYggdra, new() { midYggdra, midUppland, midOdin, midJamtland }, awayPop),
-                };
-
-                // ===== Hibernia frontier (region 200) =====
-                // Zone centres of the four classic Hibernia RvR zones.
-                Point3D hibEmain = new(450_560, 319_488, 3_000);    // Emain Macha (plain)
-                Point3D hibCollory = new(417_792, 450_560, 6_000);  // Mount Collory
-                Point3D hibCruachan = new(352_256, 385_024, 5_500); // Cruachan Gorge
-                Point3D hibBreifine = new(417_792, 385_024, 6_400); // Breifine
-                _configs[REGION_HIBERNIA_FRONTIER] = new()
-                {
-                    [eRealm.Hibernia] = MakeFrontierConfig(eRealm.Hibernia, REGION_HIBERNIA_FRONTIER, "Hibernia Frontier",
-                        hibEmain, new() { hibEmain, hibBreifine, hibCollory, hibCruachan }, homePop),
-                    [eRealm.Albion] = MakeFrontierConfig(eRealm.Albion, REGION_HIBERNIA_FRONTIER, "Hibernia Frontier",
-                        hibCollory, new() { hibCollory, hibBreifine, hibEmain, hibCruachan }, awayPop),
-                    [eRealm.Midgard] = MakeFrontierConfig(eRealm.Midgard, REGION_HIBERNIA_FRONTIER, "Hibernia Frontier",
-                        hibCruachan, new() { hibCruachan, hibBreifine, hibEmain, hibCollory }, awayPop),
-                };
+                _configs[nfRegion] = nfConfigs;
 
                 // ----- Battlegrounds (auto-discovered from DB) -----
                 if (PvPFrontierProperties.PVP_FRONTIER_INCLUDE_BGS)
@@ -298,10 +334,10 @@ namespace DOL.GS.Scripts
         }
 
         /// <summary>
-        /// Builds one realm's RvR config for an Old Frontier region: spawn
-        /// anchor, patrol route through that region's frontier zones, level
-        /// bracket and target population. The level bracket comes from the
-        /// global frontier min/max-level server properties.
+        /// Builds one realm's RvR config: spawn anchor, patrol route through
+        /// the frontier zones, level bracket and target population. The level
+        /// bracket comes from the global frontier min/max-level server
+        /// properties.
         /// </summary>
         private static RealmConfig MakeFrontierConfig(eRealm realm, ushort region, string label,
             Point3D anchor, List<Point3D> waypoints, int targetPop)
@@ -326,9 +362,8 @@ namespace DOL.GS.Scripts
         /// <summary>
         /// Scans the Battleground DB table and adds a per-realm RealmConfig
         /// for each BG region, so the frontier-style smart AI runs in every
-        /// BG too. Skips the three Old Frontier regions so we don't duplicate
-        /// their configs, and skips rows whose Region doesn't resolve
-        /// (server map mismatch).
+        /// BG too. Skips the NF region so we don't duplicate the main config,
+        /// and skips rows whose Region doesn't resolve (server map mismatch).
         /// </summary>
         private static void BuildBattlegroundConfigs()
         {
@@ -346,10 +381,8 @@ namespace DOL.GS.Scripts
                 if (bg == null) continue;
                 if (bg.MinLevel == 0 || bg.MaxLevel == 0 || bg.MaxLevel < bg.MinLevel)
                     continue;
-                if (bg.RegionID == REGION_ALBION_FRONTIER ||
-                    bg.RegionID == REGION_MIDGARD_FRONTIER ||
-                    bg.RegionID == REGION_HIBERNIA_FRONTIER)
-                    continue; // already configured as an Old Frontier region
+                if (bg.RegionID == REGION_NEW_FRONTIERS)
+                    continue; // already configured as the main NF frontier
                 if (WorldMgr.GetRegion(bg.RegionID) == null) continue;
 
                 string label = WorldMgr.GetRegion(bg.RegionID)?.Description ?? $"BG L{bg.MinLevel}-{bg.MaxLevel}";
@@ -474,14 +507,12 @@ namespace DOL.GS.Scripts
                                 // normally die through MimicNPC.ProcessDeath
                                 // → base.ProcessDeath → Delete() (the rez-
                                 // wait branch is gated on OwnerAccount which
-                                // frontier bots never have). However a
-                                // reported symptom shows dead bodies with
-                                // grey names lingering permanently in the
-                                // Old Frontier regions, which means at least
-                                // one death path is leaving the GameObject
-                                // Active. Walk every hydrated group's roster
-                                // here and force-delete anything that is
-                                // simultaneously NOT alive and STILL active
+                                // frontier bots never have). However at least
+                                // one death path can leave the GameObject
+                                // Active (visible as grey-name corpses that
+                                // never despawn). Walk every hydrated group's
+                                // roster here and force-delete anything that
+                                // is simultaneously NOT alive and STILL active
                                 // — that's the corpse signature.
                                 if (grp.IsHydrated)
                                 {
@@ -852,7 +883,7 @@ namespace DOL.GS.Scripts
             System.Text.StringBuilder sb = new();
             sb.AppendLine("=== PvP Frontier status ===");
             sb.AppendLine($"Running: {_running}");
-            sb.AppendLine($"Old Frontier target population/realm: {PvPFrontierProperties.PVP_FRONTIER_POPULATION_PER_REALM} (split home/invade/invade across regions 1/100/200)");
+            sb.AppendLine($"NF target population/realm: {PvPFrontierProperties.PVP_FRONTIER_POPULATION_PER_REALM} (single region 163, three realms share the map)");
             sb.AppendLine($"BG target population/realm: {PvPFrontierProperties.PVP_FRONTIER_BG_POPULATION_PER_REALM} (BGs auto-included: {PvPFrontierProperties.PVP_FRONTIER_INCLUDE_BGS})");
             sb.AppendLine();
             sb.AppendLine($"{"Zone",-20} {"Realm",-9} {"groups",6} {"logical",7} {"hydrated",8} {"npcs",5}");

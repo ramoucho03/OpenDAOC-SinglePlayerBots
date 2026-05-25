@@ -23,12 +23,7 @@ namespace DOL.GS.Keeps
 
 		protected List<DbBattleground> m_battlegrounds = new List<DbBattleground>();
 
-		// Legacy fallback only: this server's actual frontier keeps live in
-		// regions 1 (Albion), 100 (Midgard) and 200 (Hibernia) — the classic
-		// Old Frontier regions, marked IsFrontier=1 in the regions table.
-		// FrontierRegionsList is built from that flag (see Load below) so this
-		// constant is only consulted if the regions table has no frontier rows.
-		public const int DEFAULT_FRONTIERS_REGION = 163;
+		public const int DEFAULT_FRONTIERS_REGION = 163; // New Frontiers
 
 		public List<uint> m_frontierRegionsList = new List<uint>();
 
@@ -661,55 +656,17 @@ namespace DOL.GS.Keeps
 		}
 
 		/// <summary>
-		/// Returns the release location for a player dying in any frontier
-		/// region — NF (163) or one of the three Old Frontier regions
-		/// (1 Albion / 100 Midgard / 200 Hibernia). NF falls back to the
-		/// classic border-keep coordinates; the three OF regions place each
-		/// realm at a safe DB-real keep location inside that region (home
-		/// realm = a friendly relic keep, invaders = their portal keep).
-		/// Returns false if the region isn't a known frontier — the caller
-		/// then falls back to bind, the same behaviour as before this method
-		/// existed.
+		/// Returns the release location for a player dying in New Frontiers
+		/// (region 163). Routes through <see cref="GetBorderKeepLocation"/>
+		/// using each realm's own border keep ID. Returns false outside the
+		/// NF region — callers fall back to bind in that case.
 		/// </summary>
 		public virtual bool GetFrontierReleaseLocation(eRealm realm, ushort region, out int x, out int y, out int z, out ushort heading)
 		{
 			x = 0; y = 0; z = 0; heading = 0;
 
-			// Legacy NF: keep the classic border-keep coordinates.
 			if (region == DEFAULT_FRONTIERS_REGION)
 				return GetBorderKeepLocation((byte) realm * 2 - 1, out x, out y, out z, out heading);
-
-			// Old Frontier release: per (region, realm). Home realm gets a
-			// friendly relic keep coord; invaders get their portal keep so
-			// they don't release in the middle of enemy territory.
-			// Coordinates taken straight from the live keep DB rows.
-			switch (region)
-			{
-				case 1: // Albion frontier
-					switch (realm)
-					{
-						case eRealm.Albion:   x = 601_562; y = 430_054; z = 5_664; heading = 1_920; return true; // Castle Excalibur (relic, home)
-						case eRealm.Midgard:  x = 655_269; y = 293_142; z = 4_879; heading =   453; return true; // Midgard Portal Keep (invader)
-						case eRealm.Hibernia: x = 605_589; y = 293_789; z = 4_839; heading = 3_591; return true; // Hibernia Portal Keep (invader)
-					}
-					break;
-				case 100: // Midgard frontier
-					switch (realm)
-					{
-						case eRealm.Albion:   x = 596_372; y = 631_373; z = 5_968; heading = 2_412; return true; // Albion Portal Keep (invader)
-						case eRealm.Midgard:  x = 677_480; y = 710_406; z = 6_912; heading = 2_977; return true; // Grallarhorn Faste (relic, home)
-						case eRealm.Hibernia: x = 596_157; y = 581_610; z = 6_031; heading = 3_555; return true; // Hibernia Portal Keep (invader)
-					}
-					break;
-				case 200: // Hibernia frontier
-					switch (realm)
-					{
-						case eRealm.Albion:   x = 475_844; y = 343_696; z = 4_080; heading = 1_554; return true; // Albion Portal Keep (invader)
-						case eRealm.Midgard:  x = 474_129; y = 295_207; z = 3_871; heading =   336; return true; // Midgard Portal Keep (invader)
-						case eRealm.Hibernia: x = 401_036; y = 465_147; z = 2_888; heading = 2_474; return true; // Dun Dagda (relic, home)
-					}
-					break;
-			}
 
 			return false;
 		}
