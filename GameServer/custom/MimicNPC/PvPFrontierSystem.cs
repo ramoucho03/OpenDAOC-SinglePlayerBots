@@ -41,7 +41,7 @@ namespace DOL.GS.Scripts
         public static bool PVP_FRONTIER_AUTOSTART;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_population_per_realm",
-            "Target number of mimic bots maintained per realm in the frontier zones (default 400).", 400)]
+            "Target number of mimic bots maintained per realm in the frontier zones. Default 60 — with average group size 6-7 this builds ~8-10 patrol groups per realm across NF; combined with the per-player crowd cap (2 groups/realm/player), you typically see 1-2 enemy groups at a time, with a rare BG event spawning multiple groups together. Bumping this turns NF into a constant zerg; dropping it makes encounters very rare.", 60)]
         public static int PVP_FRONTIER_POPULATION_PER_REALM;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_region",
@@ -73,8 +73,8 @@ namespace DOL.GS.Scripts
         public static int PVP_FRONTIER_MAX_GROUP_SIZE;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_group_size_weights",
-            "Weighted distribution for spawned group sizes 1..8, comma-separated. Higher weight = more groups of that size. Default biases strongly toward full 8-man parties, with occasional skirmish teams and rare solo roamers — mirrors what a populated frontier actually looks like.",
-            "3,5,7,10,12,15,20,28")]
+            "Weighted distribution for spawned group sizes 1..8, comma-separated. Higher weight = more groups of that size. Default heavily biases toward full 5-8 man parties — what a real RvR small-group encounter feels like. Solo / duo scouts are very rare. Multi-group BG events are handled separately by the BG scheduler (see pvp_frontier_bg_event_*), not by this distribution.",
+            "1,2,4,8,15,20,25,25")]
         public static string PVP_FRONTIER_GROUP_SIZE_WEIGHTS;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_include_bgs",
@@ -118,8 +118,24 @@ namespace DOL.GS.Scripts
         public static int PVP_FRONTIER_PLAYER_TRACK_RADIUS;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_player_track_chance",
-            "Chance (0-100) per next-waypoint pick that a frontier group routes toward the closest enemy-realm player in the region instead of a random patrol waypoint. Default 50 — half the picks track players, half stay on the configured loop, so groups follow without locking onto a single target.", 50)]
+            "Chance (0-100) per next-waypoint pick that a frontier group routes toward the closest enemy-realm player in the region instead of a random patrol waypoint. Default 20 — keeps tracking subtle so the player gets pursued without every group dogpiling them. Bump to 50+ for hot-pursuit mode.", 20)]
         public static int PVP_FRONTIER_PLAYER_TRACK_CHANCE;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_max_groups_near_player_per_realm",
+            "Maximum number of HYDRATED frontier groups from one realm allowed within PVP_FRONTIER_DYNAMIC_SPAWN_OUTER of any player. Dynamic spawn skips when this cap is reached for the realm being spawned. Default 2 — a player sees at most 2 Mid + 2 Hib groups around them at any time (4 enemy groups total, ~8-16 mimics). Lower for fewer, sparser encounters; raise for zerg-frontier.", 2)]
+        public static int PVP_FRONTIER_MAX_GROUPS_NEAR_PLAYER_PER_REALM;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_bg_event_interval_min",
+            "Minutes between rare 'battlegroup' spawn events: TWO OR THREE full 8-man groups force-spawned together (16-24 mimics) at a random NF realm anchor, bypassing the dynamic-spawn caps. Set to 0 to disable BG events. Default 60 — should feel rare, a 'a real raid showed up' moment.", 60)]
+        public static int PVP_FRONTIER_BG_EVENT_INTERVAL_MIN;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_bg_event_min_groups",
+            "Minimum number of full 8-man groups co-spawned for one BG event. Default 2 → 16 mimics.", 2)]
+        public static int PVP_FRONTIER_BG_EVENT_MIN_GROUPS;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_bg_event_max_groups",
+            "Maximum number of full 8-man groups co-spawned for one BG event. Default 3 → up to 24 mimics. The real BG roll picks uniformly between min and max.", 3)]
+        public static int PVP_FRONTIER_BG_EVENT_MAX_GROUPS;
     }
 
     #endregion
@@ -593,6 +609,19 @@ namespace DOL.GS.Scripts
                                 && !gotDynamic)
                                 continue;
 
+                            // Crowd cap. Even when the dynamic-spawn picker
+                            // returned a position, abort the spawn if this
+                            // realm already has the max allowed groups within
+                            // the dynamic-spawn outer radius of ANY player.
+                            // This is what keeps the frontier feeling like
+                            // an open RvR with sparse encounters instead of
+                            // a constant zerg — the player typically sees 1-2
+                            // groups per opposing realm, occasionally a BG
+                            // event, and not the entire 30-bot population
+                            // piled on top of them.
+                            if (gotDynamic && IsRealmAtNearPlayerCap(cfg))
+                                continue;
+
                             PvPFrontierGroup newGroup = PvPFrontierGroup.Spawn(cfg, groupSize, dynamicAnchor);
                             if (newGroup != null)
                                 cfg.Groups.Add(newGroup);
@@ -605,7 +634,134 @@ namespace DOL.GS.Scripts
                 log.Error("PvPFrontierManager tick failed", e);
             }
 
+            // Battlegroup event scheduler. Independent of the per-tick spawn
+            // pacing: every PVP_FRONTIER_BG_EVENT_INTERVAL_MIN minutes, push a
+            // full 8-man group spawn into a random realm config, bypassing
+            // the crowd cap and the dynamic-spawn empty gate. Creates a rare
+            // "a BG showed up" moment without saturating routine play.
+            try { TickBattlegroupEvent(); }
+            catch (Exception bgEx) { log.Error("PvPFrontier BG event failed", bgEx); }
+
             return TICK_MS;
+        }
+
+        /// <summary>
+        /// Returns true when the supplied realm config already has its
+        /// <see cref="PvPFrontierProperties.PVP_FRONTIER_MAX_GROUPS_NEAR_PLAYER_PER_REALM"/>
+        /// quota of hydrated groups within DYNAMIC_SPAWN_OUTER of any player
+        /// in the region. Walks the snapshot once and counts matching groups —
+        /// cheap O(groups × players).
+        /// </summary>
+        private static bool IsRealmAtNearPlayerCap(RealmConfig cfg)
+        {
+            int cap = PvPFrontierProperties.PVP_FRONTIER_MAX_GROUPS_NEAR_PLAYER_PER_REALM;
+            if (cap <= 0) return false; // 0 = unlimited (test mode)
+
+            PlayerSnapshot snap = GetPlayerSnapshot(cfg.Region);
+            if (snap == null || snap.Sampled.Count == 0)
+                return false;
+
+            long radius = Math.Max(1000, PvPFrontierProperties.PVP_FRONTIER_DYNAMIC_SPAWN_OUTER);
+            long radiusSq = radius * radius;
+
+            int count = 0;
+            foreach (PvPFrontierGroup g in cfg.Groups)
+            {
+                if (g.IsDisbanded) continue;
+                if (g.AliveMemberCount == 0) continue;
+
+                // Use a representative point: leader if hydrated, else VirtualPosition.
+                int gx, gy;
+                MimicNPC ldr = g.IsHydrated ? g.FirstAliveMember() : null;
+                if (ldr != null) { gx = ldr.X; gy = ldr.Y; }
+                else { gx = g.VirtualPosition.X; gy = g.VirtualPosition.Y; }
+
+                foreach (PlayerSampledPos p in snap.Sampled)
+                {
+                    long dx = p.X - gx;
+                    long dy = p.Y - gy;
+                    if (dx * dx + dy * dy <= radiusSq)
+                    {
+                        count++;
+                        if (count >= cap) return true;
+                        break; // one group counts once even if near multiple players
+                    }
+                }
+            }
+            return false;
+        }
+
+        private static long _nextBgEventMs;
+
+        /// <summary>
+        /// Periodically force-spawns one full 8-man "battlegroup" event in NF.
+        /// Bypasses the crowd cap and the empty-region gate (an offline BG is
+        /// boring) — this is the rare "a real raid showed up" moment. Random
+        /// realm gets the event each interval; if no NF config exists, the
+        /// scheduler quietly idles.
+        /// </summary>
+        private static void TickBattlegroupEvent()
+        {
+            int intervalMin = PvPFrontierProperties.PVP_FRONTIER_BG_EVENT_INTERVAL_MIN;
+            if (intervalMin <= 0) return;
+
+            long now = GameLoop.GameLoopTime;
+            if (_nextBgEventMs == 0)
+            {
+                // First-time arm — schedule the next event randomly within
+                // [0.5x, 1.5x] interval so server restart doesn't always
+                // trigger a BG at the same wall-clock offset.
+                _nextBgEventMs = now + (long)(intervalMin * 60_000 * (0.5 + Util.RandomDouble()));
+                return;
+            }
+
+            if (now < _nextBgEventMs)
+                return;
+
+            _nextBgEventMs = now + (long)(intervalMin * 60_000 * (0.5 + Util.RandomDouble()));
+
+            // Pick the NF region's configs and roll a random realm.
+            if (!_configs.TryGetValue(REGION_NEW_FRONTIERS, out var nfConfigs) || nfConfigs.Count == 0)
+                return;
+
+            var realms = new List<RealmConfig>(nfConfigs.Values);
+            RealmConfig chosen = realms[Util.Random(realms.Count - 1)];
+
+            // BG = MULTIPLE 8-man groups co-spawned at the realm anchor. Each
+            // group materialises with its own waypoint loop and patrol AI
+            // (they aren't merged into one mega-group), so the BG visibly
+            // moves as a 2-3 group raid force. Picks a random count inside
+            // [min, max] so the BG feels different each time — sometimes
+            // 16 mimics, sometimes 24.
+            int minGroups = Math.Max(1, PvPFrontierProperties.PVP_FRONTIER_BG_EVENT_MIN_GROUPS);
+            int maxGroups = Math.Max(minGroups, PvPFrontierProperties.PVP_FRONTIER_BG_EVENT_MAX_GROUPS);
+            int bgGroupCount = Util.Random(minGroups, maxGroups);
+
+            Point3D bgAnchor = chosen.SpawnAnchor;
+            int spawned = 0;
+            int mimicsTotal = 0;
+            for (int i = 0; i < bgGroupCount; i++)
+            {
+                // Stagger spawn coords with a small jitter so the groups
+                // appear as distinct formations side-by-side rather than
+                // stacked on the same tile.
+                Point3D jittered = new(
+                    bgAnchor.X + Util.Random(-600, 600),
+                    bgAnchor.Y + Util.Random(-600, 600),
+                    bgAnchor.Z);
+
+                PvPFrontierGroup bg = PvPFrontierGroup.Spawn(chosen, 8, jittered);
+                if (bg != null)
+                {
+                    chosen.Groups.Add(bg);
+                    spawned++;
+                    mimicsTotal += 8;
+                }
+            }
+
+            if (spawned > 0)
+                log.Info($"PvPFrontier BG event: {chosen.Realm} battlegroup spawned " +
+                         $"({spawned} groups × 8 = {mimicsTotal} mimics) at NF anchor.");
         }
 
         // ----- Group size distribution -----
@@ -1815,7 +1971,7 @@ namespace DOL.GS.Scripts
 
         // ----- helpers -----
 
-        private MimicNPC FirstAliveMember()
+        internal MimicNPC FirstAliveMember()
         {
             foreach (var m in Members)
                 if (m != null && m.IsAlive && m.ObjectState == GameObject.eObjectState.Active)
