@@ -772,6 +772,19 @@ namespace DOL.GS.Scripts
         /// danger threshold.
         /// </summary>
         public int LowestMemberHealthPct { get; private set; } = 100;
+
+        /// <summary>
+        /// Group-level tactical retreat signal. Set by <see cref="CheckGroupHealth"/>
+        /// when the engagement has clearly turned against the group:
+        ///   * 50 %+ of the roster is dead, OR
+        ///   * average alive HP drops below 30 % AND the group is still in combat, OR
+        ///   * all originally-rostered healers are dead.
+        /// Each mimic's AGGRO state polls this flag and bails to camp /
+        /// follow-the-leader mode when set. Auto-clears once the group is
+        /// fully out of combat for a couple of ticks.
+        /// </summary>
+        public bool RetreatActive { get; private set; }
+        private long _retreatClearAtTick;
         /// <summary>Most injured group member</summary>
         public GameLiving MemberToHeal { get; private set; }
         /// <summary>Mezzed group member</summary>
@@ -952,7 +965,83 @@ namespace DOL.GS.Scripts
                 // a slightly more wounded DPS.
                 if (MainTank != null && MainTank.IsAlive && MainTank.HealthPercent < HealThreshold)
                     MemberToHeal = MainTank;
+
+                // Group-level tactical retreat detection. Recomputed every
+                // scan so the flag tracks the current state of the fight.
+                EvaluateRetreatSignal(checker);
             }
+        }
+
+        /// <summary>
+        /// Walks the group roster against the scanner's data and decides
+        /// whether the engagement is lost — sets <see cref="RetreatActive"/>
+        /// when it is. Brains poll the flag from their AGGRO state to bail
+        /// out of a doomed fight instead of dying in place.
+        /// </summary>
+        private void EvaluateRetreatSignal(MimicNPC checker)
+        {
+            if (checker?.Group == null)
+            {
+                RetreatActive = false;
+                return;
+            }
+
+            int aliveCount = 0;
+            int totalCount = 0;
+            int totalHpPct = 0;
+            int aliveHealers = 0;
+            int totalHealers = 0;
+            bool anyoneInCombat = false;
+
+            foreach (GameLiving gl in checker.Group.GetMembersInTheGroup())
+            {
+                if (gl == null) continue;
+                totalCount++;
+                bool isHealerMember = gl is MimicNPC mhealCheck
+                                       && mhealCheck.MimicBrain != null
+                                       && mhealCheck.MimicBrain.IsHealer;
+                if (isHealerMember) totalHealers++;
+
+                if (gl.IsAlive)
+                {
+                    aliveCount++;
+                    totalHpPct += gl.HealthPercent;
+                    if (isHealerMember) aliveHealers++;
+                    if (gl.InCombat) anyoneInCombat = true;
+                }
+            }
+
+            if (!anyoneInCombat)
+            {
+                // Combat ended — let the flag clear two ticks later so a
+                // mid-tick lull doesn't yank bots back into the fight.
+                long now = GameLoop.GameLoopTime;
+                if (RetreatActive && _retreatClearAtTick == 0)
+                    _retreatClearAtTick = now + 4000;
+                else if (RetreatActive && now >= _retreatClearAtTick)
+                {
+                    RetreatActive = false;
+                    _retreatClearAtTick = 0;
+                }
+                return;
+            }
+
+            // Active fight — re-arm the clear timer each tick we're still
+            // engaged so it only fires after a real combat exit.
+            _retreatClearAtTick = 0;
+
+            if (totalCount == 0 || aliveCount == 0)
+            {
+                RetreatActive = false;
+                return;
+            }
+
+            int avgHp = totalHpPct / aliveCount;
+            bool halfDead = aliveCount * 2 <= totalCount;
+            bool bloodied = avgHp < 30;
+            bool healersWiped = totalHealers > 0 && aliveHealers == 0;
+
+            RetreatActive = halfDead || bloodied || healersWiped;
         }
 
         /// <summary>

@@ -41,7 +41,7 @@ namespace DOL.GS.Scripts
         public static bool PVP_FRONTIER_AUTOSTART;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_population_per_realm",
-            "Target number of mimic bots maintained per realm in the frontier zones. Default 60 — with average group size 6-7 this builds ~8-10 patrol groups per realm across NF; combined with the per-player crowd cap (2 groups/realm/player), you typically see 1-2 enemy groups at a time, with a rare BG event spawning multiple groups together. Bumping this turns NF into a constant zerg; dropping it makes encounters very rare.", 60)]
+            "Target number of mimic bots maintained per realm in NF. Default 15 — calibrated for one real encounter every 5-10 minutes of roaming. With average group size ~6-7, this builds 2-3 patrol groups per realm; combined with the 1-group-per-realm-near-player cap and the spawn cooldown, a player typically meets ONE enemy group at a time, with a couple of minutes of quiet between fights.", 15)]
         public static int PVP_FRONTIER_POPULATION_PER_REALM;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_region",
@@ -122,11 +122,23 @@ namespace DOL.GS.Scripts
         public static int PVP_FRONTIER_PLAYER_TRACK_CHANCE;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_max_groups_near_player_per_realm",
-            "Maximum number of HYDRATED frontier groups from one realm allowed within PVP_FRONTIER_DYNAMIC_SPAWN_OUTER of any player. Dynamic spawn skips when this cap is reached for the realm being spawned. Default 2 — a player sees at most 2 Mid + 2 Hib groups around them at any time (4 enemy groups total, ~8-16 mimics). Lower for fewer, sparser encounters; raise for zerg-frontier.", 2)]
+            "Maximum HYDRATED frontier groups from one realm allowed within PVP_FRONTIER_DYNAMIC_SPAWN_OUTER of any player. Dynamic spawn skips when this cap is reached. Default 1 — a player sees at most ONE Mid + ONE Hib group around them at a time (2 enemy groups total, ~12-16 mimics). Lower for sparser encounters, raise for more pressure.", 1)]
         public static int PVP_FRONTIER_MAX_GROUPS_NEAR_PLAYER_PER_REALM;
 
+        [ServerProperty("pvpfrontier", "pvp_frontier_dynamic_spawn_cooldown_sec",
+            "Minimum seconds between two consecutive dynamic spawns for THE SAME realm. After spawning a group around a player, the realm's next group can't spawn for this long — paces encounters to roughly 1 every 5-10 min instead of a constant stream. Default 420 (7 min). Set to 0 to disable.", 420)]
+        public static int PVP_FRONTIER_DYNAMIC_SPAWN_COOLDOWN_SEC;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_entry_grace_sec",
+            "Grace period (seconds) when a player enters a frontier region: no dynamic spawn anchors on them during this window so they aren't ambushed the moment they cross the line. Default 300 (5 min). Set to 0 to disable.", 300)]
+        public static int PVP_FRONTIER_ENTRY_GRACE_SEC;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_skip_combat_player_anchor",
+            "When true, players currently InCombat are excluded as spawn anchors. Prevents 'another enemy group arrives in the middle of your fight' which feels like piling-on. Default true.", true)]
+        public static bool PVP_FRONTIER_SKIP_COMBAT_PLAYER_ANCHOR;
+
         [ServerProperty("pvpfrontier", "pvp_frontier_bg_event_interval_min",
-            "Minutes between rare 'battlegroup' spawn events: TWO OR THREE full 8-man groups force-spawned together (16-24 mimics) at a random NF realm anchor, bypassing the dynamic-spawn caps. Set to 0 to disable BG events. Default 60 — should feel rare, a 'a real raid showed up' moment.", 60)]
+            "Minutes between rare 'battlegroup' spawn events: multiple full 8-man groups force-spawned together at a random NF realm anchor, bypassing the dynamic-spawn caps. Set to 0 to disable BG events. Default 120 — should feel really rare, a 'a real raid showed up' moment maybe twice per play session.", 120)]
         public static int PVP_FRONTIER_BG_EVENT_INTERVAL_MIN;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_bg_event_min_groups",
@@ -609,22 +621,25 @@ namespace DOL.GS.Scripts
                                 && !gotDynamic)
                                 continue;
 
-                            // Crowd cap. Even when the dynamic-spawn picker
-                            // returned a position, abort the spawn if this
-                            // realm already has the max allowed groups within
-                            // the dynamic-spawn outer radius of ANY player.
-                            // This is what keeps the frontier feeling like
-                            // an open RvR with sparse encounters instead of
-                            // a constant zerg — the player typically sees 1-2
-                            // groups per opposing realm, occasionally a BG
-                            // event, and not the entire 30-bot population
-                            // piled on top of them.
+                            // Crowd cap + per-realm spawn cooldown. Two gates
+                            // working together to pace encounters:
+                            //   1. Crowd cap: don't spawn if the realm already
+                            //      has its quota of groups near a player.
+                            //   2. Cooldown: even when below the cap, throttle
+                            //      consecutive spawns so the player gets a
+                            //      breather between fights. Combined target is
+                            //      ~1 encounter per 5-10 minutes of patrol.
                             if (gotDynamic && IsRealmAtNearPlayerCap(cfg))
+                                continue;
+                            if (gotDynamic && IsRealmOnSpawnCooldown(cfg))
                                 continue;
 
                             PvPFrontierGroup newGroup = PvPFrontierGroup.Spawn(cfg, groupSize, dynamicAnchor);
                             if (newGroup != null)
+                            {
                                 cfg.Groups.Add(newGroup);
+                                NoteRealmSpawn(cfg);
+                            }
                         }
                     }
                 }
@@ -643,6 +658,28 @@ namespace DOL.GS.Scripts
             catch (Exception bgEx) { log.Error("PvPFrontier BG event failed", bgEx); }
 
             return TICK_MS;
+        }
+
+        // Per-(region, realm) spawn timestamp. Used by IsRealmOnSpawnCooldown
+        // to throttle consecutive dynamic spawns so a player doesn't see one
+        // group land right after another. Keyed by (regionId, eRealm) to
+        // keep BG region cadence independent from NF.
+        private static readonly Dictionary<(ushort, eRealm), long> _lastSpawnTickByRealm = new();
+
+        private static bool IsRealmOnSpawnCooldown(RealmConfig cfg)
+        {
+            int cooldownSec = PvPFrontierProperties.PVP_FRONTIER_DYNAMIC_SPAWN_COOLDOWN_SEC;
+            if (cooldownSec <= 0) return false;
+
+            if (!_lastSpawnTickByRealm.TryGetValue((cfg.Region, cfg.Realm), out long last))
+                return false;
+
+            return (GameLoop.GameLoopTime - last) < cooldownSec * 1000L;
+        }
+
+        private static void NoteRealmSpawn(RealmConfig cfg)
+        {
+            _lastSpawnTickByRealm[(cfg.Region, cfg.Realm)] = GameLoop.GameLoopTime;
         }
 
         /// <summary>
@@ -846,6 +883,14 @@ namespace DOL.GS.Scripts
         internal static long _playerSnapshotTick;
         internal static readonly object _playerSnapshotLock = new();
 
+        // Per-player entry timestamp into a frontier region. Stamped the
+        // first tick a player appears in the snapshot for a region and
+        // cleared when they leave (i.e. they're missing from the next
+        // snapshot for that region). Used to enforce the entry grace
+        // period so a player crossing into NF isn't ambushed within
+        // seconds of arrival.
+        private static readonly Dictionary<(ushort regionId, string accountName), long> _playerArrivalTickByRegion = new();
+
         private static void RefreshPlayerSnapshots()
         {
             // Collect every region that has at least one group registered to
@@ -865,9 +910,18 @@ namespace DOL.GS.Scripts
             if (regions.Count == 0)
                 regions.Add((ushort)PvPFrontierProperties.PVP_FRONTIER_REGION);
 
+            long now = GameLoop.GameLoopTime;
+            long graceMs = Math.Max(0, PvPFrontierProperties.PVP_FRONTIER_ENTRY_GRACE_SEC) * 1000L;
+            bool skipCombatAnchor = PvPFrontierProperties.PVP_FRONTIER_SKIP_COMBAT_PLAYER_ANCHOR;
+
             lock (_playerSnapshotLock)
             {
                 _playerSnapshotByRegion.Clear();
+
+                // Mark players we still see this tick so we can drop stale
+                // entries from _playerArrivalTickByRegion (someone who left
+                // a region must lose their arrival stamp).
+                HashSet<(ushort, string)> seenThisTick = new();
 
                 foreach (ushort regId in regions)
                 {
@@ -880,20 +934,57 @@ namespace DOL.GS.Scripts
                     {
                         if (p == null || !p.IsAlive)
                             continue;
+
                         // GMs / admins (PrivLevel > 1) are KEPT in the
                         // snapshot. They count as presence for hydration
-                        // triggers and dynamic-spawn anchoring — without
-                        // this an admin patrolling NF to verify the system
-                        // never sees a single mimic group, because the
-                        // skip-if-empty path treats the region as deserted
-                        // (no PrivLevel-1 player anchor → no spawn → no
-                        // encounters). Aggro / kill / RP paths have their
-                        // own PrivLevel guards downstream so admins still
-                        // can't be targeted or farmed for points by bots.
+                        // triggers and dynamic-spawn anchoring — aggro /
+                        // kill / RP paths have their own PrivLevel guards
+                        // downstream so admins still can't be targeted by
+                        // bots, but the system at least visibly populates.
+
+                        // Track arrival: stamp first time we see this
+                        // (region, account) pair, then never overwrite
+                        // until they leave (i.e. they're absent from the
+                        // snapshot, see the prune below).
+                        string acctName = p.Client?.Account?.Name ?? p.Name;
+                        var key = (regId, acctName);
+                        seenThisTick.Add(key);
+                        if (!_playerArrivalTickByRegion.ContainsKey(key))
+                            _playerArrivalTickByRegion[key] = now;
+
+                        long arrivedAt = _playerArrivalTickByRegion[key];
+                        bool inGrace = graceMs > 0 && (now - arrivedAt) < graceMs;
+
+                        // Skip-anchor filters: a player in their entry
+                        // grace OR currently InCombat is silently dropped
+                        // from the snapshot. They still EXIST (other game
+                        // logic sees them), they just aren't usable as a
+                        // dynamic-spawn anchor — so no new mimic group
+                        // materialises within range of them while the
+                        // filter holds.
+                        if (inGrace)
+                            continue;
+                        if (skipCombatAnchor && p.InCombatInLast(8000))
+                            continue;
+
                         snap.Sampled.Add(new PlayerSampledPos { X = p.X, Y = p.Y, Z = p.Z, Realm = p.Realm });
                     }
 
                     _playerSnapshotByRegion[regId] = snap;
+                }
+
+                // Prune arrival stamps for players who left every region we
+                // track. Without this the dictionary leaks an entry per
+                // re-entry and the grace window would carry over across
+                // /release teleports.
+                if (_playerArrivalTickByRegion.Count > 0)
+                {
+                    var toRemove = new List<(ushort, string)>();
+                    foreach (var kv in _playerArrivalTickByRegion)
+                        if (!seenThisTick.Contains(kv.Key))
+                            toRemove.Add(kv.Key);
+                    foreach (var k in toRemove)
+                        _playerArrivalTickByRegion.Remove(k);
                 }
 
                 _playerSnapshotTick = GameLoop.GameLoopTime;
@@ -1901,13 +1992,49 @@ namespace DOL.GS.Scripts
             // cooldown and resume patrol — gives lone humans a chance to
             // disengage instead of being chain-mobbed by every nearby group.
             int aliveNow = 0;
+            int rosterSizeCount = Roster.Count;
+            int totalHpPct = 0;          // for avg HP%
+            int aliveHealers = 0;
+            int totalHealers = 0;
             bool anyoneInCombat = false;
             foreach (var m in Members)
             {
+                if (m != null && m.MimicBrain != null && m.MimicBrain.IsHealer)
+                    totalHealers++;
                 if (m != null && m.IsAlive && m.ObjectState == GameObject.eObjectState.Active)
                 {
                     aliveNow++;
+                    totalHpPct += m.HealthPercent;
+                    if (m.MimicBrain != null && m.MimicBrain.IsHealer)
+                        aliveHealers++;
                     if (m.InCombat) anyoneInCombat = true;
+                }
+            }
+
+            // Mid-fight retreat triggers. We bail OUT of the fight (not just
+            // after combat ends) when the situation has clearly gone south:
+            //   - lost half the roster, OR
+            //   - average HP across the group fell below 35 %, OR
+            //   - we started with healer(s) and ALL of them are now dead.
+            // Retreating mid-combat sets every member's FSM to Flee-equivalent
+            // (StopAttack + sprint toward retreat anchor) and arms an extended
+            // cooldown. Without this, mimics fight to the last man even when
+            // the engagement is already lost — feels mechanical, not tactical.
+            if (anyoneInCombat && aliveNow > 0)
+            {
+                int avgHp = aliveNow > 0 ? totalHpPct / aliveNow : 100;
+                bool losingFight = rosterSizeCount > 0 && aliveNow * 2 <= rosterSizeCount;
+                bool bloodied = avgHp < 35;
+                bool healersWiped = totalHealers > 0 && aliveHealers == 0;
+
+                if (losingFight || bloodied || healersWiped)
+                {
+                    long nowEarly = GameLoop.GameLoopTime;
+                    _retreatUntilMs = nowEarly + 30_000;
+                    _postFightUntilMs = nowEarly + POST_FIGHT_COOLDOWN_MS * 2;
+                    State = eFrontierState.Retreating;
+                    OrderGroupToRetreat();
+                    return;
                 }
             }
 

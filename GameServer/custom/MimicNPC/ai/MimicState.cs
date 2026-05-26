@@ -615,6 +615,36 @@ namespace DOL.AI.Brain
                 _brain.Body.TargetObject = null;
             }
 
+            // Group-level retreat signal. When MimicGroup.RetreatActive is on
+            // (set by CheckGroupHealth when the engagement is lost — half the
+            // roster dead, avg HP < 30 %, or all healers down), every member
+            // in AGGRO breaks combat and bails to camp / leader. Healers
+            // already flee individually when their own HP is low; this is
+            // the group-wide "we lost, regroup" signal so DPS and the tank
+            // don't keep dying in place while the healer is already running.
+            MimicGroup retreatGroup = _brain.Body.Group?.MimicGroup;
+            if (retreatGroup != null && retreatGroup.RetreatActive)
+            {
+                _brain.Body.StopAttack();
+                _brain.Body.StopCurrentSpellcast();
+                _brain.ClearAggroList();
+                if (_brain.MimicBody != null)
+                    _brain.MimicBody.Sprint(true);
+                _brain.Body.TargetObject = null;
+                if (retreatGroup.CampPoint != null)
+                    _brain.Body.PathTo(retreatGroup.CampPoint, _brain.Body.MaxSpeed);
+                else if (_brain.Body.Group != null && _brain.Body.Group.LivingLeader != null
+                         && _brain.Body.Group.LivingLeader != _brain.Body)
+                    _brain.Body.PathTo(new Point3D(_brain.Body.Group.LivingLeader.X,
+                                                    _brain.Body.Group.LivingLeader.Y,
+                                                    _brain.Body.Group.LivingLeader.Z),
+                                       _brain.Body.MaxSpeed);
+                _brain.FSM.SetCurrentState(_brain.Body.Group?.MimicGroup?.CampPoint != null
+                                            ? eFSMStateType.CAMP
+                                            : eFSMStateType.FOLLOW_THE_LEADER);
+                return;
+            }
+
             if (_brain.PvPMode && _checkAggroTime < GameLoop.GameLoopTime)
             {
                 _brain.CheckProximityAggro(_brain.AggroRange);
