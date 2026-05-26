@@ -49,6 +49,13 @@ namespace DOL.GS.Keeps
 
         public override bool AddToWorld()
         {
+            // Component / Component.Keep can be null when this guard is loaded
+            // as a generic DbMob row by Region.LoadFromDatabase instead of being
+            // spawned by KeepManager. Without these guards the NRE used to abort
+            // the parallel mob-loading pass and crash WorldMgr.Init.
+            if (Component?.Keep == null)
+                return false;
+
             if (Component.Keep.Level < 10)
             {
                 StartRespawn();

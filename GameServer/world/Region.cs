@@ -690,7 +690,19 @@ namespace DOL.GS
                             return;
                         }
 
-                        myMob.AddToWorld();
+                        // AddToWorld can NRE on certain keep-guard subclasses when
+                        // their Component is null (loaded as a generic DbMob row
+                        // instead of through KeepManager). One bad row used to abort
+                        // the Parallel.ForEach and crash WorldMgr.Init; isolate it.
+                        try
+                        {
+                            myMob.AddToWorld();
+                        }
+                        catch (Exception e)
+                        {
+                            if (log.IsErrorEnabled)
+                                log.Error("Failed: " + myMob.GetType().FullName + ":AddToWorld(); mob skipped.", e);
+                        }
                     }
                 });
             }
