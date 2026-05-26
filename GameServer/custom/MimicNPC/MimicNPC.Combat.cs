@@ -1294,12 +1294,19 @@ namespace DOL.GS.Scripts
         }
 
         /// <summary>
-        /// Distributes realm points to every player who damaged this mimic.
-        /// Each player gets `RealmPointsValue * damageShare`, capped at
-        /// `RealmPointsValue * 2` to match the player-vs-player rule. Group
-        /// members within MAX_EXPFORKILL_DISTANCE share via the standard
-        /// group split. Sends the "You just killed X" chat to every direct
-        /// attacker so the frag is visible in the combat log.
+        /// Distributes realm points for an enemy-realm kill on this mimic.
+        /// Mirrors the live DAoC behaviour: damage from a GROUP MEMBER (real
+        /// player, their grouped mimic bots, a controlled pet) all counts
+        /// toward the group's RP share, and that share is then split across
+        /// every live human player in the group within MAX_EXPFORKILL_DISTANCE.
+        ///
+        /// Why this matters here: a player roaming NF with a 7-mimic group
+        /// usually lets the mimics deal 90 %+ of the damage. The previous
+        /// "only direct damage by GamePlayer counts" rule meant the human
+        /// got 5-10 % of the kill's value while the rest evaporated, so the
+        /// human felt cheated. With group-share, the human gets the full
+        /// share whenever their group dropped the target — exactly how real
+        /// PvP kill credit works.
         /// </summary>
         private void AwardPvpKillRewards()
         {
@@ -1314,30 +1321,111 @@ namespace DOL.GS.Scripts
             if (baseRpReward <= 0)
                 return;
 
+            // Pass 1 — bucket damage by player Group. A mimic / pet attacker
+            // routes its damage to its owner-player's group. Solo (ungrouped)
+            // attackers are tracked separately so we still award the lone
+            // wolf when nobody else helped.
+            Dictionary<Group, double> dmgByGroup = new();
+            Dictionary<GamePlayer, double> dmgBySolo = new();
+
             foreach (var pair in XPGainers)
             {
-                if (pair.Key is not GamePlayer awarded)
-                    continue;
-                if (awarded.ObjectState != eObjectState.Active || !awarded.IsAlive)
-                    continue;
-                if (!awarded.IsWithinRadius(this, WorldMgr.MAX_EXPFORKILL_DISTANCE))
-                    continue;
-                // Same realm = no credit (no own-realm RP farming).
-                if (awarded.Realm == Realm)
-                    continue;
+                if (pair.Value <= 0) continue;
 
-                double share = pair.Value / totalDamage;
+                Group g = null;
+                GamePlayer soloOwner = null;
+
+                if (pair.Key is GamePlayer p)
+                {
+                    if (p.Realm == Realm) continue;
+                    g = p.Group;
+                    if (g == null) soloOwner = p;
+                }
+                else if (pair.Key is MimicNPC mim)
+                {
+                    if (mim.Realm == Realm) continue;
+                    g = mim.Group;
+                    // Ungrouped mimic damage has no human owner reachable
+                    // through Group; treat as unowned (no award) — matches
+                    // the legacy "mimics can't farm RP on their own" rule.
+                }
+                else if (pair.Key is GameNPC npc && npc.Brain is IControlledBrain ctrl)
+                {
+                    GamePlayer petOwner = ctrl.GetPlayerOwner();
+                    if (petOwner == null || petOwner.Realm == Realm) continue;
+                    g = petOwner.Group;
+                    if (g == null) soloOwner = petOwner;
+                }
+                else
+                {
+                    continue;
+                }
+
+                if (g != null)
+                {
+                    dmgByGroup.TryGetValue(g, out double prev);
+                    dmgByGroup[g] = prev + pair.Value;
+                }
+                else if (soloOwner != null)
+                {
+                    dmgBySolo.TryGetValue(soloOwner, out double prev);
+                    dmgBySolo[soloOwner] = prev + pair.Value;
+                }
+            }
+
+            long rpCap = baseRpReward * 2L;
+
+            // Pass 2 — distribute the group's share to every live human
+            // player in that group within MAX_EXPFORKILL_DISTANCE of the
+            // corpse. Each player gets the same per-head amount (live DAoC
+            // splits evenly among eligible group members).
+            foreach (var kv in dmgByGroup)
+            {
+                Group grp = kv.Key;
+                double share = kv.Value / totalDamage;
+                long groupRp = (long)(baseRpReward * share);
+
+                List<GamePlayer> eligible = new();
+                foreach (GameLiving member in grp.GetMembersInTheGroup())
+                {
+                    if (member is not GamePlayer pm) continue;
+                    if (pm.ObjectState != eObjectState.Active || !pm.IsAlive) continue;
+                    if (pm.Realm == Realm) continue;
+                    if (!pm.IsWithinRadius(this, WorldMgr.MAX_EXPFORKILL_DISTANCE)) continue;
+                    eligible.Add(pm);
+                }
+
+                if (eligible.Count == 0) continue;
+
+                long perHead = groupRp / eligible.Count;
+                if (perHead > rpCap) perHead = rpCap;
+                if (perHead <= 0) continue;
+
+                foreach (GamePlayer pm in eligible)
+                {
+                    pm.GainRealmPoints(perHead);
+                    pm.Statistics?.AddToRealmPointsEarnedFromKills((uint)perHead);
+                    pm.Out.SendMessage($"Your group killed {GetName(0, false)}!",
+                        eChatType.CT_KilledByAlb, eChatLoc.CL_SystemWindow);
+                }
+            }
+
+            // Pass 3 — solo damager award (no group). One player did all the
+            // work without backup; full share goes to them.
+            foreach (var kv in dmgBySolo)
+            {
+                GamePlayer solo = kv.Key;
+                if (solo.ObjectState != eObjectState.Active || !solo.IsAlive) continue;
+                if (!solo.IsWithinRadius(this, WorldMgr.MAX_EXPFORKILL_DISTANCE)) continue;
+
+                double share = kv.Value / totalDamage;
                 long reward = (long)(baseRpReward * share);
-                long rpCap = baseRpReward * 2L;
-                if (reward > rpCap)
-                    reward = rpCap;
-                if (reward <= 0)
-                    continue;
+                if (reward > rpCap) reward = rpCap;
+                if (reward <= 0) continue;
 
-                awarded.GainRealmPoints(reward);
-                awarded.Statistics?.AddToRealmPointsEarnedFromKills((uint)reward);
-
-                awarded.Out.SendMessage($"You just killed {GetName(0, false)}!",
+                solo.GainRealmPoints(reward);
+                solo.Statistics?.AddToRealmPointsEarnedFromKills((uint)reward);
+                solo.Out.SendMessage($"You just killed {GetName(0, false)}!",
                     eChatType.CT_KilledByAlb, eChatLoc.CL_SystemWindow);
             }
         }
