@@ -1079,6 +1079,22 @@ namespace DOL.GS.Scripts
 
             bool killingBlowByEnemyRealm = killer != null && killer.Realm != eRealm.None && killer.Realm != Realm;
 
+            // ----- Warmap fight tick ------------------------------------
+            // Any realm-vs-realm kill involving a frontier mimic shows up on
+            // the NF / BG warmap, exactly like a real player kill does via
+            // AbstractServerRules.OnPlayerKilled. Without this the entire
+            // mimic-side combat is invisible to players consulting the map.
+            // Gated on ENABLE_WARMAPMGR and CurrentZone presence — same
+            // contract as the player path. Region matching is implicit via
+            // CurrentZone (only zones in NF / BG regions have warmap drawing
+            // anyway; calls for non-frontier zones are harmless dictionary
+            // inserts that the client ignores).
+            if (killingBlowByEnemyRealm && ServerProperties.Properties.ENABLE_WARMAPMGR
+                && CurrentZone != null && CurrentRegion?.ID == 163)
+            {
+                WarMapMgr.AddFight((byte)CurrentZone.ID, X, Y, (byte)killer.Realm, (byte)Realm);
+            }
+
             TargetObject = null;
 
             if (IsOnHorse)
@@ -1262,14 +1278,67 @@ namespace DOL.GS.Scripts
                 //Message.SystemToOthers(Client, LanguageMgr.GetTranslation(this, "GamePlayer.Duel.Die.KillerWinsDuel", killer.Name), eChatType.CT_Emote);
             }
 
-            // deal out exp and realm points based on server rules
-            // no other way to keep correct message order...
-            // Mimic deaths skip the server-rules OnPlayerKilled path: the
-            // implementation is hardwired to GamePlayer-specific state
-            // (Statistics, LastDeathRealmPoints, XPGainers ordering). Mimic
-            // RP/XP awarding happens via the mimic AI / Brain on death
-            // instead, so the call is intentionally omitted here.
+            // PvP kill credit. AbstractServerRules.OnNpcKilled short-circuits
+            // for MimicNPC (mimics aren't loot piñatas) and OnPlayerKilled
+            // expects a GamePlayer signature, so neither path awards RPs.
+            // Distribute realm points to every player-attacker proportional
+            // to their damage share — same shape as OnPlayerKilled, just
+            // hand-rolled for a MimicNPC target. Only fires on an enemy-
+            // realm killing blow so own-realm griefs / PvE deaths don't
+            // award realm points.
+            if (killingBlowByEnemyRealm)
+                AwardPvpKillRewards();
+
             CancelAllConcentrationEffects();
+        }
+
+        /// <summary>
+        /// Distributes realm points to every player who damaged this mimic.
+        /// Each player gets `RealmPointsValue * damageShare`, capped at
+        /// `RealmPointsValue * 2` to match the player-vs-player rule. Group
+        /// members within MAX_EXPFORKILL_DISTANCE share via the standard
+        /// group split. Sends the "You just killed X" chat to every direct
+        /// attacker so the frag is visible in the combat log.
+        /// </summary>
+        private void AwardPvpKillRewards()
+        {
+            double totalDamage = 0;
+            foreach (var pair in XPGainers)
+                totalDamage += pair.Value;
+
+            if (totalDamage <= 0)
+                return;
+
+            int baseRpReward = RealmPointsValue;
+            if (baseRpReward <= 0)
+                return;
+
+            foreach (var pair in XPGainers)
+            {
+                if (pair.Key is not GamePlayer awarded)
+                    continue;
+                if (awarded.ObjectState != eObjectState.Active || !awarded.IsAlive)
+                    continue;
+                if (!awarded.IsWithinRadius(this, WorldMgr.MAX_EXPFORKILL_DISTANCE))
+                    continue;
+                // Same realm = no credit (no own-realm RP farming).
+                if (awarded.Realm == Realm)
+                    continue;
+
+                double share = pair.Value / totalDamage;
+                long reward = (long)(baseRpReward * share);
+                long rpCap = baseRpReward * 2L;
+                if (reward > rpCap)
+                    reward = rpCap;
+                if (reward <= 0)
+                    continue;
+
+                awarded.GainRealmPoints(reward);
+                awarded.Statistics?.AddToRealmPointsEarnedFromKills((uint)reward);
+
+                awarded.Out.SendMessage($"You just killed {GetName(0, false)}!",
+                    eChatType.CT_KilledByAlb, eChatLoc.CL_SystemWindow);
+            }
         }
 
         public override void EnemyKilled(GameLiving enemy)

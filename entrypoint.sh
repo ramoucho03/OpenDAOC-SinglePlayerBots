@@ -94,6 +94,7 @@ apply_sql_patch() {
 
 apply_sql_patch /app/sql/heretic_live.sql       "Heretic Live SQL patch"
 apply_sql_patch /app/sql/battlegrounds_live.sql "Battlegrounds Live SQL patch"
+apply_sql_patch /app/sql/nf_live.sql            "NF Live (keeps + components + teleports) SQL patch"
 
 # --- Larogoth + Eve-of-Darkness migrations (one-shot, checksum-tracked) ---
 # 5 files applied IN ORDER (numbering = dependency order):

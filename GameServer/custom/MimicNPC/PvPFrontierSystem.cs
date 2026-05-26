@@ -112,6 +112,14 @@ namespace DOL.GS.Scripts
         [ServerProperty("pvpfrontier", "pvp_frontier_dynamic_spawn_prefer_opposite",
             "When true, dynamic spawn prefers placing groups around players of an OPPOSING realm so encounters happen quickly. Falls back to any player if no opposing realm is in the region. Default true.", true)]
         public static bool PVP_FRONTIER_DYNAMIC_SPAWN_PREFER_OPPOSITE;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_player_track_radius",
+            "When picking the next patrol waypoint, frontier groups can bias toward the closest enemy-realm player within this range (units). Higher = bots follow players across larger swaths of the map. Default 12000 (~3 zones).", 12000)]
+        public static int PVP_FRONTIER_PLAYER_TRACK_RADIUS;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_player_track_chance",
+            "Chance (0-100) per next-waypoint pick that a frontier group routes toward the closest enemy-realm player in the region instead of a random patrol waypoint. Default 50 — half the picks track players, half stay on the configured loop, so groups follow without locking onto a single target.", 50)]
+        public static int PVP_FRONTIER_PLAYER_TRACK_CHANCE;
     }
 
     #endregion
@@ -1050,15 +1058,20 @@ namespace DOL.GS.Scripts
 
             // Bot levels and target region come from the RealmConfig so each
             // BG config produces bots in its own bracket (Thidranki 20-24,
-            // Molvik 35-39, etc.) — the global PVP_FRONTIER_MIN/MAX_LEVEL
-            // properties remain the source for the main NF config only.
+            // Molvik 35-39, etc.). The main NF config is special-cased to
+            // ALWAYS spawn level-50 mimics regardless of the configured
+            // min/max — NF is the end-game RvR theatre, and mixed-level
+            // groups don't make sense there.
+            bool isNfRegion = (cfg.Region == PvPFrontierManager.REGION_NEW_FRONTIERS)
+                              || (cfg.Region == 0 && PvPFrontierProperties.PVP_FRONTIER_REGION == PvPFrontierManager.REGION_NEW_FRONTIERS);
+
             byte minLevel = cfg.MinLevel > 0 ? cfg.MinLevel : (byte)PvPFrontierProperties.PVP_FRONTIER_MIN_LEVEL;
             byte maxLevel = cfg.MaxLevel > 0 ? cfg.MaxLevel : (byte)PvPFrontierProperties.PVP_FRONTIER_MAX_LEVEL;
             if (maxLevel < minLevel) maxLevel = minLevel;
 
             foreach (eMimicClass cls in comp)
             {
-                byte level = (byte)Util.Random(minLevel, maxLevel);
+                byte level = isNfRegion ? (byte)50 : (byte)Util.Random(minLevel, maxLevel);
                 eGender gender = Util.Random(1) > 0 ? eGender.Male : eGender.Female;
 
                 g.Roster.Add(new LogicalMember
@@ -1213,6 +1226,24 @@ namespace DOL.GS.Scripts
                     m.MimicBrain.AggroRange = 3000;
                     m.MimicBrain.IsHealer = lm.IsHealer;
                 }
+
+                // Frontier "ready for fight" outfit. The default Mimic
+                // constructor leaves the bot at base RR for its level and
+                // un-buffed — a real player joining NF would already have
+                // a realm rank from playing AND group buffs from their
+                // healer. Match that here so frontier mimics aren't free
+                // food on spawn:
+                //   * Randomise RealmLevel inside [20, 110] (RR3L0..RR12L0).
+                //   * Pre-apply level-50 buff stat bonuses so the bot opens
+                //     combat at the same effective stats as a buffed player.
+                //   * Top up Health / Mana / Endurance once the bonuses are
+                //     applied (Max* changes with the buff stat bonus).
+                ApplyFrontierRealmRank(m);
+                ApplyFrontierPreBuffs(m);
+                ApplyFrontierGearUpgrade(m);
+                m.Health = m.MaxHealth;
+                m.Mana = m.MaxMana;
+                m.Endurance = m.MaxEndurance;
 
                 Members.Add(m);
             }
@@ -1476,6 +1507,22 @@ namespace DOL.GS.Scripts
             if (now >= _nextScanMs)
             {
                 _nextScanMs = now + 3000 + Util.Random(0, 2000);
+
+                // Scan for the closest enemy player FIRST. Frontier mimic
+                // groups exist to challenge real players — if one is in
+                // detection range, divert the patrol toward them regardless
+                // of whether an enemy mimic group is also nearby. Without
+                // this, a lone player could walk past patrols at 3000u and
+                // never be engaged because the scan only saw the other
+                // mimic groups across the map.
+                GameLiving enemyPlayer = ScanForEnemyPlayer(leader);
+                if (enemyPlayer != null)
+                {
+                    OrderGroupToEngagePlayer(enemyPlayer);
+                    State = eFrontierState.Engaging;
+                    return;
+                }
+
                 PvPFrontierGroup enemy = ScanForEnemyGroup(leader);
 
                 if (enemy != null)
@@ -1495,6 +1542,70 @@ namespace DOL.GS.Scripts
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Scans nearby for an enemy-realm GamePlayer within DETECTION_RANGE
+        /// of the group's leader. Filters out admins (PrivLevel > 1) and
+        /// stealthed targets so a GM patrolling NF doesn't drag every group
+        /// into combat, and a stealther stays stealthed. Returns the closest
+        /// match or null. Used by TickPatrol to drive group-level player
+        /// engagement (the proactive "aggressif a distance" behaviour
+        /// requested by the spec).
+        /// </summary>
+        private GameLiving ScanForEnemyPlayer(GameLiving myLeader)
+        {
+            GamePlayer best = null;
+            int bestDistSq = int.MaxValue;
+            ushort detect = (ushort)DETECTION_RANGE;
+
+            foreach (GamePlayer p in myLeader.GetPlayersInRadius(detect))
+            {
+                if (p == null || !p.IsAlive) continue;
+                if (p.Realm == Config.Realm || p.Realm == eRealm.None) continue;
+                if (p.IsStealthed) continue;
+                if (p.Client?.Account != null && p.Client.Account.PrivLevel > 1) continue;
+                if (p.CurrentRegionID != myLeader.CurrentRegionID) continue;
+
+                int dx = p.X - myLeader.X;
+                int dy = p.Y - myLeader.Y;
+                int distSq = dx * dx + dy * dy;
+                if (distSq < bestDistSq)
+                {
+                    bestDistSq = distSq;
+                    best = p;
+                }
+            }
+
+            return best;
+        }
+
+        /// <summary>
+        /// Issues an engagement order against a real player target. Sets the
+        /// player as the priority target for every alive member's brain, then
+        /// orders the group to converge on them — same shape as
+        /// <see cref="OrderGroupToEngage"/> but with a player anchor instead
+        /// of an enemy mimic group leader.
+        /// </summary>
+        private void OrderGroupToEngagePlayer(GameLiving target)
+        {
+            if (target == null) return;
+
+            foreach (var m in Members)
+            {
+                if (m == null || !m.IsAlive) continue;
+                if (m.MimicBrain == null) continue;
+
+                m.TargetObject = target;
+                m.MimicBrain.AddToAggroList(target, 1);
+            }
+
+            // Move the group to the target's position so they actually close
+            // distance — without this, AddToAggroList alone leaves the bots
+            // standing on their last waypoint, only fighting back if the
+            // target wanders into the per-mimic AggroRange.
+            _currentWaypoint = new Point3D(target.X, target.Y, target.Z);
+            OrderGroupToWaypoint();
         }
 
         private void TickEngaging()
@@ -1596,10 +1707,14 @@ namespace DOL.GS.Scripts
             // Priority order (mirrors how a real RvR group picks its next
             // destination):
             //   1. A friendly keep currently under attack — defend it.
-            //   2. A recently active enemy hotspot — chase the fight.
-            //   3. Roll for "attack an enemy keep" intent.
-            //   4. Random patrol waypoint.
-            //   5. Fall back to spawn anchor.
+            //   2. NEW — bias toward the closest enemy-realm player in
+            //      the region. Lets groups follow players across NF as
+            //      they roam, instead of patrolling the same fixed loop
+            //      while the player moves elsewhere.
+            //   3. A recently active enemy hotspot — chase the fight.
+            //   4. Roll for "attack an enemy keep" intent.
+            //   5. Random patrol waypoint.
+            //   6. Fall back to spawn anchor.
 
             // (1) Defend a friendly keep under siege.
             Point3D defendTarget = PickFriendlyKeepUnderAttack();
@@ -1609,7 +1724,23 @@ namespace DOL.GS.Scripts
                 return;
             }
 
-            // (2) Recent enemy activity bias: 30% chance to head to the last
+            // (2) Player tracking. PvP frontier exists for players, so when
+            // one is in the region, follow them. Range is wide (default
+            // 12000u) and the bias is partial (default 50% chance) so the
+            // entire frontier doesn't dogpile a single roamer — half the
+            // groups still patrol their normal loop and meet the player at
+            // the contested ground organically.
+            if (Util.Chance(PvPFrontierProperties.PVP_FRONTIER_PLAYER_TRACK_CHANCE))
+            {
+                Point3D playerTarget = PickClosestEnemyPlayerWaypoint();
+                if (playerTarget != null)
+                {
+                    _currentWaypoint = playerTarget;
+                    return;
+                }
+            }
+
+            // (3) Recent enemy activity bias: 30% chance to head to the last
             // place an enemy was spotted (if any). Keeps groups converging
             // on contested ground instead of patrolling deserted waypoints.
             if (Util.Chance(30))
@@ -1622,7 +1753,7 @@ namespace DOL.GS.Scripts
                 }
             }
 
-            // (3) Offensive keep intent.
+            // (4) Offensive keep intent.
             if (Util.Chance(PvPFrontierProperties.PVP_FRONTIER_KEEP_ATTACK_CHANCE))
             {
                 Point3D keepTarget = PickClosestEnemyKeep();
@@ -1633,14 +1764,62 @@ namespace DOL.GS.Scripts
                 }
             }
 
-            // (4) Random patrol waypoint.
+            // (5) Random patrol waypoint.
             if (Config.PatrolWaypoints.Count == 0)
             {
-                // (5) No waypoints configured: hold position at spawn.
+                // (6) No waypoints configured: hold position at spawn.
                 _currentWaypoint = Config.SpawnAnchor;
                 return;
             }
             _currentWaypoint = Config.PatrolWaypoints[Util.Random(Config.PatrolWaypoints.Count - 1)];
+        }
+
+        /// <summary>
+        /// Picks a patrol target near the closest enemy-realm player within
+        /// PVP_FRONTIER_PLAYER_TRACK_RADIUS of any group member. We offset
+        /// the target by a small jitter so multiple groups tracking the same
+        /// player don't all converge on the exact same tile — the player
+        /// gets pressure from several angles instead of one tightly packed
+        /// blob. Returns null when nobody is in range, no leader is alive,
+        /// or the only candidates are filtered out (admins, stealthers,
+        /// same-realm).
+        /// </summary>
+        private Point3D PickClosestEnemyPlayerWaypoint()
+        {
+            MimicNPC leader = FirstAliveMember();
+            if (leader == null) return null;
+
+            PvPFrontierManager.PlayerSnapshot snap = PvPFrontierManager.GetPlayerSnapshot(Region);
+            if (snap == null || snap.Sampled.Count == 0) return null;
+
+            int trackRadius = Math.Max(1500, PvPFrontierProperties.PVP_FRONTIER_PLAYER_TRACK_RADIUS);
+            long trackRadiusSq = (long)trackRadius * trackRadius;
+
+            PvPFrontierManager.PlayerSampledPos? bestPos = null;
+            long bestSq = long.MaxValue;
+
+            foreach (PvPFrontierManager.PlayerSampledPos p in snap.Sampled)
+            {
+                if (p.Realm == Config.Realm || p.Realm == eRealm.None)
+                    continue;
+
+                long dx = p.X - leader.X;
+                long dy = p.Y - leader.Y;
+                long sq = dx * dx + dy * dy;
+                if (sq > trackRadiusSq) continue;
+                if (sq < bestSq)
+                {
+                    bestSq = sq;
+                    bestPos = p;
+                }
+            }
+
+            if (bestPos == null) return null;
+
+            // Small jitter — groups don't all stack on the same coordinate.
+            int jitterX = Util.Random(-400, 400);
+            int jitterY = Util.Random(-400, 400);
+            return new Point3D(bestPos.Value.X + jitterX, bestPos.Value.Y + jitterY, bestPos.Value.Z);
         }
 
         /// <summary>
@@ -1923,6 +2102,120 @@ namespace DOL.GS.Scripts
             }
 
             return best;
+        }
+
+        /// <summary>
+        /// Randomises a frontier mimic's RealmRank inside [RR3L0, RR12L0]
+        /// = RealmLevel 20..110. Sets RealmPoints to match — without that,
+        /// the displayed RR title and the RP bar are out of sync and
+        /// /who shows a level-50 1L0. Source of REALMPOINTS_FOR_LEVEL is
+        /// MimicNPC.REALMPOINTS_FOR_LEVEL (same table as players).
+        /// </summary>
+        private static void ApplyFrontierRealmRank(MimicNPC m)
+        {
+            if (m == null) return;
+            int maxIdx = MimicNPC.REALMPOINTS_FOR_LEVEL.Length - 1;
+            int realmLevel = Util.Random(20, Math.Min(110, maxIdx));
+            m.RealmLevel = realmLevel;
+            m.RealmPoints = MimicNPC.REALMPOINTS_FOR_LEVEL[realmLevel];
+        }
+
+        /// <summary>
+        /// Pre-applies "fully-buffed level-50 character" stat bonuses on
+        /// a frontier mimic at hydration time, so the bot opens combat at
+        /// the same effective stats a real player would have AFTER spending
+        /// 30 s receiving buffs from their group. Skips the buff cast cycle
+        /// entirely — the bot is just configured to read as if it had been
+        /// buffed already.
+        ///
+        /// Values match typical lvl 50 buff caps (base + spec stat ~75,
+        /// AF ~175 + 75 spec, +18 resists across all damage types, plus
+        /// a damage add, regen and quickness bump). Real player groups
+        /// average around these numbers; matching them here avoids the
+        /// "fresh bot eaten by a buffed player" mismatch on engagement.
+        /// </summary>
+        private static void ApplyFrontierPreBuffs(MimicNPC m)
+        {
+            if (m == null) return;
+
+            // Base buffs (Cleric / Druid / Shaman / Bard / Paladin level 50)
+            const int BASE_STAT = 47;
+            const int BASE_AF = 175;
+
+            // Spec buffs (Spec line, capped lvl 50)
+            const int SPEC_STAT = 25;
+            const int SPEC_AF = 75;
+            const int SPEC_RESIST = 18;
+            const int SPEC_DAMAGE_ADD = 6;
+
+            // Main stats — apply universally; a Wizard mimic also gets the
+            // Strength buff (cheap, harmless) which keeps the helper simple
+            // and avoids per-class stat-target branching.
+            void BumpBase(eProperty p, int v) => m.BaseBuffBonusCategory[p] = v;
+            void BumpSpec(eProperty p, int v) => m.SpecBuffBonusCategory[p] = v;
+
+            BumpBase(eProperty.Strength, BASE_STAT);
+            BumpBase(eProperty.Constitution, BASE_STAT);
+            BumpBase(eProperty.Dexterity, BASE_STAT);
+            BumpBase(eProperty.Quickness, BASE_STAT);
+            BumpBase(eProperty.Acuity, BASE_STAT);
+            BumpBase(eProperty.Intelligence, BASE_STAT);
+            BumpBase(eProperty.Piety, BASE_STAT);
+            BumpBase(eProperty.Empathy, BASE_STAT);
+            BumpBase(eProperty.Charisma, BASE_STAT);
+
+            BumpSpec(eProperty.Strength, SPEC_STAT);
+            BumpSpec(eProperty.Constitution, SPEC_STAT);
+            BumpSpec(eProperty.Dexterity, SPEC_STAT);
+            BumpSpec(eProperty.Quickness, SPEC_STAT);
+            BumpSpec(eProperty.Acuity, SPEC_STAT);
+
+            // AF — Paladin chant + Cleric/Druid spec AF
+            BumpBase(eProperty.ArmorFactor, BASE_AF);
+            BumpSpec(eProperty.ArmorFactor, SPEC_AF);
+
+            // Resist chants (Paladin) — flat across all damage types
+            BumpSpec(eProperty.Resist_Body, SPEC_RESIST);
+            BumpSpec(eProperty.Resist_Cold, SPEC_RESIST);
+            BumpSpec(eProperty.Resist_Heat, SPEC_RESIST);
+            BumpSpec(eProperty.Resist_Energy, SPEC_RESIST);
+            BumpSpec(eProperty.Resist_Matter, SPEC_RESIST);
+            BumpSpec(eProperty.Resist_Spirit, SPEC_RESIST);
+            BumpSpec(eProperty.Resist_Crush, SPEC_RESIST);
+            BumpSpec(eProperty.Resist_Slash, SPEC_RESIST);
+            BumpSpec(eProperty.Resist_Thrust, SPEC_RESIST);
+
+            // Damage add (Skald / Friar / Shaman) — flat damage on every swing
+            m.AbilityBonus[eProperty.DPS] = SPEC_DAMAGE_ADD;
+        }
+
+        /// <summary>
+        /// Bumps every equipped inventory item to 99 % quality and 100 %
+        /// condition. ROG generation already rolls items in the 91-99 range
+        /// for level 50 (see <c>GeneratedUniqueItem</c>), but we want every
+        /// frontier mimic at the ceiling so combat outcomes don't randomly
+        /// flap based on item rolls — and so the bot reads as "fully stuffé"
+        /// in the inventory inspector. Items missing or unmodifiable are
+        /// silently skipped.
+        /// </summary>
+        private static void ApplyFrontierGearUpgrade(MimicNPC m)
+        {
+            if (m?.Inventory == null) return;
+
+            foreach (DbInventoryItem item in m.Inventory.AllItems)
+            {
+                if (item == null) continue;
+                try
+                {
+                    if (item.Quality < 99) item.Quality = 99;
+                    if (item.MaxCondition < 50000) item.MaxCondition = 50000;
+                    item.Condition = item.MaxCondition;
+                }
+                catch
+                {
+                    // Some templates lock fields. Best-effort upgrade only.
+                }
+            }
         }
     }
 

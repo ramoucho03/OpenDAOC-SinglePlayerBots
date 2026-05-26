@@ -20,6 +20,7 @@ RUN apt-get update && \
     git config --global http.sslVerify false && \
     git clone https://github.com/OpenDAoC/OpenDAoC-Database.git /tmp/opendaoc-db && \
     git clone https://github.com/Larogoth/DAoCDatabase.git /tmp/larogoth-db && \
+    git clone --depth=1 https://github.com/Eve-of-Darkness/db-public.git /tmp/eod-json && \
     mkdir -p /tmp/eod-db && \
     curl -fL --retry 3 \
         -o /tmp/eod-db/public-db.mysql.sql.7z \
@@ -36,8 +37,17 @@ RUN cat *.sql > combined.sql
 # by mariadb's docker-entrypoint-initdb.d on FIRST DB init (clean install).
 # Filename ordering matters: combined.sql (c) runs before zz_*.sql (z), so
 # our patches always apply *after* the upstream seed has been loaded.
+# Generate the New Frontiers keep / component / hookpoint / position SQL from
+# the Eve-of-Darkness JSON dataset. Output lives in /build/sql/nf_live.sql and
+# is copied into the runtime image below for the entrypoint to apply on every
+# start (idempotent, REPLACE INTO + UPDATE).
+RUN python3 /build/scripts/build_nf_live_sql.py \
+        /tmp/eod-json \
+        /build/sql/nf_live.sql
+
 RUN cp /build/sql/heretic_live.sql       /tmp/opendaoc-db/opendaoc-db-core/zz_heretic_live.sql && \
-    cp /build/sql/battlegrounds_live.sql /tmp/opendaoc-db/opendaoc-db-core/zz_battlegrounds_live.sql
+    cp /build/sql/battlegrounds_live.sql /tmp/opendaoc-db/opendaoc-db-core/zz_battlegrounds_live.sql && \
+    cp /build/sql/nf_live.sql            /tmp/opendaoc-db/opendaoc-db-core/zz_nf_live.sql
 
 # Build the 5-stage Larogoth + Eve-of-Darkness pipeline (numbering = apply order):
 #   10_larogoth_items.sql       — INSERT IGNORE missing items (shields + magical only)
@@ -92,6 +102,7 @@ COPY --from=build /tmp/opendaoc-db/opendaoc-db-core/combined.sql /tmp/opendaoc-d
 # only runs /docker-entrypoint-initdb.d/ on first init, not on existing DBs.
 COPY --from=build /build/sql/heretic_live.sql       /app/sql/heretic_live.sql
 COPY --from=build /build/sql/battlegrounds_live.sql /app/sql/battlegrounds_live.sql
+COPY --from=build /build/sql/nf_live.sql            /app/sql/nf_live.sql
 
 # Larogoth-generated SQL (one file per migration, applied in order by entrypoint).
 COPY --from=build /build/sql/larogoth/                /app/sql/larogoth/

@@ -1688,7 +1688,16 @@ namespace DOL.GS.ServerRules
 
         public virtual void OnPlayerKilled(GamePlayer killedPlayer, GameObject killer)
         {
-            if (Properties.ENABLE_WARMAPMGR && killer is GamePlayer && killer.CurrentRegion.ID == 163)
+            // Warmap fight: relaxed to accept ANY realm-bound attacker (real
+            // GamePlayer or MimicNPC frontier bot), so a mimic kill on a real
+            // player shows up the same as a player-vs-player kill. The realm
+            // gate (killer.Realm != 0 && killer.Realm != killedPlayer.Realm)
+            // is what defines RvR for warmap purposes — bot or human doesn't
+            // matter to the client.
+            if (Properties.ENABLE_WARMAPMGR
+                && killer != null && killer.Realm != eRealm.None && killer.Realm != killedPlayer.Realm
+                && killer.CurrentRegion != null && killer.CurrentRegion.ID == 163
+                && killer.CurrentZone != null)
                 WarMapMgr.AddFight((byte) killer.CurrentZone.ID, killer.X, killer.Y, (byte) killer.Realm, (byte) killedPlayer.Realm);
 
             killedPlayer.Statistics.AddToDeaths();
