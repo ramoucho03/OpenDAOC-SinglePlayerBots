@@ -2931,7 +2931,13 @@ namespace DOL.AI.Brain
         /// </summary>
         public void MaintainTankCampSupport()
         {
-            if (!IsMainTank || Body == null || !Body.IsAlive)
+            // Was IsMainTank-gated, which silently no-op'd on frontier mimic
+            // groups whose Armsman/Hero/Warrior auto-promoted to ActingTank
+            // (without the formal MimicGroup.MainTank assignment that only
+            // PvE composer paths set). Result: frontier tanks never applied
+            // Guard / Protect on the camp's squishy. Open the gate to any
+            // acting tank so PvP tanks get the same support tools.
+            if ((!IsMainTank && !IsActingAsTank) || Body == null || !Body.IsAlive)
                 return;
 
             MimicGroup mg = Body.Group?.MimicGroup;
@@ -6136,6 +6142,19 @@ namespace DOL.AI.Brain
                         if (spell.Target == eSpellTarget.CONE && Body.TargetObject != null
                             && !Body.IsObjectInFront(Body.TargetObject, 120))
                             return false;
+                        // Range gate. Audit found mimic casters fired non-instant
+                        // ENEMY spells past their effective range and ate the
+                        // fizzle — the brain didn't reposition before retry.
+                        // Reject the cast when the current target is out of
+                        // range so the AGGRO movement / kite logic gets a turn
+                        // to close the gap. AREA and CONE keep the cast since
+                        // they're often dropped without a unit target.
+                        if (spell.Target == eSpellTarget.ENEMY && Body.TargetObject is GameLiving rangeTarget)
+                        {
+                            int effRange = spell.CalculateEffectiveRange(Body);
+                            if (effRange > 0 && !Body.IsWithinRadius(rangeTarget, effRange))
+                                return false;
+                        }
                         return true;
                     }
                 }

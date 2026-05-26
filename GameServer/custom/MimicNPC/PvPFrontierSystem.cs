@@ -130,12 +130,16 @@ namespace DOL.GS.Scripts
         public static int PVP_FRONTIER_DYNAMIC_SPAWN_COOLDOWN_SEC;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_entry_grace_sec",
-            "Grace period (seconds) when a player enters a frontier region: no dynamic spawn anchors on them during this window so they aren't ambushed the moment they cross the line. Default 300 (5 min). Set to 0 to disable.", 300)]
+            "Grace period (seconds) when a player enters a frontier region: no dynamic spawn anchors on them during this window so they aren't ambushed the moment they cross the line. Default 60 (1 min). Set to 0 to disable.", 60)]
         public static int PVP_FRONTIER_ENTRY_GRACE_SEC;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_skip_combat_player_anchor",
             "When true, players currently InCombat are excluded as spawn anchors. Prevents 'another enemy group arrives in the middle of your fight' which feels like piling-on. Default true.", true)]
         public static bool PVP_FRONTIER_SKIP_COMBAT_PLAYER_ANCHOR;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_border_keep_safe_radius",
+            "Radius (units) around each NF border keep (Castle Sauvage, Snowdonia, Svasud, Vindsaul, Druim Ligen, Druim Cain) where dynamic spawns are FORBIDDEN. Prevents groups from materialising on top of the player's safe entry point. Default 5000. Set to 0 to disable.", 5000)]
+        public static int PVP_FRONTIER_BORDER_KEEP_SAFE_RADIUS;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_bg_event_interval_min",
             "Minutes between rare 'battlegroup' spawn events: multiple full 8-man groups force-spawned together at a random NF realm anchor, bypassing the dynamic-spawn caps. Set to 0 to disable BG events. Default 120 — should feel really rare, a 'a real raid showed up' moment maybe twice per play session.", 120)]
@@ -148,6 +152,14 @@ namespace DOL.GS.Scripts
         [ServerProperty("pvpfrontier", "pvp_frontier_bg_event_max_groups",
             "Maximum number of full 8-man groups co-spawned for one BG event. Default 3 → up to 24 mimics. The real BG roll picks uniformly between min and max.", 3)]
         public static int PVP_FRONTIER_BG_EVENT_MAX_GROUPS;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_keep_siege_interval_min",
+            "Minutes between rare KEEP SIEGE events: a full BG of mimics targets a random enemy-realm keep, breaks the door, kills the lord, and flips ownership. Independent of the BG patrol event. Default 90 — a once-an-evening 'a keep is under attack' moment. 0 disables.", 90)]
+        public static int PVP_FRONTIER_KEEP_SIEGE_INTERVAL_MIN;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_keep_siege_groups",
+            "Number of 8-man groups co-spawned for a keep siege event. Default 3 → 24 mimics dedicated to the siege.", 3)]
+        public static int PVP_FRONTIER_KEEP_SIEGE_GROUPS;
     }
 
     #endregion
@@ -657,6 +669,15 @@ namespace DOL.GS.Scripts
             try { TickBattlegroupEvent(); }
             catch (Exception bgEx) { log.Error("PvPFrontier BG event failed", bgEx); }
 
+            // Keep-siege event scheduler. Even rarer than the BG event — a
+            // realm picks an enemy keep and force-spawns a dedicated siege
+            // force right next to it with the keep as their target. The
+            // mimic groups attack the door, kill the lord, and flip
+            // ownership. Creates the dramatic "a keep is being taken!"
+            // moment that pulls the player toward the action.
+            try { TickKeepSiegeEvent(); }
+            catch (Exception ksEx) { log.Error("PvPFrontier keep siege event failed", ksEx); }
+
             return TICK_MS;
         }
 
@@ -799,6 +820,103 @@ namespace DOL.GS.Scripts
             if (spawned > 0)
                 log.Info($"PvPFrontier BG event: {chosen.Realm} battlegroup spawned " +
                          $"({spawned} groups × 8 = {mimicsTotal} mimics) at NF anchor.");
+        }
+
+        private static long _nextKeepSiegeMs;
+
+        /// <summary>
+        /// Schedules a rare KEEP SIEGE event: an attacking realm picks an
+        /// enemy keep in NF, force-spawns a BG-style siege force right next
+        /// to it, and aggros the groups onto the keep door / lord. Mimics
+        /// damage the door normally (GameKeepDoor.TakeDamage). When the lord
+        /// dies, ResetKeep flips ownership to the attackers' realm. Players
+        /// can join either side to defend or cap, making it a dynamic event.
+        /// </summary>
+        private static void TickKeepSiegeEvent()
+        {
+            int intervalMin = PvPFrontierProperties.PVP_FRONTIER_KEEP_SIEGE_INTERVAL_MIN;
+            if (intervalMin <= 0) return;
+
+            long now = GameLoop.GameLoopTime;
+            if (_nextKeepSiegeMs == 0)
+            {
+                // Jitter first schedule ±50 % so server restart doesn't
+                // always launch siege at the same wall-clock offset.
+                _nextKeepSiegeMs = now + (long)(intervalMin * 60_000 * (0.5 + Util.RandomDouble()));
+                return;
+            }
+
+            if (now < _nextKeepSiegeMs) return;
+            _nextKeepSiegeMs = now + (long)(intervalMin * 60_000 * (0.5 + Util.RandomDouble()));
+
+            if (!_configs.TryGetValue(REGION_NEW_FRONTIERS, out var nfConfigs) || nfConfigs.Count == 0)
+                return;
+
+            // Pick the attacking realm.
+            var realms = new List<RealmConfig>(nfConfigs.Values);
+            RealmConfig attacker = realms[Util.Random(realms.Count - 1)];
+
+            // Pick an enemy keep to target. We look at every keep in NF
+            // that belongs to a DIFFERENT realm than the attacker and is
+            // not already at level / claim chaos. Prefer "outer" keeps
+            // (lower base level) so the siege isn't always against the
+            // hardest target.
+            var enemyKeeps = new List<global::DOL.GS.Keeps.AbstractGameKeep>();
+            try
+            {
+                var allKeeps = GameServer.KeepManager.GetKeepsOfRegion(REGION_NEW_FRONTIERS);
+                if (allKeeps != null)
+                {
+                    foreach (var k in allKeeps)
+                    {
+                        if (k == null) continue;
+                        if (k.Realm == attacker.Realm) continue; // friendly
+                        if (k.Realm == eRealm.None) continue;
+                        enemyKeeps.Add(k);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                log.Warn("PvPFrontier keep siege: failed to enumerate keeps", ex);
+                return;
+            }
+
+            if (enemyKeeps.Count == 0) return;
+
+            global::DOL.GS.Keeps.AbstractGameKeep targetKeep = enemyKeeps[Util.Random(enemyKeeps.Count - 1)];
+
+            // Spawn the siege force just outside the keep so mimics walk
+            // up to the door themselves (no teleport-into-keep hack). 1500u
+            // back along the X axis gives a clear approach for the patrol AI.
+            Point3D keepPos = new(targetKeep.X, targetKeep.Y, targetKeep.Z);
+            int groupCount = Math.Max(1, PvPFrontierProperties.PVP_FRONTIER_KEEP_SIEGE_GROUPS);
+
+            int spawned = 0;
+            for (int i = 0; i < groupCount; i++)
+            {
+                // Spread the assault force in a small arc behind the keep
+                // so each 8-man approaches from a slightly different angle.
+                double angle = (i / (double)groupCount) * Math.PI;
+                int approachX = keepPos.X + (int)Math.Round(Math.Cos(angle) * 1500);
+                int approachY = keepPos.Y + (int)Math.Round(Math.Sin(angle) * 1500);
+                Point3D spawnPos = new(approachX, approachY, keepPos.Z);
+
+                PvPFrontierGroup sg = PvPFrontierGroup.Spawn(attacker, 8, spawnPos);
+                if (sg != null)
+                {
+                    // Force the group's current waypoint to the keep so they
+                    // walk straight at the door. The TryAttackKeepObjectsNearWaypoint
+                    // logic in TickPatrol then engages doors / guards / lord.
+                    sg.OverrideCurrentWaypoint(keepPos);
+                    attacker.Groups.Add(sg);
+                    spawned++;
+                }
+            }
+
+            if (spawned > 0)
+                log.Info($"PvPFrontier KEEP SIEGE: {attacker.Realm} forces ({spawned} × 8 = {spawned * 8} mimics) " +
+                         $"assaulting {targetKeep.Name ?? "keep"} (currently {targetKeep.Realm}).");
         }
 
         // ----- Group size distribution -----
@@ -1052,19 +1170,68 @@ namespace DOL.GS.Scripts
 
             // Random angle + random radius in [inner, outer]. Uniform on the
             // ring without bias toward the inner edge: sqrt() correction on the
-            // 0..1 radius factor keeps the area-density flat.
-            double angle = Util.Random(0, 359) * Math.PI / 180.0;
-            double radiusFactor = Math.Sqrt(Util.RandomDouble());
-            double radius = inner + radiusFactor * ringWidth;
+            // 0..1 radius factor keeps the area-density flat. Up to 6 retries
+            // if the rolled point lands inside a border-keep safe zone — we
+            // don't want groups materialising on top of players hugging their
+            // entry portal.
+            int sx = 0, sy = 0;
+            bool ok = false;
+            for (int attempt = 0; attempt < 6; attempt++)
+            {
+                double angle = Util.Random(0, 359) * Math.PI / 180.0;
+                double radiusFactor = Math.Sqrt(Util.RandomDouble());
+                double radius = inner + radiusFactor * ringWidth;
 
-            int sx = anchor.X + (int)Math.Round(Math.Cos(angle) * radius);
-            int sy = anchor.Y + (int)Math.Round(Math.Sin(angle) * radius);
+                sx = anchor.X + (int)Math.Round(Math.Cos(angle) * radius);
+                sy = anchor.Y + (int)Math.Round(Math.Sin(angle) * radius);
+
+                if (!IsInsideBorderKeepSafeZone(cfg.Region, sx, sy))
+                {
+                    ok = true;
+                    break;
+                }
+            }
+            if (!ok) return false; // every roll landed in a safe zone, skip this spawn
 
             // Reuse the anchor player's Z. The picked point is on the same map
             // sheet within ~6.5k units, so the Z is normally close enough; the
             // bot's first patrol-step path resolves the real terrain Z anyway.
             position = new Point3D(sx, sy, anchor.Z);
             return true;
+        }
+
+        /// <summary>
+        /// NF border-keep coordinates. Used to enforce a safe radius where
+        /// dynamic spawn won't materialise groups. Sourced from
+        /// <see cref="KeepManager.GetBorderKeepLocation"/> — six border keeps
+        /// total, two per realm. Only consulted for the NF region.
+        /// </summary>
+        private static readonly (int x, int y)[] _nfBorderKeepCoords =
+        {
+            (653811, 616998), // Castle Sauvage (Albion)
+            (616149, 679042), // Snowdonia Fortress (Albion)
+            (651460, 313758), // Svasud Faste (Hibernia border)
+            (715179, 350621), // Vindsaul Faste (approx)
+            (396519, 618017), // Druim Ligen (Midgard border)
+            (358470, 590242), // Druim Cain (approx)
+        };
+
+        private static bool IsInsideBorderKeepSafeZone(ushort regionId, int x, int y)
+        {
+            if (regionId != REGION_NEW_FRONTIERS)
+                return false;
+            int radius = PvPFrontierProperties.PVP_FRONTIER_BORDER_KEEP_SAFE_RADIUS;
+            if (radius <= 0)
+                return false;
+            long rSq = (long)radius * radius;
+            for (int i = 0; i < _nfBorderKeepCoords.Length; i++)
+            {
+                long dx = _nfBorderKeepCoords[i].x - x;
+                long dy = _nfBorderKeepCoords[i].y - y;
+                if (dx * dx + dy * dy <= rSq)
+                    return true;
+            }
+            return false;
         }
 
         // ----- Recent enemy hotspots -----
@@ -1259,7 +1426,12 @@ namespace DOL.GS.Scripts
         // wake the group up. Dehydration uses a wider radius + grace period so
         // a player jogging past doesn't flap the group on/off.
         private const int HYDRATE_RANGE = 4500;
-        private const int DEHYDRATE_RANGE = 6500;
+        // Dehydration is suppressed any time a player sits inside this radius.
+        // 40_000u (~50 % of a typical NF zone) gives the group plenty of room
+        // to roam, patrol, or chase without ever phasing out under the player's
+        // nose — only truly abandoned groups (no player anywhere near the
+        // encounter) get recycled.
+        private const int DEHYDRATE_RANGE = 40_000;
         private const int DEHYDRATE_GRACE_MS = 20_000;
 
         // Minimum time a group stays materialised once hydrated, regardless of
@@ -1619,7 +1791,28 @@ namespace DOL.GS.Scripts
                 // dehydrate/re-hydrate loops and the bots visibly reset.
                 bool tooYoungToDehydrate = now - _hydratedSinceMs < MIN_HYDRATED_LIFETIME_MS;
 
-                if (farFromAll && !tooYoungToDehydrate)
+                // Combat lock: NEVER dehydrate while any group member is
+                // actively in combat (InCombatInLast 6 s). The PlayerSnapshot
+                // intentionally drops InCombat players to prevent NEW groups
+                // from materialising mid-fight, which has the side effect of
+                // making IsPlayerWithin() return false during a fight — the
+                // mimic group then thinks the player has vanished, the
+                // 20 s grace counter fires, and the group dehydrates in the
+                // middle of the engagement (mimics literally vanish, then
+                // re-hydrate elsewhere when the player exits combat). This
+                // gate breaks the loop: as long as any member is swinging,
+                // the group cannot dehydrate.
+                bool inCombat = false;
+                foreach (var m in Members)
+                {
+                    if (m != null && m.IsAlive && m.InCombatInLast(6000))
+                    {
+                        inCombat = true;
+                        break;
+                    }
+                }
+
+                if (farFromAll && !tooYoungToDehydrate && !inCombat)
                 {
                     if (_dehydrateAfterMs == 0)
                         _dehydrateAfterMs = now + DEHYDRATE_GRACE_MS;
@@ -1911,6 +2104,18 @@ namespace DOL.GS.Scripts
                 _currentWaypoint = new Point3D(target.X, target.Y, target.Z);
             }
             OrderGroupToWaypoint();
+
+            // Sprint on engage: every member toggles Sprint so the initial
+            // run-in is at full speed instead of jog. Real RvR groups
+            // sprint into combat for the burst window; mimics doing the
+            // same makes the engagement feel like a real pull instead of
+            // a slow approach. Sprint auto-disables when endurance runs
+            // out or combat actions consume the buffer.
+            foreach (var m in Members)
+            {
+                if (m == null || !m.IsAlive) continue;
+                try { m.Sprint(true); } catch { /* Sprint may NRE on bots without endurance */ }
+            }
         }
 
         /// <summary>
@@ -2476,6 +2681,17 @@ namespace DOL.GS.Scripts
             }
         }
 
+        /// <summary>
+        /// External override for the group's current waypoint. Used by the
+        /// keep-siege scheduler to direct a freshly spawned attack force at
+        /// a keep door target without going through the normal patrol roll.
+        /// </summary>
+        internal void OverrideCurrentWaypoint(Point3D wp)
+        {
+            _currentWaypoint = wp;
+            OrderGroupToWaypoint();
+        }
+
         private void OrderGroupToWaypoint()
         {
             MimicNPC leader = FirstAliveMember();
@@ -2635,6 +2851,39 @@ namespace DOL.GS.Scripts
             int realmLevel = Util.Random(20, Math.Min(110, maxIdx));
             m.RealmLevel = realmLevel;
             m.RealmPoints = MimicNPC.REALMPOINTS_FOR_LEVEL[realmLevel];
+
+            // RR-scaled combat bonuses. Without these, a RR12 mimic was
+            // mechanically identical to a RR3 mimic (audit found +9 skills
+            // and ~10 RP value difference — purely cosmetic). RR is supposed
+            // to translate into real combat presence on live; we approximate
+            // that here by adding linear bonuses based on the chosen RR,
+            // capped at RR12 ceiling values. Players killing higher-RR
+            // mimics now face genuinely tougher opponents AND get a higher
+            // RealmPointsValue payout via the updated formula in
+            // MimicNPC.RealmPointsValue (see Realm.cs:RealmPointsValue).
+            int realmRank = realmLevel / 10; // 2-11 (RR3 = 2 effective, RR12 = 11)
+            // Stat bonus from RR ≈ 1 per RR per stat (1-11 total)
+            m.AbilityBonus[eProperty.Strength] += realmRank;
+            m.AbilityBonus[eProperty.Constitution] += realmRank;
+            m.AbilityBonus[eProperty.Dexterity] += realmRank;
+            m.AbilityBonus[eProperty.Quickness] += realmRank;
+            m.AbilityBonus[eProperty.Acuity] += realmRank;
+            // Resists bonus from RR ≈ 1 % per 2 RR (max 5-6 % at RR12)
+            int resistBonus = realmRank / 2;
+            m.AbilityBonus[eProperty.Resist_Body] += resistBonus;
+            m.AbilityBonus[eProperty.Resist_Cold] += resistBonus;
+            m.AbilityBonus[eProperty.Resist_Heat] += resistBonus;
+            m.AbilityBonus[eProperty.Resist_Energy] += resistBonus;
+            m.AbilityBonus[eProperty.Resist_Matter] += resistBonus;
+            m.AbilityBonus[eProperty.Resist_Spirit] += resistBonus;
+            m.AbilityBonus[eProperty.Resist_Crush] += resistBonus;
+            m.AbilityBonus[eProperty.Resist_Slash] += resistBonus;
+            m.AbilityBonus[eProperty.Resist_Thrust] += resistBonus;
+            // HP scaling ≈ 1.5 % per RR (~16 % at RR12)
+            m.AbilityBonus[eProperty.MaxHealth] += realmRank * 15;
+            // Spell damage / melee damage ≈ 1 % per RR (~11 % at RR12)
+            m.AbilityBonus[eProperty.SpellDamage] += realmRank;
+            m.AbilityBonus[eProperty.MeleeDamage] += realmRank;
         }
 
         /// <summary>
@@ -2742,21 +2991,23 @@ namespace DOL.GS.Scripts
 
     public static class PvPGroupComposer
     {
-        // PvP role weights differ from PvE:
-        //   - More healers (2-3 instead of 1-2) — focus targets drop fast in PvP
-        //   - More CC casters (mez is king on the open field)
-        //   - Stealthers and casters for ranged/burst
-        //   - Single tank usually (peelers/intercepts more than aggro holders)
+        // Frontier composition template — slot index = group size.
+        // Smaller groups (1-5) get ONE healer; only full 6-8 man parties
+        // get a second healer (the "8-man with off-healer" archetype). The
+        // previous template gave a second healer to 3+ size groups, which
+        // saturated 5-man groups with 40 % healer share and made them
+        // unkillable for solo / duo players. Order in the template controls
+        // priority: lower-slot roles must be filled first.
         private static readonly eFrontierRole[] _template =
         {
             eFrontierRole.Tank,       // 1
-            eFrontierRole.Healer,     // 2
-            eFrontierRole.Healer,     // 3
+            eFrontierRole.Healer,     // 2 (always one healer first)
+            eFrontierRole.Caster,     // 3
             eFrontierRole.Support,    // 4 (CC + speed)
-            eFrontierRole.Caster,     // 5
-            eFrontierRole.Caster,     // 6
-            eFrontierRole.Stealther,  // 7
-            eFrontierRole.MeleeDPS,   // 8
+            eFrontierRole.MeleeDPS,   // 5
+            eFrontierRole.Healer,     // 6 (off-healer kicks in at full 6-man)
+            eFrontierRole.Caster,     // 7
+            eFrontierRole.Stealther,  // 8
         };
 
         public enum eFrontierRole { Tank, Healer, Support, Caster, Stealther, MeleeDPS }

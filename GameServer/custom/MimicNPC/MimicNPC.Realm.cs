@@ -532,18 +532,23 @@ namespace DOL.GS.Scripts
         }
 
         /// <summary>
-        /// Realm point value of this player
+        /// Realm point value of this mimic. Live's formula
+        /// (level² + RealmLevel) makes RR contribute only ~10 RP between
+        /// RR1 and RR10, which feels trivial for a player who just dropped
+        /// a fully-buffed RR12 frontier mimic. We multiply the base value
+        /// by (1 + RealmRank / 5) so higher RR mimics give meaningful
+        /// extra reward: RR3 ≈ 1.4×, RR8 ≈ 2.4×, RR12 ≈ 3.2×. Players
+        /// notice and chase the RR12 kills.
         /// </summary>
         public override int RealmPointsValue
         {
             get
             {
-                // Pre-1.81 formula: https://camelotherald.fandom.com/wiki/Patch_Notes:_Version_1.81
-                // 25 at RR1, level 25.
-                // 225 at RR1, level 35, 245 at RR3, level 35.
-                // 900 at RR1, level 50. 990 at RR10, level 50.
                 int modifiedLevel = Level - 20;
-                return Math.Max(1, modifiedLevel * modifiedLevel) + RealmLevel;
+                int baseValue = Math.Max(1, modifiedLevel * modifiedLevel) + RealmLevel;
+                int realmRank = RealmLevel / 10;
+                double multiplier = 1.0 + (realmRank / 5.0);
+                return (int)Math.Round(baseValue * multiplier);
             }
         }
 

@@ -90,11 +90,18 @@ namespace DOL.GS
                         && mimic.CheckStyleStun(s))
                         return s;
 
-            // 3. Tank taunt rotation (PvE only — PvP would waste the style).
+            // 3. Tank taunt rotation. Was PvE-only — but in PvP, taunts are
+            // exactly the peel tool a real RvR tank uses to flip the player's
+            // damage off the healer back onto the tank. Without this, frontier
+            // mimic tanks tunneled DPS like generic melee classes and the
+            // back-line healer became a free kill. PvP taunts still apply the
+            // detaunt-resist mechanic (player can ignore the threat if RA'd
+            // correctly), but they DO add real threat to the tank, which is
+            // what we need for peel logic to actually take effect.
             // IsActingAsTank covers both the assigned MainTank case and the
             // player-led group case where a mimic tank is the de-facto tank
             // but MainTank still points at the player.
-            if (mimic.MimicBrain != null && !mimic.MimicBrain.PvPMode && mimic.MimicBrain.IsActingAsTank)
+            if (mimic.MimicBrain != null && mimic.MimicBrain.IsActingAsTank)
             {
                 Style s = CheckTaunt(mimic, lastAttackData);
 
