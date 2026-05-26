@@ -1095,6 +1095,18 @@ namespace DOL.GS.Scripts
                 WarMapMgr.AddFight((byte)CurrentZone.ID, X, Y, (byte)killer.Realm, (byte)Realm);
             }
 
+            // PvP kill credit MUST run before base.ProcessDeath / Delete().
+            // GameNPC.ProcessDeath (inside the non-rez-wait branch below)
+            // clears the XPGainers dictionary as part of its teardown, so any
+            // reward distribution that walks XPGainers after that point sees
+            // an empty list (totalDamage = 0) and silently awards nothing.
+            // That's why the previous "kill a mimic, get no RPs" bug
+            // persisted despite the helper being wired up — it ran after
+            // the clear. Pull it forward to here while XPGainers is still
+            // populated.
+            if (killingBlowByEnemyRealm)
+                AwardPvpKillRewards();
+
             TargetObject = null;
 
             if (IsOnHorse)
@@ -1277,17 +1289,6 @@ namespace DOL.GS.Scripts
                 // Message: {0} wins the duel!
                 //Message.SystemToOthers(Client, LanguageMgr.GetTranslation(this, "GamePlayer.Duel.Die.KillerWinsDuel", killer.Name), eChatType.CT_Emote);
             }
-
-            // PvP kill credit. AbstractServerRules.OnNpcKilled short-circuits
-            // for MimicNPC (mimics aren't loot piñatas) and OnPlayerKilled
-            // expects a GamePlayer signature, so neither path awards RPs.
-            // Distribute realm points to every player-attacker proportional
-            // to their damage share — same shape as OnPlayerKilled, just
-            // hand-rolled for a MimicNPC target. Only fires on an enemy-
-            // realm killing blow so own-realm griefs / PvE deaths don't
-            // award realm points.
-            if (killingBlowByEnemyRealm)
-                AwardPvpKillRewards();
 
             CancelAllConcentrationEffects();
         }

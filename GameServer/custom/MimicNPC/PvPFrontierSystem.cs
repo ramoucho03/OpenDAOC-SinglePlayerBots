@@ -98,11 +98,11 @@ namespace DOL.GS.Scripts
         public static bool PVP_FRONTIER_DYNAMIC_SPAWN;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_dynamic_spawn_inner",
-            "Minimum distance (units) between a dynamic-spawn point and the anchor player. Should stay above visibility range (~3500u) so groups appear by walking in, not popping into view. Default 4000.", 4000)]
+            "Minimum distance (units) between a dynamic-spawn point and the anchor player. Must stay well above visibility range (~3500u) so groups never pop into view. Default 8000.", 8000)]
         public static int PVP_FRONTIER_DYNAMIC_SPAWN_INNER;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_dynamic_spawn_outer",
-            "Maximum distance (units) between a dynamic-spawn point and the anchor player. Wider = more dispersed groups, narrower = denser encounters. Default 6500 (~2 min walk).", 6500)]
+            "Maximum distance (units) between a dynamic-spawn point and the anchor player. Wider = more dispersed groups, narrower = denser encounters. Default 13000 (~4 min walk).", 13000)]
         public static int PVP_FRONTIER_DYNAMIC_SPAWN_OUTER;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_dynamic_spawn_skip_if_empty",
@@ -166,7 +166,7 @@ namespace DOL.GS.Scripts
         private static ECSGameTimer _tickTimer;
         private static bool _running;
         private const int TICK_MS = 5000;            // population/maintenance tick
-        private const int GROUP_TICK_MS = 2000;      // per-group AI tick
+        private const int GROUP_TICK_MS = 1000;      // per-group AI tick (was 2000 — halved for snappier reactions / waypoint advancement / scan cadence)
 
         // ----- New Frontiers (the active RvR region) -----
         // Region 163 (NF) is the unified frontier theatre — all three realms
@@ -180,17 +180,18 @@ namespace DOL.GS.Scripts
 
         // ----- GLOBAL hydration budget -----
         // MimicNPC construction (spec/skill/equipment/ROG resolution) is
-        // CPU-heavy and runs synchronously on the GameLoop thread. The
-        // per-group HYDRATE_BATCH_PER_TICK cap bounds ONE group's cost, but
-        // the maintenance tick loops EVERY group: if many groups cross into
-        // hydrate range on the same tick they each build their batch and the
-        // GameLoop stalls for 1-2s — every NPC in the world (player pets,
-        // /mcreate bots, mobs) visibly blinks out and back. This global
-        // budget caps TOTAL constructions per maintenance tick regardless of
-        // how many groups want to hydrate; the rest finish on later ticks.
-        // Kept low (2) so the worst-case GameLoop stall is ~2 constructions
-        // no matter how many enemy groups a player runs into at once.
-        private const int MAX_HYDRATIONS_PER_TICK = 2;
+        // CPU-heavy and runs synchronously on the GameLoop thread. We size
+        // this budget so a FULL 8-man group can materialise in a single
+        // maintenance tick — the user spec is "le groupe pop d'un coup,
+        // complet et totalement pret a se battre". A staggered hydration
+        // breaks the spec: half the bots arrive, the player engages them,
+        // and the rest pop in mid-fight from the player's perspective.
+        // Sized to 16 so two groups can co-spawn on the same tick when
+        // multiple realms decide to converge on the player at once.
+        // Worst-case stall is ~16 constructions / tick, ~300-500 ms —
+        // a one-shot price the user explicitly accepted for the "pop d'un
+        // coup" behaviour.
+        private const int MAX_HYDRATIONS_PER_TICK = 16;
         internal static int HydrationBudgetRemaining;
 
         /// <summary>
@@ -1034,10 +1035,21 @@ namespace DOL.GS.Scripts
         private long _nextDormantStepMs;
         private long _hydratedSinceMs;    // GameLoopTime of the last Hydrate()
 
+        // Stuck detection state — leader position sampled each patrol tick.
+        // If the leader hasn't moved STUCK_MIN_DELTA² in STUCK_GRACE_MS we
+        // force a fresh waypoint pick.
+        private int _lastStuckX;
+        private int _lastStuckY;
+        private long _lastStuckSampleMs;
+        private const int STUCK_MIN_DELTA_SQ = 200 * 200; // 200u of movement in the window
+        private const int STUCK_GRACE_MS = 6000;
+
         // After leaving combat, the group rests this long before scanning for
-        // new engagements. Prevents a lone human from being chain-wiped by
-        // multiple bot groups converging on the same spot.
-        private const int POST_FIGHT_COOLDOWN_MS = 30_000;
+        // new engagements. Cut from 30 s → 8 s so the frontier feels alive
+        // — the original window made groups stand still post-fight long
+        // enough that a roaming player got the same patrolling group three
+        // times in a row without ever seeing it actually move.
+        private const int POST_FIGHT_COOLDOWN_MS = 8_000;
         private long _postFightUntilMs;
 
         private PvPFrontierGroup(PvPFrontierManager.RealmConfig cfg) => Config = cfg;
@@ -1156,13 +1168,13 @@ namespace DOL.GS.Scripts
         /// VirtualPosition and binds them into a DAoC group. Idempotent: returns
         /// immediately if already hydrated.
         /// </summary>
-        // Max MimicNPC constructed per Hydrate() call. MimicNPC construction
-        // is CPU-heavy (spec / skill / equipment resolution) and runs on the
-        // GameLoop thread; materialising a whole 8-member group in one tick
-        // froze the server long enough for the client to blink every NPC out
-        // and back in. Staggering the build across a couple of ticks keeps
-        // each frame's cost bounded.
-        private const int HYDRATE_BATCH_PER_TICK = 4;
+        // Max MimicNPC constructed per Hydrate() call. Set to a full 8-man
+        // so the user-spec "le groupe pop d'un coup, complet et totalement
+        // pret a se battre" actually happens — staggering meant the player
+        // engaged half a group while the other half popped in mid-fight.
+        // The global MAX_HYDRATIONS_PER_TICK on the manager (16) still
+        // bounds total CPU per maintenance tick across all groups.
+        private const int HYDRATE_BATCH_PER_TICK = 8;
 
         // Cursor into Roster for staggered hydration. Advances on every
         // attempt (success OR skip) so a roster class that fails to build
@@ -1483,18 +1495,27 @@ namespace DOL.GS.Scripts
             // If we are near our waypoint AND it's a keep, engage the doors/guards.
             TryAttackKeepObjectsNearWaypoint();
 
-            // Reached current waypoint? Only pick the next one once the bulk
-            // of the group has caught up — otherwise the leader sprints off
-            // again before stragglers reach the rally point and the group
-            // visibly stretches into a single-file line. Wait until at
-            // least 75% of the alive roster is inside WAYPOINT_REACHED_RANGE
-            // around the leader before advancing.
-            if (leader.GetDistance(_currentWaypoint) < WAYPOINT_REACHED_RANGE
-                && GroupCohesionRatio(leader, WAYPOINT_REACHED_RANGE) >= 0.75)
+            // Reached current waypoint? Pick the next one as soon as the
+            // leader arrives — no more "wait for stragglers" gate. The
+            // 75% cohesion gate stalled the entire group whenever a slow
+            // caster fell behind, producing visibly immobile waypoints
+            // for 5-10+ seconds at a time. The follower brains run their
+            // own FOLLOW_THE_LEADER state and a stuck-detection nudge
+            // (see below) catches anyone genuinely lost — the leader no
+            // longer waits.
+            if (leader.GetDistance(_currentWaypoint) < WAYPOINT_REACHED_RANGE)
             {
                 PickNextWaypoint();
                 OrderGroupToWaypoint();
             }
+
+            // Stuck detection: if the leader hasn't meaningfully moved in
+            // STUCK_GRACE_MS while supposedly walking to a waypoint, force
+            // a fresh pick. Path failures (broken navmesh, line of fire
+            // through a wall) otherwise leave the group standing on the
+            // exact same tile for the whole patrol cycle. Cheap O(1)
+            // position delta check — no path probing.
+            CheckPatrolStuck(leader);
 
             // Periodically scan for enemy realm groups within detection range.
             long now = GameLoop.GameLoopTime;
@@ -1506,7 +1527,13 @@ namespace DOL.GS.Scripts
 
             if (now >= _nextScanMs)
             {
-                _nextScanMs = now + 3000 + Util.Random(0, 2000);
+                // Scan cadence halved (was 3-5 s, now 1-2 s) so groups
+                // commit to a real player or enemy group within one tick
+                // of detection instead of finishing their current waypoint
+                // first. Combined with the 1 s group tick, max latency
+                // from "player enters detection range" → "group engages"
+                // is now ~2 s instead of ~5-8 s.
+                _nextScanMs = now + 1000 + Util.Random(0, 1000);
 
                 // Scan for the closest enemy player FIRST. Frontier mimic
                 // groups exist to challenge real players — if one is in
@@ -1591,21 +1618,124 @@ namespace DOL.GS.Scripts
         {
             if (target == null) return;
 
+            // Tactical focus-fire: if the spotted player is in a group with a
+            // healer / caster, swap to the squishiest visible target. A real
+            // RvR group does this instinctively — pick the back line off
+            // before grinding through the tank. Falls back to the original
+            // target if no better squishy is in detection range.
+            GameLiving focus = PickBestFocusTarget(target);
+            GameLiving primary = focus ?? target;
+
+            // Per-role aggro assignment: melee + tank classes go straight on
+            // the primary target; healers / supports / stealthers stay on
+            // the primary as well but with a smaller aggro bump (so they
+            // don't out-threat the tank's peel). This lets the brain's own
+            // CC / heal cycles continue to make per-tick decisions while
+            // still committing to combat.
             foreach (var m in Members)
             {
                 if (m == null || !m.IsAlive) continue;
                 if (m.MimicBrain == null) continue;
 
-                m.TargetObject = target;
-                m.MimicBrain.AddToAggroList(target, 1);
+                m.TargetObject = primary;
+                int aggroAmount = (m.MimicBrain.IsHealer || m.MimicBrain.IsMainCC) ? 1 : 5;
+                m.MimicBrain.AddToAggroList(primary, aggroAmount);
             }
 
-            // Move the group to the target's position so they actually close
-            // distance — without this, AddToAggroList alone leaves the bots
-            // standing on their last waypoint, only fighting back if the
-            // target wanders into the per-mimic AggroRange.
-            _currentWaypoint = new Point3D(target.X, target.Y, target.Z);
+            // Movement: bias the convergence point so HEALERS end up at the
+            // back of the formation. Without this, the whole group piles
+            // onto the player's tile and the back-line healers get focus-
+            // fired through the tank. We aim the convergence about ~600u
+            // SHORT of the target so the tank engages while healers stay
+            // safely back. The brain's per-bot aggro range (3000u) still
+            // closes the final gap when needed.
+            double dx = target.X - VirtualPosition.X;
+            double dy = target.Y - VirtualPosition.Y;
+            double len = Math.Sqrt(dx * dx + dy * dy);
+            if (len > 100)
+            {
+                int backoff = 600;
+                int approachX = target.X - (int)Math.Round(dx / len * backoff);
+                int approachY = target.Y - (int)Math.Round(dy / len * backoff);
+                _currentWaypoint = new Point3D(approachX, approachY, target.Z);
+            }
+            else
+            {
+                _currentWaypoint = new Point3D(target.X, target.Y, target.Z);
+            }
             OrderGroupToWaypoint();
+        }
+
+        /// <summary>
+        /// Inspects the target's group (if any) for a more valuable focus
+        /// target — a healer, caster, or unbuffed light-armour class is a
+        /// far better burst target than the front-line tank. Mimics already
+        /// do this implicitly via aggro-list threat math, but locking the
+        /// initial engage on a healer makes the first 5 seconds of combat
+        /// feel like a real coordinated group push instead of a flat zerg
+        /// on the tank.
+        /// </summary>
+        private GameLiving PickBestFocusTarget(GameLiving primaryTarget)
+        {
+            if (primaryTarget is not GamePlayer gp || gp.Group == null)
+                return null;
+
+            GameLiving best = null;
+            int bestScore = int.MinValue;
+            foreach (GameLiving member in gp.Group.GetMembersInTheGroup())
+            {
+                if (member is not GamePlayer mp || !mp.IsAlive) continue;
+                if (mp.IsStealthed) continue;
+                if (mp.Client?.Account?.PrivLevel > 1) continue;
+                if (mp.Realm == Config.Realm) continue;
+
+                // Score: healer / caster / light armour > tank. Bigger score
+                // means juicier target. Distance penalty so we don't chase
+                // someone behind the player.
+                int score = 0;
+                eCharacterClass cls = (eCharacterClass)mp.CharacterClass.ID;
+                if (IsHealerPlayerClass(cls)) score += 100;
+                else if (IsCasterPlayerClass(cls)) score += 60;
+                else if (IsLightArmourClass(cls)) score += 25;
+                else continue; // tank / heavy melee — don't divert
+
+                if (mp == primaryTarget) score += 5; // small tiebreak to keep original
+                MimicNPC leader = FirstAliveMember();
+                if (leader != null)
+                {
+                    int dist = leader.GetDistanceTo(mp);
+                    score -= dist / 200; // -1 per 200u of extra distance
+                }
+
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    best = mp;
+                }
+            }
+            return best;
+        }
+
+        private static bool IsHealerPlayerClass(eCharacterClass c)
+        {
+            return c == eCharacterClass.Cleric || c == eCharacterClass.Friar
+                || c == eCharacterClass.Druid || c == eCharacterClass.Warden || c == eCharacterClass.Bard
+                || c == eCharacterClass.Healer || c == eCharacterClass.Shaman;
+        }
+
+        private static bool IsCasterPlayerClass(eCharacterClass c)
+        {
+            return c == eCharacterClass.Wizard || c == eCharacterClass.Sorcerer || c == eCharacterClass.Theurgist
+                || c == eCharacterClass.Cabalist || c == eCharacterClass.Necromancer
+                || c == eCharacterClass.Eldritch || c == eCharacterClass.Enchanter || c == eCharacterClass.Mentalist || c == eCharacterClass.Animist
+                || c == eCharacterClass.Runemaster || c == eCharacterClass.Spiritmaster || c == eCharacterClass.Bonedancer;
+        }
+
+        private static bool IsLightArmourClass(eCharacterClass c)
+        {
+            return c == eCharacterClass.Minstrel || c == eCharacterClass.Scout || c == eCharacterClass.Infiltrator
+                || c == eCharacterClass.Ranger || c == eCharacterClass.Nightshade
+                || c == eCharacterClass.Hunter || c == eCharacterClass.Shadowblade;
         }
 
         private void TickEngaging()
@@ -1650,8 +1780,25 @@ namespace DOL.GS.Scripts
                 }
 
                 State = eFrontierState.Patrolling;
-                PickNextWaypoint();
-                OrderGroupToWaypoint();
+                // Post-combat regroup: rally at the leader's CURRENT position
+                // before picking the next patrol waypoint. Without this, the
+                // group splinters after a fight — followers spread out chasing
+                // their last aggro target, the leader picks a fresh waypoint
+                // and sprints off, and stragglers either fall behind or get
+                // picked off solo by chasers. A single intermediate waypoint
+                // at the leader's location forces the FOLLOW_THE_LEADER state
+                // to converge for ~5-10 s before the next patrol leg starts.
+                MimicNPC postFightLeader = FirstAliveMember();
+                if (postFightLeader != null)
+                {
+                    _currentWaypoint = new Point3D(postFightLeader.X, postFightLeader.Y, postFightLeader.Z);
+                    OrderGroupToWaypoint();
+                }
+                else
+                {
+                    PickNextWaypoint();
+                    OrderGroupToWaypoint();
+                }
             }
         }
 
@@ -1700,6 +1847,81 @@ namespace DOL.GS.Scripts
             }
             if (alive == 0) return 1.0;
             return (double)near / alive;
+        }
+
+        /// <summary>
+        /// Tracks leader displacement between patrol ticks. If the leader
+        /// hasn't moved meaningfully (≥200u total) within STUCK_GRACE_MS,
+        /// force a fresh waypoint pick and re-issue the move order. Path
+        /// failures (LoS blocked by a wall, navmesh hole, mob body block)
+        /// otherwise wedge the entire group on one tile indefinitely —
+        /// visible as "the patrol stopped and never moved again".
+        /// Also teleport-snaps any straggler more than 3000u behind the
+        /// leader to the leader's position so a slow caster doesn't fall
+        /// off the world map after a hot pursuit / retreat / engagement.
+        /// </summary>
+        private void CheckPatrolStuck(GameLiving leader)
+        {
+            if (leader == null) return;
+
+            long now = GameLoop.GameLoopTime;
+            if (_lastStuckSampleMs == 0)
+            {
+                _lastStuckX = leader.X;
+                _lastStuckY = leader.Y;
+                _lastStuckSampleMs = now;
+            }
+
+            int dx = leader.X - _lastStuckX;
+            int dy = leader.Y - _lastStuckY;
+            int moved = dx * dx + dy * dy;
+
+            if (moved >= STUCK_MIN_DELTA_SQ)
+            {
+                _lastStuckX = leader.X;
+                _lastStuckY = leader.Y;
+                _lastStuckSampleMs = now;
+            }
+            else if (now - _lastStuckSampleMs > STUCK_GRACE_MS)
+            {
+                // Leader didn't move enough — fresh waypoint to escape.
+                _lastStuckSampleMs = now;
+                _lastStuckX = leader.X;
+                _lastStuckY = leader.Y;
+                PickNextWaypoint();
+                OrderGroupToWaypoint();
+            }
+
+            // Pull stragglers back. Anyone more than 3000 u from the leader
+            // gets a path order; if they're absurdly far (>6000u) we just
+            // teleport-snap them to the leader so the group reconstitutes
+            // instead of dribbling members across half a zone.
+            const int STRAGGLER_PATH_RANGE = 3000;
+            const int STRAGGLER_TELEPORT_RANGE = 6000;
+            foreach (var m in Members)
+            {
+                if (m == null || !m.IsAlive || m == leader) continue;
+                if (m.ObjectState != GameObject.eObjectState.Active) continue;
+                if (m.InCombat) continue; // never yank a bot out of an active fight
+
+                int ddx = m.X - leader.X;
+                int ddy = m.Y - leader.Y;
+                long sq = (long)ddx * ddx + (long)ddy * ddy;
+                if (sq < (long)STRAGGLER_PATH_RANGE * STRAGGLER_PATH_RANGE) continue;
+
+                if (sq > (long)STRAGGLER_TELEPORT_RANGE * STRAGGLER_TELEPORT_RANGE)
+                {
+                    m.MoveTo(leader.CurrentRegionID,
+                        leader.X + Util.Random(-100, 100),
+                        leader.Y + Util.Random(-100, 100),
+                        leader.Z,
+                        leader.Heading);
+                }
+                else
+                {
+                    m.PathTo(new Point3D(leader.X, leader.Y, leader.Z), m.MaxSpeed);
+                }
+            }
         }
 
         private void PickNextWaypoint()
@@ -1816,10 +2038,22 @@ namespace DOL.GS.Scripts
 
             if (bestPos == null) return null;
 
-            // Small jitter — groups don't all stack on the same coordinate.
-            int jitterX = Util.Random(-400, 400);
-            int jitterY = Util.Random(-400, 400);
-            return new Point3D(bestPos.Value.X + jitterX, bestPos.Value.Y + jitterY, bestPos.Value.Z);
+            // Angle-based spread instead of random ±400u jitter. Multiple
+            // groups tracking the same player all rolled tiles within a
+            // ~565u radius (sqrt(400²+400²)) — a tight pile that gave the
+            // player a single rally point to AoE. Now each group picks an
+            // angle derived from its own (deterministic) hash and stages
+            // 1500-2500u out on a ring around the target, so 5 groups
+            // attacking the same player approach from 5 different bearings.
+            // The group still RUNS toward the player (waypoint pulls them
+            // in via OrderGroupToWaypoint + per-mimic AggroRange); this
+            // staging point just determines THE ANGLE of approach.
+            int hash = (Roster.Count * 7919) ^ Region ^ (int)Config.Realm;
+            double angle = (hash & 0xFFFF) / 65536.0 * Math.PI * 2;
+            int offset = 1500 + Util.Random(0, 1000);
+            int ox = (int)Math.Round(Math.Cos(angle) * offset);
+            int oy = (int)Math.Round(Math.Sin(angle) * offset);
+            return new Point3D(bestPos.Value.X + ox, bestPos.Value.Y + oy, bestPos.Value.Z);
         }
 
         /// <summary>
@@ -2392,15 +2626,40 @@ namespace DOL.GS.Scripts
 
         private static int ComputeStrength(PvPFrontierGroup g)
         {
-            int s = 0;
+            int aliveCount = 0;
+            int healerCount = 0;
+            int levelSum = 0;
+            int rrSum = 0;
             foreach (var m in g.Members)
             {
                 if (m == null || !m.IsAlive) continue;
-                s += m.Level;
+                aliveCount++;
+                levelSum += m.Level;
+                rrSum += m.RealmLevel;
                 if (m.MimicBrain != null && m.MimicBrain.IsHealer)
-                    s += 5;
+                    healerCount++;
             }
-            return s;
+
+            if (aliveCount == 0) return 0;
+
+            // Base strength: levels + realm-rank bonus (every 10 RR = level-1
+            // bonus, capping the RR contribution at sane values).
+            int strength = levelSum + (rrSum / 10);
+
+            // Headcount weight: a 5-man group is much stronger than a level-
+            // matched 1-man, but the previous formula treated them as equal.
+            // Multiply by sqrt(aliveCount) so 8 mimics weigh ~2.8× a solo
+            // mimic instead of 8× (too cliff-edged for tactical decisions).
+            strength = (int)(strength * Math.Sqrt(aliveCount));
+
+            // Healer ratio matters more than absolute healer count: 2 healers
+            // in an 8-man (25 %) is the standard tank-friendly comp; 0 is a
+            // suicidal zerg; 2 in a 4-man (50 %) is over-healed. Scale the
+            // contribution by ratio, not raw count.
+            double healerRatio = (double)healerCount / aliveCount;
+            strength = (int)(strength * (1.0 + healerRatio * 0.6));
+
+            return strength;
         }
     }
 

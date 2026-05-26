@@ -37,8 +37,16 @@ namespace DOL.GS.PropertyCalc
             // Buffs allow to regenerate endurance even in combat and while moving.
             double regen = living.BaseBuffBonusCategory[property] + living.AbilityBonus[property] + living.ItemBonus[property] - debuff;
 
-            if (!living.InCombat && living is GamePlayer player && !player.IsMoving)
-                regen += player.IsSitting ? 4 : 1;
+            // Live 1.87 behaviour (and what the file's top comment promises):
+            // out-of-combat passive regen ticks at the standing rate even while
+            // moving. We previously gated the bonus behind `!player.IsMoving`,
+            // which left runners stuck at 0/tick whenever they weren't standing
+            // still — sprinting then permanently drained endurance once the
+            // sprint timer ate the bar. Bonus bumped from 1/4 -> 4/8 so the
+            // passive recovery is actually perceptible on a single-player
+            // server where most movement happens out of combat.
+            if (!living.InCombat && living is GamePlayer player)
+                regen += player.IsSitting ? 8 : 4;
 
             regen *= ServerProperties.Properties.ENDURANCE_REGEN_AMOUNT_MODIFIER;
             return Math.Max(0, (int) regen);

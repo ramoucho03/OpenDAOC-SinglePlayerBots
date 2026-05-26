@@ -24,10 +24,14 @@ namespace DOL.GS.PropertyCalc
               - All health and power regeneration aids are now twice as effective.
              */
 
-            // Reverted 1.87 changes.
-            // From DoL's `5 + (living.Level / 2.75)`.
-            // 12 power per tick at level 50 instead of 23.18.
-            double regen = 2.5 + living.Level * 0.2;
+            // Boosted passive mana regen for single-player play. The old
+            // `2.5 + level*0.2` (12.5/tick at L50) was tuned for live-pop where
+            // healer downtime is part of the encounter pacing — with mostly
+            // mimics around, a solo caster spends too much of their time idle
+            // waiting on the bar. Doubled to `5 + level*0.4` (25/tick at L50).
+            // The MANA_REGEN_AMOUNT_MODIFIER server property still multiplies
+            // on top, and the < 50% list-caster penalty below is unchanged.
+            double regen = 5 + living.Level * 0.4;
             int debuff = living.SpecBuffBonusCategory[property];
 
             if (debuff < 0)

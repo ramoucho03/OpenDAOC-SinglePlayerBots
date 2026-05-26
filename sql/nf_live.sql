@@ -18,6 +18,18 @@
 -- =====================================================================
 SET FOREIGN_KEY_CHECKS = 0;
 
+-- ---- Region frontier flags ----------------------------------------
+-- Without these flips, KeepManager.Load reads IsFrontier from the DB
+-- and builds m_frontierRegionsList = {1, 100, 200} (the upstream OF
+-- defaults), excluding 163. GetKeepsByRealmMap then silently filters
+-- out every NF keep -> the warmap has no colored ownership markers
+-- and the realm-master 'teleport to keep' path refuses to fire.
+-- Apply BEFORE inserting keeps so the manager builds the right list
+-- at first boot (and idempotent on re-boots).
+
+UPDATE `regions` SET IsFrontier = 1 WHERE RegionID = 163;
+UPDATE `regions` SET IsFrontier = 0 WHERE RegionID IN (1, 100, 200);
+
 -- ---- NF main keeps (21) + NF towers (84) --------------------------
 -- Sourced from Eve-of-Darkness Keep.json, region 163.
 

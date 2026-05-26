@@ -256,6 +256,19 @@ def emit_teleports(out):
     out.write("\n")
 
 
+def emit_region_frontier_flags(out):
+    out.write("-- ---- Region frontier flags ----------------------------------------\n")
+    out.write("-- Without these flips, KeepManager.Load reads IsFrontier from the DB\n")
+    out.write("-- and builds m_frontierRegionsList = {1, 100, 200} (the upstream OF\n")
+    out.write("-- defaults), excluding 163. GetKeepsByRealmMap then silently filters\n")
+    out.write("-- out every NF keep -> the warmap has no colored ownership markers\n")
+    out.write("-- and the realm-master 'teleport to keep' path refuses to fire.\n")
+    out.write("-- Apply BEFORE inserting keeps so the manager builds the right list\n")
+    out.write("-- at first boot (and idempotent on re-boots).\n\n")
+    out.write("UPDATE `regions` SET IsFrontier = 1 WHERE RegionID = 163;\n")
+    out.write("UPDATE `regions` SET IsFrontier = 0 WHERE RegionID IN (1, 100, 200);\n\n")
+
+
 def main():
     if len(sys.argv) < 3:
         sys.stderr.write("usage: build_nf_live_sql.py <eod-db-checkout> <output-sql>\n")
@@ -274,6 +287,7 @@ def main():
     os.makedirs(os.path.dirname(outpath) or '.', exist_ok=True)
     with open(outpath, 'w', encoding='utf-8', newline='\n') as out:
         out.write(HEADER)
+        emit_region_frontier_flags(out)
         emit_keeps(out, nf_keeps)
         emit_relic_keeps(out)
         emit_components(out, comps, nf_keep_ids)
