@@ -92,9 +92,10 @@ apply_sql_patch() {
     fi
 }
 
-apply_sql_patch /app/sql/heretic_live.sql       "Heretic Live SQL patch"
 apply_sql_patch /app/sql/battlegrounds_live.sql "Battlegrounds Live SQL patch"
 apply_sql_patch /app/sql/nf_live.sql            "NF Live (keeps + components + teleports) SQL patch"
+# heretic_live.sql intentionally removed — Heretic class data now sourced from
+# Eve-of-Darkness (purged then refilled by 45_heretic_purge.sql + EoD fill below).
 
 # --- Larogoth + Eve-of-Darkness migrations (one-shot, checksum-tracked) ---
 # 5 files applied IN ORDER (numbering = dependency order):
@@ -159,11 +160,13 @@ apply_larogoth_migration() {
 
 # Order matters: items first (so 20/30 can match the new rows by Name+Realm),
 # then ext/loot (both join on ItemTemplate), then wiring (joins on ItemLootSource),
+# then heretic purge (clears the runway so EoD's complete Heretic data lands),
 # finally Eve-of-Darkness bulk fill last so it doesn't overwrite anything above.
 apply_larogoth_migration /app/sql/larogoth/10_larogoth_items.sql
 apply_larogoth_migration /app/sql/larogoth/20_larogoth_ext.sql
 apply_larogoth_migration /app/sql/larogoth/30_larogoth_loot.sql
 apply_larogoth_migration /app/sql/larogoth/40_larogoth_loot_wiring.sql
+apply_larogoth_migration /app/sql/larogoth/45_heretic_purge.sql
 apply_larogoth_migration /app/sql/larogoth/50_eveofdarkness_fill.sql force
 
 # Change ownership of the /app directory

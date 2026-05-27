@@ -61,6 +61,20 @@ MOB_REGION_COL_INDEX = 12
 
 INSERT_RE = re.compile(r"^INSERT INTO\b", re.IGNORECASE)
 MOB_INSERT_RE = re.compile(r"^INSERT\s+(IGNORE\s+)?INTO\s+`Mob`\s*\(", re.IGNORECASE)
+INSERT_TABLE_RE = re.compile(r"^INSERT\s+(?:IGNORE\s+)?INTO\s+`([^`]+)`", re.IGNORECASE)
+
+# Tables whose entire INSERT block we intentionally drop. EoD ships some
+# tables whose schema and conventions diverge from OpenDAoC's enough that
+# importing them creates either schema errors or unusable rows.
+#
+# ClassXRealmAbility: OpenDAoC ships ClassXRealmAbility_Atlas (5 columns,
+# different PK) and uses Atlas-only ability keys (AtlasOF_*). EoD ships the
+# legacy 4-column table with classic ability keys (Augmented Strength etc).
+# Even if we rewrote the table name, the abilities themselves wouldn't be
+# wired in our Atlas RA system. Cleaner to drop the whole block.
+SKIP_TABLES = {
+    "ClassXRealmAbility",
+}
 
 
 def split_tuple(line):
@@ -125,7 +139,9 @@ def main():
 
     stripped_ddl = 0
     rewrote_inserts = 0
+    skipped_table_blocks = 0
     in_ddl_block = False  # inside a multi-line CREATE/DROP/ALTER
+    in_skip_block = False  # inside an INSERT for a table in SKIP_TABLES
 
     # Mob-block state. The buffer holds the most recently kept Mob row whose
     # final punctuation (`,` vs `;`) we haven't decided yet — we know it only
@@ -205,6 +221,19 @@ def main():
                 # Leaving any previous Mob block we were in.
                 if in_mob_block:
                     close_mob_block(o)
+                # Also leaving any prior skip-table block.
+                in_skip_block = False
+
+                # Identify the target table for skip / mob-filter / passthrough.
+                m_table = INSERT_TABLE_RE.match(stripped)
+                target_table = m_table.group(1) if m_table else ""
+
+                if target_table in SKIP_TABLES:
+                    # Drop the entire INSERT (header + all rows) until the next
+                    # statement boundary. Logged so the operator sees it.
+                    in_skip_block = True
+                    skipped_table_blocks += 1
+                    continue
 
                 rewritten = line.replace("INSERT INTO", "INSERT IGNORE INTO", 1)
                 rewrote_inserts += 1
@@ -216,6 +245,12 @@ def main():
                     mob_header_pending = rewritten
                 else:
                     o.write(rewritten)
+                continue
+
+            # ---- Inside a skipped table's INSERT block ----------------
+            if in_skip_block:
+                # Drop every continuation row (and any trailing punctuation
+                # line) until the next statement boundary handled above.
                 continue
 
             # ---- Inside a Mob INSERT block ----------------------------
@@ -269,6 +304,7 @@ def main():
     out_size_mb = out.stat().st_size / 1024 / 1024
     print(f"[eod] stripped {stripped_ddl} DDL statements, rewrote {rewrote_inserts} INSERTs")
     print(f"[eod] Mob filter: kept {mob_kept}, skipped {mob_skipped} (saturated regions {sorted(SATURATED_REGIONS)})")
+    print(f"[eod] dropped {skipped_table_blocks} INSERT blocks for tables in SKIP_TABLES={sorted(SKIP_TABLES)}")
     print(f"[eod] wrote {out} ({out_size_mb:.1f} MB)")
 
 

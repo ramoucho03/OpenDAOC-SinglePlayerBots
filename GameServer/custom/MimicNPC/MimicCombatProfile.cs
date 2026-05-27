@@ -157,6 +157,27 @@ namespace DOL.GS.Scripts
             if (isLowHealth)
                 score -= 25;
 
+            // PvP healer harassment. Dropping a healer is the single
+            // biggest swing in any RvR fight — once the enemy back-line
+            // goes down, the front-line follows minutes later. We bias
+            // tanks, DPS, support, and CC mimics toward enemy healers so
+            // groups commit to peel/interrupt/burst them down instead of
+            // tunneling the same MainAssist target. Excluded from healer
+            // and pet-caster roles: a healer breaking off to charge an
+            // enemy healer abandons the group, and pet-casters are
+            // mid/long-range nukers whose pet drives their target choice
+            // anyway. Magnitude (-45) is tuned to outweigh a one-slot
+            // priority demotion (100 per slot) without overriding the
+            // hard "tank guarding a low-vuln teammate" bias (-90).
+            if (mode == eMimicCombatMode.PvP
+                && targetProfile != null
+                && targetProfile.HasRole(eMimicCombatRole.Healer)
+                && !HasRole(eMimicCombatRole.Healer)
+                && !HasRole(eMimicCombatRole.PetCaster))
+            {
+                score -= 45;
+            }
+
             score += Math.Max(0, distance) / 100;
             return Math.Max(0, score);
         }

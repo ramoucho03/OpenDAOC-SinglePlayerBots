@@ -126,8 +126,64 @@ namespace DOL.GS.Scripts
         public static int PVP_FRONTIER_MAX_GROUPS_NEAR_PLAYER_PER_REALM;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_dynamic_spawn_cooldown_sec",
-            "Minimum seconds between two consecutive dynamic spawns for THE SAME realm. After spawning a group around a player, the realm's next group can't spawn for this long — paces encounters to roughly 1 every 5-10 min instead of a constant stream. Default 420 (7 min). Set to 0 to disable.", 420)]
+            "Legacy hard floor — minimum seconds between two consecutive dynamic spawns for THE SAME realm, measured from the LAST SPAWN time. Superseded by the encounter-pacing system (pvp_frontier_post_encounter_*), which times the next spawn from the END of the last fight instead. Kept at 0 by default so the new system is authoritative; set above zero only if you want a belt-and-suspenders rate limit on top.", 0)]
         public static int PVP_FRONTIER_DYNAMIC_SPAWN_COOLDOWN_SEC;
+
+        // ---- Encounter-pacing system ----
+        // Replaces the old "since last spawn" cooldown with a "since last
+        // fight ended" timer. The manager tracks per-(region, realm)
+        // whether a player is currently fighting any of that realm's
+        // mimics; when that fight ends, it rolls a fresh random window
+        // [min, max] before the realm is allowed to spawn its next group.
+        // This delivers the user-requested cadence of "one encounter
+        // every 2-10 min after the last one ends" rather than "every X
+        // min from spawn" (which under-counted when fights ran long).
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_post_encounter_min_sec",
+            "Minimum seconds between the END of a player-mimic fight and the next dynamic spawn for that realm. Default 120 (2 min) — the floor of the random delay rolled per encounter end.", 120)]
+        public static int PVP_FRONTIER_POST_ENCOUNTER_MIN_SEC;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_post_encounter_max_sec",
+            "Maximum seconds between the END of a player-mimic fight and the next dynamic spawn for that realm. Combined with MIN, the actual delay rolls uniformly in [MIN, MAX]. Default 600 (10 min). Lower for constant action, higher for slower-paced sessions.", 600)]
+        public static int PVP_FRONTIER_POST_ENCOUNTER_MAX_SEC;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_post_encounter_surprise_chance",
+            "Chance (0-100) that the post-encounter delay roll is overridden with a 'surprise' fast respawn (30-90 s) — keeps the player from fully predicting cadence. Default 8.", 8)]
+        public static int PVP_FRONTIER_POST_ENCOUNTER_SURPRISE_CHANCE;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_post_encounter_lull_chance",
+            "Chance (0-100) that the post-encounter delay roll is overridden with an 'extended lull' (MAX..MAX*1.5) — mirrors the surprise mechanic on the slow side, so cadence sometimes stretches naturally. Default 8.", 8)]
+        public static int PVP_FRONTIER_POST_ENCOUNTER_LULL_CHANCE;
+
+        // ---- Third-party crash (chaos reinforcement event) ----
+        // Once an encounter has started, there's a small chance another
+        // realm — or the same enemy realm — sends a small reinforcement
+        // group toward the engagement. Creates the classic RvR "two groups
+        // are fighting, a third shows up" moment.
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_third_party_crash_chance",
+            "Chance (0-100) per fresh encounter that a small 3rd-party group spawns nearby to crash the fight. 0 disables. Default 5 — uncommon but memorable.", 5)]
+        public static int PVP_FRONTIER_THIRD_PARTY_CRASH_CHANCE;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_third_party_crash_min_size",
+            "Minimum mimic count for a 3rd-party crash group. Default 3.", 3)]
+        public static int PVP_FRONTIER_THIRD_PARTY_CRASH_MIN_SIZE;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_third_party_crash_max_size",
+            "Maximum mimic count for a 3rd-party crash group. Default 5 — small enough to add chaos, not overwhelm the original fight.", 5)]
+        public static int PVP_FRONTIER_THIRD_PARTY_CRASH_MAX_SIZE;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_third_party_crash_min_delay_sec",
+            "Minimum seconds after the encounter starts before the 3rd-party group spawns. Default 15 — arrives mid-fight, not pre-emptively.", 15)]
+        public static int PVP_FRONTIER_THIRD_PARTY_CRASH_MIN_DELAY_SEC;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_third_party_crash_max_delay_sec",
+            "Maximum seconds after the encounter starts before the 3rd-party group spawns. Default 45.", 45)]
+        public static int PVP_FRONTIER_THIRD_PARTY_CRASH_MAX_DELAY_SEC;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_third_party_crash_distance",
+            "Spawn distance (units) of the 3rd-party crash group from the engagement centre. Tighter than the normal dynamic-spawn ring so they actually arrive in time. Default 5500.", 5500)]
+        public static int PVP_FRONTIER_THIRD_PARTY_CRASH_DISTANCE;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_entry_grace_sec",
             "Grace period (seconds) when a player enters a frontier region: no dynamic spawn anchors on them during this window so they aren't ambushed the moment they cross the line. Default 60 (1 min). Set to 0 to disable.", 60)]
@@ -588,6 +644,13 @@ namespace DOL.GS.Scripts
                                 }
                             }
 
+                            // Encounter-pacing edge detector. Must run every
+                            // tick (not gated on missing population) so the
+                            // InEncounter → !InEncounter transition gets
+                            // captured even when the realm is already at its
+                            // target. Cheap O(groups × roster).
+                            UpdateEncounterPacing(cfg);
+
                             // Each config carries its own target population
                             // (per-region, per-realm). BG configs use the
                             // smaller bg-population setting; the main NF
@@ -645,6 +708,12 @@ namespace DOL.GS.Scripts
                                 continue;
                             if (gotDynamic && IsRealmOnSpawnCooldown(cfg))
                                 continue;
+                            // Encounter-pacing gate: holds back the next
+                            // spawn until the rolled post-fight delay
+                            // elapses (default 2-10 min after the previous
+                            // engagement ended for this realm).
+                            if (gotDynamic && IsRealmPacedOut(cfg))
+                                continue;
 
                             PvPFrontierGroup newGroup = PvPFrontierGroup.Spawn(cfg, groupSize, dynamicAnchor);
                             if (newGroup != null)
@@ -678,6 +747,12 @@ namespace DOL.GS.Scripts
             try { TickKeepSiegeEvent(); }
             catch (Exception ksEx) { log.Error("PvPFrontier keep siege event failed", ksEx); }
 
+            // Fire any 3rd-party crash entries whose delay has elapsed.
+            // Independent of the spawn pass so a crash can land even when
+            // the engaged realm is at its target population.
+            try { ProcessPendingCrashes(); }
+            catch (Exception cEx) { log.Error("PvPFrontier 3rd-party crash dispatch failed", cEx); }
+
             return TICK_MS;
         }
 
@@ -701,6 +776,281 @@ namespace DOL.GS.Scripts
         private static void NoteRealmSpawn(RealmConfig cfg)
         {
             _lastSpawnTickByRealm[(cfg.Region, cfg.Realm)] = GameLoop.GameLoopTime;
+        }
+
+        // ---- Encounter pacing ----
+        // Per-realm tiny state machine: was this realm currently fighting a
+        // real player last tick, and when is it next allowed to dynamic-spawn?
+        // The "next allowed" timestamp gets rolled fresh every time a fight
+        // ends, so the player always gets a randomized [min, max] breather
+        // between encounters instead of a fixed "since last spawn" delay.
+        private sealed class RealmEncounterState
+        {
+            public bool InEncounter;
+            public long NextSpawnReadyMs;
+        }
+
+        private static readonly Dictionary<(ushort, eRealm), RealmEncounterState> _encounterStateByRealm = new();
+
+        private static RealmEncounterState GetOrCreateEncounterState(RealmConfig cfg)
+        {
+            var key = (cfg.Region, cfg.Realm);
+            if (!_encounterStateByRealm.TryGetValue(key, out RealmEncounterState s))
+            {
+                s = new RealmEncounterState();
+                _encounterStateByRealm[key] = s;
+            }
+            return s;
+        }
+
+        /// <summary>
+        /// True when at least one hydrated alive mimic of this realm has
+        /// a real <see cref="GamePlayer"/> in its aggro list, or has been in
+        /// melee/spell combat in the last 15 seconds with a real player as
+        /// attacker or target. Mimic-vs-mimic clashes don't count — only
+        /// real-player engagement gates the pacing window. Cheap walk over
+        /// the realm's hydrated groups; bails on the first hit.
+        /// </summary>
+        private static bool IsRealmInPlayerEncounter(RealmConfig cfg)
+        {
+            foreach (PvPFrontierGroup g in cfg.Groups)
+            {
+                if (g.IsDisbanded) continue;
+                if (!g.IsHydrated) continue;
+
+                foreach (MimicNPC m in g.Members)
+                {
+                    if (m == null || !m.IsAlive) continue;
+                    if (m.ObjectState != GameObject.eObjectState.Active) continue;
+
+                    MimicBrain brain = m.MimicBrain;
+                    if (brain != null && brain.HasAggro)
+                    {
+                        // GetOrderedAggroList returns a defensive copy so
+                        // walking it outside the brain lock is safe.
+                        // MimicNPC inherits from GameNPC, not GamePlayer,
+                        // so the `is GamePlayer` pattern already excludes
+                        // bots — only real human clients land here.
+                        foreach (var entry in brain.GetOrderedAggroList())
+                        {
+                            if (entry.Living is GamePlayer player && player.Client != null)
+                                return true;
+                        }
+                    }
+
+                    if (m.InCombatInLast(15_000))
+                    {
+                        AttackData ad = m.attackComponent?.attackAction?.LastAttackData;
+                        if (ad != null)
+                        {
+                            if (ad.Attacker is GamePlayer ap && ap.Client != null)
+                                return true;
+                            if (ad.Target is GamePlayer tp && tp.Client != null)
+                                return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Per-tick edge detector. Flips the realm's InEncounter flag and,
+        /// on a true→false transition (fight just ended), rolls the next
+        /// spawn-ready timestamp with <see cref="RollPostEncounterDelayMs"/>.
+        /// On a false→true transition (fight just started), rolls for a
+        /// possible 3rd-party crash event. No-op when the flag doesn't
+        /// change; cheap to call every tick.
+        /// </summary>
+        private static void UpdateEncounterPacing(RealmConfig cfg)
+        {
+            RealmEncounterState s = GetOrCreateEncounterState(cfg);
+            bool nowInFight = IsRealmInPlayerEncounter(cfg);
+
+            if (!s.InEncounter && nowInFight)
+            {
+                TryScheduleThirdPartyCrash(cfg);
+            }
+            else if (s.InEncounter && !nowInFight)
+            {
+                s.NextSpawnReadyMs = GameLoop.GameLoopTime + RollPostEncounterDelayMs();
+            }
+            s.InEncounter = nowInFight;
+        }
+
+        /// <summary>
+        /// Rolls the random post-encounter delay (in ms). Most rolls land in
+        /// [MIN, MAX] uniformly; a small SURPRISE_CHANCE returns a fast
+        /// 30-90 s window so the player can't lock in a predictable cadence,
+        /// and a small LULL_CHANCE stretches to [MAX, MAX*1.5] for an
+        /// occasional quiet stretch.
+        /// </summary>
+        private static long RollPostEncounterDelayMs()
+        {
+            int minSec = Math.Max(1, PvPFrontierProperties.PVP_FRONTIER_POST_ENCOUNTER_MIN_SEC);
+            int maxSec = Math.Max(minSec, PvPFrontierProperties.PVP_FRONTIER_POST_ENCOUNTER_MAX_SEC);
+
+            int surprise = Math.Clamp(PvPFrontierProperties.PVP_FRONTIER_POST_ENCOUNTER_SURPRISE_CHANCE, 0, 100);
+            int lull = Math.Clamp(PvPFrontierProperties.PVP_FRONTIER_POST_ENCOUNTER_LULL_CHANCE, 0, 100);
+
+            int roll = Util.Random(99);
+            if (roll < surprise)
+                return Util.Random(30, 90) * 1000L;
+            if (roll < surprise + lull)
+                return Util.Random(maxSec, (int)(maxSec * 1.5)) * 1000L;
+
+            return Util.Random(minSec, maxSec) * 1000L;
+        }
+
+        /// <summary>
+        /// True while this realm is still inside the post-encounter
+        /// breather window (i.e. its last fight ended less than the rolled
+        /// delay ago). Returns false when no encounter has happened yet
+        /// (NextSpawnReadyMs == 0) so the first spawn after server start
+        /// or after a region wakes up isn't artificially held back.
+        /// </summary>
+        private static bool IsRealmPacedOut(RealmConfig cfg)
+        {
+            RealmEncounterState s = GetOrCreateEncounterState(cfg);
+            return GameLoop.GameLoopTime < s.NextSpawnReadyMs;
+        }
+
+        // ---- Third-party crash scheduling ----
+        //
+        // When a fresh encounter starts, there's a small roll for "a 3rd
+        // group shows up". The crash group is parked on this list with a
+        // delay, then dispatched once the fight has been going long enough
+        // that the new arrival visibly TURNS UP rather than being there
+        // from the start. The crash group's realm is picked randomly:
+        //
+        //   * Same realm as the engaged enemy → reinforcement (the rare
+        //     "another Mid group rolls in" moment for the player).
+        //   * Player's own realm → ally backup (cavalry, friendly chaos).
+        //   * Third realm → pure RvR chaos (three-way fight).
+        //
+        // Because the crash bypasses the per-realm pacing window and the
+        // near-player cap, the chance is intentionally low (default 5 %).
+
+        private sealed class ScheduledCrash
+        {
+            public long FireAtMs;
+            public ushort Region;
+            public eRealm EngagedRealm;
+            public eRealm CrashRealm;
+            public int Size;
+        }
+
+        private static readonly List<ScheduledCrash> _pendingCrashes = new();
+
+        private static void TryScheduleThirdPartyCrash(RealmConfig engagedCfg)
+        {
+            int chance = PvPFrontierProperties.PVP_FRONTIER_THIRD_PARTY_CRASH_CHANCE;
+            if (chance <= 0) return;
+            if (Util.Random(99) >= chance) return;
+
+            // Need at least one OTHER realm configured in the same region.
+            // Build the candidate pool: any non-engaged realm AND the
+            // engaged realm itself (for the "they sent reinforcements"
+            // case). Weight: roughly 25 % ally backup, 25 % reinforce,
+            // 50 % third realm — but the actual mix depends on which
+            // realms have configs.
+            if (!_configs.TryGetValue(engagedCfg.Region, out var byRealm))
+                return;
+
+            List<eRealm> candidates = new(3);
+            foreach (var kvp in byRealm)
+            {
+                if (kvp.Key == eRealm.None) continue;
+                candidates.Add(kvp.Key);
+            }
+            if (candidates.Count == 0) return;
+
+            eRealm crashRealm = candidates[Util.Random(candidates.Count - 1)];
+
+            int minSize = Math.Max(1, PvPFrontierProperties.PVP_FRONTIER_THIRD_PARTY_CRASH_MIN_SIZE);
+            int maxSize = Math.Max(minSize, PvPFrontierProperties.PVP_FRONTIER_THIRD_PARTY_CRASH_MAX_SIZE);
+            int size = Util.Random(minSize, maxSize);
+
+            int minDelay = Math.Max(1, PvPFrontierProperties.PVP_FRONTIER_THIRD_PARTY_CRASH_MIN_DELAY_SEC);
+            int maxDelay = Math.Max(minDelay, PvPFrontierProperties.PVP_FRONTIER_THIRD_PARTY_CRASH_MAX_DELAY_SEC);
+            long delayMs = Util.Random(minDelay, maxDelay) * 1000L;
+
+            _pendingCrashes.Add(new ScheduledCrash
+            {
+                FireAtMs = GameLoop.GameLoopTime + delayMs,
+                Region = engagedCfg.Region,
+                EngagedRealm = engagedCfg.Realm,
+                CrashRealm = crashRealm,
+                Size = size,
+            });
+
+            log.Info($"[PvPFrontier] 3rd-party crash scheduled: region={engagedCfg.Region} engaged={engagedCfg.Realm} crash={crashRealm} size={size} in {delayMs / 1000}s");
+        }
+
+        /// <summary>
+        /// Walks the pending-crash list once per tick, firing any entries
+        /// whose delay has elapsed. Spawns a small fresh group next to the
+        /// active engagement and drops the entry — bypasses the per-realm
+        /// pacing window and the near-player cap (the whole point is the
+        /// unexpected arrival).
+        /// </summary>
+        private static void ProcessPendingCrashes()
+        {
+            if (_pendingCrashes.Count == 0) return;
+
+            long now = GameLoop.GameLoopTime;
+            for (int i = _pendingCrashes.Count - 1; i >= 0; i--)
+            {
+                ScheduledCrash crash = _pendingCrashes[i];
+                if (now < crash.FireAtMs) continue;
+                _pendingCrashes.RemoveAt(i);
+
+                if (!_configs.TryGetValue(crash.Region, out var byRealm))
+                    continue;
+                if (!byRealm.TryGetValue(crash.EngagedRealm, out RealmConfig engagedCfg))
+                    continue;
+                if (!byRealm.TryGetValue(crash.CrashRealm, out RealmConfig crashCfg))
+                    continue;
+
+                // Snap to the engagement centre at FIRE time, not at
+                // schedule time. A fight that ran 30 s could've drifted
+                // 1000+ units; we want the crash to land near where the
+                // player IS, not where they STARTED. Pick the engaged
+                // group leader's position; bail if the fight ended early.
+                Point3D anchor = null;
+                if (!IsRealmInPlayerEncounter(engagedCfg))
+                {
+                    log.Info($"[PvPFrontier] 3rd-party crash CANCELLED: engagement ended (region={crash.Region} engaged={crash.EngagedRealm})");
+                    continue;
+                }
+
+                foreach (PvPFrontierGroup g in engagedCfg.Groups)
+                {
+                    if (!g.IsHydrated || g.IsDisbanded) continue;
+                    MimicNPC ldr = g.FirstAliveMember();
+                    if (ldr == null) continue;
+                    anchor = new Point3D(ldr.X, ldr.Y, ldr.Z);
+                    break;
+                }
+                if (anchor == null) continue;
+
+                // Crash spawn ring. Pick a random direction at the
+                // configured radius around the anchor. Closer than the
+                // normal dynamic-spawn ring so the crash group can
+                // actually reach the fight while it's still happening.
+                int dist = Math.Max(2000, PvPFrontierProperties.PVP_FRONTIER_THIRD_PARTY_CRASH_DISTANCE);
+                double ang = Util.RandomDouble() * Math.PI * 2;
+                int sx = anchor.X + (int)(Math.Cos(ang) * dist);
+                int sy = anchor.Y + (int)(Math.Sin(ang) * dist);
+                Point3D crashPos = new(sx, sy, anchor.Z);
+
+                PvPFrontierGroup newGroup = PvPFrontierGroup.Spawn(crashCfg, crash.Size, crashPos);
+                if (newGroup != null)
+                {
+                    crashCfg.Groups.Add(newGroup);
+                    log.Info($"[PvPFrontier] 3rd-party crash FIRED: region={crash.Region} crash={crash.CrashRealm} size={crash.Size} pos=({sx},{sy})");
+                }
+            }
         }
 
         /// <summary>
@@ -2089,14 +2439,30 @@ namespace DOL.GS.Scripts
             // SHORT of the target so the tank engages while healers stay
             // safely back. The brain's per-bot aggro range (3000u) still
             // closes the final gap when needed.
+            //
+            // Angular spread: instead of approaching head-on along the
+            // natural group→target vector, rotate the approach bearing by
+            // a stable per-group offset in [-45°, +45°]. Two groups
+            // converging on the same player from the same direction would
+            // otherwise pile in along the same line — easy AoE bait. With
+            // the rotation, group A lands at target-NW, group B at
+            // target-N, group C at target-NE; the player gets pincered.
+            // Hash is stable per group so the same group ALWAYS attacks
+            // from the same side — feels like a coordinated unit, not
+            // random scatter.
             double dx = target.X - VirtualPosition.X;
             double dy = target.Y - VirtualPosition.Y;
             double len = Math.Sqrt(dx * dx + dy * dy);
             if (len > 100)
             {
+                double baseAngle = Math.Atan2(dy, dx);
+                int hash = (Roster.Count * 31337) ^ Region ^ ((int)Config.Realm * 7919);
+                double offsetAngle = ((hash & 0xFFFF) / 65536.0 - 0.5) * (Math.PI * 0.5);
+                double approachAngle = baseAngle + offsetAngle;
+
                 int backoff = 600;
-                int approachX = target.X - (int)Math.Round(dx / len * backoff);
-                int approachY = target.Y - (int)Math.Round(dy / len * backoff);
+                int approachX = target.X - (int)Math.Round(Math.Cos(approachAngle) * backoff);
+                int approachY = target.Y - (int)Math.Round(Math.Sin(approachAngle) * backoff);
                 _currentWaypoint = new Point3D(approachX, approachY, target.Z);
             }
             else
@@ -2105,15 +2471,17 @@ namespace DOL.GS.Scripts
             }
             OrderGroupToWaypoint();
 
-            // Sprint on engage: every member toggles Sprint so the initial
-            // run-in is at full speed instead of jog. Real RvR groups
-            // sprint into combat for the burst window; mimics doing the
-            // same makes the engagement feel like a real pull instead of
-            // a slow approach. Sprint auto-disables when endurance runs
-            // out or combat actions consume the buffer.
+            // Sprint on engage: front-line members (tanks / DPS) sprint
+            // for the burst window. Healers and CC mimics intentionally
+            // DON'T sprint — they should arrive at the convergence point
+            // a beat later than the tank, settling into the back line
+            // instead of out-running formation. Real RvR groups have the
+            // same cadence: tanks punch in, healers stack at safe range.
             foreach (var m in Members)
             {
                 if (m == null || !m.IsAlive) continue;
+                if (m.MimicBrain == null) continue;
+                if (m.MimicBrain.IsHealer || m.MimicBrain.IsMainCC) continue;
                 try { m.Sprint(true); } catch { /* Sprint may NRE on bots without endurance */ }
             }
         }
@@ -2298,6 +2666,33 @@ namespace DOL.GS.Scripts
                 State = eFrontierState.Patrolling;
                 PickNextWaypoint();
                 OrderGroupToWaypoint();
+                _retreatStaging = null;
+                return;
+            }
+
+            // Two-stage retreat: when the leader clears the perpendicular
+            // break point, switch the move order to the real safe
+            // destination. The intermediate stage breaks the chaser's
+            // intercept vector — a player running straight at the bots
+            // sees them peel sideways before heading to the keep, much
+            // harder to catch.
+            if (_retreatStaging != null)
+            {
+                MimicNPC leader = FirstAliveMember();
+                if (leader != null && leader.GetDistance(_retreatStaging) < WAYPOINT_REACHED_RANGE)
+                {
+                    _retreatStaging = null;
+                    if (_retreatDestination != null)
+                    {
+                        leader.WalkTo(_retreatDestination, leader.MaxSpeed);
+                        foreach (var m in Members)
+                        {
+                            if (m == null || !m.IsAlive || m == leader) continue;
+                            if (m.MimicBrain == null) continue;
+                            m.MimicBrain.FSM.SetCurrentState(eFSMStateType.FOLLOW_THE_LEADER);
+                        }
+                    }
+                }
             }
         }
 
@@ -2740,16 +3135,50 @@ namespace DOL.GS.Scripts
             // friendly keep is in our region.
             Point3D safePoint = PickClosestSafePoint() ?? Config.SpawnAnchor;
             _retreatDestination = safePoint;
+            _retreatStaging = null;
 
             MimicNPC leader = FirstAliveMember();
             if (leader == null)
                 return;
 
+            // Two-stage retreat. Stage 1 = perpendicular break vector from
+            // the threat (700-1200 u sideways), stage 2 = real safe point.
+            // The intermediate leg makes pursuit harder: a chaser running
+            // straight at us has to re-vector mid-chase, costing 1-2 s
+            // and breaking line-of-sight on cast bars. Without the
+            // staging point, retreats were straight-line escapes that any
+            // sprinting player intercepted easily.
+            Point3D threatPos = EstimateThreatPosition(leader);
+            if (threatPos != null)
+            {
+                double tx = leader.X - threatPos.X;
+                double ty = leader.Y - threatPos.Y;
+                double tlen = Math.Sqrt(tx * tx + ty * ty);
+                if (tlen > 100)
+                {
+                    // Perpendicular unit vector (rotate threat→leader by 90°).
+                    // Two choices; pick the one pointing toward safePoint
+                    // so the break leg also makes progress.
+                    double px = -ty / tlen;
+                    double py = tx / tlen;
+                    double sx = safePoint.X - leader.X;
+                    double sy = safePoint.Y - leader.Y;
+                    if (px * sx + py * sy < 0) { px = -px; py = -py; }
+
+                    int breakDist = 700 + Util.Random(0, 500);
+                    int bx = leader.X + (int)(px * breakDist);
+                    int by = leader.Y + (int)(py * breakDist);
+                    _retreatStaging = new Point3D(bx, by, leader.Z);
+                }
+            }
+
+            Point3D firstLeg = _retreatStaging ?? safePoint;
+
             // Move the leader explicitly; the rest follow in formation. The
             // previous code sent every member to the same point with no
             // cohesion, so healers and casters got isolated and picked off
             // by chasers — same fix pattern as OrderGroupToWaypoint.
-            leader.WalkTo(safePoint, leader.MaxSpeed);
+            leader.WalkTo(firstLeg, leader.MaxSpeed);
 
             foreach (var m in Members)
             {
@@ -2759,7 +3188,32 @@ namespace DOL.GS.Scripts
             }
         }
 
+        /// <summary>
+        /// Best-effort guess at where the threat that triggered this
+        /// retreat is sitting. Walks the leader's aggro list and returns
+        /// the highest-threat hostile's position; null if nothing usable
+        /// (in which case <see cref="OrderGroupToRetreat"/> skips the
+        /// perpendicular break and runs straight to the safe point).
+        /// </summary>
+        private Point3D EstimateThreatPosition(MimicNPC leader)
+        {
+            if (leader?.MimicBrain == null) return null;
+
+            var ordered = leader.MimicBrain.GetOrderedAggroList();
+            if (ordered == null) return null;
+
+            for (int i = 0; i < ordered.Count; i++)
+            {
+                GameLiving threat = ordered[i].Living;
+                if (threat == null || !threat.IsAlive) continue;
+                if (threat.ObjectState != GameObject.eObjectState.Active) continue;
+                return new Point3D(threat.X, threat.Y, threat.Z);
+            }
+            return null;
+        }
+
         private Point3D _retreatDestination;
+        private Point3D _retreatStaging;
 
         /// <summary>
         /// Closest friendly keep / tower we still own (within the group's

@@ -256,6 +256,42 @@ def emit_teleports(out):
     out.write("\n")
 
 
+def emit_doors(out, doors):
+    """Emit door rows for region 163 (NF). Idempotent via REPLACE INTO keyed
+    on the upstream PK ObjectId / Door_ID. The Agramon "porte grille" rows
+    (zone 163, 12 doors) are missing from the upstream OpenDAoC-Database
+    seed — without them the central tunnel grilles silently refuse to open
+    because DoorMgr can't find them and DoorRequestHandler bails out for
+    non-GM players in region 163."""
+    nf = [d for d in doors if 163 <= d['InternalID'] // 1000000 <= 178]
+    if not nf:
+        return
+    out.write("-- ---- NF doors ----------------------------------------------------\n")
+    out.write("-- 30 NF-zone doors (Agramon central + Mid/Hib/Alb frontier zones).\n")
+    out.write("-- Upstream ships only 18 of these; the 12 Agramon (zone 163) grille\n")
+    out.write("-- doors are missing and the 'porte grilles' between realms simply\n")
+    out.write("-- don't open in-game. Source: Eve-of-Darkness vanilla Door.json.\n\n")
+    out.write("REPLACE INTO `door` "
+              "(`Name`,`Type`,`Z`,`Y`,`X`,`Heading`,`InternalID`,`Guild`,`Level`,"
+              "`Realm`,`Flags`,`Locked`,`Health`,`MaxHealth`,`LastTimeRowUpdated`,"
+              "`Door_ID`,`IsPostern`,`State`) VALUES\n")
+    rows = []
+    for d in nf:
+        guild = d.get('Guild')
+        guild_sql = sql_str(guild) if guild else 'NULL'
+        rows.append(
+            f"  ({sql_str(d.get('Name', 'door'))}, {d['Type']}, {d['Z']}, {d['Y']}, "
+            f"{d['X']}, {d['Heading']}, {d['InternalID']}, "
+            f"{guild_sql}, "
+            f"{d['Level']}, {d['Realm']}, {d.get('Flags', 0)}, {d.get('Locked', 0)}, "
+            f"{d.get('Health', 0)}, {d.get('MaxHealth', 0)}, "
+            f"{sql_str(d['LastTimeRowUpdated'])}, {sql_str(d['Door_ID'])}, "
+            f"{int(d.get('IsPostern', 0))}, {int(d.get('State', 0))})"
+        )
+    out.write(",\n".join(rows))
+    out.write(";\n\n")
+
+
 def emit_region_frontier_flags(out):
     out.write("-- ---- Region frontier flags ----------------------------------------\n")
     out.write("-- Without these flips, KeepManager.Load reads IsFrontier from the DB\n")
@@ -280,9 +316,11 @@ def main():
     comps = json.load(open(os.path.join(eod, 'data', 'KeepComponent.json')))
     hps   = json.load(open(os.path.join(eod, 'data', 'KeepHookPoint.json')))
     poss  = json.load(open(os.path.join(eod, 'data', 'KeepPosition.json')))
+    doors = json.load(open(os.path.join(eod, 'data', 'Door.json')))
 
     nf_keeps = [k for k in keeps if k['Region'] == 163]
     nf_keep_ids = {k['KeepID'] for k in nf_keeps}
+    nf_doors = [d for d in doors if 163 <= d['InternalID'] // 1000000 <= 178]
 
     os.makedirs(os.path.dirname(outpath) or '.', exist_ok=True)
     with open(outpath, 'w', encoding='utf-8', newline='\n') as out:
@@ -293,6 +331,7 @@ def main():
         emit_components(out, comps, nf_keep_ids)
         emit_hookpoints(out, hps)
         emit_positions(out, poss)
+        emit_doors(out, doors)
         emit_teleports(out)
         out.write(FOOTER)
 
@@ -301,6 +340,7 @@ def main():
         f"nf_live.sql: {sz/1024:.0f} KB | "
         f"{len(nf_keeps)} keeps, {sum(1 for c in comps if c['KeepID'] in nf_keep_ids)} components, "
         f"{len(hps)} hookpoints, {len(poss)} positions, "
+        f"{len(nf_doors)} doors, "
         f"{len(BORDER_TELEPORTS)} teleports, {len(RELIC_KEEPS)} relic-keeps moved\n"
     )
 

@@ -45,8 +45,12 @@ RUN python3 /build/scripts/build_nf_live_sql.py \
         /tmp/eod-json \
         /build/sql/nf_live.sql
 
-RUN cp /build/sql/heretic_live.sql       /tmp/opendaoc-db/opendaoc-db-core/zz_heretic_live.sql && \
-    cp /build/sql/battlegrounds_live.sql /tmp/opendaoc-db/opendaoc-db-core/zz_battlegrounds_live.sql && \
+# heretic_live.sql is intentionally NOT copied here anymore — Eve-of-Darkness'
+# Heretic data (309 LineXSpell, 287 Spell, 5 SpecXAbility, 31 ClassXRealmAbility
+# incl. RR5 Fanaticism) is far more complete than what our custom patch ever
+# wired. The runway is cleared by 45_heretic_purge.sql, then 50_eveofdarkness_fill.sql
+# refills from EoD. See sql/heretic_purge.sql for the rationale.
+RUN cp /build/sql/battlegrounds_live.sql /tmp/opendaoc-db/opendaoc-db-core/zz_battlegrounds_live.sql && \
     cp /build/sql/nf_live.sql            /tmp/opendaoc-db/opendaoc-db-core/zz_nf_live.sql
 
 # Build the 5-stage Larogoth + Eve-of-Darkness pipeline (numbering = apply order):
@@ -61,7 +65,8 @@ RUN cp /build/sql/heretic_live.sql       /tmp/opendaoc-db/opendaoc-db-core/zz_he
 RUN python3 /build/scripts/build_larogoth_sql.py \
         /tmp/larogoth-db/daoc_item_database.json \
         /build/sql/larogoth && \
-    cp /build/sql/larogoth_loot_wiring.sql /build/sql/larogoth/40_larogoth_loot_wiring.sql
+    cp /build/sql/larogoth_loot_wiring.sql /build/sql/larogoth/40_larogoth_loot_wiring.sql && \
+    cp /build/sql/heretic_purge.sql        /build/sql/larogoth/45_heretic_purge.sql
 
 # Preprocess the Eve-of-Darkness vanilla DOL DB into 'fill the gaps' SQL:
 # strip DDL (we keep OpenDAoC's schema), convert INSERT -> INSERT IGNORE so
@@ -100,7 +105,8 @@ COPY --from=build /tmp/opendaoc-db/opendaoc-db-core/combined.sql /tmp/opendaoc-d
 # Copy our custom SQL patches into the runtime image so the entrypoint
 # can re-apply them on every startup (idempotent) — necessary because mariadb
 # only runs /docker-entrypoint-initdb.d/ on first init, not on existing DBs.
-COPY --from=build /build/sql/heretic_live.sql       /app/sql/heretic_live.sql
+# heretic_live.sql intentionally absent — replaced by EoD's Heretic data
+# (see 45_heretic_purge.sql + 50_eveofdarkness_fill.sql).
 COPY --from=build /build/sql/battlegrounds_live.sql /app/sql/battlegrounds_live.sql
 COPY --from=build /build/sql/nf_live.sql            /app/sql/nf_live.sql
 
