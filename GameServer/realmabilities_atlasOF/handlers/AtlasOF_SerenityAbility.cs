@@ -15,6 +15,8 @@ namespace DOL.GS.RealmAbilities
             return AtlasRAHelpers.GetAugAcuityLevel(player) >= 2;
         }
 
+        public override string GetRequirementDescription(GamePlayer player) => AtlasRAHelpers.DescribeAugAcuity(player, 2);
+
         public override int CostForUpgrade(int level)
         {
             return AtlasRAHelpers.GetCommonUpgradeCostFor5LevelsRA(level);

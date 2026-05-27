@@ -163,5 +163,64 @@ namespace DOL.GS.RealmAbilities
 
             return living.CalculateSkillLevel(raLongshot);
         }
+
+        // ---- Friendly prerequisite descriptions ------------------------------
+        // Used by RealmAbility.GetRequirementDescription overrides so the train
+        // handler can tell the player precisely WHY an RA refused to train
+        // ("Requires Augmented Acuity II (you have I).") instead of the
+        // misleading generic "You are not experienced enough… come back later."
+
+        private enum AugStat { Str, Dex, Con, Qui, Acuity }
+
+        private static int GetAugLevel(GamePlayer player, AugStat stat) => stat switch
+        {
+            AugStat.Str    => GetAugStrLevel(player),
+            AugStat.Dex    => GetAugDexLevel(player),
+            AugStat.Con    => GetAugConLevel(player),
+            AugStat.Qui    => GetAugQuiLevel(player),
+            AugStat.Acuity => GetAugAcuityLevel(player),
+            _              => 0,
+        };
+
+        private static string AugName(AugStat stat) => stat switch
+        {
+            AugStat.Str    => "Augmented Strength",
+            AugStat.Dex    => "Augmented Dexterity",
+            AugStat.Con    => "Augmented Constitution",
+            AugStat.Qui    => "Augmented Quickness",
+            AugStat.Acuity => "Augmented Acuity",
+            _              => "Augmented Stat",
+        };
+
+        private static string RomanLevel(int level) => level switch
+        {
+            1 => "I", 2 => "II", 3 => "III", 4 => "IV", 5 => "V", _ => level.ToString(),
+        };
+
+        private static string DescribeAug(GamePlayer player, AugStat stat, int needed)
+        {
+            int have = GetAugLevel(player, stat);
+            return $"Requires {AugName(stat)} {RomanLevel(needed)} (you have {(have == 0 ? "none" : RomanLevel(have))}).";
+        }
+
+        public static string DescribeAugStr(GamePlayer player, int needed)    => DescribeAug(player, AugStat.Str,    needed);
+        public static string DescribeAugDex(GamePlayer player, int needed)    => DescribeAug(player, AugStat.Dex,    needed);
+        public static string DescribeAugCon(GamePlayer player, int needed)    => DescribeAug(player, AugStat.Con,    needed);
+        public static string DescribeAugQui(GamePlayer player, int needed)    => DescribeAug(player, AugStat.Qui,    needed);
+        public static string DescribeAugAcuity(GamePlayer player, int needed) => DescribeAug(player, AugStat.Acuity, needed);
+
+        /// <summary>
+        /// Describes a "requires another RA to be trained" prerequisite,
+        /// e.g. Grapple requires Trip.
+        /// </summary>
+        public static string DescribeRequiresAbility(string abilityName) =>
+            $"Requires the {abilityName} ability to be trained first.";
+
+        /// <summary>
+        /// Describes a "requires another RA at level N" prerequisite,
+        /// e.g. Ethereal Bond requires Serenity II.
+        /// </summary>
+        public static string DescribeRequiresRAAtLevel(string abilityName, int neededLevel, int currentLevel) =>
+            $"Requires {abilityName} {RomanLevel(neededLevel)} (you have {(currentLevel == 0 ? "none" : RomanLevel(currentLevel))}).";
     }
 }

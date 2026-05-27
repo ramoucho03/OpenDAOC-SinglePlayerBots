@@ -2902,7 +2902,7 @@ namespace DOL.GS.Scripts
         /// </summary>
         private static void ApplyFrontierPreBuffs(MimicNPC m)
         {
-            if (m == null) return;
+            if (m == null || m.CharacterClass == null) return;
 
             // Base buffs (Cleric / Druid / Shaman / Bard / Paladin level 50)
             const int BASE_STAT = 47;
@@ -2914,33 +2914,54 @@ namespace DOL.GS.Scripts
             const int SPEC_RESIST = 18;
             const int SPEC_DAMAGE_ADD = 6;
 
-            // Main stats — apply universally; a Wizard mimic also gets the
-            // Strength buff (cheap, harmless) which keeps the helper simple
-            // and avoids per-class stat-target branching.
             void BumpBase(eProperty p, int v) => m.BaseBuffBonusCategory[p] = v;
             void BumpSpec(eProperty p, int v) => m.SpecBuffBonusCategory[p] = v;
 
-            BumpBase(eProperty.Strength, BASE_STAT);
+            // Class archetype split. ListCaster = pure caster/healer (no
+            // weapon damage), PureTank = no spells, Hybrid = both. A real
+            // support group only stacks the buffs that matter for the
+            // target's role — buffing Strength on a Theurgist or Acuity on
+            // an Armsman is wasted slot space and shows the wrong icons on
+            // the character sheet. We mirror that here.
+            eClassType ct = m.CharacterClass.ClassType;
+            bool isMelee = ct == eClassType.PureTank || ct == eClassType.Hybrid;
+            bool isCaster = ct == eClassType.ListCaster || ct == eClassType.Hybrid;
+
+            // Con + Dex are universal: Con = HP, Dex = parry / cast speed /
+            // weapon skill. Every class wants both.
             BumpBase(eProperty.Constitution, BASE_STAT);
             BumpBase(eProperty.Dexterity, BASE_STAT);
-            BumpBase(eProperty.Quickness, BASE_STAT);
-            BumpBase(eProperty.Acuity, BASE_STAT);
-            BumpBase(eProperty.Intelligence, BASE_STAT);
-            BumpBase(eProperty.Piety, BASE_STAT);
-            BumpBase(eProperty.Empathy, BASE_STAT);
-            BumpBase(eProperty.Charisma, BASE_STAT);
-
-            BumpSpec(eProperty.Strength, SPEC_STAT);
             BumpSpec(eProperty.Constitution, SPEC_STAT);
             BumpSpec(eProperty.Dexterity, SPEC_STAT);
-            BumpSpec(eProperty.Quickness, SPEC_STAT);
-            BumpSpec(eProperty.Acuity, SPEC_STAT);
 
-            // AF — Paladin chant + Cleric/Druid spec AF
+            // Melee stats. Str = damage, Qui = swing speed. Only classes
+            // that actually swing benefit — skip on pure casters/healers.
+            if (isMelee)
+            {
+                BumpBase(eProperty.Strength, BASE_STAT);
+                BumpBase(eProperty.Quickness, BASE_STAT);
+                BumpSpec(eProperty.Strength, SPEC_STAT);
+                BumpSpec(eProperty.Quickness, SPEC_STAT);
+            }
+
+            // Casting stat. ManaStat resolves to Int / Pie / Emp / Cha
+            // depending on the class; eStat values share their numeric
+            // codes with eProperty so we can cast directly. This lands the
+            // buff on the right stat in the UI (Wizard sees Intelligence
+            // buff, Cleric sees Piety, Bard sees Charisma).
+            if (isCaster && m.CharacterClass.ManaStat != eStat.UNDEFINED)
+            {
+                eProperty manaProp = (eProperty)m.CharacterClass.ManaStat;
+                BumpBase(manaProp, BASE_STAT);
+                BumpSpec(manaProp, SPEC_STAT);
+            }
+
+            // AF — Paladin chant + Cleric/Druid spec AF. Universal (cloth
+            // benefits as much as plate).
             BumpBase(eProperty.ArmorFactor, BASE_AF);
             BumpSpec(eProperty.ArmorFactor, SPEC_AF);
 
-            // Resist chants (Paladin) — flat across all damage types
+            // Resist chants (Paladin) — flat across all damage types.
             BumpSpec(eProperty.Resist_Body, SPEC_RESIST);
             BumpSpec(eProperty.Resist_Cold, SPEC_RESIST);
             BumpSpec(eProperty.Resist_Heat, SPEC_RESIST);
@@ -2951,8 +2972,10 @@ namespace DOL.GS.Scripts
             BumpSpec(eProperty.Resist_Slash, SPEC_RESIST);
             BumpSpec(eProperty.Resist_Thrust, SPEC_RESIST);
 
-            // Damage add (Skald / Friar / Shaman) — flat damage on every swing
-            m.AbilityBonus[eProperty.DPS] = SPEC_DAMAGE_ADD;
+            // Damage add (Skald / Friar / Shaman) — flat damage on every
+            // weapon swing, so it's wasted on a pure caster.
+            if (isMelee)
+                m.AbilityBonus[eProperty.DPS] = SPEC_DAMAGE_ADD;
         }
 
         /// <summary>

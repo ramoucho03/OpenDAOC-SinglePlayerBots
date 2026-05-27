@@ -26,6 +26,7 @@ namespace DOL.GS.RealmAbilities
 		public override int GetReUseDelay(int level) { return 1800; } // 15 mins
 
 		public override bool CheckRequirement(GamePlayer player) { return player.HasAbilityType(typeof(AtlasOF_Trip));}
+		public override string GetRequirementDescription(GamePlayer player) => AtlasRAHelpers.DescribeRequiresAbility("Trip");
 
         private void CreateSpell(GamePlayer caster)
         {

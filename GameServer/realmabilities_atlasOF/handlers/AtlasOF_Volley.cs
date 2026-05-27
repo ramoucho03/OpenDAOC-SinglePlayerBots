@@ -60,6 +60,9 @@ namespace DOL.GS.RealmAbilities
             return AtlasRAHelpers.GetLongshotLevel(player) >= 1;
         }
 
+        public override string GetRequirementDescription(GamePlayer player) =>
+            AtlasRAHelpers.DescribeRequiresRAAtLevel("Longshot", 1, AtlasRAHelpers.GetLongshotLevel(player));
+
         public override void Execute(GameLiving living)
         {
             _player = living as GamePlayer;

@@ -18,9 +18,12 @@ namespace DOL.GS.RealmAbilities
 
 		public override int CostForUpgrade(int level) { return 14; }
 
-		public override bool CheckRequirement(GamePlayer player) { 
+		public override bool CheckRequirement(GamePlayer player) {
 				return AtlasRAHelpers.GetFirstAidLevel(player) >= 2;
 		}
+
+		public override string GetRequirementDescription(GamePlayer player) =>
+			AtlasRAHelpers.DescribeRequiresRAAtLevel("First Aid", 2, AtlasRAHelpers.GetFirstAidLevel(player));
 
         public override void Execute(GameLiving living)
 		{

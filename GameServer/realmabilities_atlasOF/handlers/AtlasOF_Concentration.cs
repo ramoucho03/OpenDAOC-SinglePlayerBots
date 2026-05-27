@@ -26,6 +26,8 @@ namespace DOL.GS.RealmAbilities
             return AtlasRAHelpers.GetAugAcuityLevel(player) >= 3;
         }
 
+        public override string GetRequirementDescription(GamePlayer player) => AtlasRAHelpers.DescribeAugAcuity(player, 3);
+
         public override void Execute(GameLiving living)
         {
             if (CheckPreconditions(living, DEAD | SITTING | MEZZED | STUNNED))

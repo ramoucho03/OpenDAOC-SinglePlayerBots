@@ -24,6 +24,13 @@ namespace DOL.GS.RealmAbilities
             return player.CalculateSkillLevel(MCL) > 1;
         }
 
+        public override string GetRequirementDescription(GamePlayer player)
+        {
+            AtlasOF_MysticCrystalLoreAbility MCL = player.GetAbility<AtlasOF_MysticCrystalLoreAbility>();
+            int have = MCL == null ? 0 : player.CalculateSkillLevel(MCL);
+            return AtlasRAHelpers.DescribeRequiresRAAtLevel("Mystic Crystal Lore", 2, have);
+        }
+
         public override void AddEffectsInfo(IList<string> list)
         {
             list.Add("Value: 100%");

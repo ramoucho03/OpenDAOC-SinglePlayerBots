@@ -39,6 +39,7 @@ namespace DOL.GS.RealmAbilities
 		public override int MaxLevel { get { return 1; } }
 		public override int CostForUpgrade(int level) { return 14; }
 		public override bool CheckRequirement(GamePlayer player) { return AtlasRAHelpers.GetAugAcuityLevel(player) >= 3; }
+		public override string GetRequirementDescription(GamePlayer player) => AtlasRAHelpers.DescribeAugAcuity(player, 3);
 		public override int GetReUseDelay(int level) { return 1800; } // 30 mins
 		public virtual int GetAmountForLevel(int level) { return 100; } // OF MoC = always 100% effectiveness.
 

@@ -31,6 +31,20 @@ namespace DOL.GS.RealmAbilities
 		}
 
 		/// <summary>
+		/// Human-readable description of the unmet prerequisite when
+		/// <see cref="CheckRequirement"/> returns false. Used by the train
+		/// handler so the chat message reads e.g. "Requires Augmented Acuity
+		/// II (you have I)" instead of the misleading generic "You are not
+		/// experienced enough… come back later." Override in subclasses
+		/// whose CheckRequirement encodes a stat / ability prerequisite.
+		/// Returning an empty string falls back to the generic message.
+		/// </summary>
+		public virtual string GetRequirementDescription(GamePlayer player)
+		{
+			return string.Empty;
+		}
+
+		/// <summary>
 		/// max level this RA can reach
 		/// </summary>
 		public virtual int MaxLevel

@@ -25,6 +25,7 @@ namespace DOL.GS.RealmAbilities
         public override int GetReUseDelay(int level) { return 900; } // 15 mins
         
         public override bool CheckRequirement(GamePlayer player) { return AtlasRAHelpers.GetAugDexLevel(player) >= 3; }
+        public override string GetRequirementDescription(GamePlayer player) => AtlasRAHelpers.DescribeAugDex(player, 3);
 
         private void CreateSpell(GamePlayer caster)
         {

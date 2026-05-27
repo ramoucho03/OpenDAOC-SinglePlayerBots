@@ -34,5 +34,8 @@ namespace DOL.GS.RealmAbilities
 		{
 			return player.Level >= 40;
 		}
+
+		public override string GetRequirementDescription(GamePlayer player) =>
+			$"Requires character level 40 (you are level {player.Level}).";
     }
 }

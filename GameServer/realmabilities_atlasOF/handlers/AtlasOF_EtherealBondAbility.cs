@@ -19,6 +19,9 @@ namespace DOL.GS.RealmAbilities
             return AtlasRAHelpers.GetSerenityLevel(player) >= 2;
         }
 
+        public override string GetRequirementDescription(GamePlayer player) =>
+            AtlasRAHelpers.DescribeRequiresRAAtLevel("Serenity", 2, AtlasRAHelpers.GetSerenityLevel(player));
+
         public override int GetAmountForLevel(int level)
         {
             return AtlasRAHelpers.GetPropertyEnhancer3AmountForLevel(level);

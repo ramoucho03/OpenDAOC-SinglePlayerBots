@@ -175,7 +175,16 @@ namespace DOL.GS.PacketHandler.Client.v168
 
                         if (!ra.CheckRequirement(client.Player))
                         {
-                            client.Out.SendMessage($"You are not experienced enough to get {ra.Name} now. Come back later.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                            // Use the RA's own description of its missing prerequisite when
+                            // available — most Atlas RAs override GetRequirementDescription
+                            // to report e.g. "Requires Augmented Acuity II (you have I)."
+                            // Fall back to the legacy generic message when the override is
+                            // missing (vanilla NF RAs that haven't been ported yet).
+                            string reason = ra.GetRequirementDescription(client.Player);
+                            string message = string.IsNullOrEmpty(reason)
+                                ? $"You are not experienced enough to get {ra.Name} now. Come back later."
+                                : $"Cannot train {ra.Name}. {reason}";
+                            client.Out.SendMessage(message, eChatType.CT_System, eChatLoc.CL_SystemWindow);
                             continue;
                         }
 
