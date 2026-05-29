@@ -6,15 +6,17 @@ LABEL stage=build
 # Set the working directory in the container
 WORKDIR /build
 
-# Copy the source code to the build container
-COPY . .
-
 # Pin Eve-of-Darkness/db-public release tag. Bump to pull a newer monthly
 # snapshot of the vanilla DOL data set (mobs / loot / quests / etc.).
 # Override at build time:  docker compose build --build-arg EOD_RELEASE_TAG=86
 ARG EOD_RELEASE_TAG=85
 
-# Install required tools and clone the database repository
+# ---- Source-INDEPENDENT heavy layer (kept ABOVE the source copy) ----
+# Tools + external DB clones + the ~85 MB Eve-of-Darkness dump. None of this
+# reads our own source, so placing it before `COPY . .` means an ordinary code
+# change reuses this cached layer instead of re-cloning the three DB repos and
+# re-pulling the 85 MB download on every rebuild — the dominant cost. It only
+# re-runs when EOD_RELEASE_TAG (or the base image) changes.
 RUN apt-get update && \
     apt-get install -y unzip git sed python3 p7zip-full curl && \
     git config --global http.sslVerify false && \
@@ -29,9 +31,16 @@ RUN apt-get update && \
     rm /tmp/eod-db/public-db.mysql.sql.7z && \
     rm -rf /var/lib/apt/lists/*
 
-# Combine the SQL files
+# Combine the upstream OpenDAoC SQL (uses only the cloned repo — source-independent).
 WORKDIR /tmp/opendaoc-db/opendaoc-db-core
 RUN cat *.sql > combined.sql
+WORKDIR /build
+
+# ---- Source ----
+# Everything below depends on our source, so a code change invalidates only
+# from here down: the SQL generation off the already-cached clones, and the
+# dotnet build. The heavy network steps above stay cached.
+COPY . .
 
 # Copy our custom SQL patches alongside combined.sql so they get applied
 # by mariadb's docker-entrypoint-initdb.d on FIRST DB init (clean install).

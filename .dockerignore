@@ -1,0 +1,26 @@
+# Keep the Docker build context small and stable. The image compiles its OWN
+# Release output inside the build stage (dotnet build ... -c Release), so none
+# of the host build outputs below are needed — and excluding them stops a local
+# rebuild from invalidating the Docker cache or bloating the context transfer.
+
+# Local build outputs (host) — the image builds Release internally.
+Debug/
+Release/
+build/
+**/bin/
+**/obj/
+
+# Version control / IDE / scratch
+.git/
+.gitignore
+.gitattributes
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Docker files themselves don't need to be in the context.
+Dockerfile
+docker-compose.yml
+.dockerignore
