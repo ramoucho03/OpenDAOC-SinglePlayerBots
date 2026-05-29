@@ -3,6 +3,7 @@ using System.Collections;
 using DOL.Database;
 using DOL.GS.PacketHandler;
 using DOL.GS.ServerProperties;
+using DOL.Language;
 
 namespace DOL.GS.Keeps
 {
@@ -12,6 +13,15 @@ namespace DOL.GS.Keeps
     public class GameKeepDoor : GameDoorBase, IKeepItem
     {
         private const int DOOR_CLOSE_THRESHOLD = 15;
+
+        // Keep gates are tall and their object Z sits above the ground a player
+        // stands on: component-built keeps set the door Z = Keep.Z + ZOff (see
+        // PositionMgr.LoadKeepItemPosition), and terrain slope at the gate adds
+        // more. The inherited 3D interact gate (192u, Z included) therefore
+        // reports "too far" at the very foot of the gate — most visibly on
+        // component-built regions such as Ellan Vannin. Keep doors gate on
+        // HORIZONTAL distance only (see Interact / InteractDistance below).
+        private const int KEEP_DOOR_INTERACT_RANGE = 300;
         private static readonly Logging.Logger log = Logging.LoggerManager.Create(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
         #region properties
@@ -260,8 +270,30 @@ namespace DOL.GS.Keeps
         /// </summary>
         /// <param name="player">GamePlayer that interacts with this object</param>
         /// <returns>false if interaction is prevented</returns>
+        /// <summary>
+        /// Raised well past the default 192u so the inherited 3D distance gate in
+        /// <see cref="GameObject.Interact"/> is never the limiting factor for a
+        /// keep door. The real, Z-ignoring proximity gate lives in <see cref="Interact"/>
+        /// (KEEP_DOOR_INTERACT_RANGE) — this just keeps base.Interact's own check
+        /// from re-rejecting a player who is already horizontally at the gate.
+        /// </summary>
+        public override int InteractDistance => 1000;
+
         public override bool Interact(GamePlayer player)
         {
+            // Z-IGNORING proximity gate. A player standing at the foot of a tall
+            // gate is horizontally adjacent but vertically offset from the door
+            // object, which the inherited 3D check (Z included) wrongly rejects
+            // as "too far" — the Ellan Vannin barrier bug. Gate on horizontal
+            // distance only; GMs (PrivLevel > 1) bypass like the base check.
+            if (player.Client.Account.PrivLevel == 1
+                && !IsWithinRadius(player, KEEP_DOOR_INTERACT_RANGE, true))
+            {
+                player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language,
+                    "GameObject.Interact.TooFarAway", GetName(0, true)), eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                return false;
+            }
+
             if (!base.Interact(player))
                 return false;
 

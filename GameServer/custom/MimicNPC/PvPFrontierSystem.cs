@@ -228,6 +228,18 @@ namespace DOL.GS.Scripts
         [ServerProperty("pvpfrontier", "pvp_frontier_siege_recapture_cooldown_min",
             "Minutes a tower/keep is left alone by the mimic siege director after it flips ownership, so objectives don't ping-pong every few seconds. Real players are never restricted. Default 12.", 12)]
         public static int PVP_FRONTIER_SIEGE_RECAPTURE_COOLDOWN_MIN;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_abstract_siege",
+            "When true, a frontier group that reaches an enemy objective while DORMANT (no player nearby to watch the fight) resolves the capture abstractly after a timer — flipping the tower/keep via the normal capture path WITHOUT spawning bots. This is what makes the war map actually live and change hands across the frontier at near-zero CPU; when a player IS nearby the group hydrates and fights for real instead. Default true.", true)]
+        public static bool PVP_FRONTIER_ABSTRACT_SIEGE;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_tower_siege_minutes",
+            "Minutes a dormant frontier group must hold an enemy TOWER before the abstract siege flips it. Default 3 — towers change hands briskly so the map feels alive.", 3)]
+        public static int PVP_FRONTIER_TOWER_SIEGE_MINUTES;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_keep_siege_minutes",
+            "Minutes a dormant frontier group must hold an enemy KEEP before the abstract siege flips it. Default 10 — keeps are slower/harder than towers. Keeps are also only targeted when no enemy tower is available.", 10)]
+        public static int PVP_FRONTIER_KEEP_SIEGE_MINUTES;
     }
 
     #endregion
@@ -1462,6 +1474,25 @@ namespace DOL.GS.Scripts
                 lock (_lock)
                     _assignments[keepId] = (realm, GameLoop.GameLoopTime + CLAIM_TTL_MS);
             }
+
+            /// <summary>
+            /// Records that an objective just flipped to <paramref name="newRealm"/>:
+            /// arms the recapture cooldown immediately, frees the siege slot, and
+            /// updates the last-known owner so the next Sweep doesn't double-detect.
+            /// </summary>
+            internal static void NotifyCaptured(ushort keepId, eRealm newRealm)
+            {
+                long now = GameLoop.GameLoopTime;
+                long cooldownMs = Math.Max(0, PvPFrontierProperties.PVP_FRONTIER_SIEGE_RECAPTURE_COOLDOWN_MIN) * 60_000L;
+
+                lock (_lock)
+                {
+                    if (cooldownMs > 0)
+                        _cooldownUntil[keepId] = now + cooldownMs;
+                    _assignments.Remove(keepId);
+                    _lastOwner[keepId] = newRealm;
+                }
+            }
         }
 
         // ----- Group size distribution -----
@@ -1997,12 +2028,20 @@ namespace DOL.GS.Scripts
         // or sprinting player is actually run down and the group "pops"
         // (hydrates) instead of only being caught once the player stands still.
         private const int DORMANT_PURSUIT_DISTANCE = 2400;
+        // How close (units) a dormant group's VirtualPosition must be to an enemy
+        // objective to count as "at the gates" and begin the abstract siege.
+        // Larger than WAYPOINT_REACHED_RANGE so we latch onto the siege (and stop
+        // re-rolling the waypoint) just before arriving.
+        private const int SIEGE_ARRIVAL_RANGE = 700;
 
         private Point3D _currentWaypoint;
         // KeepID of the enemy objective this group is currently routing to /
         // assaulting under the SiegeCoordinator's direction (0 = none). Lets the
         // assault logic refresh its siege claim so the slot isn't freed mid-fight.
         private ushort _siegeTargetKeepId;
+        // GameLoopTime at which this group, while DORMANT, arrived at its siege
+        // objective and began the abstract (no-spawn) assault (0 = not besieging).
+        private long _dormantSiegeStartMs;
         private long _nextScanMs;
         private long _retreatUntilMs;
         private long _dehydrateAfterMs;   // 0 = no pending dehydration
@@ -2523,7 +2562,16 @@ namespace DOL.GS.Scripts
             {
                 _currentWaypoint = pursue;
                 pursuing = true;
+                _dormantSiegeStartMs = 0; // chasing a player takes priority over a siege
             }
+
+            // Abstract siege: with no player nearby to observe a real fight, a
+            // group tasked with (and arrived at) an enemy objective resolves the
+            // capture over time WITHOUT spawning bots — this is what makes the war
+            // map change hands across the frontier at near-zero CPU. Holds at the
+            // objective while besieging (no movement / no waypoint re-roll).
+            if (!pursuing && TryAdvanceDormantSiege(now))
+                return;
 
             if (_currentWaypoint == null)
                 return;
@@ -2543,6 +2591,138 @@ namespace DOL.GS.Scripts
             double nx = VirtualPosition.X + dx * step / dist;
             double ny = VirtualPosition.Y + dy * step / dist;
             VirtualPosition = new Point3D((int)nx, (int)ny, VirtualPosition.Z);
+        }
+
+        /// <summary>
+        /// Abstract (no-spawn) siege resolution for a DORMANT group. When the
+        /// group has been routed to an enemy objective and its simulated position
+        /// has reached it, we hold there and run a timer; when the timer elapses
+        /// the objective is captured through the normal keep mechanics (ownership
+        /// flip + warmap broadcast + door/guard/banner reset + DB save) without a
+        /// single bot ever being materialised. Towers fall faster than keeps.
+        /// Returns true while latched onto the siege (caller must not move or
+        /// re-roll the waypoint). Balance (per-realm cap, recapture cooldown,
+        /// anti-snowball, tower preference) was already applied when the objective
+        /// was claimed via SiegeCoordinator.PickObjective.
+        /// </summary>
+        private bool TryAdvanceDormantSiege(long now)
+        {
+            if (!PvPFrontierProperties.PVP_FRONTIER_REALTIME_SIEGE
+                || !PvPFrontierProperties.PVP_FRONTIER_ABSTRACT_SIEGE
+                || _siegeTargetKeepId == 0)
+            {
+                _dormantSiegeStartMs = 0;
+                return false;
+            }
+
+            Keeps.AbstractGameKeep keep = FindObjectiveKeep(_siegeTargetKeepId);
+
+            // Target gone / already ours / neutral — drop it and patrol on.
+            if (keep == null || keep.Realm == Config.Realm || keep.Realm == eRealm.None)
+            {
+                _siegeTargetKeepId = 0;
+                _dormantSiegeStartMs = 0;
+                return false;
+            }
+
+            // Still inbound? Let normal dormant movement carry us to the gate.
+            long dx = keep.X - VirtualPosition.X;
+            long dy = keep.Y - VirtualPosition.Y;
+            if ((long) dx * dx + (long) dy * dy > (long) SIEGE_ARRIVAL_RANGE * SIEGE_ARRIVAL_RANGE)
+            {
+                _dormantSiegeStartMs = 0;
+                return false;
+            }
+
+            // At the gates — hold our siege slot so the director doesn't recycle it.
+            PvPFrontierManager.SiegeCoordinator.RefreshClaim(Config.Realm, keep.KeepID);
+
+            // Light the objective up as "under attack" on the war map (it shows
+            // in combat / on fire) so the siege is visible map-wide and draws
+            // players to it, even though no bots are materialised yet. InCombat
+            // is derived from this tick, so refreshing it every step keeps the
+            // keep lit for the whole abstract siege. When a player DOES come,
+            // the group hydrates within HYDRATE_RANGE and fights for real
+            // (TryAttackKeepObjectsNearWaypoint: break door, kill lord), and
+            // other same-realm groups besieging the same keep hydrate too — so
+            // the player finds an actual assault force, not an empty keep.
+            try { keep.LastAttackedByEnemyTick = keep.CurrentRegion.Time; }
+            catch { /* region not ready — harmless, retry next tick */ }
+
+            // First tick at the objective: start the clock + alert the defenders.
+            if (_dormantSiegeStartMs == 0)
+            {
+                _dormantSiegeStartMs = now;
+                AnnounceUnderAttack(keep);
+                return true;
+            }
+
+            bool isTower = keep is Keeps.GameKeepTower;
+            int minutes = isTower
+                ? Math.Max(1, PvPFrontierProperties.PVP_FRONTIER_TOWER_SIEGE_MINUTES)
+                : Math.Max(1, PvPFrontierProperties.PVP_FRONTIER_KEEP_SIEGE_MINUTES);
+
+            if (now - _dormantSiegeStartMs >= minutes * 60_000L)
+            {
+                eRealm captor = Config.Realm;
+                string what = isTower ? "tower" : "keep";
+                string name = keep.Name ?? what;
+
+                try
+                {
+                    keep.Reset(captor); // flips realm, broadcasts capture, resets doors/guards, saves to DB
+                    PvPFrontierManager.SiegeCoordinator.NotifyCaptured(keep.KeepID, captor);
+
+                    if (log.IsInfoEnabled)
+                        log.Info($"[PvPFrontier] ABSTRACT CAPTURE: {captor} took {what} '{name}'.");
+                }
+                catch (Exception ex)
+                {
+                    log.Error($"[PvPFrontier] abstract capture of '{name}' failed", ex);
+                }
+
+                _siegeTargetKeepId = 0;
+                _dormantSiegeStartMs = 0;
+            }
+
+            return true;
+        }
+
+        /// <summary>Finds the keep/tower in this group's region by KeepID (or null).</summary>
+        private Keeps.AbstractGameKeep FindObjectiveKeep(ushort keepId)
+        {
+            var keeps = GameServer.KeepManager.GetKeepsOfRegion(Region);
+            if (keeps == null)
+                return null;
+
+            foreach (var k in keeps)
+                if (k != null && k.KeepID == keepId)
+                    return k;
+
+            return null;
+        }
+
+        /// <summary>
+        /// Realm-wide "keep under attack" alert to the DEFENDING realm when an
+        /// abstract siege opens, mirroring live RvR. The war-map fire (set via
+        /// LastAttackedByEnemyTick) is visible to everyone regardless of realm;
+        /// this screen message is the extra nudge for the owners to come defend.
+        /// </summary>
+        private static void AnnounceUnderAttack(Keeps.AbstractGameKeep keep)
+        {
+            if (keep == null || keep.Realm == eRealm.None)
+                return;
+
+            string message = $"{keep.Name ?? "A keep"} is under attack!";
+
+            foreach (GamePlayer p in ClientService.Instance.GetPlayersOfRealm(keep.Realm))
+            {
+                if (p == null)
+                    continue;
+
+                p.Out.SendMessage(message, eChatType.CT_ScreenCenterSmaller, eChatLoc.CL_SystemWindow);
+                p.Out.SendMessage(message, eChatType.CT_Important, eChatLoc.CL_SystemWindow);
+            }
         }
 
         /// <summary>

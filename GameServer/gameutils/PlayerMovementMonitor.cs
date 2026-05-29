@@ -36,10 +36,17 @@ namespace DOL.GS
         public static int SafePositionMinDistance { get; set; } = 125;      // Player must move this far from the previous safe spot for a new one to be set.
 
         // Speed hack configuration.
-        public static int ViolationThreshold { get; set; } = 6;             // Number of consecutive speed hack detections before action is taken.
-        public static int ViolationValidityDuration { get; set; } = 1500;   // Duration in milliseconds for which violations are considered valid (must be at least ViolationThreshold * ~210).
+        // Master switch. DISABLED by default: this is a single-player + bots
+        // server where speed-hack policing has little value, but its corrective
+        // teleport-back was rubber-banding legit players on the busy frontier map
+        // (the "stuck, bouncing up and down, can't move" symptom). It can be
+        // re-enabled live with the /speedhack admin command ("/speedhack Enabled
+        // true"); the thresholds below are also set very tolerant for that case.
+        public static bool Enabled { get; set; } = false;
+        public static int ViolationThreshold { get; set; } = 20;            // Consecutive detections before action. Raised (very tolerant).
+        public static int ViolationValidityDuration { get; set; } = 1500;   // Duration in milliseconds for which violations are considered valid.
         public static int TeleportThreshold { get; set; } = 5;              // Number of consecutive teleports before kicking.
-        public static double MaxSpeedToleranceFactor { get; set; } = 1.15;  // Factor to allow for some tolerance in speed checks (measurement errors, lag, etc.).
+        public static double MaxSpeedToleranceFactor { get; set; } = 3.0;   // Speed tolerance. Raised to 3x (very tolerant) so normal RvR movement never trips it.
         public static int LatencyBuffer { get; set; } = 750;                // Buffer time to account for latency when checking speed changes.
 
         public PlayerMovementMonitor(GamePlayer player)
@@ -83,6 +90,12 @@ namespace DOL.GS
 
         public void ValidateMovement()
         {
+            // Disabled (default on this server): never police speed / teleport
+            // the player back. Recording still runs so /stuck's safe position
+            // keeps working.
+            if (!Enabled)
+                return;
+
             // We don't know when the position update was actually received, only when it was processed by the game loop.
             // We account for processing delay uncertainty by adding a small buffer to the time difference, equal to one game loop tick.
             // Ad a side effect, if the server is lagging, the speed hack detection becomes more lenient.
@@ -139,9 +152,54 @@ namespace DOL.GS
                 {
                     if (!_player.IsAllowedToFly && (ePrivLevel) _player.Client.Account.PrivLevel <= ePrivLevel.Player)
                     {
-                        double actualDistance = Math.Sqrt(squaredDistance);
-                        double actualSpeed = actualDistance * 1000.0 / timeDiff;
-                        HandleSpeedHack(actualDistance, allowedMaxDistance, actualSpeed, allowedMaxSpeed);
+                        // Sustained-average gate. A single pair of position
+                        // samples can spike over the per-sample limit for reasons
+                        // that are NOT a speed hack: bursty packet processing on a
+                        // busy region, a brief client/server desync, the velocity
+                        // momentarily exceeding the (flat) MaxSpeed model when
+                        // running down a slope or off an edge, or a speed buff
+                        // dropping/applying with latency in RvR. Acting on those
+                        // teleports a legit player back to a stale position over
+                        // and over — the "stuck, bouncing up and down, can't move
+                        // forward or back" symptom on the frontier map (the snap
+                        // also resets Z, which is the visible vertical bounce).
+                        //
+                        // Only teleport when the AVERAGE speed across the entire
+                        // violation window (from the teleport anchor to now) also
+                        // exceeds what's allowed. A real speed hack sustains the
+                        // distance and still trips this; transient spikes average
+                        // back into the legal envelope and are dropped.
+                        bool sustained = true;
+
+                        if (_teleport.Timestamp > 0)
+                        {
+                            double windowTime = _current.Timestamp - _teleport.Timestamp + GameLoop.TickDuration;
+
+                            if (windowTime > 0)
+                            {
+                                long wdx = _current.X - _teleport.X;
+                                long wdy = _current.Y - _teleport.Y;
+                                double windowDistance = Math.Sqrt((double) wdx * wdx + (double) wdy * wdy);
+                                double windowSpeed = windowDistance * 1000.0 / windowTime;
+                                sustained = windowSpeed > allowedMaxSpeed;
+                            }
+                        }
+
+                        if (sustained)
+                        {
+                            double actualDistance = Math.Sqrt(squaredDistance);
+                            double actualSpeed = actualDistance * 1000.0 / timeDiff;
+                            HandleSpeedHack(actualDistance, allowedMaxDistance, actualSpeed, allowedMaxSpeed);
+                        }
+                        else
+                        {
+                            // Benign burst — forget the accumulated violations so
+                            // the very next sample doesn't immediately re-trigger.
+                            _violationTimestamps.Clear();
+                            _teleport = default;
+                            _accumulatedPauseTime = 0;
+                            _teleportCount = 0;
+                        }
                     }
                 }
             }
