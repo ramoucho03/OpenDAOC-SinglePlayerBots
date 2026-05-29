@@ -216,6 +216,18 @@ namespace DOL.GS.Scripts
         [ServerProperty("pvpfrontier", "pvp_frontier_keep_siege_groups",
             "Number of 8-man groups co-spawned for a keep siege event. Default 3 → 24 mimics dedicated to the siege.", 3)]
         public static int PVP_FRONTIER_KEEP_SIEGE_GROUPS;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_realtime_siege",
+            "When true, roaming frontier groups continuously besiege and CAPTURE enemy towers (and, less often, keeps) as part of normal patrols — a live, shifting map instead of only the rare scripted siege event. Capture uses the normal keep mechanics (break door, kill lord, ResetKeep). Default true.", true)]
+        public static bool PVP_FRONTIER_REALTIME_SIEGE;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_siege_max_per_realm",
+            "Maximum number of distinct enemy objectives (towers/keeps) a single realm's mimic groups will besiege at the same time. Caps CPU and stops one realm steamrolling the whole map. The realm currently leading in owned objectives sieges one fewer (anti-snowball). Default 2.", 2)]
+        public static int PVP_FRONTIER_SIEGE_MAX_PER_REALM;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_siege_recapture_cooldown_min",
+            "Minutes a tower/keep is left alone by the mimic siege director after it flips ownership, so objectives don't ping-pong every few seconds. Real players are never restricted. Default 12.", 12)]
+        public static int PVP_FRONTIER_SIEGE_RECAPTURE_COOLDOWN_MIN;
     }
 
     #endregion
@@ -595,6 +607,13 @@ namespace DOL.GS.Scripts
                 // probe — O(groups × players) collapses to O(players) per
                 // tick + O(groups) cache lookups.
                 RefreshPlayerSnapshots();
+
+                // Detect objective flips + expire stale siege claims so the
+                // real-time siege director stays balanced (cap / cooldown /
+                // anti-snowball). Cheap: a few dictionary ops over the region's
+                // keeps. NF only — towers/keeps live there.
+                try { SiegeCoordinator.Sweep(REGION_NEW_FRONTIERS); }
+                catch (Exception sgEx) { log.Error("PvPFrontier siege sweep failed", sgEx); }
 
                 lock (_configsLock)
                 {
@@ -1269,6 +1288,182 @@ namespace DOL.GS.Scripts
                          $"assaulting {targetKeep.Name ?? "keep"} (currently {targetKeep.Realm}).");
         }
 
+        // ===================================================================
+        // Real-time siege coordinator
+        // -------------------------------------------------------------------
+        // Lightweight balance/perf brain for the continuous tower/keep capture
+        // loop. All access happens on the single maintenance-tick thread (group
+        // waypoint picks + the per-tick Sweep), so the lock is purely defensive.
+        // No extra spawns and no per-frame work — it only books a few small
+        // dictionaries keyed by KeepID, so the "real-time" feel costs almost
+        // nothing: the actual fighting is done by groups that already exist.
+        // ===================================================================
+        internal static class SiegeCoordinator
+        {
+            private static readonly object _lock = new();
+
+            // KeepID -> realm currently assigned to besiege it, with a TTL that
+            // a pursuing group refreshes on arrival. Expiring claims auto-free
+            // the slot when a group dies / is intercepted / wanders off.
+            private static readonly Dictionary<ushort, (eRealm realm, long expireTick)> _assignments = new();
+            // KeepID -> GameLoopTime until which the objective is off-limits
+            // (armed right after it flips, so captures don't ping-pong).
+            private static readonly Dictionary<ushort, long> _cooldownUntil = new();
+            // KeepID -> last owning realm, for flip detection in Sweep().
+            private static readonly Dictionary<ushort, eRealm> _lastOwner = new();
+
+            private const long CLAIM_TTL_MS = 180_000; // 3 min — covers travel; refreshed while assaulting.
+
+            /// <summary>
+            /// Per-maintenance-tick housekeeping: detect objective flips (arm the
+            /// recapture cooldown + drop the siege claim) and expire stale claims.
+            /// </summary>
+            internal static void Sweep(ushort region)
+            {
+                if (!PvPFrontierProperties.PVP_FRONTIER_REALTIME_SIEGE)
+                    return;
+
+                var keeps = GameServer.KeepManager.GetKeepsOfRegion(region);
+                long now = GameLoop.GameLoopTime;
+                long cooldownMs = Math.Max(0, PvPFrontierProperties.PVP_FRONTIER_SIEGE_RECAPTURE_COOLDOWN_MIN) * 60_000L;
+
+                lock (_lock)
+                {
+                    if (keeps != null)
+                    {
+                        foreach (var k in keeps)
+                        {
+                            if (k == null) continue;
+                            ushort id = k.KeepID;
+                            if (_lastOwner.TryGetValue(id, out eRealm prev) && prev != k.Realm)
+                            {
+                                if (cooldownMs > 0)
+                                    _cooldownUntil[id] = now + cooldownMs;
+                                _assignments.Remove(id);
+                                if (log.IsInfoEnabled)
+                                    log.Info($"[PvPFrontier] objective '{k.Name}' flipped {prev} -> {k.Realm}; siege recapture cooldown {PvPFrontierProperties.PVP_FRONTIER_SIEGE_RECAPTURE_COOLDOWN_MIN}m.");
+                            }
+                            _lastOwner[id] = k.Realm;
+                        }
+                    }
+
+                    if (_assignments.Count > 0)
+                    {
+                        List<ushort> stale = null;
+                        foreach (var kv in _assignments)
+                            if (kv.Value.expireTick <= now)
+                                (stale ??= new List<ushort>()).Add(kv.Key);
+                        if (stale != null)
+                            foreach (ushort id in stale)
+                                _assignments.Remove(id);
+                    }
+                }
+            }
+
+            /// <summary>
+            /// Picks the best enemy objective for a <paramref name="realm"/> group
+            /// to assault, honouring the per-realm concurrent-siege cap, the
+            /// post-flip recapture cooldown, the anti-snowball cap reduction for
+            /// the leading realm, and a strong preference for TOWERS — so keeps are
+            /// only assaulted when no enemy tower is available, keeping keep
+            /// captures the rarer, harder event. Returns null when the group should
+            /// not open (or join) a siege right now. Claims the objective on success.
+            /// </summary>
+            internal static Keeps.AbstractGameKeep PickObjective(eRealm realm, ushort region, int anchorX, int anchorY)
+            {
+                if (!PvPFrontierProperties.PVP_FRONTIER_REALTIME_SIEGE)
+                    return null;
+
+                var keeps = GameServer.KeepManager.GetKeepsOfRegion(region);
+                if (keeps == null || keeps.Count == 0)
+                    return null;
+
+                long now = GameLoop.GameLoopTime;
+                int maxPerRealm = Math.Max(1, PvPFrontierProperties.PVP_FRONTIER_SIEGE_MAX_PER_REALM);
+
+                lock (_lock)
+                {
+                    // Anti-snowball: the realm currently owning the most objectives
+                    // gets one fewer concurrent siege slot (unless all tied).
+                    int alb = 0, mid = 0, hib = 0;
+                    foreach (var k in keeps)
+                    {
+                        if (k == null) continue;
+                        if (k.Realm == eRealm.Albion) alb++;
+                        else if (k.Realm == eRealm.Midgard) mid++;
+                        else if (k.Realm == eRealm.Hibernia) hib++;
+                    }
+                    int mine = realm == eRealm.Albion ? alb : realm == eRealm.Midgard ? mid : realm == eRealm.Hibernia ? hib : 0;
+                    bool leading = mine > 0 && mine >= alb && mine >= mid && mine >= hib && !(alb == mid && mid == hib);
+                    int cap = leading ? Math.Max(1, maxPerRealm - 1) : maxPerRealm;
+
+                    int active = 0;
+                    foreach (var kv in _assignments)
+                        if (kv.Value.realm == realm && kv.Value.expireTick > now)
+                            active++;
+                    bool atCap = active >= cap;
+
+                    Keeps.AbstractGameKeep best = null;
+                    bool bestIsTower = false;
+                    long bestDistSq = long.MaxValue;
+
+                    foreach (var k in keeps)
+                    {
+                        if (k == null) continue;
+                        if (k.Realm == realm || k.Realm == eRealm.None) continue; // enemy only
+                        ushort id = k.KeepID;
+
+                        if (_cooldownUntil.TryGetValue(id, out long cd) && cd > now)
+                            continue; // just flipped — leave it alone
+
+                        bool ours = _assignments.TryGetValue(id, out var asg)
+                                    && asg.expireTick > now && asg.realm == realm;
+                        bool isTower = k is Keeps.GameKeepTower;
+
+                        if (isTower)
+                        {
+                            // One group is enough to take a tower: skip towers we
+                            // already hold, and don't open a new one at cap.
+                            if (ours || atCap) continue;
+                        }
+                        else
+                        {
+                            // Keeps need numbers: a group may JOIN a keep our realm
+                            // already besieges even at cap; only opening a brand-new
+                            // keep front is gated by the cap.
+                            if (!ours && atCap) continue;
+                        }
+
+                        long dx = k.X - anchorX, dy = k.Y - anchorY;
+                        long distSq = dx * dx + dy * dy;
+
+                        bool better = best == null
+                            || (isTower && !bestIsTower)                        // towers always win
+                            || (isTower == bestIsTower && distSq < bestDistSq); // then nearest
+                        if (better)
+                        {
+                            best = k;
+                            bestIsTower = isTower;
+                            bestDistSq = distSq;
+                        }
+                    }
+
+                    if (best == null)
+                        return null;
+
+                    _assignments[best.KeepID] = (realm, now + CLAIM_TTL_MS);
+                    return best;
+                }
+            }
+
+            /// <summary>Refreshes the claim TTL while a group is actively assaulting.</summary>
+            internal static void RefreshClaim(eRealm realm, ushort keepId)
+            {
+                lock (_lock)
+                    _assignments[keepId] = (realm, GameLoop.GameLoopTime + CLAIM_TTL_MS);
+            }
+        }
+
         // ----- Group size distribution -----
         // Real RvR has lots of full 8-man parties, fewer skirmish teams, and
         // rare solo roamers. Roll a weighted random size in [min..max] based
@@ -1804,6 +1999,10 @@ namespace DOL.GS.Scripts
         private const int DORMANT_PURSUIT_DISTANCE = 2400;
 
         private Point3D _currentWaypoint;
+        // KeepID of the enemy objective this group is currently routing to /
+        // assaulting under the SiegeCoordinator's direction (0 = none). Lets the
+        // assault logic refresh its siege claim so the slot isn't freed mid-fight.
+        private ushort _siegeTargetKeepId;
         private long _nextScanMs;
         private long _retreatUntilMs;
         private long _dehydrateAfterMs;   // 0 = no pending dehydration
@@ -2932,6 +3131,10 @@ namespace DOL.GS.Scripts
             //   5. Random patrol waypoint.
             //   6. Fall back to spawn anchor.
 
+            // Reset any prior offensive-siege intent; only the offensive branch
+            // (4) below re-sets it when this group commits to an objective.
+            _siegeTargetKeepId = 0;
+
             // (1) Defend a friendly keep under siege.
             Point3D defendTarget = PickFriendlyKeepUnderAttack();
             if (defendTarget != null)
@@ -2969,14 +3172,34 @@ namespace DOL.GS.Scripts
                 }
             }
 
-            // (4) Offensive keep intent.
+            // (4) Offensive siege intent. With the real-time director enabled,
+            // route to a director-approved objective (tower preferred; per-realm
+            // cap, recapture cooldown and anti-snowball applied) and remember it
+            // so the assault logic can refresh the claim on arrival. Falls back to
+            // the legacy closest-enemy-keep pick when the director is disabled.
             if (Util.Chance(PvPFrontierProperties.PVP_FRONTIER_KEEP_ATTACK_CHANCE))
             {
-                Point3D keepTarget = PickClosestEnemyKeep();
-                if (keepTarget != null)
+                if (PvPFrontierProperties.PVP_FRONTIER_REALTIME_SIEGE)
                 {
-                    _currentWaypoint = keepTarget;
-                    return;
+                    MimicNPC ld = FirstAliveMember();
+                    int ax = ld != null ? ld.X : VirtualPosition.X;
+                    int ay = ld != null ? ld.Y : VirtualPosition.Y;
+                    Keeps.AbstractGameKeep obj = PvPFrontierManager.SiegeCoordinator.PickObjective(Config.Realm, Region, ax, ay);
+                    if (obj != null)
+                    {
+                        _siegeTargetKeepId = obj.KeepID;
+                        _currentWaypoint = new Point3D(obj.X, obj.Y, obj.Z);
+                        return;
+                    }
+                }
+                else
+                {
+                    Point3D keepTarget = PickClosestEnemyKeep();
+                    if (keepTarget != null)
+                    {
+                        _currentWaypoint = keepTarget;
+                        return;
+                    }
                 }
             }
 
@@ -3139,7 +3362,7 @@ namespace DOL.GS.Scripts
         {
             MimicNPC leader = FirstAliveMember();
             if (leader == null) return;
-            if (leader.GetDistance(_currentWaypoint) > 800) return; // not at the keep yet
+            if (_currentWaypoint == null || leader.GetDistance(_currentWaypoint) > 800) return; // not at the keep yet
 
             var keeps = GameServer.KeepManager.GetKeepsOfRegion(leader.CurrentRegionID);
             if (keeps == null) return;
@@ -3157,32 +3380,108 @@ namespace DOL.GS.Scripts
                     break;
                 }
             }
-            if (matched == null || matched.Realm == Config.Realm) return;
+            if (matched == null) return;
 
-            // Pick target: closest live guard first, fall back to the closest door.
-            GameLiving target = null;
-            int bestDist = int.MaxValue;
-
-            if (matched.Guards != null)
+            // Defense: we routed to one of our OWN objectives because it is under
+            // attack — engage the nearest besieger instead of standing at the wall.
+            if (matched.Realm == Config.Realm)
             {
-                foreach (var kv in matched.Guards)
-                {
-                    var g = kv.Value;
-                    if (g == null || !g.IsAlive) continue;
-                    int d = leader.GetDistanceTo(g);
-                    if (d < bestDist) { bestDist = d; target = g; }
-                }
+                if (matched.InCombat)
+                    EngageNearestHostileNearObjective(leader, matched);
+                return;
             }
 
-            if (target == null && matched.Doors != null)
+            // Offensive capture sequence: breach FIRST, lord LAST. Targeting the
+            // lord (or inner guards) while a door still stands just parks the group
+            // at the wall; concentrating on the door breaks the keep open, and once
+            // breached the closest-live-guard walk naturally arrives at the lord —
+            // whose death calls ResetKeep and flips ownership to our realm.
+            GameLiving target = PickKeepAssaultTarget(matched, leader);
+            if (target == null) return;
+
+            foreach (var m in Members)
             {
-                foreach (var kv in matched.Doors)
+                if (m == null || !m.IsAlive || m.MimicBrain == null) continue;
+                m.MimicBrain.AddToAggroList(target, 100);
+                m.MimicBrain.FSM.SetCurrentState(eFSMStateType.AGGRO);
+            }
+
+            // We're actively assaulting — keep our siege claim warm so the slot
+            // isn't recycled out from under us mid-fight.
+            if (PvPFrontierProperties.PVP_FRONTIER_REALTIME_SIEGE)
+                PvPFrontierManager.SiegeCoordinator.RefreshClaim(Config.Realm, matched.KeepID);
+        }
+
+        /// <summary>
+        /// Chooses what the assault group hits next at <paramref name="keep"/>:
+        /// the closest door still standing (breach first); once every door is
+        /// down, the lord if alive; otherwise the closest live guard. This
+        /// door→lord ordering is what turns "damage the keep" into a capture.
+        /// </summary>
+        private static GameLiving PickKeepAssaultTarget(Keeps.AbstractGameKeep keep, MimicNPC leader)
+        {
+            // 1) Closest door still alive (blocking) — break in first.
+            GameLiving closestDoor = null;
+            int bestDoor = int.MaxValue;
+            if (keep.Doors != null)
+            {
+                foreach (var kv in keep.Doors)
                 {
                     var d = kv.Value;
                     if (d == null || !d.IsAlive) continue;
                     int dist = leader.GetDistanceTo(d);
-                    if (dist < bestDist) { bestDist = dist; target = d; }
+                    if (dist < bestDoor) { bestDoor = dist; closestDoor = d; }
                 }
+            }
+            if (closestDoor != null)
+                return closestDoor;
+
+            // 2) Breached — prefer the lord (its death captures the objective),
+            //    otherwise the closest remaining guard.
+            GameLiving lord = null;
+            GameLiving closestGuard = null;
+            int bestGuard = int.MaxValue;
+            if (keep.Guards != null)
+            {
+                foreach (var kv in keep.Guards)
+                {
+                    var g = kv.Value;
+                    if (g == null || !g.IsAlive) continue;
+                    if (g is Keeps.GuardLord) lord = g;
+                    int dist = leader.GetDistanceTo(g);
+                    if (dist < bestGuard) { bestGuard = dist; closestGuard = g; }
+                }
+            }
+
+            return lord ?? closestGuard;
+        }
+
+        /// <summary>
+        /// Defensive engagement: orders the group onto the closest enemy (player
+        /// or enemy-realm mimic) near a friendly objective under attack so the
+        /// group actually fights the besiegers rather than milling at the gate.
+        /// </summary>
+        private void EngageNearestHostileNearObjective(MimicNPC leader, Keeps.AbstractGameKeep keep)
+        {
+            const ushort DEFEND_SCAN_RANGE = 3000;
+
+            GameLiving target = null;
+            int bestDist = int.MaxValue;
+
+            foreach (GamePlayer p in leader.GetPlayersInRadius(DEFEND_SCAN_RANGE))
+            {
+                if (p == null || !p.IsAlive || p.Realm == Config.Realm) continue;
+                if (!GameServer.ServerRules.IsAllowedToAttack(leader, p, true)) continue;
+                int d = leader.GetDistanceTo(p);
+                if (d < bestDist) { bestDist = d; target = p; }
+            }
+
+            foreach (GameNPC npc in leader.GetNPCsInRadius(DEFEND_SCAN_RANGE))
+            {
+                if (npc is not MimicNPC enemy || !enemy.IsAlive || enemy.Realm == Config.Realm) continue;
+                if (!GameServer.ServerRules.IsAllowedToAttack(leader, enemy, true)) continue;
+                int d = leader.GetDistanceTo(enemy);
+                if (d < bestDist) { bestDist = d; target = enemy; }
             }
 
             if (target == null) return;
