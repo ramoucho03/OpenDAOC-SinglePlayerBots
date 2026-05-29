@@ -201,6 +201,17 @@ namespace DOL.GS
                 if (worker != null && Thread.CurrentThread != worker && worker.IsAlive)
                     worker.Join();
             }
+
+            // All workers have stopped and joined; the synchronization primitives
+            // are no longer in use and can be released (CA2213).
+            _shutdownToken.Dispose();
+            _workerStartLatch.Dispose();
+
+            if (_workReady != null)
+            {
+                for (int i = 0; i < _workReady.Length; i++)
+                    _workReady[i]?.Dispose();
+            }
         }
 
         protected override void InitWorker(object obj)

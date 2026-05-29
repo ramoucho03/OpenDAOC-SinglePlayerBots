@@ -2926,11 +2926,7 @@ namespace DOL.GS
 		/// <summary>
 		/// Checks whether Living has ability to use lefthanded weapons
 		/// </summary>
-		public bool CanUseLefthandedWeapon
-		{
-			get => m_leftHandSwingChance > 0;
-			set => CanUseLefthandedWeapon = value;
-		}
+		public bool CanUseLefthandedWeapon => m_leftHandSwingChance > 0;
 
 		public override void StartInterruptTimer(int duration, AttackData.eAttackType attackType, GameLiving attacker)
 		{
@@ -3903,7 +3899,6 @@ namespace DOL.GS
 			copyTarget.TranslationId = TranslationId;
 			copyTarget.BlockChance = BlockChance;
 			copyTarget.BodyType = BodyType;
-			copyTarget.CanUseLefthandedWeapon = CanUseLefthandedWeapon;
 			copyTarget.Charisma = Charisma;
 			copyTarget.Constitution = Constitution;
 			copyTarget.CurrentRegion = CurrentRegion;

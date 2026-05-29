@@ -5224,7 +5224,7 @@ namespace DOL.GS.Scripts
                 }
             }
 
-            Styles = Styles;
+            SortStyles();
         }
 
         /// <summary>

@@ -352,7 +352,7 @@ namespace DOL.GS.Commands
 							}
 						}
 						// If plvl specified is Player or GM and no target is specified
-						if (args[1] == "1" || args[1] == "2" && client.Player == target && target == null)
+						if ((args[1] == "1" || args[1] == "2") && client.Player == target)
 						{
 							// If player's account doesn't have 'plvl' permission
 							if (SinglePermission.HasPermission(client.Player, "plvl") == false)

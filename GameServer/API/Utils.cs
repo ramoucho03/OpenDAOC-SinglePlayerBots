@@ -69,7 +69,7 @@ public class Utils
 
     public ServerUptime GetUptime(DateTime startupTime)
     {
-        var _uptimeCacheKey = "api_player_count";
+        var _uptimeCacheKey = "api_uptime";
 
         if (!_cache.TryGetValue(_uptimeCacheKey, out ServerUptime serverUptime))
         {

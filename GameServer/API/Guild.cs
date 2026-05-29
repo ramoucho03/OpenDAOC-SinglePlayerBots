@@ -119,7 +119,7 @@ public class Guild
 
             guilds.Sort((x, y) => y.RealmPoints.CompareTo(x.RealmPoints));
 
-            foreach (var guild in guilds.GetRange(0, 10))
+            foreach (var guild in guilds.GetRange(0, guilds.Count < 10 ? guilds.Count : 10))
             {
                 if (guild == null)
                     continue;

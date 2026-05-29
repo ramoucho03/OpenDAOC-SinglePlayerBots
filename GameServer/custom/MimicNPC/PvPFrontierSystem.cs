@@ -1793,9 +1793,15 @@ namespace DOL.GS.Scripts
         private const int MIN_HYDRATED_LIFETIME_MS = 60_000;
 
         // Dormant movement: how often we advance VirtualPosition and how far
-        // each step covers. 5s tick * 190 (run speed) ≈ 950u per step.
+        // each step covers. 5s tick * 190 (run speed) ≈ 950u per patrol step.
         private const int DORMANT_STEP_MS = 5_000;
         private const int DORMANT_STEP_DISTANCE = 950;
+        // Catch-up step used while a dormant group is PURSUING a tracked enemy
+        // player. At the 5s dormant cadence 2400u ≈ 480 u/s — comfortably above
+        // a player's run (≈191) + sprint (×1.3 ≈ 248) + speed-buff, so a roaming
+        // or sprinting player is actually run down and the group "pops"
+        // (hydrates) instead of only being caught once the player stands still.
+        private const int DORMANT_PURSUIT_DISTANCE = 2400;
 
         private Point3D _currentWaypoint;
         private long _nextScanMs;
@@ -2303,6 +2309,26 @@ namespace DOL.GS.Scripts
             if (now < _nextDormantStepMs) return;
             _nextDormantStepMs = now + DORMANT_STEP_MS;
 
+            // Re-acquire the closest enemy player every step so a dormant group
+            // PURSUES a moving target instead of walking toward a waypoint frozen
+            // at spawn time. Without this the group's VirtualPosition only ever
+            // reached HYDRATE_RANGE once the player stopped — the "I have to stop
+            // running/sprinting for a group to pop" symptom — because the old
+            // 950u/5s (≈190 u/s) patrol step cannot out-pace a player who is
+            // running (≈191), let alone sprinting (≈248). When a player is in
+            // track range we both steer at them AND use the faster
+            // DORMANT_PURSUIT_DISTANCE catch-up step; otherwise we patrol normally.
+            bool pursuing = false;
+            Point3D pursue = PickClosestEnemyPlayerWaypoint();
+            if (pursue != null)
+            {
+                _currentWaypoint = pursue;
+                pursuing = true;
+            }
+
+            if (_currentWaypoint == null)
+                return;
+
             long dx = _currentWaypoint.X - VirtualPosition.X;
             long dy = _currentWaypoint.Y - VirtualPosition.Y;
             long distSq = dx * dx + dy * dy;
@@ -2314,7 +2340,7 @@ namespace DOL.GS.Scripts
             }
 
             double dist = Math.Sqrt(distSq);
-            double step = Math.Min(DORMANT_STEP_DISTANCE, dist);
+            double step = Math.Min(pursuing ? DORMANT_PURSUIT_DISTANCE : DORMANT_STEP_DISTANCE, dist);
             double nx = VirtualPosition.X + dx * step / dist;
             double ny = VirtualPosition.Y + dy * step / dist;
             VirtualPosition = new Point3D((int)nx, (int)ny, VirtualPosition.Z);
@@ -3732,6 +3758,7 @@ namespace DOL.GS.Scripts
         {
             int aliveCount = 0;
             int healerCount = 0;
+            int ccCount = 0;
             int levelSum = 0;
             int rrSum = 0;
             foreach (var m in g.Members)
@@ -3742,6 +3769,8 @@ namespace DOL.GS.Scripts
                 rrSum += m.RealmLevel;
                 if (m.MimicBrain != null && m.MimicBrain.IsHealer)
                     healerCount++;
+                if (m.CanCastCrowdControlSpells || m.CanCastInstantCrowdControlSpells)
+                    ccCount++;
             }
 
             if (aliveCount == 0) return 0;
@@ -3762,6 +3791,21 @@ namespace DOL.GS.Scripts
             // contribution by ratio, not raw count.
             double healerRatio = (double)healerCount / aliveCount;
             strength = (int)(strength * (1.0 + healerRatio * 0.6));
+
+            // Crowd-control superiority is a real tactical edge in a group
+            // fight: a mezzer can take part of the enemy line out of the fight
+            // entirely (clean chain-mez), letting a group win an engagement it
+            // would lose on raw numbers. Give a modest per-controller bonus,
+            // capped, so a group that brought CC (Sorcerer/Bard/Mentalist/…)
+            // engages more confidently while a CC-less group stays cautious.
+            // The enemy's CC is captured symmetrically: it inflates *their*
+            // ComputeStrength too, so the ratio still reflects who out-controls
+            // whom rather than handing a blanket bonus to everyone.
+            if (ccCount > 0)
+            {
+                double ccBonus = Math.Min(0.30, 0.10 + 0.05 * ccCount);
+                strength = (int)(strength * (1.0 + ccBonus));
+            }
 
             return strength;
         }

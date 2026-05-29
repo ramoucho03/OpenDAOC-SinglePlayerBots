@@ -845,7 +845,7 @@ namespace DOL.GS
 				{
 					GamePlayer PlayerAttacker = ad.Attacker as GamePlayer;
 					if (PlayerAttacker.GetSpellLine("Spymaster") != null)
-						if (Util.Chance((double)(15 * 0.0001))) return;
+						if (Util.Chance(15)) return;
 				}
 				weapon.PoisonCharges--;
 				if (weapon.PoisonCharges <= 0) { weapon.PoisonMaxCharges = 0; weapon.PoisonSpellID = 0; }

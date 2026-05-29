@@ -147,7 +147,7 @@ namespace DOL.GS
 				return false;
 			}
 
-			if (player.GetCraftingSkillValue(skill) < ((percentNeeded / 100) * CraftingMgr.GetItemCraftLevel(item)))
+			if (player.GetCraftingSkillValue(skill) < (percentNeeded * CraftingMgr.GetItemCraftLevel(item) / 100))
 			{
 				player.Out.SendMessage(LanguageMgr.GetTranslation(player.Client.Account.Language, "Repair.IsAllowedToBeginWork.NotEnoughSkill", item.Name), eChatType.CT_System, eChatLoc.CL_SystemWindow);
 				return false;

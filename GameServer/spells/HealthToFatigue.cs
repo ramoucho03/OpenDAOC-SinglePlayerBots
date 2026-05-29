@@ -62,7 +62,7 @@ namespace DOL.GS.Spells
 
 		protected virtual void GiveEndurance(GameLiving target, int amount)
 		{
-			if (target.Endurance >= amount)
+			if (target.Endurance + amount > target.MaxEndurance)
 				amount = target.MaxEndurance - target.Endurance;
 
 			target.ChangeEndurance(target, eEnduranceChangeType.Spell, amount);

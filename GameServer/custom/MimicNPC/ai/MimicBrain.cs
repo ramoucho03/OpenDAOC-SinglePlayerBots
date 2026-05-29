@@ -3827,6 +3827,29 @@ namespace DOL.AI.Brain
             // falls back to its own (empty) aggro list.
             EnsurePetCombatReady(Body.TargetObject);
 
+            // PvP group fight — pivot to crowd control first. When this bot can
+            // crowd-control and it is fighting as part of a group, it locks down
+            // the enemy line BEFORE adding to the nuke/melee. CheckSpells's PvP
+            // path (PickPvpCcTarget) targets loose healers/casters first and
+            // skips the group's focus kill-target plus anyone already mezzed or
+            // CC-immune, so the lock spreads cleanly across the enemy group
+            // without the rest of the group breaking it ("clean" chain-mez).
+            // It returns false — falling through to the normal offensive cycle —
+            // as soon as nothing else is worth mezzing (e.g. only the focus
+            // kill-target is left, or every other enemy is already locked), so
+            // a 1v1 still nukes and the CCer rejoins the burn once the line is
+            // controlled.
+            if (!IsFleeing
+                && PvPMode
+                && Body.Group != null
+                && !Body.IsCasting
+                && (MimicBody.CanCastCrowdControlSpells || MimicBody.CanCastInstantCrowdControlSpells)
+                && CheckSpells(eCheckSpellType.CrowdControl))
+            {
+                Body.StopAttack();
+                return;
+            }
+
             if (!IsFleeing && CheckSpells(eCheckSpellType.Offensive))
             {
                 Body.StopAttack();
@@ -6412,6 +6435,23 @@ namespace DOL.AI.Brain
         /// mez whatever the assist is killing). Returns null when no good
         /// candidate exists — caller falls back to TargetObject.
         /// </summary>
+        /// <summary>
+        /// True when this bot is a PvP crowd-controller that has at least one
+        /// clean mez target available right now — an enemy in CC range that is
+        /// not the group's focus kill-target and not already mezzed or CC-immune.
+        /// Drives the v2 <c>PvpCcOpportunityTrigger</c> so the CC strategy fires
+        /// in RvR; the legacy FSM path (AttackMostWanted) gates on the same
+        /// conditions inline. Reuses <see cref="PickPvpCcTarget"/> so the trigger
+        /// and the actual cast always agree on what counts as a valid target.
+        /// </summary>
+        public bool HasPvpCcOpportunity()
+        {
+            return PvPMode
+                && MimicBody != null
+                && MimicBody.CanCastCrowdControlSpells
+                && PickPvpCcTarget() != null;
+        }
+
         private GameLiving PickPvpCcTarget()
         {
             if (!MimicBody.CanCastCrowdControlSpells)
