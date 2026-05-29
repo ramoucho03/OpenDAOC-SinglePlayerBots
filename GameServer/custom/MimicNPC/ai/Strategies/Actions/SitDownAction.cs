@@ -12,6 +12,9 @@ namespace DOL.GS.Scripts.AI.Strategies.Actions
         {
             MimicNPC bot = ctx.Bot;
 
+            if (bot == null)
+                return false;
+
             if (bot.IsSitting)
                 return false;
 

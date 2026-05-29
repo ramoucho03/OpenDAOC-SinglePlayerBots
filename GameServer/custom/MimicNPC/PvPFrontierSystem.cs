@@ -102,7 +102,7 @@ namespace DOL.GS.Scripts
         public static int PVP_FRONTIER_DYNAMIC_SPAWN_INNER;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_dynamic_spawn_outer",
-            "Maximum distance (units) between a dynamic-spawn point and the anchor player. Wider = more dispersed groups, narrower = denser encounters. Default 13000 (~4 min walk).", 13000)]
+            "Maximum distance (units) between a dynamic-spawn point and the anchor player. Wider = more dispersed groups, narrower = denser encounters. Default 10000 — tightened from 13000 so groups arrive within ~1 min instead of 3-4, catching moving players instead of only those who stop.", 10000)]
         public static int PVP_FRONTIER_DYNAMIC_SPAWN_OUTER;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_dynamic_spawn_skip_if_empty",
@@ -118,7 +118,7 @@ namespace DOL.GS.Scripts
         public static int PVP_FRONTIER_PLAYER_TRACK_RADIUS;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_player_track_chance",
-            "Chance (0-100) per next-waypoint pick that a frontier group routes toward the closest enemy-realm player in the region instead of a random patrol waypoint. Default 20 — keeps tracking subtle so the player gets pursued without every group dogpiling them. Bump to 50+ for hot-pursuit mode.", 20)]
+            "Chance (0-100) per next-waypoint pick that a frontier group routes toward the closest enemy-realm player in the region instead of a random patrol waypoint. Default 50 — groups actively pursue moving players (1 waypoint in 2 aims at the closest enemy). Drop to 20 for ambient patrols, raise to 70+ for full hot-pursuit.", 50)]
         public static int PVP_FRONTIER_PLAYER_TRACK_CHANCE;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_max_groups_near_player_per_realm",
@@ -1891,7 +1891,26 @@ namespace DOL.GS.Scripts
                                                 cfg.SpawnAnchor.Z);
             }
 
-            g.PickNextWaypoint();
+            // Initial waypoint: when the group was spawned around a real
+            // player (overrideAnchor != null), the very first destination
+            // MUST be that player. The random PickNextWaypoint loop only
+            // routes toward players with PVP_FRONTIER_PLAYER_TRACK_CHANCE
+            // (default 50%) — letting it roll on the very first pick means
+            // 50% of dynamic-spawned groups immediately walk to a random
+            // patrol point instead of toward the player they spawned for.
+            // Defeats the whole "spawn-near-player → engage" loop.
+            if (overrideAnchor != null)
+            {
+                Point3D playerTarget = g.PickClosestEnemyPlayerWaypoint();
+                if (playerTarget != null)
+                    g._currentWaypoint = playerTarget;
+                else
+                    g.PickNextWaypoint();
+            }
+            else
+            {
+                g.PickNextWaypoint();
+            }
             g.State = eFrontierState.Patrolling;
             g.IsHydrated = false;
             g._nextDormantStepMs = GameLoop.GameLoopTime + DORMANT_STEP_MS;
@@ -1950,9 +1969,57 @@ namespace DOL.GS.Scripts
         // never wedges the cursor and re-tries forever.
         private int _hydrationCursor;
 
+        /// <summary>
+        /// Marching-column slot offsets relative to the group's spawn anchor,
+        /// expressed in the local "facing the waypoint" frame:
+        ///   forward = +units toward the waypoint (leader at 0, trail negative)
+        ///   lateral = +units to the right of forward (perp), - to the left
+        /// Slot 0 is the leader at the front; slots 1..7 fill three trailing
+        /// rows, 3-2-3 wide. Spacing kept tight (~150-200u) so the formation
+        /// stays inside one screen and still passes through gates.
+        /// </summary>
+        private static (int forward, int lateral) GetFormationOffset(int slot)
+        {
+            return slot switch
+            {
+                0 => (   0,    0),   // leader, point of the column
+                1 => (-180, -150),   // row 1 left
+                2 => (-180,  150),   // row 1 right
+                3 => (-360, -200),   // row 2 left
+                4 => (-360,    0),   // row 2 center
+                5 => (-360,  200),   // row 2 right
+                6 => (-540, -150),   // row 3 left
+                7 => (-540,  150),   // row 3 right
+                _ => (-540 - 180 * ((slot - 8) / 3 + 1),
+                      ((slot - 8) % 3 - 1) * 180),
+            };
+        }
+
         public void Hydrate()
         {
             if (IsHydrated || Roster.Count == 0) return;
+
+            // Marching-column direction. Group materialises mid-run with the
+            // leader at the front facing the current waypoint and the rest of
+            // the roster strung out BEHIND in a column — instead of every
+            // member popping in a random 400u blob. Reads more like a real
+            // patrol that's already in motion and shaves the "form up" beat
+            // before they start chasing the player.
+            double dirX = 0, dirY = 0;
+            if (_currentWaypoint != null)
+            {
+                double wdx = _currentWaypoint.X - VirtualPosition.X;
+                double wdy = _currentWaypoint.Y - VirtualPosition.Y;
+                double wlen = Math.Sqrt(wdx * wdx + wdy * wdy);
+                if (wlen > 1)
+                {
+                    dirX = wdx / wlen;
+                    dirY = wdy / wlen;
+                }
+            }
+            ushort spawnHeading = 0;
+            if (_currentWaypoint != null)
+                spawnHeading = VirtualPosition.GetHeading(_currentWaypoint);
 
             int attemptsThisCall = 0;
             while (_hydrationCursor < Roster.Count && attemptsThisCall < HYDRATE_BATCH_PER_TICK)
@@ -1965,12 +2032,23 @@ namespace DOL.GS.Scripts
                 if (!PvPFrontierManager.TryConsumeHydrationBudget())
                     break;
 
+                int slot = _hydrationCursor;
                 LogicalMember lm = Roster[_hydrationCursor];
                 _hydrationCursor++;
                 attemptsThisCall++;
 
-                Point3D pos = new(VirtualPosition.X + Util.Random(-200, 200),
-                                  VirtualPosition.Y + Util.Random(-200, 200),
+                // Formation slot offsets relative to VirtualPosition, in the
+                // group's facing frame: +forward = toward waypoint,
+                // +lateral = right side. Slot 0 = leader at the head;
+                // slots 1..7 trail behind in 3-wide rows.
+                (int forward, int lateral) = GetFormationOffset(slot);
+                // Perpendicular vector (rotate dir 90° CW) for lateral spread.
+                double perpX = dirY;
+                double perpY = -dirX;
+                int ox = (int)Math.Round(dirX * forward + perpX * lateral);
+                int oy = (int)Math.Round(dirY * forward + perpY * lateral);
+                Point3D pos = new(VirtualPosition.X + ox + Util.Random(-40, 40),
+                                  VirtualPosition.Y + oy + Util.Random(-40, 40),
                                   VirtualPosition.Z);
 
                 // Per-member try/catch: a single roster class that fails to
@@ -1992,6 +2070,13 @@ namespace DOL.GS.Scripts
 
                 if (!MimicManager.AddMimicToWorld(m, pos, Region))
                     continue;
+
+                // Face the waypoint at spawn so the bot reads as already in
+                // motion the moment it materialises. Without this the npc
+                // appears facing a random heading and spins to align before
+                // walking — visible "just popped" tell.
+                if (_currentWaypoint != null)
+                    m.Heading = spawnHeading;
 
                 if (m.MimicBrain != null)
                 {
@@ -2891,8 +2976,16 @@ namespace DOL.GS.Scripts
         /// </summary>
         private Point3D PickClosestEnemyPlayerWaypoint()
         {
+            // Use the leader's live position when the group is hydrated, else
+            // fall back to VirtualPosition. The fallback matters on the FIRST
+            // PickNextWaypoint call (issued inside Spawn() before any member
+            // has been hydrated) — without it that initial waypoint can never
+            // be a player track and fresh dynamic-spawned groups walk to a
+            // random patrol point instead of toward the player who anchored
+            // their spawn.
             MimicNPC leader = FirstAliveMember();
-            if (leader == null) return null;
+            int anchorX = leader != null ? leader.X : VirtualPosition.X;
+            int anchorY = leader != null ? leader.Y : VirtualPosition.Y;
 
             PvPFrontierManager.PlayerSnapshot snap = PvPFrontierManager.GetPlayerSnapshot(Region);
             if (snap == null || snap.Sampled.Count == 0) return null;
@@ -2908,8 +3001,8 @@ namespace DOL.GS.Scripts
                 if (p.Realm == Config.Realm || p.Realm == eRealm.None)
                     continue;
 
-                long dx = p.X - leader.X;
-                long dy = p.Y - leader.Y;
+                long dx = p.X - anchorX;
+                long dy = p.Y - anchorY;
                 long sq = dx * dx + dy * dy;
                 if (sq > trackRadiusSq) continue;
                 if (sq < bestSq)

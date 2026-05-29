@@ -5,7 +5,7 @@ namespace DOL.GS.Scripts.AI.Strategies.Actions
     {
         public string Name => "stand";
 
-        public bool IsPossible(BotContext ctx) => ctx.Bot.IsSitting;
+        public bool IsPossible(BotContext ctx) => ctx.Bot != null && ctx.Bot.IsSitting;
 
         public bool Execute(BotContext ctx) => ctx.Bot.Sit(false);
     }

@@ -22,7 +22,7 @@ namespace DOL.GS.Scripts.AI.Strategies.Actions
 
         public bool IsPossible(BotContext ctx)
         {
-            return _translationKeys.Length > 0;
+            return ctx?.Bot != null && _translationKeys.Length > 0;
         }
 
         public bool Execute(BotContext ctx)
