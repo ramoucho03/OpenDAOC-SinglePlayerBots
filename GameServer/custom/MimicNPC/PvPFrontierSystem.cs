@@ -1993,9 +1993,14 @@ namespace DOL.GS.Scripts
             }
         }
 
-        // Detection range for spotting enemy groups. ~3500u corresponds to
-        // visibility range and matches the brain's aggro range.
-        private const int DETECTION_RANGE = 3500;
+        // Group-level detection range for spotting enemy players / enemy groups.
+        // MUST be >= HYDRATE_RANGE (below): a group only materialises when a
+        // player is within HYDRATE_RANGE, so if detection were smaller the freshly
+        // hydrated group would sit PASSIVE in the 3500-4500u dead zone and only
+        // engage (and sprint) once the player walked closer — i.e. the player had
+        // to stop for groups to commit. Matching hydrate range makes a group that
+        // pops near you engage immediately, even while you keep moving.
+        private const int DETECTION_RANGE = 4500;
         private const int WAYPOINT_REACHED_RANGE = 400;
 
         // Hydration: player must be within HYDRATE_RANGE of VirtualPosition to
@@ -2333,7 +2338,14 @@ namespace DOL.GS.Scripts
                     // following waypoints.
                     m.MimicBrain.Roam = false;
                     m.MimicBrain.AggroLevel = 100;
-                    m.MimicBrain.AggroRange = 3000;
+                    // Aggro out to the hydration range so a group that pops near a
+                    // moving player aggros them INSTANTLY instead of waiting for
+                    // them to wander within 3000u. Closing the 3000->4500 gap at
+                    // walk speed was impossible against a moving/speed-buffed
+                    // player, which is why encounters only happened when the player
+                    // stopped. Bots hydrate beyond client visibility (~3600u), so
+                    // this is server-side aggro — they become visible as they close.
+                    m.MimicBrain.AggroRange = HYDRATE_RANGE;
                     m.MimicBrain.IsHealer = lm.IsHealer;
                 }
 

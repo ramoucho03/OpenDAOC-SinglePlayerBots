@@ -74,7 +74,15 @@ namespace DOL.GS.PacketHandler.Client.v168
             if (door != null)
             {
                 // Don't use TargetObject. DoorRequest is sent before PlayerTarget.
-                if (!client.Player.IsWithinRadius(door, radius))
+                // Gate on HORIZONTAL distance only (ignoreZ: true). A door object's
+                // Z sits above the ground the player stands on (hand-placed door
+                // rows and component-built keep/border doors store a Z offset from
+                // the walkable floor, made worse by sloped terrain). The 3D check
+                // then wrongly reports "too far" at the very foot of the door even
+                // when the player is glued to it — the Ellan Vannin realm-entrance
+                // barrier bug, which also hit any door not in the hard-coded
+                // border-keep id list. Ignoring Z fixes every door at once.
+                if (!client.Player.IsWithinRadius(door, radius, true))
                 {
                     client.Player.Out.SendMessage(LanguageMgr.GetTranslation(client.Account.Language, "DoorRequestHandler.OnTick.TooFarAway", door.Name), eChatType.CT_System, eChatLoc.CL_SystemWindow);
                     return;
@@ -151,7 +159,10 @@ namespace DOL.GS.PacketHandler.Client.v168
                     }
                     else
                     {
-                        if (player.IsWithinRadius(door, radius))
+                        // Horizontal-only check (ignoreZ: true) — same rationale as
+                        // the gate above, so the open/close actually fires once the
+                        // player is horizontally at the door.
+                        if (player.IsWithinRadius(door, radius, true))
                         {
                             if (doorState == 0x01)
                                 door.Open(player);

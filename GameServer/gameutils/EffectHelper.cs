@@ -59,9 +59,16 @@ namespace DOL.GS
                 case eSpellType.MeleeDamageBuff:
                     return eEffect.MeleeDamageBuff;
                 case eSpellType.CombatSpeedBuff:
+                case eSpellType.HasteBuff:    // handler is `class HasteBuff : CombatSpeedBuff`
+                case eSpellType.CelerityBuff: // handler is `class CelerityBuff : CombatSpeedBuff`
+                    // All three are the same melee-haste buff. Mapping HasteBuff /
+                    // CelerityBuff here (instead of falling through to the Unknown
+                    // default) fixes the effect being applied/tracked as a real
+                    // MeleeHasteBuff: without it, LivingHasEffect() never sees the
+                    // buff as present and the bot re-casts haste every cycle while
+                    // out of attack-state (i.e. constantly while moving) instead of
+                    // keeping the existing one up.
                     return eEffect.MeleeHasteBuff;
-                //case eSpellType.Celerity: // Possibly the same as CombatSpeedBuff?
-                //    return eEffect.Celerity;
                 case eSpellType.SpeedOfTheRealm:
                 case eSpellType.SpeedEnhancement:
                     return eEffect.MovementSpeedBuff;
