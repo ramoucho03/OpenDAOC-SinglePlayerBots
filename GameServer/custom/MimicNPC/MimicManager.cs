@@ -1800,8 +1800,147 @@ namespace DOL.GS.Scripts
             "Turid", "Unn", "Vald", "Vigdis",
         };
 
+        // Gender-neutral "gamer handle" pseudonyms. Mimics are meant to blend
+        // into a live PvP population, so ~half the time GetName hands out one
+        // of these instead of a lore first name. Roughly half of each list is
+        // realm-flavoured (Arthurian / Celtic / Norse cores dressed up with
+        // gamer affixes) and half is generic modern gamer tags. 200 unique
+        // entries per realm. Generated via gen_gamer_names.py.
+
+        private static readonly string[] _albGamer =
+        {
+            "NobleSaxon", "Logres64", "Theurg7", "Haze101", "Saxon64", "BigPendrag",
+            "xXReaverXx", "CamelotPro", "FrostPro", "Helix47", "Titan808", "xXMaelstromXx",
+            "GalahadGod", "OnlyDrifter", "RealTemplar", "OnyxZ", "iGalahad", "iVortex",
+            "GoldenBriton", "Theurg88", "Cobaltz", "Eclipse117", "xXFuryXx", "Nova360",
+            "xXCrossXx", "Steel", "RogueReaper117", "VileHawk", "xXExcaliburXx", "GawainSlayer",
+            "Toxic7", "SlayerOG", "Gawain13", "Edge117", "LilDragon", "xXSnareXx",
+            "CamlannSlayer", "OnyxTTV", "NovaEdge42", "Steel13", "Pendragon7", "Camelotz",
+            "Glitch101", "LilBlaze", "Crimson101", "Steel42", "Knight21", "DarkFriar",
+            "Albion12", "xTemplar", "Camlann99", "Cross47", "xGalahad", "PercivalPro",
+            "GlitchCobra", "GrimGareth", "TemplarOG", "Pendrag1337", "Briton808", "iCamelot",
+            "CrownKing", "SacredSaxon", "AvalonX", "Ultra21", "JustCleric", "Cobalt13",
+            "Gawain", "LethalReaper", "LogresGG", "TheurgHD", "PaladinGG", "Rapid9000",
+            "VoidBeast7", "HolyOG", "Camelot", "Feral1337", "NumbFang360", "Knight",
+            "Crown9000", "GawainGod", "Pellinore24", "MrKiller", "Crusader101", "Onyx777",
+            "xXNinjaXx", "xXSaberXx", "NobleMordred", "KnightOG", "IronBedivere", "LilHaze",
+            "Eclipse13", "Blaze99", "xXSorcererXx", "Ash1337", "Onyx23", "BigDusk",
+            "xXSteelXx", "Lion", "Ember1337", "Crown23", "BaneHD", "OnlyKiller",
+            "xXPercivalXx", "Iron1337", "PaladinLord", "Cobra24", "Quiet256", "TheHydra",
+            "HolyX", "CrusaderX", "AshFury", "Cinder256", "Crusader24", "TheurgGod",
+            "Rogue24", "LunarBolt", "SkullZ", "LethalWolf42", "Briton", "SorcererX",
+            "OnlyThrone", "Wisp88", "GalahadSlayer", "CamelotZ", "Knight12", "Albion",
+            "Crawler99", "xXLanceXx", "TalonPro", "Crimson9000", "EchoHD", "Grail256",
+            "WildBreaker64", "RazorStriker12", "Striker23", "SableTalon", "Gareth7", "BreakerOP",
+            "MadGolem", "ShieldOG", "PixelRogue", "Frost99", "Zenith23", "FatalWolf256",
+            "Camlann13", "TalonZ", "xXFluxXx", "Vile360", "SavageHawk88", "Paladin",
+            "MegaCobra64", "DaEclipse", "Serpentx", "EpicRage12", "Armsman24", "Theurg",
+            "KnightZ", "VexGod", "Pellinore808", "AlbionZ", "MegaFang9000", "CrimsonHawk",
+            "Gareth", "SorcererPro", "JustWarrior", "Shadow7", "Doom23", "Sorcerer777",
+            "xXLogresXx", "xXShieldXx", "AlbionOG", "TheNyx", "BigSerpent", "GawainHD",
+            "Surge23", "Mordred", "MrCrown", "MrHoly", "Saxon", "PixelWolf",
+            "Flame42", "xXStrikerXx", "Logres256", "Galahad", "Bedivere808", "Hydra7",
+            "Crusader", "Crawler64", "Percival", "VoidHydra1337", "WildCrawler12", "Ghost256",
+            "Ozone99", "iLogres", "Lone9000", "ItsBriton", "xXTalonXx", "Sorcerer",
+            "RealLion", "JustRage",
+        };
+
+        private static readonly string[] _hibGamer =
+        {
+            "DruidBane", "Grove777", "BansheePro", "iApex", "BigForest", "xXOakXx",
+            "Sidhez", "Brehon", "Hydra9000", "xDagda", "xRaven", "DarkFang",
+            "xGael", "xXTaraXx", "Razor99", "Eldritch23", "xXThornXx", "xXBardXx",
+            "xXApexXx", "Stalker13", "Pulse101", "WildNiamh", "CometGG", "Druid",
+            "DaFlux", "BardSlayer", "xXBrehonXx", "Stealth101", "MrJinx", "Briar64",
+            "Lethal9000", "VerdantZ", "xXForestXx", "MrMist", "Animist47", "xXStagXx",
+            "Sable24", "CobraOP", "Druid21", "Verdant", "Riff9000", "Mentalist256",
+            "MirageGG", "xXSniperXx", "Tuatha7", "Bolt42", "OakTTV", "Fang13",
+            "Thorn24", "ItsBolt", "DanuPro", "AbyssTTV", "VexGod", "Quill64",
+            "Druid42", "Shamrock", "Blaze24", "FluxOP", "Drifter777", "Clover47",
+            "xXTitanXx", "TheWisp", "SniperX", "RogueBolt", "xXAssassinXx", "Oak47",
+            "GroveX", "Ember88", "LilTara", "Banshee64", "MaulerGG", "LilGrove",
+            "Havoc777", "Quiet23", "MistyEmerald", "xXMentalistXx", "Iron7", "Saber117",
+            "Niamh101", "ForestLord", "Ash64", "Riff12", "Willow88", "SilentFae",
+            "Celt13", "Doom21", "JustStatic", "HydraPro", "Gael", "AbyssOP",
+            "QuasarHD", "GaelBane", "DarkSerpent88", "KrakenHD", "BardGod", "GhostFox",
+            "Nightshade", "Drifter88", "Eldritch", "Mentalist117", "Tiger21", "BigStrike",
+            "TalonX", "Surge12", "SolarKraken101", "Mist12", "Faerie64", "EdgeHD",
+            "EpicWolf", "LilEcho", "ZenithTTV", "ItsTuatha", "BigTempest", "Strikerz",
+            "Forest1337", "Vile23", "PhantomViper", "xXBlazeXx", "xXLeafXx", "WildClover",
+            "Champ12", "Tara", "Nova808", "xXGaelXx", "Cuchu13", "Tuatha",
+            "Emerald99", "xXAnimistXx", "EldritchHD", "GolemZ", "StagX", "Wraithx",
+            "ToxicReaper117", "xHunter", "JustKraken", "RealDusk", "Stag13", "OnlySaber",
+            "TheSkull", "Banshee88", "Static42", "xXGroveXx", "xXDagdaXx", "xXBansheeXx",
+            "xForest", "Tempest24", "Danu64", "xXSynthXx", "xXOzoneXx", "NovaStriker",
+            "MossyMist", "OnlyClover", "Hero42", "DuskGod", "Sidhe", "DarkHero",
+            "MrHelix", "TheTuatha", "CrimsonFury", "Razor64", "xXPulseXx", "ViperGod",
+            "NightshadeGG", "DaFlame", "Champ101", "Specter21", "RiffGod", "Fianna",
+            "Fang7", "Tuatha64", "WildErin", "VerdantBane", "xXEldritchXx", "Pulse24",
+            "StrikeGG", "Mist", "Helix7", "xXMaulerXx", "StaticZ", "DuskGG",
+            "xXBriarXx", "xXFiannaXx", "Cinder13", "HyperStrike", "MentalistZ", "Doom42",
+            "DaBlade", "Celt", "Tuatha808", "xXDanuXx", "MistyLugh", "KillerZ",
+            "DaBriar", "Lord1337", "Krypt13", "xXMirageXx", "Bard13", "xXNiamhXx",
+            "Plasma256", "WildFaerie",
+        };
+
+        private static readonly string[] _midGamer =
+        {
+            "Zenith99", "NovaHD", "LilStrike", "Fenrir1337", "xXSnareXx", "VidarGod",
+            "Ghost23", "Warrior7", "Surtr12", "GrimGarm", "ValkyrPro", "MrAxe",
+            "Bear", "OnlyBifrost", "KrakenOG", "xXSleipnirXx", "EmberLord101", "DemonOG",
+            "Loki9000", "Jinx21", "UltraHunter13", "Valkyr", "RealViking", "Ash808",
+            "xXValkyrXx", "Niflheim", "MjolnirGod", "HollowSniper", "Tyr", "GrimHammer",
+            "Ragnar99", "DaKrypt", "Einherjar23", "xXRageXx", "Bonedancer", "LilRiptide",
+            "FrostHealer", "BonedancerX", "AshDrifter256", "Blazez", "xXHammerXx", "Sniperz",
+            "Onyx256", "Mjolnir12", "xXBreakerXx", "BloodEinherjar", "Talon777", "VileSlayer",
+            "Wolf1337", "RunemasterGG", "Savage23", "OnlySlayer", "xThane", "DarkFrost",
+            "xBane", "Sleipnirz", "Ymir", "Blood64", "VoidLord101", "Odin1337",
+            "xXThorXx", "Toxic808", "JustBear", "ItsAbyss", "Ymirx", "ItsDrifter",
+            "Rune47", "RuneX", "Maelstrom808", "DrifterGG", "RabidSniper47", "Serpent7",
+            "RogueHD", "Synth808", "Bane7", "GhostSage99", "VikingBane", "FrostSkald",
+            "IronSavage", "DaEclipse", "DaRaven", "ColdFenrir", "Rapid117", "ObsidianGod",
+            "Savage", "Hunter99", "Eclipse117", "Axe99", "Ragnar117", "RogueTTV",
+            "xXVidarXx", "Cinder88", "ObsidianGG", "VoidTitan", "AxePro", "SavageBane",
+            "NumbWraith23", "OdinPro", "xXHawkXx", "SleipnirHD", "DaHunter", "Specter13",
+            "Runemaster13", "LunarSkull42", "SavageSlayer", "Spiritmaster", "Wolf21", "BloodFrost",
+            "iMaster", "NovaKnight1337", "Wisp88", "SteelNinja", "ItsDragon", "Fatal1337",
+            "OdinYT", "Warrior23", "Axe", "RealShark", "Zephyr7", "GarmSlayer",
+            "Assassinz", "BifrostGod", "Mjolnirz", "RabidViper12", "Garm808", "xZephyr",
+            "GarmHD", "IronBifrost", "Echo360", "Ozone99", "HunterHD", "DaBolt",
+            "GarmKing", "xXMjolnirXx", "SniperTTV", "Rune", "Draugr", "Specter777",
+            "Frost", "MjolnirOG", "Skald256", "BladeGG", "Draugr9000", "Midgard",
+            "MegaClaw", "xXStaticXx", "FluxTTV", "BonedancerBane", "FrozenHawk", "xXRelicXx",
+            "CinderOG", "SniperX", "xXGarmXx", "CrimsonHawk101", "Jotun", "Synth12",
+            "Cyber117", "FenrirGod", "LilBifrost", "Healer12", "OnyxSlayer9000", "DarkAxe",
+            "Dark64", "Mjolnir9000", "Surgez", "Heimdall", "ValkyrX", "StormNiflheim",
+            "Rage360", "Synth256", "LokiPro", "SavageFenrir", "RealNorse", "Savage99",
+            "Warlock42", "FrostX", "Jinx256", "HunterTTV", "Tempest1337", "Vikingx",
+            "RuneSlayer", "iSkald", "LilDemon", "IronStriker777", "Einherjar13", "Numb1337",
+            "xValkyr", "xXVortexXx", "BrutalPhoenix", "SkullX", "xXBonedancerXx", "LilMidgard",
+            "Odin21", "Sleipnir42", "RunemasterPro", "xXRagnarXx", "Haze9000", "HexKnight23",
+            "xXVikingXx", "MrPulsar",
+        };
+
         public static string GetName(eGender gender, eRealm realm)
         {
+            // Half the time, hand out a gender-neutral gamer handle so the
+            // roster reads like a live server population rather than a wall of
+            // lore first names. The other half keeps the period-appropriate,
+            // gender-truthful first names below.
+            if (Util.Chance(50))
+            {
+                string[] handles = realm switch
+                {
+                    eRealm.Albion   => _albGamer,
+                    eRealm.Hibernia => _hibGamer,
+                    eRealm.Midgard  => _midGamer,
+                    _ => Array.Empty<string>()
+                };
+
+                if (handles.Length > 0)
+                    return handles[Util.Random(handles.Length - 1)];
+            }
+
             string[] names = realm switch
             {
                 eRealm.Albion   => gender == eGender.Male ? _albMale : _albFemale,
