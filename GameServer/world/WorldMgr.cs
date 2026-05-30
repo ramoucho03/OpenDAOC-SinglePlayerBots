@@ -282,8 +282,6 @@ namespace DOL.GS
 				list.Add(mob);
 			}
 
-			bool hasFrontierRegion = false;
-
 			var regions = new List<RegionData>(512);
 			foreach (DbRegion dbRegion in GameServer.Database.SelectAllObjects<DbRegion>())
 			{
@@ -300,8 +298,6 @@ namespace DOL.GS
 				data.WaterLevel = dbRegion.WaterLevel;
 				data.ClassType = dbRegion.ClassType;
 				data.IsFrontier = dbRegion.IsFrontier;
-
-				hasFrontierRegion |= data.IsFrontier;
 
 				List<DbMob> mobs;
 
@@ -336,16 +332,23 @@ namespace DOL.GS
 			if (log.IsDebugEnabled)
 				log.DebugFormat("{0}MB - {1} Regions Loaded", GC.GetTotalMemory(true) / 1024 / 1024, m_regions.Count);
 
-			// if we don't have at least one frontier region add the default
-			if (hasFrontierRegion == false)
+			// Normalise the frontier flags for this server's single New Frontiers
+			// theatre (region 163). The DB may still carry the upstream Old-Frontier
+			// defaults (regions 1/100/200 flagged IsFrontier, 163 not). Left as-is,
+			// those stale rows keep 163 out of KeepManager.FrontierRegionsList, which
+			// makes GetKeepsByRealmMap drop every NF keep and the warmap teleport
+			// (portal stone -> conquered keeps) silently do nothing. Force 163 on and
+			// the legacy OF regions off here so the runtime no longer depends on the
+			// DB migration (sql/nf_live.sql) having been applied.
+			if (m_regions.TryGetValue(Keeps.DefaultKeepManager.DEFAULT_FRONTIERS_REGION, out Region frontier))
+				frontier.IsFrontier = true;
+			else if (log.IsErrorEnabled)
+				log.ErrorFormat("Can't find default Frontier region {0}!", Keeps.DefaultKeepManager.DEFAULT_FRONTIERS_REGION);
+
+			foreach (ushort legacyFrontierRegionId in new ushort[] { 1, 100, 200 })
 			{
-				Region frontier;
-				if (m_regions.TryGetValue(Keeps.DefaultKeepManager.DEFAULT_FRONTIERS_REGION, out frontier))
-				{
-					frontier.IsFrontier = true;
-				}
-				else if (log.IsErrorEnabled)
-					log.ErrorFormat("Can't find default Frontier region {0}!", Keeps.DefaultKeepManager.DEFAULT_FRONTIERS_REGION);
+				if (m_regions.TryGetValue(legacyFrontierRegionId, out Region legacyFrontier))
+					legacyFrontier.IsFrontier = false;
 			}
 
 			foreach (DbZone dbZone in GameServer.Database.SelectAllObjects<DbZone>())

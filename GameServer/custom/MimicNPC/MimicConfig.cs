@@ -81,6 +81,18 @@ namespace DOL.GS.Scripts
             "Health % below which a healer auto-flees from a melee threat. Default 60.", 60)]
         public static int MIMIC_HEALER_FLEE_HEALTH_PCT;
 
+        [ServerProperty("npc", "mimic_healer_combat_reposition",
+            "When true (default), healers actively reposition during combat to seat behind the group's tank and out of the enemy front line, without leaving heal range. Movement only — the heal/cure logic is unchanged.", true)]
+        public static bool MIMIC_HEALER_COMBAT_REPOSITION;
+
+        [ServerProperty("npc", "mimic_healer_backline_range",
+            "Desired distance (units) a repositioning healer keeps between itself and the enemy front line. Default 600.", 600)]
+        public static int MIMIC_HEALER_BACKLINE_RANGE;
+
+        [ServerProperty("npc", "mimic_healer_danger_radius",
+            "If a hostile comes within this many units of a healer, the healer steps back to its safe seat even when otherwise idle. Default 350.", 350)]
+        public static int MIMIC_HEALER_DANGER_RADIUS;
+
         [ServerProperty("npc", "mimic_group_chat_dedup_ms",
             "Cooldown (ms) during which the same chat topic stays silent for the rest of the group after one bot says it. Default 8000.", 8000)]
         public static int MIMIC_GROUP_CHAT_DEDUP_MS;

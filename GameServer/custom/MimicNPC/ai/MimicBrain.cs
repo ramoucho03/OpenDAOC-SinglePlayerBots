@@ -4261,6 +4261,252 @@ namespace DOL.AI.Brain
             return IsFleeing;
         }
 
+        // ----- Healer combat repositioning -------------------------------
+        // A flagged healer spends combat in FollowLeader / AGGRO running its
+        // heal cycle. Left alone it glues to the leader (~80u) or stands where
+        // it last cast, which often parks it inside the enemy line. This routine
+        // seats the healer BEHIND the group's tank, away from the enemy front,
+        // while staying inside heal range. It only issues movement when there is
+        // nothing to heal this tick and never interrupts a cast, so the heal
+        // pattern itself is untouched — movement only.
+        private Point3D _healerSeatDestination;
+        private long _healerSeatUntilTick;
+        private long _nextHealerSeatEval;
+        private long _healerPositioningUntilTick;
+        private const int HEALER_SEAT_EVAL_MS = 600;            // re-derive the seat ~1.6x/s
+        private const int HEALER_SEAT_COMMIT_MS = 1200;         // walk to a chosen seat this long
+        private const int HEALER_POSITION_HOLD_MS = 2500;       // keep owning movement through brief target gaps
+        private const int HEALER_SEAT_ARRIVE_SQ = 120 * 120;
+        private const int HEALER_SEAT_MIN_STEP_SQ = 200 * 200;  // ignore sub-200u nudges
+        private const int HEALER_THREAT_SCAN = 2000;            // enemies beyond this don't count
+        // The healer counts as "exposed" (worth repositioning) when it sits more
+        // than ~72 degrees off the backline axis from the enemy — i.e. out on a
+        // flank or in front of the tank. cos(72 deg) ~= 0.31.
+        private const double HEALER_BACKLINE_COS = 0.31;
+
+        /// <summary>
+        /// Combat-only healer movement: keep the healer seated behind the
+        /// group's tank and out of the enemy front line, without leaving heal
+        /// range and without ever interrupting a heal. Returns true when it took
+        /// over movement this tick (the caller should then skip its own follow /
+        /// idle movement). While the group is fighting it OWNS the healer's
+        /// movement — when already safe it simply holds position rather than
+        /// letting the follow logic drag the healer back up to the leader at
+        /// melee range. Movement only — no spell logic lives here.
+        /// </summary>
+        public bool MaintainHealerCombatPositioning()
+        {
+            if (!IsHealer || !MimicConfig.MIMIC_HEALER_COMBAT_REPOSITION)
+                return false;
+            // Survival flee and active casts own movement — never fight them.
+            if (IsFleeing || TargetFleePosition != null || MimicBody.IsCasting)
+                return false;
+            if (Body.IsMezzed || Body.IsStunned)
+                return false;
+
+            long now = GameLoop.GameLoopTime;
+
+            // Need a friendly anchor to hide behind. No tank/leader (the healer
+            // IS the leader, or is solo) → "stay behind" is meaningless and
+            // survival is left to HealerEmergencyFlee.
+            GameLiving anchor = Body.Group?.MimicGroup?.MainTank ?? Body.Group?.LivingLeader;
+            if (anchor == null || anchor == Body || !anchor.IsAlive)
+            {
+                _healerSeatDestination = null;
+                return false;
+            }
+
+            // Only manage positioning while the group is actually fighting;
+            // otherwise a passive wandering mob nearby would make the healer
+            // break follow during travel. When combat ends we drop the seat so
+            // the caller's normal follow logic resumes.
+            bool fighting = HasAggro || anchor.InCombatInLast(5000) || Body.InCombatInLast(5000);
+            if (!fighting)
+            {
+                _healerSeatDestination = null;
+                return false;
+            }
+
+            // Mid-move: keep walking to the committed seat until we arrive or the
+            // commitment lapses. Avoids recomputing a fresh (jittery) seat against
+            // a tank that shifts a few units every tick.
+            if (_healerSeatDestination != null && now < _healerSeatUntilTick)
+            {
+                long ddx = _healerSeatDestination.X - Body.X;
+                long ddy = _healerSeatDestination.Y - Body.Y;
+                if (ddx * ddx + ddy * ddy > HEALER_SEAT_ARRIVE_SQ)
+                {
+                    Body.StopFollowing();
+                    Body.WalkTo(_healerSeatDestination, Body.MaxSpeed);
+                    return true;
+                }
+                _healerSeatDestination = null; // arrived
+            }
+
+            // Throttle the (re)evaluation. On the off-ticks keep owning movement
+            // (hold position) as long as we're inside the positioning window, so
+            // the follow logic can't snap the healer back to the leader between
+            // evaluations.
+            if (now < _nextHealerSeatEval)
+                return now < _healerPositioningUntilTick && HoldHealerSeat();
+            _nextHealerSeatEval = now + HEALER_SEAT_EVAL_MS;
+
+            // Enemy reference: the tank's current target (the front line) plus
+            // any hostile already on the healer (an add that slipped through).
+            // The centroid gives the direction the line faces; the nearest gives
+            // the immediate danger.
+            double sumX = 0, sumY = 0;
+            int count = 0;
+            long nearestSq = long.MaxValue;
+
+            void Consider(GameLiving e)
+            {
+                if (e == null || !e.IsAlive)
+                    return;
+                if (!GameServer.ServerRules.IsAllowedToAttack(Body, e, true))
+                    return;
+                if (!Body.IsWithinRadius(e, HEALER_THREAT_SCAN))
+                    return;
+                sumX += e.X;
+                sumY += e.Y;
+                count++;
+                long dx = e.X - Body.X;
+                long dy = e.Y - Body.Y;
+                long sq = dx * dx + dy * dy;
+                if (sq < nearestSq)
+                    nearestSq = sq;
+            }
+
+            if (anchor.TargetObject is GameLiving frontMob)
+                Consider(frontMob);
+            foreach (var pair in AggroList)
+                Consider(pair.Key);
+
+            if (count == 0)
+                // No enemy reference this tick (e.g. the tank is between swings
+                // and dropped its target). Hold the current seat through the gap
+                // rather than yo-yoing back to the leader.
+                return now < _healerPositioningUntilTick && HoldHealerSeat();
+
+            _healerPositioningUntilTick = now + HEALER_POSITION_HOLD_MS;
+
+            double threatX = sumX / count;
+            double threatY = sumY / count;
+
+            int dangerRadius = MimicConfig.MIMIC_HEALER_DANGER_RADIUS > 0
+                ? MimicConfig.MIMIC_HEALER_DANGER_RADIUS : 350;
+            int backline = MimicConfig.MIMIC_HEALER_BACKLINE_RANGE > 0
+                ? MimicConfig.MIMIC_HEALER_BACKLINE_RANGE : 600;
+
+            // Backline direction: from the enemy toward the anchor. When the
+            // tank melees on top of the mob the vector collapses, so fall back
+            // to "directly away from the enemy from where we currently stand".
+            double dirX = anchor.X - threatX;
+            double dirY = anchor.Y - threatY;
+            double dirLen = Math.Sqrt(dirX * dirX + dirY * dirY);
+            if (dirLen < 50)
+            {
+                dirX = Body.X - threatX;
+                dirY = Body.Y - threatY;
+                dirLen = Math.Sqrt(dirX * dirX + dirY * dirY);
+                if (dirLen < 1)
+                {
+                    dirX = 1; dirY = 0; dirLen = 1; // fully degenerate — pick any
+                }
+            }
+            double ux = dirX / dirLen;
+            double uy = dirY / dirLen;
+
+            double atX = anchor.X - threatX;
+            double atY = anchor.Y - threatY;
+            double anchorDistToThreat = Math.Sqrt(atX * atX + atY * atY);
+
+            // Are we exposed? Any of: an enemy is right next to us, we sit off the
+            // backline axis (flank), we're too far forward toward the enemy, or
+            // the tank is no longer between us and the enemy.
+            bool tooClose = nearestSq < (long)dangerRadius * dangerRadius;
+
+            double selfX = Body.X - threatX;
+            double selfY = Body.Y - threatY;
+            double selfLen = Math.Sqrt(selfX * selfX + selfY * selfY);
+            // cos of the angle between our bearing-from-enemy and the backline
+            // axis; ~1 means we're already squarely behind the tank.
+            double behindCos = selfLen < 1 ? -1 : (selfX * ux + selfY * uy) / selfLen;
+            bool offAxis = behindCos < HEALER_BACKLINE_COS;
+            bool tooForward = selfLen < backline * 0.6;
+            bool inFrontOfAnchor = selfLen < anchorDistToThreat - 50;
+
+            if (!tooClose && !offAxis && !tooForward && !inFrontOfAnchor)
+                return HoldHealerSeat(); // already safely tucked behind the line
+
+            // Desired seat: backline range out from the enemy, along the backline
+            // axis (ending up behind the tank). Clamp to heal range of the anchor
+            // so we never wander out of casting distance.
+            int seatX = (int)(threatX + ux * backline);
+            int seatY = (int)(threatY + uy * backline);
+
+            long saX = seatX - anchor.X;
+            long saY = seatY - anchor.Y;
+            long seatAnchorSq = saX * saX + saY * saY;
+            if (seatAnchorSq > (long)KITE_MAX_DISTANCE_FROM_ANCHOR * KITE_MAX_DISTANCE_FROM_ANCHOR)
+            {
+                // Pull the seat back along (seat -> anchor) until inside tether.
+                double seatAnchorLen = Math.Sqrt(seatAnchorSq);
+                double pull = (seatAnchorLen - KITE_MAX_DISTANCE_FROM_ANCHOR) / seatAnchorLen;
+                seatX -= (int)(saX * pull);
+                seatY -= (int)(saY * pull);
+            }
+
+            // Skip sub-200u nudges unless an enemy is right on top of us — hold
+            // instead of micro-stepping.
+            long mvX = seatX - Body.X;
+            long mvY = seatY - Body.Y;
+            if (!tooClose && mvX * mvX + mvY * mvY < HEALER_SEAT_MIN_STEP_SQ)
+                return HoldHealerSeat();
+
+            Point3D seat = ResolveReachablePoint(seatX, seatY, Body.Z);
+            if (seat == null)
+                return HoldHealerSeat();
+
+            _healerSeatDestination = seat;
+            _healerSeatUntilTick = now + HEALER_SEAT_COMMIT_MS;
+            Body.StopFollowing();
+            Body.WalkTo(seat, Body.MaxSpeed);
+            return true;
+        }
+
+        // Hold the healer in place: drop the leader-follow so it isn't dragged
+        // back up to the front, and report that we own movement this tick. Used
+        // when the healer is already safely behind the line, or is bridging a
+        // brief gap in the enemy reference.
+        private bool HoldHealerSeat()
+        {
+            if (Body.FollowTarget != null)
+                Body.StopFollowing();
+            return true;
+        }
+
+        // Snap an (x,y,z) to a valid, navmesh-reachable point. Returns null if
+        // the coordinates fall outside any zone. Mirrors the navmesh handling in
+        // GetFleePoint so repositioning respects geometry.
+        private Point3D ResolveReachablePoint(int x, int y, int z)
+        {
+            if (Body.CurrentRegion?.GetZone(x, y) == null)
+                return null;
+
+            if (PathfindingProvider.Instance.HasNavmesh(Body.CurrentZone))
+            {
+                Vector3? target = PathfindingProvider.Instance.GetClosestPoint(
+                    Body.CurrentZone, new Vector3(x, y, z),
+                    PathfindingProvider.Instance.DefaultFilters);
+
+                if (target.HasValue)
+                    return new Point3D(target.Value.X, target.Value.Y, target.Value.Z);
+            }
+
+            return new Point3D(x, y, z);
+        }
+
         private void Flee(int distance)
         {
             TargetFleePosition = GetFleePoint(distance);
@@ -6776,9 +7022,14 @@ namespace DOL.AI.Brain
             switch (spell.SpellType)
             {
                 // Combat-only pulse chants — resist chants, armour factor,
-                // damage-add, procs, damage shield, bladeturn — are useless
-                // while travelling and churn the single pulse slot. Always
-                // suppressed in follow mode.
+                // damage-add, procs, damage shield, bladeturn, mez-duration —
+                // are useless while travelling and churn the single pulse slot.
+                // Always suppressed in follow mode. The mez-duration chant in
+                // particular competes directly with the speed song for the one
+                // pulse slot: leaving it eligible let a travelling Minstrel /
+                // Bard lock the slot onto mez-duration (whichever sorted first
+                // in MiscSpells) and never carry speed at all. Speed is the
+                // travel buff; the mez-duration chant belongs to combat.
                 case eSpellType.BodyResistBuff:
                 case eSpellType.ColdResistBuff:
                 case eSpellType.HeatResistBuff:
@@ -6796,6 +7047,7 @@ namespace DOL.AI.Brain
                 case eSpellType.OffensiveProc:
                 case eSpellType.DefensiveProc:
                 case eSpellType.Bladeturn:
+                case eSpellType.MesmerizeDurationBuff:
                     return true;
 
                 // Regen pulses (endurance / power / health) ARE travel-useful
@@ -6852,26 +7104,28 @@ namespace DOL.AI.Brain
             // replaced it)" → cast speed → "mez-dur is gone (because speed
             // replaced it)" → cast mez-dur → cycle infinitely. Visible as
             // "the bot casts songs non-stop and never engages combat".
-            // Suppress every additional pulse spell while a NeedInstrument
-            // pulse is already running. The active one keeps refreshing
-            // through the normal LivingHasEffect path; everything else waits.
+            //
+            // Once ANY NeedInstrument pulse is running, suppress the (re)cast
+            // of every pulsing song — INCLUDING the one already playing. A
+            // pulsing song re-applies its own effect on each pulse
+            // (OnSpellPulse → StartSpell), so the brain must never recast it.
+            //
+            // The previous code deliberately fell through for the
+            // already-active song, assuming "LivingHasEffect is then true so
+            // the cast bails downstream anyway". That assumption is FALSE for
+            // the speed song: its MovementSpeedBuff sub-effect is routinely
+            // absent for a tick between pulses, and is suppressed entirely
+            // while the caster is briefly InCombat (see
+            // SpeedEnhancementSpellHandler.ApplyEffectOnTarget). LivingHasEffect
+            // then returned false, so a travelling Minstrel re-played its
+            // speed song every single tick — the "speed is never maintained,
+            // recasts constantly" bug. Leaving the live pulse untouched lets
+            // it keep itself up and resume boosting speed on its own the
+            // instant combat drops. If the pulse genuinely ends (out of power,
+            // instrument unequipped) IsAnyPulseSongActive turns false again and
+            // the song is legitimately restarted on a later tick.
             if (spell.IsPulsing && spell.NeedInstrument && IsAnyPulseSongActive())
-            {
-                // Allow refresh of the SAME spell so its effect doesn't
-                // expire (effect refresh hits LivingHasEffect == true and
-                // bails downstream anyway, but be explicit).
-                bool isCurrentlyActiveSong = false;
-                foreach (ECSPulseEffect pulse in Body.effectListComponent.GetPulseEffects())
-                {
-                    if (pulse?.SpellHandler?.Spell?.ID == spell.ID)
-                    {
-                        isCurrentlyActiveSong = true;
-                        break;
-                    }
-                }
-                if (!isCurrentlyActiveSong)
-                    return null;
-            }
+                return null;
 
             switch (spell.SpellType)
             {

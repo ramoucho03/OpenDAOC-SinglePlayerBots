@@ -346,6 +346,12 @@ namespace DOL.AI.Brain
             if (_brain.IsMainCC)
                 _brain.CheckMainCC();
 
+            // Healer combat movement: seat behind the line instead of glueing
+            // to the leader. Runs after the heal cycle so heals always win, and
+            // bails the instant a cast is in flight — movement only, no spells.
+            if (_brain.IsHealer && _brain.MaintainHealerCombatPositioning())
+                return;
+
             if (_brain.Body.Group == null || _leader == _brain.Body)
             {
                 _brain.Body.StopFollowing();
@@ -740,7 +746,11 @@ namespace DOL.AI.Brain
             {
                 // Healer survival: if a mob got past the tank, run away before healing.
                 _brain.HealerEmergencyFlee();
-                _brain.CheckHeals();
+                // Heal/cure wins the tick; only reposition (seat behind the
+                // line) when there is nothing to cast and we aren't already
+                // moving into heal range.
+                if (!_brain.CheckHeals())
+                    _brain.MaintainHealerCombatPositioning();
             }
             else
                 _brain.AttackMostWanted();
