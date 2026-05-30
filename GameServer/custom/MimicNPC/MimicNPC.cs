@@ -344,7 +344,10 @@ namespace DOL.GS.Scripts
 
         private void SetJewelry()
         {
-            MimicEquipment.SetJewelryROG(this, Realm, (eCharacterClass)CharacterClass.ID, Level, eObjectType.Magical);
+            byte level = MimicEquipment.GetRogItemLevel(Level);
+            int utilityFloor = MimicEquipment.GetRogUtilityFloor(Level);
+
+            MimicEquipment.SetJewelryROG(this, Realm, (eCharacterClass)CharacterClass.ID, level, eObjectType.Magical, utilityFloor);
         }
 
         private void SetShield()
@@ -385,11 +388,10 @@ namespace DOL.GS.Scripts
 
             if (MimicConfig.ARMOR_ROG)
             {
-                int min = Math.Max(1, Level - 3);
-                int max = Math.Min(51, Level + 3);
-                byte level = (byte)Util.Random(min, max);
+                byte level = MimicEquipment.GetRogItemLevel(Level);
+                int utilityFloor = MimicEquipment.GetRogUtilityFloor(Level);
 
-                MimicEquipment.SetArmorROG(this, Realm, (eCharacterClass)CharacterClass.ID, level, armorType);
+                MimicEquipment.SetArmorROG(this, Realm, (eCharacterClass)CharacterClass.ID, level, armorType, utilityFloor);
             }
             else
                 MimicEquipment.SetArmor(this, armorType);

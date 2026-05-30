@@ -795,31 +795,124 @@ namespace DOL.GS.Scripts
     {
         private static readonly Logger log = LoggerManager.Create(MethodBase.GetCurrentMethod().DeclaringType);
 
-        public static void SetWeaponROG(GameLiving living, eRealm realm, eCharacterClass charClass, byte level, eObjectType objectType, eInventorySlot slot, eDamageType damageType)
+        // ----------------------------------------------------------------
+        // Endgame-aware ROG tuning.
+        //
+        // Level-50 mimics are the RvR roster; a real level-50 player runs
+        // level-51 (item-cap) gear, so we itemise their ROG pieces at the
+        // cap and with a utility floor scaled to level. This (a) unlocks the
+        // >50 colour / model / quality tiers in GeneratedUniqueItem (mithril,
+        // adamantium, black cloth, forest green, burgundy, navy blue, ...) for
+        // a sharper end-game look, and (b) pushes class-appropriate stats
+        // toward the utility ceiling instead of occasionally rolling near the
+        // bare 15 minimum. Lower-level PvE mimics keep modest, level-matched
+        // gear. Model, colour and bonus *selection* all stay random per piece,
+        // so two mimics of the same class never look or itemise identically.
+        // ----------------------------------------------------------------
+
+        /// <summary>ROG item level to itemise a mimic of the given level at.</summary>
+        public static byte GetRogItemLevel(int mimicLevel)
         {
-            DbItemTemplate itemToCreate = new GeneratedUniqueItem(false, realm, charClass, level, objectType, slot, damageType);
+            // 48+ is treated as "max level" and itemised at the live item cap
+            // (51) so the top colour / model / quality tiers unlock.
+            if (mimicLevel >= 48)
+                return 51;
+
+            return (byte)Math.Clamp(mimicLevel, 1, 51);
+        }
+
+        /// <summary>
+        /// Minimum total item utility a mimic's ROG gear should reach, scaled
+        /// by level. CapUtility ceilings a level-51 piece around ~32-47, so a
+        /// floor in the mid-30s makes high-level gear reliably strong without
+        /// fighting the cap. PvE lowbies stay near the 15 baseline.
+        /// </summary>
+        public static int GetRogUtilityFloor(int mimicLevel)
+        {
+            return Math.Clamp((int)(mimicLevel * 0.7), 15, 38);
+        }
+
+        /// <summary>
+        /// For high-level mimics, narrow a DB item list to pieces at or near
+        /// the level cap so a level-50 bot doesn't equip a level-44 weapon
+        /// when a level-50/51 one exists. Returns the original list unchanged
+        /// for low-level mimics or when nothing near-cap is in the table, so
+        /// we never trade a real item for an empty selection.
+        /// </summary>
+        private static IList<DbItemTemplate> PreferNearCapLevel(IList<DbItemTemplate> list, int mimicLevel)
+        {
+            if (list == null || list.Count == 0 || mimicLevel < 48)
+                return list;
+
+            int floor = mimicLevel - 2;
+            List<DbItemTemplate> nearCap = list.Where(t => t.Level >= floor).ToList();
+            return nearCap.Count > 0 ? nearCap : list;
+        }
+
+        // Curated "nice look" armour dye palettes per realm. The ROG already
+        // tints each piece independently, which left a bot wearing a bronze
+        // helm, a mithril chest and green legs — a mismatched, clown-y set.
+        // Instead we pick ONE colour per mimic and dye the whole armour set
+        // with it, so each bot reads as a coherently-kitted player. The colour
+        // still varies between mimics, so the roster stays visually diverse.
+        // Each palette mixes the realm's signature hues (red / green / blue)
+        // with a few premium neutrals (steel, fine alloy, mithril, adamantium,
+        // black cloth, charcoal) shared across realms. All codes are taken
+        // from the >40/>50 tiers already validated in GetRandomColorForRealm.
+        private static readonly int[] _albArmorColors = { 27, 64, 65, 66, 67, 143, 18, 20, 21, 26, 43, 118 };
+        private static readonly int[] _hibArmorColors = { 32, 33, 68, 70, 71, 142, 18, 20, 21, 26, 43, 118 };
+        private static readonly int[] _midArmorColors = { 36, 51, 52, 54, 141, 18, 20, 21, 26, 43, 118 };
+
+        private static int GetRandomArmorColorForRealm(eRealm realm)
+        {
+            int[] palette = realm switch
+            {
+                eRealm.Albion   => _albArmorColors,
+                eRealm.Hibernia => _hibArmorColors,
+                eRealm.Midgard  => _midArmorColors,
+                _ => _albArmorColors
+            };
+
+            return palette[Util.Random(palette.Length - 1)];
+        }
+
+        public static void SetWeaponROG(GameLiving living, eRealm realm, eCharacterClass charClass, byte level, eObjectType objectType, eInventorySlot slot, eDamageType damageType, int utilityMinimum = 15)
+        {
+            DbItemTemplate itemToCreate = new GeneratedUniqueItem(realm, charClass, level, objectType, slot, damageType, utilityMinimum);
 
             GameInventoryItem item = GameInventoryItem.Create(itemToCreate);
             living.Inventory.AddItem(slot, item);
         }
 
-        public static void SetArmorROG(GameLiving living, eRealm realm, eCharacterClass charClass, byte level, eObjectType objectType)
+        public static void SetArmorROG(GameLiving living, eRealm realm, eCharacterClass charClass, byte level, eObjectType objectType, int utilityMinimum = 15)
         {
+            // One coherent dye for the whole set (see palette comment above),
+            // rolled once per mimic so the bot looks deliberately kitted while
+            // still differing from the next bot.
+            int setColor = GetRandomArmorColorForRealm(realm);
+
             for (int i = Slot.HELM; i <= Slot.ARMS; i++)
             {
                 if (i == Slot.JEWELRY || i == Slot.CLOAK)
                     continue;
 
                 eInventorySlot slot = (eInventorySlot)i;
-                DbItemTemplate itemToCreate = new GeneratedUniqueItem(false, realm, charClass, level, objectType, slot);
+                DbItemTemplate itemToCreate = new GeneratedUniqueItem(realm, charClass, level, objectType, slot, utilityMinimum);
 
                 GameInventoryItem item = GameInventoryItem.Create(itemToCreate);
+
+                // Apply the per-set colour to the created item only — never to
+                // the shared template (which GeneratedUniqueItem builds fresh
+                // per piece, but the instance-only write keeps the existing
+                // AddItem colour convention).
+                if (item != null)
+                    item.Color = setColor;
 
                 living.Inventory.AddItem(slot, item);
             }
         }
 
-        public static void SetJewelryROG(GameLiving living, eRealm realm, eCharacterClass charClass, byte level, eObjectType objectType)
+        public static void SetJewelryROG(GameLiving living, eRealm realm, eCharacterClass charClass, byte level, eObjectType objectType, int utilityMinimum = 15)
         {
             for (int i = Slot.JEWELRY; i <= Slot.RIGHTRING; i++)
             {
@@ -827,7 +920,7 @@ namespace DOL.GS.Scripts
                     continue;
 
                 eInventorySlot slot = (eInventorySlot)i;
-                DbItemTemplate itemToCreate = new GeneratedUniqueItem(false, realm, charClass, level, objectType, slot);
+                DbItemTemplate itemToCreate = new GeneratedUniqueItem(realm, charClass, level, objectType, slot, utilityMinimum);
 
                 GameInventoryItem item = GameInventoryItem.Create(itemToCreate);
 
@@ -936,7 +1029,8 @@ namespace DOL.GS.Scripts
 
                 if (itemsToKeep.Count != 0)
                 {
-                    DbItemTemplate itemTemplate = itemsToKeep[Util.Random(itemsToKeep.Count - 1)];
+                    IList<DbItemTemplate> pick = PreferNearCapLevel(itemsToKeep, player.Level);
+                    DbItemTemplate itemTemplate = pick[Util.Random(pick.Count - 1)];
                     AddItem(player, itemTemplate, hand);
                     return;
                 }
@@ -960,10 +1054,11 @@ namespace DOL.GS.Scripts
             SetWeaponROG((GameLiving)player,
                 player.Realm,
                 (eCharacterClass)player.CharacterClass.ID,
-                (byte)player.Level,
+                GetRogItemLevel(player.Level),
                 weapType,
                 fallbackSlot,
-                (eDamageType)(byte)damageType);
+                (eDamageType)(byte)damageType,
+                GetRogUtilityFloor(player.Level));
         }
 
         public static void SetRangedWeapon(IGamePlayer player, eObjectType weapType)
@@ -981,7 +1076,8 @@ namespace DOL.GS.Scripts
 
             if (itemList.Count != 0)
             {
-                DbItemTemplate itemTemplate = itemList[Util.Random(itemList.Count - 1)];
+                IList<DbItemTemplate> pick = PreferNearCapLevel(itemList, player.Level);
+                DbItemTemplate itemTemplate = pick[Util.Random(pick.Count - 1)];
                 AddItem(player, itemTemplate);
 
                 return;
@@ -996,10 +1092,11 @@ namespace DOL.GS.Scripts
             SetWeaponROG((GameLiving)player,
                 player.Realm,
                 (eCharacterClass)player.CharacterClass.ID,
-                (byte)player.Level,
+                GetRogItemLevel(player.Level),
                 weapType,
                 eInventorySlot.DistanceWeapon,
-                eDamageType.Slash);
+                eDamageType.Slash,
+                GetRogUtilityFloor(player.Level));
         }
 
         public static void SetShield(IGamePlayer player, int shieldSize)
@@ -1144,7 +1241,7 @@ namespace DOL.GS.Scripts
                     {
                         DbItemTemplate itemTemplate = list[Util.Random(list.Count - 1)];
                         int color = list == cloakList
-                            ? Util.Random(Enum.GetValues(typeof(eColor)).Length - 1)
+                            ? GetRandomArmorColorForRealm(player.Realm)
                             : -1;
                         AddItem(player, itemTemplate, color: color);
                     }
@@ -1170,7 +1267,7 @@ namespace DOL.GS.Scripts
                 if (player.Inventory.GetItem(eInventorySlot.Cloak) == null)
                 {
                     DbItemTemplate cloak = GameServer.Database.FindObjectByKey<DbItemTemplate>("cloak");
-                    AddItem(player, cloak, color: Util.Random(Enum.GetValues(typeof(eColor)).Length - 1));
+                    AddItem(player, cloak, color: GetRandomArmorColorForRealm(player.Realm));
                 }
             }
             else
