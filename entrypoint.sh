@@ -79,6 +79,31 @@ DB_PORT=${DB_PORT:-3306}
 DB_NAME=${DB_NAME:-opendaoc}
 DB_USER=${DB_USER:-root}
 
+# Wait until the DB is resolvable AND accepting queries before touching it.
+# At container boot the Docker embedded DNS (127.0.0.11) can race the first
+# lookups and return EAI_AGAIN — surfaced by the mariadb client as
+# "Unknown server host 'db' (-3)" — even though `depends_on: service_healthy`
+# guarantees the DB container is already up. Without this wait the one-shot
+# patch attempts below fire too early, fail, and (for nf_live.sql) the NF
+# keeps/components/teleports + region IsFrontier flips never land. A short
+# bounded retry turns that transient failure into a clean wait.
+wait_for_db() {
+    attempts=0
+    max_attempts=60
+    while [ "${attempts}" -lt "${max_attempts}" ]; do
+        if mariadb -h "${DB_HOST}" -P "${DB_PORT}" -u "${DB_USER}" -p"${DB_PASS}" "${DB_NAME}" \
+                -e 'SELECT 1' >/dev/null 2>&1; then
+            echo "[entrypoint] DB ${DB_HOST}:${DB_PORT}/${DB_NAME} is reachable."
+            return 0
+        fi
+        attempts=$((attempts + 1))
+        echo "[entrypoint] Waiting for DB ${DB_HOST}:${DB_PORT} (attempt ${attempts}/${max_attempts})..."
+        sleep 2
+    done
+    echo "[entrypoint] WARN: DB ${DB_HOST}:${DB_PORT} unreachable after ${max_attempts} attempts — SQL patches will be skipped." >&2
+    return 1
+}
+
 apply_sql_patch() {
     patch_file="$1"
     patch_label="$2"
@@ -91,6 +116,9 @@ apply_sql_patch() {
         fi
     fi
 }
+
+# Block on DB readiness once; every patch/migration below talks to the same DB.
+wait_for_db
 
 apply_sql_patch /app/sql/battlegrounds_live.sql "Battlegrounds Live SQL patch"
 apply_sql_patch /app/sql/nf_live.sql            "NF Live (keeps + components + teleports) SQL patch"
