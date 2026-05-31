@@ -258,6 +258,27 @@ namespace DOL.GS.Scripts
         [ServerProperty("pvpfrontier", "pvp_frontier_keep_breach_seconds",
             "Seconds a deployed ram takes to break an enemy KEEP door in a real (hydrated) siege. Default 360 (6 min) — keeps are a long, defendable fight. Players have time to come defend.", 360)]
         public static int PVP_FRONTIER_KEEP_BREACH_SECONDS;
+
+        // ---- Artillery (catapults / trebuchets) — indirect-fire engines ----
+        // Alongside the door ram, a real keep siege fields ranged artillery
+        // that lobs at the defenders / lord from a distance, exactly like a
+        // player siege. These are anti-personnel (aimed at the lord, not the
+        // door, so they don't undercut the ram's tower-fast/keep-slow pacing).
+        [ServerProperty("pvpfrontier", "pvp_frontier_siege_artillery",
+            "When true (default), a hydrated mimic keep/tower siege also deploys catapults and trebuchets that bombard the defenders/lord from range — a full player-style siege line. Set false for ram-only sieges.", true)]
+        public static bool PVP_FRONTIER_SIEGE_ARTILLERY;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_keep_catapults",
+            "Number of catapults (close, anti-personnel x2 vs players/NPCs) deployed for a real KEEP siege. Default 2.", 2)]
+        public static int PVP_FRONTIER_KEEP_CATAPULTS;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_keep_trebuchets",
+            "Number of trebuchets (long range) deployed for a real KEEP siege. Default 1.", 1)]
+        public static int PVP_FRONTIER_KEEP_TREBUCHETS;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_tower_catapults",
+            "Number of catapults deployed for a real TOWER siege. Towers are quick, so they field lighter artillery (and no trebuchets). Default 1.", 1)]
+        public static int PVP_FRONTIER_TOWER_CATAPULTS;
     }
 
     #endregion
@@ -2102,6 +2123,12 @@ namespace DOL.GS.Scripts
         private GameLiving _siegeRamDoor;
         private long _nextRamHitMs;
         private const int SIEGE_RAM_HIT_INTERVAL_MS = 4000;
+
+        // Indirect-fire artillery (catapults / trebuchets) deployed behind the
+        // ram during a real keep siege — bombards the lord/defenders from range.
+        private readonly List<GameSiegeWeapon> _siegeArtillery = new();
+        private long _nextArtilleryHitMs;
+        private const int SIEGE_ARTILLERY_HIT_INTERVAL_MS = 6000;
         private long _retreatUntilMs;
         private long _dehydrateAfterMs;   // 0 = no pending dehydration
         private long _nextDormantStepMs;
@@ -2454,8 +2481,9 @@ namespace DOL.GS.Scripts
             if (!IsHydrated) return;
 
             // Going dormant: a dormant group resolves sieges abstractly (no
-            // bots, no engine), so tear down the visible ram as we de-materialise.
-            RemoveSiegeRam();
+            // bots, no engines), so tear down every deployed siege engine as we
+            // de-materialise.
+            RemoveAllSiegeEngines();
 
             // Sync Roster with alive members (drop the dead).
             // Match by name to keep identities consistent across hydration cycles.
@@ -2499,8 +2527,8 @@ namespace DOL.GS.Scripts
             if (IsDisbanded)
             {
                 // Group torn down (e.g. wiped at the gate) — make sure its
-                // deployed ram doesn't linger as an orphan engine.
-                RemoveSiegeRam();
+                // deployed siege engines don't linger as orphans.
+                RemoveAllSiegeEngines();
                 return;
             }
 
@@ -2612,10 +2640,11 @@ namespace DOL.GS.Scripts
                     break;
             }
 
-            // Deploy / drive / clean up the visible siege ram. Runs only while
-            // hydrated (a player is near), so the engine appears exactly when
-            // there's someone to see it and never wastes work otherwise.
-            DriveSiegeRam(now);
+            // Deploy / drive / clean up the visible siege engines (door ram +
+            // catapults + trebuchets). Runs only while hydrated (a player is
+            // near), so the engines appear exactly when there's someone to see
+            // them and never waste work otherwise.
+            DriveSiege(now);
         }
 
         /// <summary>
@@ -3775,52 +3804,68 @@ namespace DOL.GS.Scripts
         /// siege always finds mimics AND an engine, never an empty wall. Fully
         /// guarded so a siege hiccup can never break the group tick.
         /// </summary>
-        private void DriveSiegeRam(long now)
+        private void DriveSiege(long now)
         {
             try
             {
-                if (!PvPFrontierProperties.PVP_FRONTIER_SIEGE_RAMS
-                    || !PvPFrontierProperties.PVP_FRONTIER_REALTIME_SIEGE)
+                if (!PvPFrontierProperties.PVP_FRONTIER_REALTIME_SIEGE)
                 {
-                    RemoveSiegeRam();
+                    RemoveAllSiegeEngines();
                     return;
                 }
 
                 (Keeps.AbstractGameKeep keep, GameLiving door) = FindAssaultObjective();
-                if (keep == null || door == null || !door.IsAlive)
+                if (keep == null)
                 {
-                    RemoveSiegeRam();
+                    RemoveAllSiegeEngines();
                     return;
                 }
 
-                EnsureSiegeRamAtDoor(door);
-                if (_siegeRam == null)
-                    return;
+                // Door ram: breaks the gate at a tower-fast / keep-slow pace.
+                if (PvPFrontierProperties.PVP_FRONTIER_SIEGE_RAMS && door != null && door.IsAlive)
+                    DriveRamOnDoor(now, keep, door);
+                else
+                    RemoveSiegeRam(); // door already breached / rams disabled
 
-                if (now < _nextRamHitMs)
-                    return;
-                _nextRamHitMs = now + SIEGE_RAM_HIT_INTERVAL_MS;
-
-                int targetSeconds = keep is Keeps.GameKeepTower
-                    ? Math.Max(5, PvPFrontierProperties.PVP_FRONTIER_TOWER_BREACH_SECONDS)
-                    : Math.Max(5, PvPFrontierProperties.PVP_FRONTIER_KEEP_BREACH_SECONDS);
-
-                // Target-time pacing: deal a fixed fraction of the door's max HP
-                // per hit so the breach takes ~targetSeconds regardless of how
-                // much HP the door actually has. Tower fast, keep slow.
-                int maxHp = Math.Max(1, door.MaxHealth);
-                int dmg = (int)Math.Max(1, (long)maxHp * SIEGE_RAM_HIT_INTERVAL_MS / (targetSeconds * 1000L));
-
-                // Attribute the hit to the ram (correct attacking realm → the
-                // keep lights up "under attack" + capture credit). The door's
-                // own death path opens the keep; the group then finishes the lord.
-                door.TakeDamage(_siegeRam, eDamageType.Crush, dmg, 0);
+                // Artillery: catapults + trebuchets bombarding the lord from range.
+                if (PvPFrontierProperties.PVP_FRONTIER_SIEGE_ARTILLERY)
+                    DriveArtillery(now, keep);
+                else
+                    RemoveSiegeArtillery();
             }
             catch (Exception ex)
             {
-                log.Error("PvPFrontier DriveSiegeRam failed", ex);
-                RemoveSiegeRam();
+                log.Error("PvPFrontier DriveSiege failed", ex);
+                RemoveAllSiegeEngines();
             }
+        }
+
+        /// <summary>Paces the ram so the door falls in ~tower/keep breach seconds.</summary>
+        private void DriveRamOnDoor(long now, Keeps.AbstractGameKeep keep, GameLiving door)
+        {
+            EnsureSiegeRamAtDoor(door);
+            if (_siegeRam == null)
+                return;
+
+            if (now < _nextRamHitMs)
+                return;
+            _nextRamHitMs = now + SIEGE_RAM_HIT_INTERVAL_MS;
+
+            int targetSeconds = keep is Keeps.GameKeepTower
+                ? Math.Max(5, PvPFrontierProperties.PVP_FRONTIER_TOWER_BREACH_SECONDS)
+                : Math.Max(5, PvPFrontierProperties.PVP_FRONTIER_KEEP_BREACH_SECONDS);
+
+            // Target-time pacing: deal a fixed fraction of the door's max HP per
+            // hit so the breach takes ~targetSeconds regardless of the door's
+            // raw HP. Tower fast, keep slow.
+            int maxHp = Math.Max(1, door.MaxHealth);
+            int dmg = (int)Math.Max(1, (long)maxHp * SIEGE_RAM_HIT_INTERVAL_MS / (targetSeconds * 1000L));
+
+            // Attribute the hit to the ram (correct attacking realm → keep lights
+            // up "under attack" + capture credit). The door's own death path
+            // opens the keep; the group then finishes the lord.
+            BroadcastSiegeFire(_siegeRam);
+            door.TakeDamage(_siegeRam, eDamageType.Crush, dmg, 0);
         }
 
         /// <summary>
@@ -3966,6 +4011,210 @@ namespace DOL.GS.Scripts
 
             _siegeRam = null;
             _siegeRamDoor = null;
+        }
+
+        // ---- Artillery (catapults / trebuchets) -----------------------------
+
+        /// <summary>
+        /// Deploys and fires the ranged artillery line during a real siege:
+        /// catapults (close, anti-personnel) and trebuchets (long range) lob at
+        /// the enemy lord from a distance, exactly like a player siege. Aimed at
+        /// the lord (not the door) so they suppress defenders without undercutting
+        /// the ram's tower-fast/keep-slow door pacing.
+        /// </summary>
+        private void DriveArtillery(long now, Keeps.AbstractGameKeep keep)
+        {
+            bool isTower = keep is Keeps.GameKeepTower;
+            int wantCat = Math.Max(0, isTower
+                ? PvPFrontierProperties.PVP_FRONTIER_TOWER_CATAPULTS
+                : PvPFrontierProperties.PVP_FRONTIER_KEEP_CATAPULTS);
+            int wantTreb = isTower ? 0 : Math.Max(0, PvPFrontierProperties.PVP_FRONTIER_KEEP_TREBUCHETS);
+
+            EnsureSiegeArtillery(keep, wantCat, wantTreb);
+            if (_siegeArtillery.Count == 0)
+                return;
+
+            if (now < _nextArtilleryHitMs)
+                return;
+            _nextArtilleryHitMs = now + SIEGE_ARTILLERY_HIT_INTERVAL_MS;
+
+            // Aim at the nearest enemy DEFENDER (player or keep guard) — NEVER
+            // the lord. The lord is the melee group's kill once the door is
+            // breached; shelling it would flip the keep before the gate is even
+            // broken and wreck the keep-slow pacing. No defender in range → hold
+            // fire (the engines stay deployed as the visible siege line).
+            GameLiving aim = FindArtilleryAimTarget();
+            if (aim == null)
+                return;
+
+            foreach (GameSiegeWeapon w in _siegeArtillery)
+            {
+                if (w == null || !w.IsAlive || w.ObjectState != GameObject.eObjectState.Active)
+                    continue;
+                try
+                {
+                    w.SetGroundTarget(aim.X, aim.Y, aim.Z);
+                    BroadcastSiegeFire(w);
+                    w.DoDamage(); // AoE on enemy defenders around the aim point
+                }
+                catch { /* a single engine misfire must not break the siege tick */ }
+            }
+        }
+
+        /// <summary>
+        /// Brings the deployed artillery up to the requested catapult/trebuchet
+        /// counts, reusing engines still alive and pruning any that were
+        /// destroyed/removed.
+        /// </summary>
+        private void EnsureSiegeArtillery(Keeps.AbstractGameKeep keep, int wantCat, int wantTreb)
+        {
+            _siegeArtillery.RemoveAll(w => w == null
+                || !w.IsAlive
+                || w.ObjectState != GameObject.eObjectState.Active);
+
+            int haveCat = 0, haveTreb = 0;
+            foreach (var w in _siegeArtillery)
+            {
+                if (w is GameSiegeTrebuchet) haveTreb++;
+                else haveCat++;
+            }
+
+            int total = wantCat + wantTreb;
+            int placed = _siegeArtillery.Count;
+
+            for (int i = haveCat; i < wantCat; i++)
+            {
+                GameSiegeWeapon engine = SpawnArtilleryEngine(false, keep, placed, total);
+                if (engine != null) { _siegeArtillery.Add(engine); placed++; }
+            }
+            for (int i = haveTreb; i < wantTreb; i++)
+            {
+                GameSiegeWeapon engine = SpawnArtilleryEngine(true, keep, placed, total);
+                if (engine != null) { _siegeArtillery.Add(engine); placed++; }
+            }
+        }
+
+        /// <summary>
+        /// Spawns one catapult/trebuchet on the attackers' side of the keep, at a
+        /// distance inside its own range band, with a small lateral spread so
+        /// engines don't stack on a single tile.
+        /// </summary>
+        private GameSiegeWeapon SpawnArtilleryEngine(bool trebuchet, Keeps.AbstractGameKeep keep, int index, int total)
+        {
+            try
+            {
+                MimicNPC anchor = FirstAliveMember();
+                int kx = keep.X, ky = keep.Y, kz = keep.Z;
+
+                // Base bearing = keep -> attacking group, so engines sit behind
+                // the line and lob over it at the keep.
+                double dirx = (anchor?.X ?? (kx + 1)) - kx;
+                double diry = (anchor?.Y ?? ky) - ky;
+                double len = Math.Sqrt(dirx * dirx + diry * diry);
+                if (len < 1) { dirx = 1; diry = 0; len = 1; }
+                dirx /= len; diry /= len;
+
+                double spread = (index - (total - 1) / 2.0) * 14.0 * Math.PI / 180.0;
+                double rx = dirx * Math.Cos(spread) - diry * Math.Sin(spread);
+                double ry = dirx * Math.Sin(spread) + diry * Math.Cos(spread);
+
+                int dist = trebuchet ? 3200 : 1800; // inside the engine's range band
+                int ex = kx + (int)(rx * dist);
+                int ey = ky + (int)(ry * dist);
+
+                GameSiegeWeapon engine = trebuchet ? new GameSiegeTrebuchet() : new GameSiegeCatapult();
+                engine.Level = 1;
+                engine.Realm = Config.Realm;
+                engine.CurrentRegion = keep.CurrentRegion;
+                engine.X = ex;
+                engine.Y = ey;
+                engine.Z = kz;
+                engine.Heading = anchor?.Heading ?? 0;
+
+                if (engine.AddToWorld())
+                    return engine;
+            }
+            catch (Exception ex)
+            {
+                log.Error("PvPFrontier SpawnArtilleryEngine failed", ex);
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// The nearest enemy defender (player or keep guard) to the assaulting
+        /// group, EXCLUDING the lord (so artillery never flips the keep before
+        /// the breach) and other siege engines. Null when nothing to shell.
+        /// </summary>
+        private GameLiving FindArtilleryAimTarget()
+        {
+            MimicNPC anchor = FirstAliveMember();
+            if (anchor == null)
+                return null;
+
+            const ushort SCAN = 4000;
+            GameLiving best = null;
+            int bestDist = int.MaxValue;
+
+            foreach (GamePlayer p in anchor.GetPlayersInRadius(SCAN))
+            {
+                if (p == null || !p.IsAlive || p.IsStealthed)
+                    continue;
+                if (p.Realm == Config.Realm || p.Realm == eRealm.None)
+                    continue;
+                int d = anchor.GetDistanceTo(p);
+                if (d < bestDist) { bestDist = d; best = p; }
+            }
+
+            foreach (GameNPC npc in anchor.GetNPCsInRadius(SCAN))
+            {
+                if (npc == null || !npc.IsAlive)
+                    continue;
+                if (npc is Keeps.GuardLord || npc is GameSiegeWeapon)
+                    continue; // lord = melee group's kill; never shell our own/other engines
+                if (npc.Realm == Config.Realm || npc.Realm == eRealm.None)
+                    continue;
+                int d = anchor.GetDistanceTo(npc);
+                if (d < bestDist) { bestDist = d; best = npc; }
+            }
+
+            return best;
+        }
+
+        /// <summary>Replays a siege weapon's fire animation for nearby players.</summary>
+        private static void BroadcastSiegeFire(GameSiegeWeapon engine)
+        {
+            if (engine == null)
+                return;
+
+            foreach (GamePlayer p in engine.GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
+                p.Out.SendSiegeWeaponFireAnimation(engine, 1000);
+        }
+
+        /// <summary>Despawns all deployed artillery (stops their decay too).</summary>
+        private void RemoveSiegeArtillery()
+        {
+            if (_siegeArtillery.Count == 0)
+                return;
+
+            foreach (GameSiegeWeapon w in _siegeArtillery)
+            {
+                try
+                {
+                    if (w != null && w.ObjectState == GameObject.eObjectState.Active)
+                        w.RemoveFromWorld();
+                }
+                catch { /* best-effort despawn */ }
+            }
+
+            _siegeArtillery.Clear();
+        }
+
+        /// <summary>Tears down every siege engine this group has deployed (ram + artillery).</summary>
+        private void RemoveAllSiegeEngines()
+        {
+            RemoveSiegeRam();
+            RemoveSiegeArtillery();
         }
 
         /// <summary>
