@@ -7261,7 +7261,8 @@ namespace DOL.AI.Brain
                             or eSpellType.Bladeturn;
                     if (!LivingHasEffect(Body, spell)
                         && (isPulseOrCombatBuff || !Body.attackComponent.AttackState)
-                        && spell.Target != eSpellTarget.PET)
+                        && spell.Target != eSpellTarget.PET
+                        && IsBuffUsefulForClass(spell, Body))
                     {
                         target = Body;
                         break;
@@ -7284,7 +7285,8 @@ namespace DOL.AI.Brain
                             {
                                 if (groupMember != Body)
                                 {
-                                    if (!LivingHasEffect(groupMember, spell) && !Body.attackComponent.AttackState && groupMember.IsAlive)
+                                    if (!LivingHasEffect(groupMember, spell) && !Body.attackComponent.AttackState && groupMember.IsAlive
+                                        && IsBuffUsefulForClass(spell, groupMember))
                                     {
                                         target = groupMember;
                                         break;
@@ -7467,6 +7469,63 @@ namespace DOL.AI.Brain
             }
 
             return target;
+        }
+
+        /// <summary>
+        /// True when a stat / melee buff is actually useful for the target's
+        /// class archetype. A real support only stacks the buffs that matter for
+        /// the target's role: Strength / melee haste / weapon-skill / damage-add
+        /// on a pure caster, or Acuity on a pure tank, is a wasted concentration
+        /// slot and the wrong icon on the sheet. Everything that is NOT a melee-
+        /// or casting-specific stat buff (Con, Dex, AF, resists, regens, procs,
+        /// shields, combined Str/Con, …) always returns true. Mirrors the
+        /// archetype split used by the frontier pre-buff system
+        /// (ApplyFrontierPreBuffs).
+        /// </summary>
+        private static bool IsBuffUsefulForClass(Spell spell, GameLiving target)
+        {
+            eClassType ct;
+            eStat manaStat;
+
+            if (target is GamePlayer gp && gp.CharacterClass != null)
+            {
+                ct = gp.CharacterClass.ClassType;
+                manaStat = gp.CharacterClass.ManaStat;
+            }
+            else if (target is MimicNPC mc && mc.CharacterClass != null)
+            {
+                ct = mc.CharacterClass.ClassType;
+                manaStat = mc.CharacterClass.ManaStat;
+            }
+            else
+                return true; // unknown class (pet, generic NPC) — never filter
+
+            bool isMelee = ct == eClassType.PureTank || ct == eClassType.Hybrid;
+            bool isCaster = ct == eClassType.ListCaster || ct == eClassType.Hybrid;
+
+            switch (spell.SpellType)
+            {
+                // Pure melee buffs — Strength (weapon damage / encumbrance),
+                // melee haste, weapon-skill / to-hit, and damage-add (procs on
+                // weapon swings). Wasted on a class that doesn't swing a weapon.
+                case eSpellType.StrengthBuff:
+                case eSpellType.HasteBuff:
+                case eSpellType.CombatSpeedBuff:
+                case eSpellType.CelerityBuff:
+                case eSpellType.MeleeDamageBuff:
+                case eSpellType.WeaponSkillBuff:
+                case eSpellType.ToHitBuff:
+                case eSpellType.CrushSlashTrustBuff:
+                case eSpellType.DamageAdd:
+                    return isMelee;
+
+                // Casting stat — wasted on a class with no acuity stat.
+                case eSpellType.AcuityBuff:
+                    return isCaster && manaStat != eStat.UNDEFINED;
+
+                default:
+                    return true;
+            }
         }
 
         /// <summary>

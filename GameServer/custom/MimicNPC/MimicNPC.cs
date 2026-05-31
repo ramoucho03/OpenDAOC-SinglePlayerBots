@@ -1761,23 +1761,46 @@ namespace DOL.GS.Scripts
             // seconds and the client blinked every NPC. One pass + a HashSet
             // keeps it linear and the construction cheap.
             var dict = GetAllUsableListSpells();
-            if (dict == null || dict.Count == 0)
-                return;
 
             List<Spell> spells = new();
             HashSet<Spell> seen = new();
 
-            foreach (var tuple in dict)
+            if (dict != null)
             {
-                if (tuple.Item2 == null)
-                    continue;
-
-                foreach (Skill skill in tuple.Item2)
+                foreach (var tuple in dict)
                 {
-                    if (skill is Spell spell && seen.Add(spell))
-                        spells.Add(spell);
+                    if (tuple.Item2 == null)
+                        continue;
+
+                    foreach (Skill skill in tuple.Item2)
+                    {
+                        if (skill is Spell spell && seen.Add(spell))
+                            spells.Add(spell);
+                    }
                 }
             }
+
+            // GetAllUsableListSpells() / UpdateUsableListSpells deliberately
+            // SKIP HybridSpellList specs (`if (spec.HybridSpellList) continue`),
+            // so any buff that lives in a hybrid line was never loaded for a
+            // ListCaster bot. The classic victim is a caster's baseline
+            // power/health/endurance-regen line: a real Sorcerer gets its
+            // mana-regen buff ("POM") from there, but the bot — building its
+            // spellbook only from list-cast lines — never learned it and so
+            // never cast it. GetAllUsableSkills() returns exactly those
+            // hybrid-line spells (plus abilities/styles, which aren't Spells
+            // and are skipped here) with NO overlap with the list-cast spells
+            // gathered above, so merging them in is additive. GetHighestLevelSpells
+            // below then collapses each line to its single top tier, so the
+            // bot ends up casting the highest-level version of every buff.
+            foreach ((Skill skill, Skill _) in GetAllUsableSkills())
+            {
+                if (skill is Spell spell && seen.Add(spell))
+                    spells.Add(spell);
+            }
+
+            if (spells.Count == 0)
+                return;
 
             List<Spell> highestSpellLevels = GetHighestLevelSpells(spells);
 

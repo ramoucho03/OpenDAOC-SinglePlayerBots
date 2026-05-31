@@ -20,8 +20,20 @@ namespace DOL.GS.PacketHandler.Client.v168
             byte doorState = (byte) packet.ReadByte();
             int doorType = doorId / 100000000;
 
-            // Interaction distance for border keep doors needs to be higher than 512.
-            int radius = Properties.WORLD_PICKUP_DISTANCE * (GameDoor.IsBorderKeepDoor(doorId) ? 3 : 2);
+            // Interaction distance. The base is a dedicated, generous, tunable
+            // distance (WORLD_DOOR_INTERACT_DISTANCE) rather than a small multiple
+            // of the loot pickup range: hand-imported door rows — the NF / Agramon
+            // realm grilles ("porte grilles", which the user calls Ellan Vannin) —
+            // store coordinates that don't exactly line up with the client-rendered
+            // fixture, so the old 512u radius reported "too far" even when the player
+            // was standing in the grille. Border-keep doors get +50%. Falls back to
+            // the legacy WORLD_PICKUP_DISTANCE*2/*3 if the property is unset (0).
+            int doorBaseDistance = Properties.WORLD_DOOR_INTERACT_DISTANCE > 0
+                ? Properties.WORLD_DOOR_INTERACT_DISTANCE
+                : Properties.WORLD_PICKUP_DISTANCE * 2;
+            int radius = GameDoor.IsBorderKeepDoor(doorId)
+                ? doorBaseDistance * 3 / 2
+                : doorBaseDistance;
             int zoneDoor = doorId / 1000000;
             string debugText = string.Empty;
 

@@ -631,6 +631,9 @@ namespace DOL.GS.ServerProperties
 		[ServerProperty("world", "world_pickup_distance", "How far before you can no longer pick up an object (loot for example).", 256)]
 		public static int WORLD_PICKUP_DISTANCE;
 
+		[ServerProperty("world", "world_door_interact_distance", "Horizontal distance (units) within which a player may open/close a door. Generous on purpose: hand-imported door rows (e.g. the NF / Agramon realm grilles) store coordinates that don't exactly match the client-rendered fixture, so a tighter radius wrongly reports 'too far' at the foot of the door. Border-keep doors get +50%. Default 1000.", 1000)]
+		public static int WORLD_DOOR_INTERACT_DISTANCE;
+
 		[ServerProperty("world", "world_day_increment", "Larger increments make shorter days. Because night time is 25% faster, it should ideally be a multiple of 4.", (uint) 24)]
 		public static uint WORLD_DAY_INCREMENT;
 
