@@ -1192,7 +1192,10 @@ namespace DOL.GS
                     damageMod *= RelicMgr.GetRelicBonusModifier(owner, eRelicType.Strength);
 
                     // If the target is another player's pet, shouldn't 'PVP_MELEE_DAMAGE' be used?
-                    if (owner is GamePlayer || (owner is GameNPC npcOwner && npcOwner.Brain is IControlledBrain && owner.Realm != 0))
+                    // IGamePlayer covers real players AND mimic bots (player-emulating NPCs);
+                    // controlled pets with a realm also count. Mimics used to be excluded here,
+                    // so they never received the PvP/PvE melee-damage tuning multiplier players do.
+                    if (owner is DOL.GS.Scripts.IGamePlayer || (owner is GameNPC npcOwner && npcOwner.Brain is IControlledBrain && owner.Realm != 0))
                     {
                         if (target is GamePlayer)
                             damageMod *= Properties.PVP_MELEE_DAMAGE;
@@ -1398,9 +1401,18 @@ namespace DOL.GS
         {
             (double lowerLimit, double upperLimit) varianceRange;
 
-            if (owner is GamePlayer playerOwner)
+            // Player-LIKE owners — real players AND mimic bots, both of which
+            // carry real weapon specs (up to 50) — scale their damage variance
+            // with spec. Mimics implement IGamePlayer, so they take this branch.
+            // Without it they fell through to the flat (0.9–1.1) NPC range below,
+            // ignoring their spec entirely: a fully-specced level-50 mimic hit
+            // with an average spec modifier of ~1.0 instead of the ~1.48 a real
+            // level-50 player gets — roughly a THIRD less melee damage, with a
+            // far lower minimum hit. This was the main reason mimic melee DPS
+            // felt weak in RvR.
+            if (owner is DOL.GS.Scripts.IGamePlayer)
             {
-                if (playerOwner.SpecLock > 0)
+                if (owner is GamePlayer playerOwner && playerOwner.SpecLock > 0)
                     return (playerOwner.SpecLock, playerOwner.SpecLock);
 
                 double specRatio = Math.Min((spec - 1) / ((double) target.Level + 1), 1.0);

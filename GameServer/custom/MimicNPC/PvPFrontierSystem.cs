@@ -61,7 +61,7 @@ namespace DOL.GS.Scripts
         public static int PVP_FRONTIER_ENGAGE_AGGRESSION;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_keep_attack_chance",
-            "Chance (0-100) per patrol waypoint pick that a frontier group targets a nearby enemy keep/tower instead of a random waypoint.", 35)]
+            "Chance (0-100) per patrol waypoint pick that a frontier group targets a nearby enemy keep/tower instead of a random waypoint. Default 50 — raised so the war map actively changes hands (more conquests).", 50)]
         public static int PVP_FRONTIER_KEEP_ATTACK_CHANCE;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_min_group_size",
@@ -222,11 +222,11 @@ namespace DOL.GS.Scripts
         public static bool PVP_FRONTIER_REALTIME_SIEGE;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_siege_max_per_realm",
-            "Maximum number of distinct enemy objectives (towers/keeps) a single realm's mimic groups will besiege at the same time. Caps CPU and stops one realm steamrolling the whole map. The realm currently leading in owned objectives sieges one fewer (anti-snowball). Default 2.", 2)]
+            "Maximum number of distinct enemy objectives (towers/keeps) a single realm's mimic groups will besiege at the same time. Caps CPU and stops one realm steamrolling the whole map. The realm currently leading in owned objectives sieges one fewer (anti-snowball). Default 3 — more simultaneous sieges = more conquests.", 3)]
         public static int PVP_FRONTIER_SIEGE_MAX_PER_REALM;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_siege_recapture_cooldown_min",
-            "Minutes a tower/keep is left alone by the mimic siege director after it flips ownership, so objectives don't ping-pong every few seconds. Real players are never restricted. Default 12.", 12)]
+            "Minutes a tower/keep is left alone by the mimic siege director after it flips ownership, so objectives don't ping-pong every few seconds. Real players are never restricted. Default 8 — objectives change hands more often without machine-gun flips.", 8)]
         public static int PVP_FRONTIER_SIEGE_RECAPTURE_COOLDOWN_MIN;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_abstract_siege",
@@ -234,12 +234,30 @@ namespace DOL.GS.Scripts
         public static bool PVP_FRONTIER_ABSTRACT_SIEGE;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_tower_siege_minutes",
-            "Minutes a dormant frontier group must hold an enemy TOWER before the abstract siege flips it. Default 3 — towers change hands briskly so the map feels alive.", 3)]
+            "Minutes a dormant frontier group must hold an enemy TOWER before the abstract siege flips it. Default 2 — towers change hands briskly so the map feels alive.", 2)]
         public static int PVP_FRONTIER_TOWER_SIEGE_MINUTES;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_keep_siege_minutes",
             "Minutes a dormant frontier group must hold an enemy KEEP before the abstract siege flips it. Default 10 — keeps are slower/harder than towers. Keeps are also only targeted when no enemy tower is available.", 10)]
         public static int PVP_FRONTIER_KEEP_SIEGE_MINUTES;
+
+        // ---- Siege engines (visible rams) for the REAL (hydrated) siege ----
+        // When a player is near, the besieging mimic group materialises AND a
+        // battering ram is deployed at the door it is assaulting, so the player
+        // sees a real siege (mimics + engine) rather than an empty wall. The
+        // ram drives the door damage at a target-time pace: towers breach fast,
+        // keeps breach slow — independent of the door's raw HP.
+        [ServerProperty("pvpfrontier", "pvp_frontier_siege_rams",
+            "When true (default), a hydrated mimic group assaulting an enemy door deploys a visible battering ram that breaks the door (then the group kills the lord). Set false to fall back to mimics meleeing the door bare-handed.", true)]
+        public static bool PVP_FRONTIER_SIEGE_RAMS;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_tower_breach_seconds",
+            "Seconds a deployed ram takes to break an enemy TOWER door in a real (hydrated) siege. Default 90 — towers fall quickly.", 90)]
+        public static int PVP_FRONTIER_TOWER_BREACH_SECONDS;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_keep_breach_seconds",
+            "Seconds a deployed ram takes to break an enemy KEEP door in a real (hydrated) siege. Default 360 (6 min) — keeps are a long, defendable fight. Players have time to come defend.", 360)]
+        public static int PVP_FRONTIER_KEEP_BREACH_SECONDS;
     }
 
     #endregion
@@ -2075,6 +2093,15 @@ namespace DOL.GS.Scripts
         // objective and began the abstract (no-spawn) assault (0 = not besieging).
         private long _dormantSiegeStartMs;
         private long _nextScanMs;
+
+        // Real (hydrated) siege engine. While a player is near and the group is
+        // assaulting an enemy door, a visible battering ram is deployed at that
+        // door and drives the breach. Tracked so it is driven on a cadence and
+        // cleaned up when the door falls / the group leaves / dehydrates.
+        private GameSiegeRam _siegeRam;
+        private GameLiving _siegeRamDoor;
+        private long _nextRamHitMs;
+        private const int SIEGE_RAM_HIT_INTERVAL_MS = 4000;
         private long _retreatUntilMs;
         private long _dehydrateAfterMs;   // 0 = no pending dehydration
         private long _nextDormantStepMs;
@@ -2426,6 +2453,10 @@ namespace DOL.GS.Scripts
         {
             if (!IsHydrated) return;
 
+            // Going dormant: a dormant group resolves sieges abstractly (no
+            // bots, no engine), so tear down the visible ram as we de-materialise.
+            RemoveSiegeRam();
+
             // Sync Roster with alive members (drop the dead).
             // Match by name to keep identities consistent across hydration cycles.
             HashSet<string> alive = new();
@@ -2465,7 +2496,13 @@ namespace DOL.GS.Scripts
         /// </summary>
         public void Tick()
         {
-            if (IsDisbanded) return;
+            if (IsDisbanded)
+            {
+                // Group torn down (e.g. wiped at the gate) — make sure its
+                // deployed ram doesn't linger as an orphan engine.
+                RemoveSiegeRam();
+                return;
+            }
 
             // Disband if the entire roster is gone (e.g. every bot died in a fight).
             if (Roster.Count == 0)
@@ -2574,6 +2611,11 @@ namespace DOL.GS.Scripts
                     TickRetreat();
                     break;
             }
+
+            // Deploy / drive / clean up the visible siege ram. Runs only while
+            // hydrated (a player is near), so the engine appears exactly when
+            // there's someone to see it and never wastes work otherwise.
+            DriveSiegeRam(now);
         }
 
         /// <summary>
@@ -3717,6 +3759,213 @@ namespace DOL.GS.Scripts
             }
 
             return lord ?? closestGuard;
+        }
+
+        // ---- Real (hydrated) siege ram --------------------------------------
+
+        /// <summary>
+        /// Drives the visible battering ram during a real (hydrated) siege.
+        /// While a living group member stands at an enemy door, a realm-owned
+        /// ram is deployed at that door and batters it down at a target-time
+        /// pace — fast for towers, slow for keeps — independent of the door's
+        /// raw HP. Once the door falls the group walks in and kills the lord
+        /// (PickKeepAssaultTarget) to flip ownership. The ram is removed when
+        /// the group stops assaulting a door. Because rams only ever exist while
+        /// the group is hydrated (i.e. a player is near), a player approaching a
+        /// siege always finds mimics AND an engine, never an empty wall. Fully
+        /// guarded so a siege hiccup can never break the group tick.
+        /// </summary>
+        private void DriveSiegeRam(long now)
+        {
+            try
+            {
+                if (!PvPFrontierProperties.PVP_FRONTIER_SIEGE_RAMS
+                    || !PvPFrontierProperties.PVP_FRONTIER_REALTIME_SIEGE)
+                {
+                    RemoveSiegeRam();
+                    return;
+                }
+
+                (Keeps.AbstractGameKeep keep, GameLiving door) = FindAssaultObjective();
+                if (keep == null || door == null || !door.IsAlive)
+                {
+                    RemoveSiegeRam();
+                    return;
+                }
+
+                EnsureSiegeRamAtDoor(door);
+                if (_siegeRam == null)
+                    return;
+
+                if (now < _nextRamHitMs)
+                    return;
+                _nextRamHitMs = now + SIEGE_RAM_HIT_INTERVAL_MS;
+
+                int targetSeconds = keep is Keeps.GameKeepTower
+                    ? Math.Max(5, PvPFrontierProperties.PVP_FRONTIER_TOWER_BREACH_SECONDS)
+                    : Math.Max(5, PvPFrontierProperties.PVP_FRONTIER_KEEP_BREACH_SECONDS);
+
+                // Target-time pacing: deal a fixed fraction of the door's max HP
+                // per hit so the breach takes ~targetSeconds regardless of how
+                // much HP the door actually has. Tower fast, keep slow.
+                int maxHp = Math.Max(1, door.MaxHealth);
+                int dmg = (int)Math.Max(1, (long)maxHp * SIEGE_RAM_HIT_INTERVAL_MS / (targetSeconds * 1000L));
+
+                // Attribute the hit to the ram (correct attacking realm → the
+                // keep lights up "under attack" + capture credit). The door's
+                // own death path opens the keep; the group then finishes the lord.
+                door.TakeDamage(_siegeRam, eDamageType.Crush, dmg, 0);
+            }
+            catch (Exception ex)
+            {
+                log.Error("PvPFrontier DriveSiegeRam failed", ex);
+                RemoveSiegeRam();
+            }
+        }
+
+        /// <summary>
+        /// The enemy keep/tower near this group's current waypoint and the
+        /// closest still-standing door of it that a living member is stood next
+        /// to — i.e. the door the group is actually assaulting. (null, null)
+        /// when the group isn't at an enemy door.
+        /// </summary>
+        private (Keeps.AbstractGameKeep, GameLiving) FindAssaultObjective()
+        {
+            if (_currentWaypoint == null)
+                return (null, null);
+
+            var keeps = GameServer.KeepManager.GetKeepsOfRegion(Region);
+            if (keeps == null)
+                return (null, null);
+
+            Keeps.AbstractGameKeep matched = null;
+            foreach (var k in keeps)
+            {
+                if (k == null || k.Realm == Config.Realm || k.Realm == eRealm.None)
+                    continue;
+                long dx = k.X - _currentWaypoint.X;
+                long dy = k.Y - _currentWaypoint.Y;
+                if (dx * dx + dy * dy < 800L * 800L) { matched = k; break; }
+            }
+
+            if (matched?.Doors == null)
+                return (null, null);
+
+            GameLiving bestDoor = null;
+            int bestDist = int.MaxValue;
+            foreach (var kv in matched.Doors)
+            {
+                if (kv.Value is not GameLiving d || !d.IsAlive)
+                    continue;
+                int dist = NearestMemberDistance(d);
+                if (dist <= SIEGE_ARRIVAL_RANGE && dist < bestDist)
+                {
+                    bestDist = dist;
+                    bestDoor = d;
+                }
+            }
+
+            return (matched, bestDoor);
+        }
+
+        /// <summary>Distance from the closest living member to <paramref name="obj"/>, or int.MaxValue.</summary>
+        private int NearestMemberDistance(GameObject obj)
+        {
+            int best = int.MaxValue;
+            foreach (var m in Members)
+            {
+                if (m == null || !m.IsAlive) continue;
+                int d = m.GetDistanceTo(obj);
+                if (d < best) best = d;
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// Ensures a single realm-owned ram is deployed at the given door.
+        /// Re-uses the existing one when it's still alive on the same door;
+        /// otherwise spawns a fresh one, respecting the live 2-rams-per-door cap
+        /// so engines don't stack.
+        /// </summary>
+        private void EnsureSiegeRamAtDoor(GameLiving door)
+        {
+            if (_siegeRam != null
+                && _siegeRam.ObjectState == GameObject.eObjectState.Active
+                && _siegeRam.IsAlive
+                && _siegeRamDoor == door)
+                return;
+
+            // Door changed or ram lost — drop any stale ram first.
+            RemoveSiegeRam();
+
+            // Respect the 2-rams-per-door cap (mirrors GameSiegeRam.Aim).
+            int ramsHere = 0;
+            foreach (GameNPC npc in door.GetNPCsInRadius(600))
+                if (npc is GameSiegeRam r && r.Realm == Config.Realm)
+                    ramsHere++;
+            if (ramsHere >= 2)
+                return;
+
+            MimicNPC anchor = FirstAliveMember();
+            if (anchor == null)
+                return;
+
+            // Place the ram ~250u outside the door toward the group so it reads
+            // as battering the gate rather than sitting inside the wall.
+            int rx = door.X, ry = door.Y, rz = door.Z;
+            double ax = anchor.X - door.X;
+            double ay = anchor.Y - door.Y;
+            double len = Math.Sqrt(ax * ax + ay * ay);
+            if (len > 1)
+            {
+                rx = door.X + (int)(ax / len * 250);
+                ry = door.Y + (int)(ay / len * 250);
+            }
+
+            try
+            {
+                GameSiegeRam ram = new()
+                {
+                    Name = "siege ram",
+                    Model = 0xA2A,
+                    Level = 2,
+                    Realm = Config.Realm,
+                    CurrentRegion = door.CurrentRegion,
+                    X = rx,
+                    Y = ry,
+                    Z = rz,
+                    Heading = anchor.Heading
+                };
+
+                if (ram.AddToWorld())
+                {
+                    ram.TargetObject = door;
+                    _siegeRam = ram;
+                    _siegeRamDoor = door;
+                    _nextRamHitMs = GameLoop.GameLoopTime + SIEGE_RAM_HIT_INTERVAL_MS;
+                }
+            }
+            catch (Exception ex)
+            {
+                log.Error("PvPFrontier EnsureSiegeRamAtDoor failed", ex);
+            }
+        }
+
+        /// <summary>Despawns this group's siege ram, if any (stops its decay too).</summary>
+        private void RemoveSiegeRam()
+        {
+            if (_siegeRam == null)
+                return;
+
+            try
+            {
+                if (_siegeRam.ObjectState == GameObject.eObjectState.Active)
+                    _siegeRam.RemoveFromWorld();
+            }
+            catch { /* best-effort despawn */ }
+
+            _siegeRam = null;
+            _siegeRamDoor = null;
         }
 
         /// <summary>

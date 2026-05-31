@@ -7530,6 +7530,40 @@ namespace DOL.AI.Brain
             return leader != null && leader != Body && leader.IsMoving;
         }
 
+        /// <summary>
+        /// True when this speeder should (re)apply its OWN movement-speed buff
+        /// (Minstrel/Bard speed song, Skald instant speed): it has no movement-
+        /// speed effect, OR the one on it comes from a SLOWER source. The base
+        /// <see cref="LivingHasEffect"/> only matches the effect TYPE
+        /// (MovementSpeedBuff), so ANY speed on the bot — even a weaker one from
+        /// another class (a lesser speed buff, a charge, a group-mate's speed) —
+        /// made it return true and the Minstrel/Skald/Bard never applied its
+        /// superior Speed-of-the-Realm. We compare <see cref="Spell.Value"/> so
+        /// the fastest speed wins, while an equal/stronger speed (our own song
+        /// already up, or a peer speeder already covering us) is left untouched
+        /// — no spam-recast, no two speeders fighting over the buff.
+        /// </summary>
+        private bool ShouldApplyOwnSpeed(Spell speedSpell)
+        {
+            if (speedSpell == null)
+                return false;
+
+            // Never double-cast the exact spell already in flight on us.
+            var sh = Body.castingComponent?.SpellHandler;
+            if (sh != null && sh.Spell?.ID == speedSpell.ID && sh.Target == Body)
+                return false;
+
+            var current = EffectListService.GetEffectOnTarget(Body, eEffect.MovementSpeedBuff);
+            if (current == null)
+                return true; // no speed at all → apply ours
+
+            Spell cur = current.SpellHandler?.Spell;
+            if (cur == null || cur.ID == speedSpell.ID)
+                return false; // unknown, or our own speed already up → leave it
+
+            return speedSpell.Value > cur.Value; // override only a strictly slower speed
+        }
+
         protected virtual GameLiving FindTargetForDefensiveSpell(Spell spell)
         {
             GameLiving target = null;
@@ -7585,7 +7619,7 @@ namespace DOL.AI.Brain
                 // free for regen; travelling, keep speed up — including the tick
                 // the leader starts moving again after a fight (see
                 // IsTravelingForSpeed), so the bot doesn't fall behind un-sped.
-                if (!LivingHasEffect(Body, spell) && IsTravelingForSpeed())
+                if (ShouldApplyOwnSpeed(spell) && IsTravelingForSpeed())
                     target = Body;
 
                 break;
@@ -7624,7 +7658,7 @@ namespace DOL.AI.Brain
                 // the LEADER's movement too, so the buff comes back the instant
                 // the group resumes moving after a fight instead of one tick
                 // late (the "speed not relaunched after combat" bug).
-                if (!LivingHasEffect(Body, spell) && IsTravelingForSpeed())
+                if (ShouldApplyOwnSpeed(spell) && IsTravelingForSpeed())
                     target = Body;
                 break;
 
