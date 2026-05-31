@@ -800,6 +800,108 @@ namespace DOL.AI.Brain
             return found;
         }
 
+        // ----- Player-led keep siege assist ------------------------------
+        // When a human group member assaults an enemy keep / tower door, the
+        // grouped mimics pile onto the SAME door so the player isn't breaking it
+        // alone — but live enemies always take priority (they generate real
+        // threat; the door is injected at a deliberately tiny aggro value), so
+        // the group drops the door to fight arriving defenders and resumes the
+        // breach once they're cleared. Doors only (the user's "porte barrière") —
+        // keep guards stay out, sidestepping CanAggroTarget's keepguard exclusion.
+        private GameLiving _siegeDoor;
+        private long _nextSiegeScanTick;
+        // Tiny so any real enemy out-ranks it in the threat list, but non-zero so
+        // the door survives the aggro-list cleanup and is picked once nothing
+        // hostile remains.
+        private const int SIEGE_DOOR_THREAT = 5;
+
+        /// <summary>
+        /// Player-led siege assist. If a HUMAN group member is currently attacking
+        /// an enemy keep/tower door, queue that door into our aggro list (at
+        /// minimal threat) so we help breach it. Returns true while a live siege
+        /// door is queued — the caller uses that to drop into AGGRO. Live enemies
+        /// always out-rank the door, so PvP is handled by the normal threat
+        /// ranking; when the player stops sieging (switches target / walks off) we
+        /// drop the door so the group resumes following. Doors only; skipped for
+        /// healers (they keep healing the assault).
+        /// </summary>
+        public bool ScanGroupSiege()
+        {
+            if (!MimicConfig.MIMIC_GROUP_PLAYER_SIEGE || IsHealer)
+                return false;
+
+            Group g = Body.Group;
+            if (g == null)
+                return false;
+
+            long now = GameLoop.GameLoopTime;
+            if (now >= _nextSiegeScanTick)
+            {
+                // 1 Hz: a keep door has tens of thousands of HP, no need to rescan
+                // the group's targets every FSM tick.
+                _nextSiegeScanTick = now + 1000;
+
+                GameLiving door = FindGroupSiegeDoor(g);
+
+                // Player switched doors or stopped sieging: drop the door we
+                // injected so we don't keep hammering it after the player left.
+                if (_siegeDoor != null && _siegeDoor != door)
+                {
+                    RemoveFromAggroList(_siegeDoor);
+                    _siegeDoor = null;
+                }
+
+                if (door != null && Body.IsWithinRadius(door, MAX_AGGRO_LIST_DISTANCE))
+                {
+                    _siegeDoor = door;
+                    if (!AggroList.ContainsKey(door))
+                        AddToAggroList(door, SIEGE_DOOR_THREAT);
+                }
+            }
+
+            // Report current siege state (stays true between scans so the caller
+            // keeps us in AGGRO on the breach).
+            if (_siegeDoor != null
+                && _siegeDoor.IsAlive
+                && _siegeDoor.ObjectState == GameObject.eObjectState.Active
+                && AggroList.ContainsKey(_siegeDoor))
+                return true;
+
+            _siegeDoor = null;
+            return false;
+        }
+
+        /// <summary>
+        /// Finds the enemy keep/tower door a HUMAN group member is actively
+        /// assaulting (swinging at it, or having recently hit it). Doors only and
+        /// realm-legal; null when nobody in the group is sieging a door.
+        /// </summary>
+        private GameLiving FindGroupSiegeDoor(Group g)
+        {
+            foreach (GameLiving member in g.GetMembersInTheGroup())
+            {
+                // Only follow a human player's lead — bots don't start sieges.
+                if (member is not GamePlayer player || !player.IsAlive)
+                    continue;
+
+                if (player.TargetObject is not GameKeepDoor door)
+                    continue;
+                if (!door.IsAlive || door.ObjectState != GameObject.eObjectState.Active)
+                    continue;
+                if (!GameServer.ServerRules.IsAllowedToAttack(Body, door, true))
+                    continue;
+
+                // Must be genuinely assaulting it, not just target-selecting.
+                bool swinging = player.attackComponent?.AttackState == true
+                                && player.TargetObject == door;
+                bool recentlyHit = door.attackComponent?.AttackerTracker?.Attackers?.Contains(player) == true;
+                if (swinging || recentlyHit)
+                    return door;
+            }
+
+            return null;
+        }
+
         public virtual bool CheckProximityAggro(int aggroRange)
         {
             //FireAmbientSentence();
@@ -5186,6 +5288,21 @@ namespace DOL.AI.Brain
 
             if (PvPMode)
             {
+                // RvR DPS assist train: converge fast on the target "called" by
+                // the group's assist (the human player in a player group, else
+                // the MainAssist), even when it isn't in our aggro list yet, so
+                // the group focus-fires one target down at a time. A staggered
+                // reaction delay + per-call miss chance keep it human (not a
+                // perfect, balance-breaking burst). Falls through to the normal
+                // scored selection when not assisting this cycle.
+                GameLiving assistTarget = TryGetRvRAssistTarget(mg);
+                if (assistTarget != null)
+                {
+                    if (!AggroList.ContainsKey(assistTarget))
+                        AddToAggroList(assistTarget, 1);
+                    return assistTarget;
+                }
+
                 GameLiving pvpTarget = SelectProfileTargetFromAggroList(eMimicCombatMode.PvP);
                 if (pvpTarget != null)
                     return pvpTarget;
@@ -5346,6 +5463,143 @@ namespace DOL.AI.Brain
             }
 
             return best;
+        }
+
+        // ---- RvR DPS assist train ------------------------------------------
+        // State tracking the "called" target this bot last committed to, so the
+        // reaction delay + miss chance are rolled once per call CHANGE rather
+        // than every tick.
+        private GameLiving _assistLastCall;
+        private long _assistSwitchReadyTime;
+        private bool _assistSkipCurrentCall;
+
+        /// <summary>
+        /// RvR focus-fire: returns the target the group's assist has "called"
+        /// for this DPS bot to pile onto, or null when the bot shouldn't (or
+        /// chooses not to) follow the call this cycle — in which case the caller
+        /// falls back to the normal scored target selection.
+        ///
+        /// Human imperfection (so it doesn't become a perfect robotic burst):
+        ///   * a staggered reaction delay before swapping onto a NEW call, and
+        ///   * a per-call miss chance (MIMIC_ASSIST_ERROR_PCT) where the bot
+        ///     simply doesn't assist that call and keeps its own target.
+        /// </summary>
+        private GameLiving TryGetRvRAssistTarget(MimicGroup mg)
+        {
+            if (mg == null || !IsAssistDpsFollower())
+                return null;
+
+            GameLiving call = GetAssistCallTarget(mg);
+            if (call == null)
+            {
+                // No active call (out of combat, caller idle). Reset so the next
+                // call re-rolls a fresh reaction delay / miss chance.
+                _assistLastCall = null;
+                return null;
+            }
+
+            // Never pile onto a crowd-controlled enemy — that would break the
+            // group's own mez/root.
+            if (ShouldAvoidCrowdControlledTarget(call, eMimicCombatMode.PvP, true))
+                return null;
+
+            long now = GameLoop.GameLoopTime;
+
+            if (call != _assistLastCall)
+            {
+                _assistLastCall = call;
+                _assistSkipCurrentCall = Util.Chance(MimicConfig.MIMIC_ASSIST_ERROR_PCT);
+                int min = Math.Max(0, MimicConfig.MIMIC_ASSIST_REACTION_MIN_MS);
+                int max = Math.Max(min, MimicConfig.MIMIC_ASSIST_REACTION_MAX_MS);
+                _assistSwitchReadyTime = now + Util.Random(min, max);
+            }
+
+            if (_assistSkipCurrentCall)
+                return null;                 // "didn't assist" — work own target
+
+            if (now < _assistSwitchReadyTime)
+                return null;                 // still reacting — swap in a beat
+
+            return call;
+        }
+
+        /// <summary>
+        /// Whether this bot is a DPS that should join the assist train. Tanks
+        /// (peel/guard/own threat priorities), healers and the main CC keep
+        /// their dedicated roles; pet-casters let their pet drive its target.
+        /// </summary>
+        private bool IsAssistDpsFollower()
+        {
+            if (IsMainTank || IsHealer || IsMainCC)
+                return false;
+
+            MimicCombatProfile p = MimicBody?.CombatProfile;
+            if (p == null || p.HasRole(eMimicCombatRole.PetCaster))
+                return false;
+
+            return p.HasRole(eMimicCombatRole.MeleeDps)
+                || p.HasRole(eMimicCombatRole.CasterDps)
+                || p.HasRole(eMimicCombatRole.Archer)
+                || p.HasRole(eMimicCombatRole.Assassin);
+        }
+
+        /// <summary>
+        /// The target the group's assist is currently committed to. Prefers a
+        /// human player's target (mimics assist the player); otherwise the
+        /// designated MainAssist's target (a tank/MA whose PvP priorities lead
+        /// with the enemy healer). Returns null unless the caller is genuinely
+        /// ENGAGING the target, so the group never dogpiles a passing click.
+        /// </summary>
+        private GameLiving GetAssistCallTarget(MimicGroup mg)
+        {
+            GameLiving fromPlayer = ValidateAssistCall(GetPlayerCaller());
+            if (fromPlayer != null)
+                return fromPlayer;
+
+            return ValidateAssistCall(mg.MainAssist);
+        }
+
+        private GameLiving ValidateAssistCall(GameLiving caller)
+        {
+            if (caller == null || caller == Body)
+                return null;
+
+            if (caller.TargetObject is not GameLiving call
+                || !call.IsAlive
+                || call.ObjectState != GameObject.eObjectState.Active
+                || !CanAggroTarget(call))
+                return null;
+
+            // The caller must actually be fighting the target (auto-attacking,
+            // casting a harmful spell on it, or the target is already swinging
+            // at a group member) — not merely have it selected.
+            bool engaging =
+                (caller.IsAttacking && caller.TargetObject == call)
+                || (caller.IsCasting
+                    && caller.castingComponent?.SpellHandler?.Spell?.IsHarmful == true
+                    && caller.TargetObject == call)
+                || (call.TargetObject is GameLiving onMember
+                    && Body.Group != null
+                    && Body.Group.IsInTheGroup(onMember));
+
+            return engaging ? call : null;
+        }
+
+        /// <summary>
+        /// The human player in this bot's group, if any (mimics are GameNPCs,
+        /// so this only ever matches a real player). Used so a player group's
+        /// mimics assist the player's called target.
+        /// </summary>
+        private GameLiving GetPlayerCaller()
+        {
+            if (Body.Group == null)
+                return null;
+
+            foreach (GameLiving m in Body.Group.GetMembersInTheGroup())
+                if (m is GamePlayer p && p.IsAlive)
+                    return p;
+
+            return null;
         }
 
         private bool IsAttackingProtectedMember(GameLiving hostile)
@@ -7253,6 +7507,29 @@ namespace DOL.AI.Brain
             return false;
         }
 
+        /// <summary>
+        /// True while the bot should keep its travel-speed buff (Minstrel/Bard
+        /// speed song, Skald instant speed) up: the bot is moving, OR its group
+        /// leader is moving. The leader check is what fixes the "speed not
+        /// relaunched after a fight" bug — the gate used to be the bot's OWN
+        /// <see cref="GameLiving.IsMoving"/>, which is still false on the tick
+        /// the player (leader) resumes running, so the buff re-applied one tick
+        /// LATE and the un-sped bot immediately fell behind. Keying off the
+        /// leader's movement re-applies speed the instant travel resumes. Stays
+        /// false when the whole group is parked (camp / standing still), so the
+        /// "don't burn the buff while stationary" optimisation is preserved.
+        /// Solo bots (no group) fall back to their own movement state.
+        /// </summary>
+        private bool IsTravelingForSpeed()
+        {
+            if (Body == null)
+                return false;
+            if (Body.IsMoving)
+                return true;
+            GameLiving leader = Body.Group?.LivingLeader;
+            return leader != null && leader != Body && leader.IsMoving;
+        }
+
         protected virtual GameLiving FindTargetForDefensiveSpell(Spell spell)
         {
             GameLiving target = null;
@@ -7305,8 +7582,10 @@ namespace DOL.AI.Brain
                 // sustain just one pulsing song, so casting speed while parked
                 // (camp) would fight the regen song every tick — a speed →
                 // regen → speed oscillation. Stationary, leave the pulse slot
-                // free for regen; moving, keep speed up.
-                if (!LivingHasEffect(Body, spell) && Body.IsMoving)
+                // free for regen; travelling, keep speed up — including the tick
+                // the leader starts moving again after a fight (see
+                // IsTravelingForSpeed), so the bot doesn't fall behind un-sped.
+                if (!LivingHasEffect(Body, spell) && IsTravelingForSpeed())
                     target = Body;
 
                 break;
@@ -7341,9 +7620,11 @@ namespace DOL.AI.Brain
                 // the only path that casts it. Only (re)cast while actually
                 // travelling — same gate as the pulsing speed case above —
                 // otherwise the Skald re-fired the buff on cooldown even while
-                // parked in camp, wasting mana/GCD. The buff persists through
-                // brief follow-stops, so movement keeps it up on the road.
-                if (!LivingHasEffect(Body, spell) && Body.IsMoving)
+                // parked in camp, wasting mana/GCD. IsTravelingForSpeed keys off
+                // the LEADER's movement too, so the buff comes back the instant
+                // the group resumes moving after a fight instead of one tick
+                // late (the "speed not relaunched after combat" bug).
+                if (!LivingHasEffect(Body, spell) && IsTravelingForSpeed())
                     target = Body;
                 break;
 
@@ -7453,12 +7734,26 @@ namespace DOL.AI.Brain
                     {
                         if (spell.Target == eSpellTarget.REALM || spell.Target == eSpellTarget.GROUP)
                         {
+                            // Multi-buffer coordination: when 2+ buffers share a
+                            // group they split the work instead of both chasing
+                            // the same buff on the same member. Skip a member whose
+                            // (effect, member) pair another buffer just reserved
+                            // (its cast is in flight); that buffer covers them while
+                            // we move to the next member that still needs it. Saves
+                            // cast time and concentration. Keyed on the spell's
+                            // resulting effect so stacking lines aren't blocked.
+                            MimicGroup buffGroup = Body.Group.MimicGroup;
+                            eEffect buffEffect = buffGroup != null
+                                ? EffectHelper.GetEffectFromSpell(spell)
+                                : eEffect.Unknown;
+
                             foreach (GameLiving groupMember in Body.Group.GetMembersInTheGroup())
                             {
                                 if (groupMember != Body)
                                 {
                                     if (!LivingHasEffect(groupMember, spell) && !Body.attackComponent.AttackState && groupMember.IsAlive
-                                        && IsBuffUsefulForClass(spell, groupMember))
+                                        && IsBuffUsefulForClass(spell, groupMember)
+                                        && (buffGroup == null || !buffGroup.IsBuffReserved(buffEffect, groupMember)))
                                     {
                                         target = groupMember;
                                         break;

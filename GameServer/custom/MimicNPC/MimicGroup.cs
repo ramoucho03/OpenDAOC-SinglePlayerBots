@@ -869,6 +869,10 @@ namespace DOL.GS.Scripts
                 AlreadyCastingCureDisease = false;
                 AlreadyCastingCurePoison = false;
 
+                // Multi-buffer reservations are time-boxed (not per-scan flags),
+                // so just sweep out the lapsed ones here on the periodic pass.
+                PruneBuffReservations();
+
                 m_healthPercent = 100;
                 m_diseasePercent = 100;
                 m_poisonPercent = 100;
@@ -1187,6 +1191,84 @@ namespace DOL.GS.Scripts
             }
 
             return best;
+        }
+
+        #endregion
+
+        #region Buff coordination
+
+        // Short-lived (effect, target) reservations so multiple buffers in the
+        // same group SPLIT the work instead of both starting the same buff on the
+        // same member at once — saving cast time and concentration. Keyed on the
+        // resulting eEffect (the same identity LivingHasEffect uses), so buffs
+        // that genuinely stack (base vs spec stat lines map to DIFFERENT effects)
+        // are never wrongly de-duplicated. The reservation only bridges the
+        // in-flight window: once the buff lands LivingHasEffect takes over and the
+        // second buffer skips the covered member on its own. Harmless with a
+        // single buffer (it just reserves its own in-flight cast).
+        public readonly object BuffLock = new();
+        private readonly Dictionary<(eEffect effect, GameLiving target), long> _buffReservations = new();
+
+        public void MarkBuffInProgress(eEffect effect, GameLiving target, int castTimeMs)
+        {
+            if (target == null || effect is eEffect.Unknown)
+                return;
+
+            // Hold the reservation for the cast plus a small margin so the
+            // effect-presence check has time to see the landed buff before the
+            // reservation lapses.
+            long expiry = GameLoop.GameLoopTime + System.Math.Max(1500, castTimeMs + 750);
+
+            lock (BuffLock)
+                _buffReservations[(effect, target)] = expiry;
+        }
+
+        public bool IsBuffReserved(eEffect effect, GameLiving target)
+        {
+            if (target == null || effect is eEffect.Unknown)
+                return false;
+
+            long now = GameLoop.GameLoopTime;
+
+            lock (BuffLock)
+            {
+                if (_buffReservations.TryGetValue((effect, target), out long expiry))
+                {
+                    if (expiry > now)
+                        return true;
+                    _buffReservations.Remove((effect, target)); // expired — clean up on access
+                }
+
+                return false;
+            }
+        }
+
+        // Drop lapsed reservations so the dictionary can't accumulate stale
+        // (effect, target) pairs for members who left or buffs nobody re-checks.
+        // Called from the periodic CheckGroupHealth pass.
+        private void PruneBuffReservations()
+        {
+            long now = GameLoop.GameLoopTime;
+
+            lock (BuffLock)
+            {
+                if (_buffReservations.Count == 0)
+                    return;
+
+                List<(eEffect, GameLiving)> expired = null;
+
+                foreach (KeyValuePair<(eEffect effect, GameLiving target), long> kvp in _buffReservations)
+                {
+                    if (kvp.Value <= now)
+                        (expired ??= new()).Add(kvp.Key);
+                }
+
+                if (expired != null)
+                {
+                    foreach ((eEffect, GameLiving) key in expired)
+                        _buffReservations.Remove(key);
+                }
+            }
         }
 
         #endregion

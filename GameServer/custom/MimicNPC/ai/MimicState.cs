@@ -431,7 +431,10 @@ namespace DOL.AI.Brain
             // an AGGRO target. Forcing them into AGGRO breaks the heal
             // dispatch (AGGRO state expects a combat target the healer
             // doesn't have).
-            if (!_brain.IsHealer && _brain.ScanGroupCombat())
+            // ScanGroupSiege: join the leader's keep/tower door assault (it drops
+            // the door for any live enemy that shows up, then resumes). Evaluated
+            // after ScanGroupCombat so real combat always wins the entry.
+            if (!_brain.IsHealer && (_brain.ScanGroupCombat() || _brain.ScanGroupSiege()))
             {
                 _brain.OnLeaderAggro();
                 _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
@@ -753,7 +756,15 @@ namespace DOL.AI.Brain
                     _brain.MaintainHealerCombatPositioning();
             }
             else
+            {
+                // Keep/refresh the player-led siege door in the aggro list (and
+                // drop it when the player stops). Throttled internally; harmless
+                // when no siege is happening. Real enemies still out-rank the
+                // door, so AttackMostWanted fights them first and falls back to
+                // the door once clear.
+                _brain.ScanGroupSiege();
                 _brain.AttackMostWanted();
+            }
 
             if (_brain.HasAggro && _brain.Body.TargetObject == null && !_brain.Body.IsMoving)
                 _aggroEndTime = Math.Min(_aggroEndTime, GameLoop.GameLoopTime + 5000);

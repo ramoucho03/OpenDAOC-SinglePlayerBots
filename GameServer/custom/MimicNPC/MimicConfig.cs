@@ -89,9 +89,37 @@ namespace DOL.GS.Scripts
             "Desired distance (units) a repositioning healer keeps between itself and the enemy front line. Default 600.", 600)]
         public static int MIMIC_HEALER_BACKLINE_RANGE;
 
+        // ----------------------------------------------------------------
+        // RvR DPS assist train. In PvP, DPS mimics (melee / caster / archer /
+        // assassin) focus-fire the target "called" by their group's assist:
+        // the human player's target in a player group, otherwise the group's
+        // MainAssist (a tank/MA that already prioritises the enemy healer).
+        // This concentrates damage and dynamises fights. To avoid a perfect,
+        // balance-breaking robotic burst, each bot models a real player's
+        // imperfection: a staggered reaction delay before swapping to a newly
+        // called target, plus a per-call chance to simply NOT assist (it keeps
+        // working its own best-scored target that cycle).
+        // ----------------------------------------------------------------
+
+        [ServerProperty("npc", "mimic_assist_error_pct",
+            "Chance (0-100) that a DPS mimic does NOT follow a freshly called assist target and instead keeps working its own best-scored target. Models real players who don't assist perfectly. 0 = a perfect (strong) assist train; higher = looser. Default 18.", 18)]
+        public static int MIMIC_ASSIST_ERROR_PCT;
+
+        [ServerProperty("npc", "mimic_assist_reaction_min_ms",
+            "Minimum reaction delay (ms) before a DPS mimic swaps onto a newly called assist target. Staggers the group so they don't all snap on the same frame. Default 300.", 300)]
+        public static int MIMIC_ASSIST_REACTION_MIN_MS;
+
+        [ServerProperty("npc", "mimic_assist_reaction_max_ms",
+            "Maximum reaction delay (ms) before a DPS mimic swaps onto a newly called assist target; the actual delay rolls uniformly in [min, max]. Higher = looser/slower train. Default 1200.", 1200)]
+        public static int MIMIC_ASSIST_REACTION_MAX_MS;
+
         [ServerProperty("npc", "mimic_healer_danger_radius",
             "If a hostile comes within this many units of a healer, the healer steps back to its safe seat even when otherwise idle. Default 350.", 350)]
         public static int MIMIC_HEALER_DANGER_RADIUS;
+
+        [ServerProperty("npc", "mimic_group_player_siege",
+            "When true (default), grouped mimics join the assault when their human group leader attacks an enemy keep/tower door — they help break the door, but always prioritise live enemies that show up (PvP) and resume the door once clear. Movement/target only.", true)]
+        public static bool MIMIC_GROUP_PLAYER_SIEGE;
 
         [ServerProperty("npc", "mimic_group_chat_dedup_ms",
             "Cooldown (ms) during which the same chat topic stays silent for the rest of the group after one bot says it. Default 8000.", 8000)]

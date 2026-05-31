@@ -850,6 +850,24 @@ namespace DOL.AI.Brain
             if (cast && IsPermanentPetSummon(spellToCast.spell))
                 _nextPetSummonAttemptTick = GameLoop.GameLoopTime + PET_SUMMON_COOLDOWN_MS;
 
+            // Multi-buffer coordination: when the cast is a GROUP buff on a living
+            // group member, reserve (effect, member) so another buffer in the
+            // group skips that member for the same effect while this lands —
+            // splitting buff duty to save time and concentration. A living
+            // group-member target uniquely identifies a group buff here (heals /
+            // cures / summons target self or the pet; rez targets a dead member).
+            if (cast
+                && spellToCast.target is GameLiving buffTarget
+                && buffTarget != Body
+                && buffTarget.IsAlive
+                && spellToCast.spell.SpellType != eSpellType.Resurrect
+                && Body.Group?.MimicGroup is MimicGroup buffGroup
+                && Body.Group.IsInTheGroup(buffTarget))
+            {
+                buffGroup.MarkBuffInProgress(EffectHelper.GetEffectFromSpell(spellToCast.spell),
+                    buffTarget, spellToCast.spell.CastTime);
+            }
+
             if (Debug)
             {
                 if (cast)
