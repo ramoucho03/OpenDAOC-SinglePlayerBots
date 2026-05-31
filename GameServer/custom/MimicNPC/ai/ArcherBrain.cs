@@ -304,11 +304,16 @@ namespace DOL.GS.Scripts
             if (Body.TargetObject is not GameLiving target || !target.IsAlive)
                 return false;
 
-            // "Unaware" gate: target isn't actively in combat and doesn't
-            // already have us on its aggro list (if it's a mob). Without
-            // this we'd burn the long crit-shot cooldown on every shot in
-            // a sustained fight.
-            if (target.InCombat)
+            // "Unaware" gate: in PvE only crit-shot a target that isn't already
+            // fighting, so we don't burn the long cooldown mid-sustain. In
+            // PvP/RvR the enemy is almost always ALREADY in combat (our tank
+            // engaged it), yet a max-range crit-shot opener is exactly what an
+            // archer should fire — grouped archers don't get the stealth opener
+            // (they'd fall behind a moving group), so the InCombat gate left
+            // them firing only plain shots in the frontier. Skip it in PvP; the
+            // range gate below still protects the long draw from interruption,
+            // and _criticalShotArmed + the 30 s cooldown prevent spamming it.
+            if (!PvPMode && target.InCombat)
                 return false;
 
             // Range gate: a crit-shot has a ~4–6s draw. If we're not far

@@ -115,6 +115,13 @@ namespace DOL.AI.Brain
 
         private long _emoteDelay;
 
+        // Rate limits for the tank RvR support pass run from AttackMostWanted
+        // (Guard/Protect upkeep + Slam interrupt). These behaviours used to
+        // live only in the v2 strategy layer (off by default) or the PvE camp
+        // state, so frontier tanks never used them. See AttackMostWanted.
+        private long _nextTankGuardTick;
+        private long _nextTankSlamTick;
+
         public const int MAX_AGGRO_DISTANCE = 3600;
         public const int MAX_AGGRO_LIST_DISTANCE = 6000;
 
@@ -2441,6 +2448,18 @@ namespace DOL.AI.Brain
 
         public void CheckMainCC()
         {
+            // PvP first. In the frontier there are no PvE "adds" to queue
+            // (PreMezIncomingAdds / PopulateAddsForCC scan for hostile MOBS, and
+            // a backline CC bot sitting in FOLLOW_THE_LEADER holds no aggro), so
+            // the CcTargetCount gate further down never opens and a Bard /
+            // healer-CC would never mez enemy PLAYERS. PickPvpCcTarget (inside
+            // CheckSpells) scans enemy players in range independently of the
+            // aggro list, so the CC cast works straight from FOLLOW. CheckHeals
+            // runs first inside CheckSpells, so healing keeps priority; we only
+            // fall through to PvE add-mezzing (keep guards) if no player CC fired.
+            if (PvPMode && CheckSpells(eCheckSpellType.CrowdControl))
+                return;
+
             // Pre-emptive: while the puller is still bringing the mob in, we
             // also queue the mob's BAF neighbours so the CC has a head-start
             // on locking them down BEFORE they reach the line. This is the
@@ -3368,6 +3387,87 @@ namespace DOL.AI.Brain
             return false;
         }
 
+        private static bool StyleProcInfoIsSnare(Style style)
+        {
+            if (style?.Procs == null || style.Procs.Count == 0)
+                return false;
+
+            for (int i = 0; i < style.Procs.Count; i++)
+            {
+                Spell sp = style.Procs[i]?.Spell;
+                if (sp == null)
+                    continue;
+                if (sp.SpellType == eSpellType.StyleSpeedDecrease)
+                    return true;
+            }
+
+            return false;
+        }
+
+        private Style PickSnareStyleFrom(List<Style> styles, AttackData lad, DbInventoryItem weapon)
+        {
+            if (styles == null)
+                return null;
+
+            for (int i = 0; i < styles.Count; i++)
+            {
+                Style s = styles[i];
+
+                if (!StyleProcInfoIsSnare(s))
+                    continue;
+
+                if (!StyleProcessor.CanUseStyle(lad, Body, s, weapon))
+                    continue;
+
+                return s;
+            }
+
+            return null;
+        }
+
+        // ------------------------------------------------------------------
+        // Peel snare. Canonical RvR tank job: when meleeing an enemy that is
+        // beating on a fragile back-line teammate, SLOW it with a snare style
+        // instead of swinging the highest-damage style, so it can't stay on
+        // the healer/caster. Called from MimicStyleComponent.GetStyleToUse on
+        // each swing — returns null (falls through to the normal damage ladder)
+        // when there is no peel target, the target is already snared, or the
+        // bot has no usable snare style. Cheap gates first; the IsActingAsTank
+        // group scan runs only once a real peel target is confirmed.
+        // ------------------------------------------------------------------
+        public Style GetPeelSnareStyle()
+        {
+            if (!PvPMode || Body == null)
+                return null;
+
+            if (Body.TargetObject is not GameLiving target
+                || !target.IsAlive
+                || target.ObjectState != GameObject.eObjectState.Active)
+                return null;
+
+            // Only snare an enemy actually attacking a vulnerable teammate.
+            if (!IsAttackingProtectedMember(target))
+                return null;
+
+            // Already slowed — don't burn the swing re-snaring; deal damage.
+            if (EffectListService.GetEffectOnTarget(target, eEffect.MovementSpeedDebuff) != null)
+                return null;
+
+            if (!IsActingAsTank)
+                return null;
+
+            AttackData lad = MimicBody?.attackComponent?.attackAction?.LastAttackData;
+            DbInventoryItem weapon = MimicBody?.ActiveWeapon;
+            if (weapon == null)
+                return null;
+
+            return PickSnareStyleFrom(MimicBody.StylesAnytime, lad, weapon)
+                ?? PickSnareStyleFrom(MimicBody.StylesBack, lad, weapon)
+                ?? PickSnareStyleFrom(MimicBody.StylesSide, lad, weapon)
+                ?? PickSnareStyleFrom(MimicBody.StylesFront, lad, weapon)
+                ?? PickSnareStyleFrom(MimicBody.StylesChain, lad, weapon);
+        }
+
         #endregion MainTank
 
         public bool CheckStats(short threshold)
@@ -3769,6 +3869,56 @@ namespace DOL.AI.Brain
                 return;
             }
 
+            // Demezz is a shared group duty, NOT a healer-only one. Any class
+            // that carries a cure-mez spell but isn't flagged as THE group
+            // healer — Mentalist, a Bard/Warden/Shaman acting as CC/support,
+            // a secondary Cleric/Druid — should still pop a mez off the
+            // highest-value mezzed member promptly. Dedicated healers already
+            // do this through their own cycle (the IsHealer early-return at the
+            // top of this method); everyone reaching here is a non-IsHealer, so
+            // without this they'd only stumble into a cure via the incidental
+            // CheckSpells path, which a no-target tick skips entirely. Gated to
+            // "a member is actually mezzed and nobody is already curing them" so
+            // it never turns a DPS/CC bot into a heal-bot; CheckHeals returns
+            // true only when it actually casts (in range, off cooldown), else we
+            // fall through to normal combat. MemberToCureMezz is already role-
+            // prioritised (healer > CC > caster/support > other) in MimicGroup.
+            if (MimicBody.CureMezz != null
+                && Body.Group?.MimicGroup is MimicGroup cureMezzGroup
+                && cureMezzGroup.MemberToCureMezz != null
+                && cureMezzGroup.MemberToCureMezz.IsMezzed
+                && !cureMezzGroup.AlreadyCastingCureMezz
+                && CheckHeals())
+            {
+                return;
+            }
+
+            // Tank RvR support the legacy FSM never ran. Both behaviours were
+            // previously reachable only via the v2 strategy layer (off by
+            // default) or — for Guard — the PvE camp state, so frontier mimic
+            // tanks never guarded their back-line nor stun-locked enemy casters.
+            //   * Guard/Protect upkeep on the squishiest member (1 Hz).
+            //   * Slam/stun interrupt of an enemy mid-cast in melee range — the
+            //     highest-impact thing a tank does against an enemy caster line.
+            // Both gated to acting tanks. The slam commits the tick (target
+            // swapped + stun style chambered), so we return when it fires; its
+            // cooldown is consumed only on success thanks to && short-circuit.
+            if (IsActingAsTank)
+            {
+                if (GameLoop.GameLoopTime >= _nextTankGuardTick)
+                {
+                    _nextTankGuardTick = GameLoop.GameLoopTime + 1000;
+                    MaintainTankCampSupport();
+                }
+
+                if (GameLoop.GameLoopTime >= _nextTankSlamTick
+                    && TryInterruptCastingEnemyWithSlam())
+                {
+                    _nextTankSlamTick = GameLoop.GameLoopTime + 1500;
+                    return;
+                }
+            }
+
             if (!CheckMainTankTarget())
                 Body.TargetObject = CalculateNextAttackTarget();
 
@@ -3861,8 +4011,18 @@ namespace DOL.AI.Brain
 
             CheckOffensiveAbilities();
 
-            if (MimicBody.CharacterClass.ClassType == eClassType.ListCaster ||
-                MimicBody.CharacterClass.ID == (int)eCharacterClass.Valewalker)
+            // The Valewalker's base class (ClassForester) reports ClassType
+            // ListCaster, but it is really a melee HYBRID: it swings a 2H scythe
+            // and casts Arboreal in between. Routing it through the pure-caster
+            // block below made it stand idle whenever it had no spell to cast —
+            // that block returns without ever reaching the melee StartAttack
+            // path, so the Valewalker never auto-attacked with its scythe. We
+            // EXCLUDE it here so it falls through to the melee path; its Arboreal
+            // nukes/DoTs still fire from the CheckSpells(Offensive) call above
+            // this block. (The old `|| ID == Valewalker` clause was a redundant
+            // no-op since the class is already ListCaster.)
+            if (MimicBody.CharacterClass.ClassType == eClassType.ListCaster
+                && MimicBody.CharacterClass.ID != (int)eCharacterClass.Valewalker)
             {
                 if (Body.IsBeingInterrupted)
                 {
@@ -5903,6 +6063,14 @@ namespace DOL.AI.Brain
                                 .First();
                         }
 
+                        // Instrument-based CC (Bard / Minstrel mez songs) needs
+                        // the instrument in the active weapon slot or CastSpell
+                        // rejects it ("not wielding the right instrument").
+                        // Switch to the Distance slot (where the drum sits)
+                        // transparently — same as the offensive and charm paths.
+                        if (spell.NeedInstrument && Body.ActiveWeaponSlot != eActiveWeaponSlot.Distance)
+                            Body.SwitchWeapon(eActiveWeaponSlot.Distance);
+
                         casted = Body.CastSpell(spell, MimicBody.GetSpellLineForSpell(spell));
 
                         if (casted)
@@ -7170,8 +7338,12 @@ namespace DOL.AI.Brain
 
                 case eSpellType.SpeedEnhancement when spell.IsInstantCast:
                 // Instant speed (Skald) is routed to MiscSpells, so this is
-                // the only path that casts it. Empty break left it never cast.
-                if (!LivingHasEffect(Body, spell))
+                // the only path that casts it. Only (re)cast while actually
+                // travelling — same gate as the pulsing speed case above —
+                // otherwise the Skald re-fired the buff on cooldown even while
+                // parked in camp, wasting mana/GCD. The buff persists through
+                // brief follow-stops, so movement keeps it up on the road.
+                if (!LivingHasEffect(Body, spell) && Body.IsMoving)
                     target = Body;
                 break;
 

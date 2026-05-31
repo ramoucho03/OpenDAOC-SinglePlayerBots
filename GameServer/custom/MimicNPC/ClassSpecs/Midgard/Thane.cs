@@ -52,6 +52,12 @@ namespace DOL.GS.Scripts
                 break;
 
                 case 3:
+                // Two-handed Stormcaller build (no Shields). eSpecType.Mid
+                // already equips the weapon in both the 1H and 2H slots; set
+                // Is2H so SetWeapons actually switches to the two-hander.
+                // Without this the Thane stood in the 1H slot with no shield,
+                // losing the 2H damage it specced for.
+                Is2H = true;
                 Add(ObjToSpec(WeaponOneType), 50, 0.8f);
                 Add(Specs.Stormcalling, 50, 1.0f);
                 Add(Specs.Parry, 28, 0.1f);

@@ -23,6 +23,21 @@ namespace DOL.GS
             207156901, 207156902
         ];
 
+        // The 12 Agramon central "porte grille" barriers (NF region 163, zone
+        // 163). They are neutral passage grilles (Realm=Door) inserted by
+        // nf_live.sql. Per operator request these are kept PERMANENTLY OPEN —
+        // simpler and more reliable than tuning the interaction distance so the
+        // grilles can be hand-opened. Door IDs come straight from nf_live.sql.
+        private static HashSet<int> _agramonBarrierDoorIds =
+        [
+            163000401, 163000402,
+            163000501, 163000502,
+            163005901, 163005902,
+            163006001, 163006002,
+            163054801, 163054802,
+            163055001, 163055002
+        ];
+
         private bool _openDead = false;
         private CloseDoorAction _closeDoorAction;
 
@@ -37,6 +52,11 @@ namespace DOL.GS
         {
             if (!Locked)
                 State = eDoorState.Open;
+
+            // Agramon barrier grilles stay permanently open — never arm the
+            // auto-close timer so they don't shut after STAYS_OPEN_DURATION.
+            if (IsAgramonBarrierDoor())
+                return;
 
             if (HealthPercent > 40 || !_openDead)
             {
@@ -57,6 +77,11 @@ namespace DOL.GS
 
         public override void Close(GameLiving closer = null)
         {
+            // Agramon barrier grilles are permanent passages — ignore every
+            // close request (auto-close timer, client close packet, etc.).
+            if (IsAgramonBarrierDoor())
+                return;
+
             if (!_openDead)
                 State = eDoorState.Closed;
 
@@ -161,6 +186,15 @@ namespace DOL.GS
         {
             base.LoadFromDatabase(obj);
 
+            // Agramon barrier grilles open at load and stay open — force the
+            // state regardless of what the DB row stored, and never arm the
+            // auto-close timer.
+            if (IsAgramonBarrierDoor())
+            {
+                State = eDoorState.Open;
+                return;
+            }
+
             if (State is eDoorState.Open)
             {
                 lock (_stateLock)
@@ -179,6 +213,16 @@ namespace DOL.GS
         public static bool IsBorderKeepDoor(int doorId)
         {
             return _borderKeepDoorIds.Contains(doorId);
+        }
+
+        public bool IsAgramonBarrierDoor()
+        {
+            return IsAgramonBarrierDoor(DoorId);
+        }
+
+        public static bool IsAgramonBarrierDoor(int doorId)
+        {
+            return _agramonBarrierDoorIds.Contains(doorId);
         }
 
         private class CloseDoorAction : ECSGameTimerWrapperBase

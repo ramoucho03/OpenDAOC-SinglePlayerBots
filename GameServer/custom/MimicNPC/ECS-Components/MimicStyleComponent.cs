@@ -90,6 +90,19 @@ namespace DOL.GS
                         && mimic.CheckStyleStun(s))
                         return s;
 
+            // 2b. Peel snare (PvP). When acting as a tank and meleeing an enemy
+            // that is beating on a fragile teammate, slow it instead of
+            // maximising damage so it can't stay on the back-line — the
+            // canonical RvR peel ("snare the attacker, move to the next").
+            // Returns null (falls through) when there's no peel target, the
+            // target is already snared, or no snare style is usable.
+            if (mimic.MimicBrain != null)
+            {
+                Style peelSnare = mimic.MimicBrain.GetPeelSnareStyle();
+                if (peelSnare != null)
+                    return peelSnare;
+            }
+
             // 3. Tank taunt rotation. Was PvE-only — but in PvP, taunts are
             // exactly the peel tool a real RvR tank uses to flip the player's
             // damage off the healer back onto the tank. Without this, frontier

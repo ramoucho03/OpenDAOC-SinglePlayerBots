@@ -57,7 +57,7 @@ namespace DOL.GS.Scripts
         public static int PVP_FRONTIER_MAX_LEVEL;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_engage_aggression",
-            "Engagement aggression: 0=engage only with advantage (default), 1=engage at parity, 2=always engage.", 0)]
+            "Engagement aggression for group-vs-group fights: 0=cautious (engage only with a clear edge, patrol past uncertain matchups), 1=AGGRESSIVE default (commit to anything that isn't a clear loss — no patrol-past band; an outnumbered-but-not-hopeless group still takes the fight, only a heavy ~2x disadvantage retreats), 2=reckless (always engage regardless of odds).", 1)]
         public static int PVP_FRONTIER_ENGAGE_AGGRESSION;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_keep_attack_chance",
@@ -118,7 +118,7 @@ namespace DOL.GS.Scripts
         public static int PVP_FRONTIER_PLAYER_TRACK_RADIUS;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_player_track_chance",
-            "Chance (0-100) per next-waypoint pick that a frontier group routes toward the closest enemy-realm player in the region instead of a random patrol waypoint. Default 50 — groups actively pursue moving players (1 waypoint in 2 aims at the closest enemy). Drop to 20 for ambient patrols, raise to 70+ for full hot-pursuit.", 50)]
+            "Chance (0-100) per next-waypoint pick that a frontier group routes toward the closest enemy-realm player in the region instead of a random patrol waypoint. Default 65 — groups aggressively pursue moving players (~2 waypoints in 3 aim at the closest enemy). Drop to 20 for ambient patrols, raise to 80+ for relentless hot-pursuit.", 65)]
         public static int PVP_FRONTIER_PLAYER_TRACK_CHANCE;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_max_groups_near_player_per_realm",
@@ -135,24 +135,24 @@ namespace DOL.GS.Scripts
         // whether a player is currently fighting any of that realm's
         // mimics; when that fight ends, it rolls a fresh random window
         // [min, max] before the realm is allowed to spawn its next group.
-        // This delivers the user-requested cadence of "one encounter
-        // every 2-10 min after the last one ends" rather than "every X
-        // min from spawn" (which under-counted when fights ran long).
+        // This delivers the requested cadence of "one encounter every
+        // 1-5 min after the last one ends" rather than "every X min from
+        // spawn" (which under-counted when fights ran long).
 
         [ServerProperty("pvpfrontier", "pvp_frontier_post_encounter_min_sec",
-            "Minimum seconds between the END of a player-mimic fight and the next dynamic spawn for that realm. Default 120 (2 min) — the floor of the random delay rolled per encounter end.", 120)]
+            "Minimum seconds between the END of a player-mimic fight and the next dynamic spawn for that realm. Default 60 (1 min) — the floor of the random delay rolled per encounter end.", 60)]
         public static int PVP_FRONTIER_POST_ENCOUNTER_MIN_SEC;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_post_encounter_max_sec",
-            "Maximum seconds between the END of a player-mimic fight and the next dynamic spawn for that realm. Combined with MIN, the actual delay rolls uniformly in [MIN, MAX]. Default 600 (10 min). Lower for constant action, higher for slower-paced sessions.", 600)]
+            "Maximum seconds between the END of a player-mimic fight and the next dynamic spawn for that realm. Combined with MIN, the actual delay rolls uniformly in [MIN, MAX]. Default 300 (5 min). Lower for constant action, higher for slower-paced sessions.", 300)]
         public static int PVP_FRONTIER_POST_ENCOUNTER_MAX_SEC;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_post_encounter_surprise_chance",
-            "Chance (0-100) that the post-encounter delay roll is overridden with a 'surprise' fast respawn (30-90 s) — keeps the player from fully predicting cadence. Default 8.", 8)]
+            "Chance (0-100) that the post-encounter delay roll is overridden with a 'surprise' fast respawn (30-90 s) — keeps the player from fully predicting cadence. Default 0 (disabled) so the pause stays strictly within the [MIN, MAX] window; raise it if you want occasional sub-MIN respawns.", 0)]
         public static int PVP_FRONTIER_POST_ENCOUNTER_SURPRISE_CHANCE;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_post_encounter_lull_chance",
-            "Chance (0-100) that the post-encounter delay roll is overridden with an 'extended lull' (MAX..MAX*1.5) — mirrors the surprise mechanic on the slow side, so cadence sometimes stretches naturally. Default 8.", 8)]
+            "Chance (0-100) that the post-encounter delay roll is overridden with an 'extended lull' (MAX..MAX*1.5) — mirrors the surprise mechanic on the slow side. Default 0 (disabled) so the pause never exceeds MAX; raise it if you want occasional longer-than-MAX lulls.", 0)]
         public static int PVP_FRONTIER_POST_ENCOUNTER_LULL_CHANCE;
 
         // ---- Third-party crash (chaos reinforcement event) ----
@@ -1571,6 +1571,11 @@ namespace DOL.GS.Scripts
             public int Y;
             public int Z;
             public eRealm Realm;
+            // Heading + movement state, sampled so dynamic spawn can place
+            // groups AHEAD of a moving player (on their line of travel) rather
+            // than in a random ring that often lands behind them.
+            public ushort Heading;
+            public bool Moving;
         }
 
         internal static readonly Dictionary<ushort, PlayerSnapshot> _playerSnapshotByRegion = new();
@@ -1661,7 +1666,7 @@ namespace DOL.GS.Scripts
                         if (skipCombatAnchor && p.InCombatInLast(8000))
                             continue;
 
-                        snap.Sampled.Add(new PlayerSampledPos { X = p.X, Y = p.Y, Z = p.Z, Realm = p.Realm });
+                        snap.Sampled.Add(new PlayerSampledPos { X = p.X, Y = p.Y, Z = p.Z, Realm = p.Realm, Heading = p.Heading, Moving = p.IsMoving });
                     }
 
                     _playerSnapshotByRegion[regId] = snap;
@@ -1744,17 +1749,39 @@ namespace DOL.GS.Scripts
 
             PlayerSampledPos anchor = snap.Sampled[pool[Util.Random(pool.Count - 1)]];
 
-            // Random angle + random radius in [inner, outer]. Uniform on the
-            // ring without bias toward the inner edge: sqrt() correction on the
-            // 0..1 radius factor keeps the area-density flat. Up to 6 retries
-            // if the rolled point lands inside a border-keep safe zone — we
-            // don't want groups materialising on top of players hugging their
-            // entry portal.
+            // Random radius in [inner, outer]. Uniform on the ring without bias
+            // toward the inner edge: sqrt() correction on the 0..1 radius factor
+            // keeps the area-density flat. Up to 6 retries if the rolled point
+            // lands inside a border-keep safe zone — we don't want groups
+            // materialising on top of players hugging their entry portal.
+            //
+            // ANGLE: when the anchor player is MOVING, bias the spawn into a
+            // forward cone along their heading so the group materialises AHEAD
+            // of them, on their line of travel. The player then runs INTO the
+            // group while roaming instead of having to stop and wait for one to
+            // catch up. A dormant group spawned behind a running/sprinting
+            // player closes the gap at only ~230 u/s (pursuit 480 − player 248)
+            // and gives up entirely once the player out-ranges its 12k tracking
+            // radius — that is the reported "I'm always forced to stop and wait
+            // to cross a mimic group" symptom. A stationary anchor keeps the
+            // full 360° ring (no travel direction to bias toward).
+            //
+            // The ring math places points at (X + cosθ·r, Y + sinθ·r); a DAoC
+            // heading's forward direction in that frame is
+            // heading·HEADING_TO_RADIAN + π/2 (heading 0 = +Y / north, clockwise).
+            // ±60° of spread keeps the group ahead of the player even through
+            // moderate course changes while still varying the approach bearing.
+            const double FORWARD_CONE_HALF_ANGLE = Math.PI / 3.0; // 60°
+            bool forwardBias = anchor.Moving;
+            double forwardAngle = anchor.Heading * Point2D.HEADING_TO_RADIAN + Math.PI / 2.0;
+
             int sx = 0, sy = 0;
             bool ok = false;
             for (int attempt = 0; attempt < 6; attempt++)
             {
-                double angle = Util.Random(0, 359) * Math.PI / 180.0;
+                double angle = forwardBias
+                    ? forwardAngle + (Util.RandomDouble() * 2.0 - 1.0) * FORWARD_CONE_HALF_ANGLE
+                    : Util.Random(0, 359) * Math.PI / 180.0;
                 double radiusFactor = Math.Sqrt(Util.RandomDouble());
                 double radius = inner + radiusFactor * ringWidth;
 
@@ -2856,7 +2883,11 @@ namespace DOL.GS.Scripts
                     else if (decision == eEngagementDecision.Retreat)
                     {
                         OrderGroupToRetreat();
-                        _retreatUntilMs = now + 20_000;
+                        // Short pre-engagement retreat: we backed off a bad
+                        // matchup, but an aggressive frontier returns to the
+                        // hunt quickly instead of skulking. Mid-fight losses
+                        // still arm the longer 30/45 s recovery windows below.
+                        _retreatUntilMs = now + 12_000;
                         State = eFrontierState.Retreating;
                     }
                 }
@@ -2971,20 +3002,36 @@ namespace DOL.GS.Scripts
             {
                 _currentWaypoint = new Point3D(target.X, target.Y, target.Z);
             }
-            OrderGroupToWaypoint();
-
-            // Sprint on engage: front-line members (tanks / DPS) sprint
-            // for the burst window. Healers and CC mimics intentionally
-            // DON'T sprint — they should arrive at the convergence point
-            // a beat later than the tank, settling into the back line
-            // instead of out-running formation. Real RvR groups have the
-            // same cadence: tanks punch in, healers stack at safe range.
+            // Commit the group to combat. Front-line (non-healer) members are
+            // pushed into the AGGRO state so their brains actually CHARGE and
+            // attack the target. The previous code left EVERY member in
+            // FOLLOW_THE_LEADER (via OrderGroupToWaypoint) and relied on per-bot
+            // proximity aggro to trip the attack — but FOLLOW_THE_LEADER does
+            // not act on the aggro list, so the group converged to ~600u from
+            // the player and just STOOD there ("groupes ennemis à l'arrêt").
+            // This mirrors OrderGroupToEngage (the group-vs-group path), which
+            // already sets AGGRO. Healers stay in FOLLOW_THE_LEADER on purpose:
+            // per the healer design they heal from the follow state and
+            // reposition behind the tank, never from AGGRO (which has no heal
+            // dispatch). The leader being a non-healer charges in; healers
+            // follow it via FOLLOW_THE_LEADER and settle into the back line.
+            //
+            // Sprint cadence: front-line (non-CC) sprints for the burst window;
+            // healers/CC arrive a beat later so they stack at safe range.
             foreach (var m in Members)
             {
-                if (m == null || !m.IsAlive) continue;
-                if (m.MimicBrain == null) continue;
-                if (m.MimicBrain.IsHealer || m.MimicBrain.IsMainCC) continue;
-                try { m.Sprint(true); } catch { /* Sprint may NRE on bots without endurance */ }
+                if (m == null || !m.IsAlive || m.MimicBrain == null) continue;
+
+                if (m.MimicBrain.IsHealer)
+                {
+                    m.MimicBrain.FSM.SetCurrentState(eFSMStateType.FOLLOW_THE_LEADER);
+                    continue;
+                }
+
+                m.MimicBrain.FSM.SetCurrentState(eFSMStateType.AGGRO);
+
+                if (!m.MimicBrain.IsMainCC)
+                    try { m.Sprint(true); } catch { /* Sprint may NRE on bots without endurance */ }
             }
         }
 
@@ -3062,16 +3109,18 @@ namespace DOL.GS.Scripts
 
         private void TickEngaging()
         {
-            // Stay engaging while at least one bot is in combat. When everyone
-            // is clear of combat (enemy wiped or escaped), arm the post-fight
-            // cooldown and resume patrol — gives lone humans a chance to
-            // disengage instead of being chain-mobbed by every nearby group.
+            // Stay engaging while at least one bot is in combat OR still holds
+            // aggro (charging a target it hasn't reached yet). Only when every
+            // bot is clear of combat AND holds no aggro (enemy wiped or escaped)
+            // do we arm the post-fight cooldown and resume patrol — gives lone
+            // humans a chance to disengage instead of being chain-mobbed.
             int aliveNow = 0;
             int rosterSizeCount = Roster.Count;
             int totalHpPct = 0;          // for avg HP%
             int aliveHealers = 0;
             int totalHealers = 0;
             bool anyoneInCombat = false;
+            bool anyoneHasAggro = false;
             foreach (var m in Members)
             {
                 if (m != null && m.MimicBrain != null && m.MimicBrain.IsHealer)
@@ -3083,6 +3132,10 @@ namespace DOL.GS.Scripts
                     if (m.MimicBrain != null && m.MimicBrain.IsHealer)
                         aliveHealers++;
                     if (m.InCombat) anyoneInCombat = true;
+                    // Still committed while a member holds aggro — i.e. it is
+                    // charging an ordered target it hasn't reached yet (no blow
+                    // landed, so InCombat is still false).
+                    if (m.MimicBrain != null && m.MimicBrain.HasAggro) anyoneHasAggro = true;
                 }
             }
 
@@ -3098,9 +3151,18 @@ namespace DOL.GS.Scripts
             if (anyoneInCombat && aliveNow > 0)
             {
                 int avgHp = aliveNow > 0 ? totalHpPct / aliveNow : 100;
-                bool losingFight = rosterSizeCount > 0 && aliveNow * 2 <= rosterSizeCount;
-                bool bloodied = avgHp < 35;
-                bool healersWiped = totalHealers > 0 && aliveHealers == 0;
+                // Aggressive commitment: only break off when the fight is
+                // genuinely lost, not at the first sign of pressure. The old
+                // thresholds (half the roster OR avg < 35% OR any healer down)
+                // were too twitchy for an aggressive frontier — groups bailed
+                // out of still-winnable fights. Each trigger is now harder:
+                //   - down to ~1/3 of the roster (was half), OR
+                //   - average HP collapsed below 25% (was 35%), OR
+                //   - healers wiped AND the group is already bloodied (<50%),
+                //     so a healer death alone no longer aborts a winning fight.
+                bool losingFight = rosterSizeCount > 0 && aliveNow * 3 <= rosterSizeCount;
+                bool bloodied = avgHp < 25;
+                bool healersWiped = totalHealers > 0 && aliveHealers == 0 && avgHp < 50;
 
                 if (losingFight || bloodied || healersWiped)
                 {
@@ -3113,7 +3175,16 @@ namespace DOL.GS.Scripts
                 }
             }
 
-            if (!anyoneInCombat)
+            // Revert to patrol only once the group is BOTH out of combat AND
+            // holding no aggro. While members are still charging an ordered
+            // target they have aggro but aren't "InCombat" yet (no blow landed
+            // / spell cast); reverting on !InCombat alone yanked them back into
+            // a rally-on-the-spot before they ever reached the enemy — the
+            // "ordered to engage, then stops and regroups" stutter. HasAggro
+            // keeps the commitment alive through the charge and clears on its
+            // own once the target dies or escapes far enough for the brains to
+            // drop aggro.
+            if (!anyoneInCombat && !anyoneHasAggro)
             {
                 // Detect a near-wipe: if we lost half or more of our roster
                 // during the engagement, head to safety instead of right
@@ -3732,7 +3803,15 @@ namespace DOL.GS.Scripts
             {
                 if (m == null || !m.IsAlive || m.MimicBrain == null) continue;
                 m.MimicBrain.AddToAggroList(enemyLeader, 100);
-                m.MimicBrain.FSM.SetCurrentState(eFSMStateType.AGGRO);
+
+                // Front-line charges via AGGRO; healers fight from
+                // FOLLOW_THE_LEADER (heal dispatch + back-line positioning) so
+                // they actually keep the group alive instead of suiciding into
+                // the enemy. Same role split as OrderGroupToEngagePlayer.
+                if (m.MimicBrain.IsHealer)
+                    m.MimicBrain.FSM.SetCurrentState(eFSMStateType.FOLLOW_THE_LEADER);
+                else
+                    m.MimicBrain.FSM.SetCurrentState(eFSMStateType.AGGRO);
             }
         }
 
@@ -4220,12 +4299,17 @@ namespace DOL.GS.Scripts
     {
         /// <summary>
         /// Compares my group's strength vs the enemy's. Strength = sum of level
-        /// of alive members, weighted slightly by healer presence (healer = +5).
+        /// of alive members, weighted by headcount, healer ratio and CC.
         /// Decision rules driven by ServerProperty pvp_frontier_engage_aggression:
-        ///   0 (default): engage only if my strength >= enemy strength * 1.1
-        ///   1 (parity):  engage if my strength >= enemy strength * 0.9
-        ///   2 (always):  always engage
-        /// Retreat fires only at aggression 0/1 when significantly outmatched.
+        ///   0 (cautious): engage only with a clear edge (ratio >= 1.1), retreat
+        ///                 when outmatched (<= 0.75), patrol past the uncertain
+        ///                 middle.
+        ///   1 (default, AGGRESSIVE): commit to anything that isn't a clear loss
+        ///                 — no passive "ignore and patrol past" band. An
+        ///                 outnumbered-but-not-hopeless group (5v8 ≈ 0.79,
+        ///                 4v8 ≈ 0.71) still takes the fight; only a heavy
+        ///                 disadvantage (ratio < 0.6, e.g. ~2v8) triggers retreat.
+        ///   2 (reckless): always engage.
         /// </summary>
         public static eEngagementDecision Assess(PvPFrontierGroup me, PvPFrontierGroup enemy)
         {
@@ -4237,12 +4321,20 @@ namespace DOL.GS.Scripts
 
             double ratio = his == 0 ? double.MaxValue : (double)my / his;
 
-            double engageThreshold = aggro == 1 ? 0.9 : 1.1;
-            double retreatThreshold = aggro == 1 ? 0.6 : 0.75;
+            if (aggro <= 0)
+            {
+                // Cautious: only commit with a real edge; slide past the
+                // uncertain middle instead of fighting it.
+                if (ratio >= 1.1) return eEngagementDecision.Engage;
+                if (ratio <= 0.75) return eEngagementDecision.Retreat;
+                return eEngagementDecision.Ignore;
+            }
 
-            if (ratio >= engageThreshold) return eEngagementDecision.Engage;
-            if (ratio <= retreatThreshold) return eEngagementDecision.Retreat;
-            return eEngagementDecision.Ignore;
+            // Aggressive default: fight anything that isn't a clear loss. No
+            // ignore band — a group that spots an equal-or-not-hopeless matchup
+            // commits. This is what makes the frontier feel like real RvR
+            // instead of two patrols sliding past each other.
+            return ratio >= 0.6 ? eEngagementDecision.Engage : eEngagementDecision.Retreat;
         }
 
         private static int ComputeStrength(PvPFrontierGroup g)

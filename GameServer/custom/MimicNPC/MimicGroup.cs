@@ -787,7 +787,8 @@ namespace DOL.GS.Scripts
         private long _retreatClearAtTick;
         /// <summary>Most injured group member</summary>
         public GameLiving MemberToHeal { get; private set; }
-        /// <summary>Mezzed group member</summary>
+        /// <summary>Mezzed group member to cure first — the highest-leverage one
+        /// (healer &gt; CC &gt; caster/support &gt; other), not just the last found.</summary>
         public GameLiving MemberToCureMezz { get; private set; }
         /// <summary>How many group members are diseased?</summary>
         public int NumNeedCureDisease { get; private set; }
@@ -872,6 +873,29 @@ namespace DOL.GS.Scripts
                 m_diseasePercent = 100;
                 m_poisonPercent = 100;
 
+                int bestCureMezzRank = int.MaxValue;
+
+                // Lower = cure first. A mezzed healer is the worst case in RvR
+                // (no heals land while it's locked), then a mezzed CC (no
+                // chain-mez), then casters/support, then everyone else. Works
+                // for player and mimic members alike via the shared profile
+                // registry; unknown livings (pets) fall to the lowest priority.
+                static int MezzRank(GameLiving m)
+                {
+                    MimicCombatProfile p = MimicCombatProfileRegistry.GetForLiving(m);
+                    if (p == null)
+                        return 3;
+                    if (p.HasRole(eMimicCombatRole.Healer))
+                        return 0;
+                    if (p.HasRole(eMimicCombatRole.CrowdControl))
+                        return 1;
+                    if (p.HasRole(eMimicCombatRole.CasterDps)
+                        || p.HasRole(eMimicCombatRole.PetCaster)
+                        || p.HasRole(eMimicCombatRole.Support))
+                        return 2;
+                    return 3;
+                }
+
                 foreach (GameLiving groupMember in checker.Group.GetMembersInTheGroup())
                 {
                     if (groupMember != checker && !groupMember.IsWithinRadius(checker, WorldMgr.VISIBILITY_DISTANCE))
@@ -903,7 +927,14 @@ namespace DOL.GS.Scripts
                             LowestMemberHealthPct = m_percentCurrent;
 
                         if (groupMember.IsMezzed)
-                            MemberToCureMezz = groupMember;
+                        {
+                            int mezzRank = MezzRank(groupMember);
+                            if (MemberToCureMezz == null || mezzRank < bestCureMezzRank)
+                            {
+                                MemberToCureMezz = groupMember;
+                                bestCureMezzRank = mezzRank;
+                            }
+                        }
 
                         if (groupMember.IsDiseased)
                         {

@@ -284,7 +284,13 @@ namespace DOL.GS.Scripts
                 case eSpecType.TwoHandHybrid:
                 case eSpecType.TwoHanded when CharacterClass.ID != (int)eCharacterClass.Valewalker:
                 MimicEquipment.SetMeleeWeapon(this, MimicSpec.WeaponOneType, eHand.oneHand);
-                MimicEquipment.SetMeleeWeapon(this, MimicSpec.WeaponTwoType, eHand.twoHand, MimicSpec.DamageType);
+                // Only equip a two-hander when the spec actually defines one.
+                // 1H-only hybrids (e.g. the Vampiir, which never sets
+                // WeaponTwoType) would otherwise request a GenericItem (enum 0)
+                // two-hander, match nothing in the DB, and roll a junk ROG into
+                // the unused 2H slot on every spawn.
+                if (MimicSpec.WeaponTwoType != eObjectType.GenericItem)
+                    MimicEquipment.SetMeleeWeapon(this, MimicSpec.WeaponTwoType, eHand.twoHand, MimicSpec.DamageType);
                 break;
 
                 case eSpecType.Mid:

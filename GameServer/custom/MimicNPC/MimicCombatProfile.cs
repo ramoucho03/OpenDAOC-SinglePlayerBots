@@ -401,7 +401,11 @@ namespace DOL.GS.Scripts
             Add(Profile(eMimicClass.Bard, healer | eMimicCombatRole.CrowdControl | eMimicCombatRole.Puller, eMimicCombatRole.CrowdControl, eMimicAoePolicy.CrowdControlWhenClustered, CcPve, CcPvp));
             Add(Profile(eMimicClass.Blademaster, tankMelee, eMimicCombatRole.MeleeDps, eMimicAoePolicy.Never, TankPve, TankPvp));
             Add(Profile(eMimicClass.Champion, tankMelee | eMimicCombatRole.Debuffer, eMimicCombatRole.Tank, eMimicAoePolicy.Never, TankPve, TankPvp));
-            Add(Profile(eMimicClass.Druid, healer | eMimicCombatRole.PetCaster, eMimicCombatRole.Healer, eMimicAoePolicy.Never, HealerPve, HealerPvp));
+            // Druid carries the Hib backup CC (instant nature root) alongside
+            // primary healing — flagged CrowdControl so target scoring credits
+            // its root utility. Still HealerPvp priorities + Healer primary, so
+            // it heals first and only roots when not casting a heal.
+            Add(Profile(eMimicClass.Druid, healer | eMimicCombatRole.PetCaster | eMimicCombatRole.CrowdControl, eMimicCombatRole.Healer, eMimicAoePolicy.Never, HealerPve, HealerPvp));
             Add(Profile(eMimicClass.Eldritch, caster | eMimicCombatRole.Debuffer | eMimicCombatRole.CrowdControl, eMimicCombatRole.CasterDps, eMimicAoePolicy.DamageWhenClustered | eMimicAoePolicy.CrowdControlWhenClustered | eMimicAoePolicy.PbaoeWhenSafe, DpsPve, DpsPvp));
             Add(Profile(eMimicClass.Enchanter, petCaster | eMimicCombatRole.CrowdControl | eMimicCombatRole.Debuffer, eMimicCombatRole.PetCaster, eMimicAoePolicy.DamageWhenClustered | eMimicAoePolicy.CrowdControlWhenClustered | eMimicAoePolicy.PbaoeWhenSafe, CcPve, CcPvp));
             Add(Profile(eMimicClass.Hero, tankMelee, eMimicCombatRole.Tank, eMimicAoePolicy.Never, TankPve, TankPvp));
@@ -424,10 +428,26 @@ namespace DOL.GS.Scripts
             Add(Profile(eMimicClass.Savage, melee, eMimicCombatRole.MeleeDps, eMimicAoePolicy.Never, DpsPve, DpsPvp));
             Add(Profile(eMimicClass.Shadowblade, assassin, eMimicCombatRole.Assassin, eMimicAoePolicy.Never, DpsPve, SupportHunterPvp));
             Add(Profile(eMimicClass.Shaman, healer | eMimicCombatRole.Debuffer | eMimicCombatRole.CasterDps | eMimicCombatRole.Puller, eMimicCombatRole.Support, eMimicAoePolicy.DamageWhenClustered, HealerPve, HealerPvp, 3));
-            Add(Profile(eMimicClass.Skald, supportCc | eMimicCombatRole.MeleeDps, eMimicCombatRole.Support, eMimicAoePolicy.Never, CcPve, CcPvp));
-            Add(Profile(eMimicClass.Spiritmaster, petCaster | eMimicCombatRole.CrowdControl, eMimicCombatRole.PetCaster, eMimicAoePolicy.DamageWhenClustered | eMimicAoePolicy.CrowdControlWhenClustered | eMimicAoePolicy.PbaoeWhenSafe, CcPve, CcPvp));
+            // Skald: speed/end song carrier + melee assist, NOT a dedicated
+            // mezzer (its CC is a minor instant). Use DPS/assist target
+            // priorities so it trains with the group instead of peeling off to
+            // chase enemy healers like a Sorcerer/Bard. Keeps the Support/CC
+            // role flags for its songs + off-CC utility.
+            Add(Profile(eMimicClass.Skald, supportCc | eMimicCombatRole.MeleeDps, eMimicCombatRole.Support, eMimicAoePolicy.Never, DpsPve, DpsPvp));
+            // Spiritmaster: pet caster first (lifedrain DD + spirit pet), same
+            // archetype as Bonedancer/Cabalist/Necro — use DPS/assist target
+            // priorities like them rather than CC priorities. Keeps the
+            // CrowdControl role + CrowdControlWhenClustered AoE policy so it
+            // still lays AoE CC when the enemy clusters and can off-mez.
+            Add(Profile(eMimicClass.Spiritmaster, petCaster | eMimicCombatRole.CrowdControl, eMimicCombatRole.PetCaster, eMimicAoePolicy.DamageWhenClustered | eMimicAoePolicy.CrowdControlWhenClustered | eMimicAoePolicy.PbaoeWhenSafe, DpsPve, DpsPvp));
             Add(Profile(eMimicClass.Thane, tankMelee | eMimicCombatRole.CasterDps, eMimicCombatRole.Tank, eMimicAoePolicy.DamageWhenClustered, TankPve, TankPvp, 3));
-            Add(Profile(eMimicClass.Valkyrie, tankMelee | eMimicCombatRole.Support | eMimicCombatRole.Healer, eMimicCombatRole.Tank, eMimicAoePolicy.DamageWhenClustered, TankPve, TankPvp, 3));
+            // CasterDps flag = treated as a hybrid-caster so its OdinsWill
+            // battlecaster line (DDs / bolt / PBAoE) keeps firing in melee
+            // range instead of being short-circuited to pure melee. Healer flag
+            // is a secondary capability only (opportunistic Mending) — see the
+            // Valkyrie exclusion in MimicGroupComposer.IsHealerClass which stops
+            // it being auto-flagged a PURE healer (its primary role is Tank).
+            Add(Profile(eMimicClass.Valkyrie, tankMelee | eMimicCombatRole.CasterDps | eMimicCombatRole.Support | eMimicCombatRole.Healer, eMimicCombatRole.Tank, eMimicAoePolicy.DamageWhenClustered, TankPve, TankPvp, 3));
             // Warlock: Catacombs Mid caster with chambers (instant-cast queue).
             // Heavy DD + DoT + debuff. No pet.
             Add(Profile(eMimicClass.Warlock, caster | eMimicCombatRole.Debuffer, eMimicCombatRole.CasterDps, eMimicAoePolicy.DamageWhenClustered, DpsPve, DpsPvp, 3));

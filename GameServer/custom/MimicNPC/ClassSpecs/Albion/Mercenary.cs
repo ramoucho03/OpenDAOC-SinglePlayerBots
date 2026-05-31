@@ -23,17 +23,16 @@ namespace DOL.GS.Scripts
                 case 2: WeaponOneType = eObjectType.CrushingWeapon; break;
             }
 
-            var randVariance = spec switch
-            {
-                eSpecType.DualWield => Util.Random(0, 2),
-                eSpecType.DualWieldAndShield => 3,
-                _ => Util.Random(3),
-            };
+            // The Mercenary is a pure dual-wield class. Its combat profile
+            // backpacks any off-hand shield (ShouldBackpackOffhandShield) and
+            // the brain only swings a shield when acting as a dedicated tank —
+            // which a DW Mercenary never does. A DualWieldAndShield build
+            // therefore sank ~42 spec points into a Shields line that was never
+            // equipped or used, so it's dropped: always roll one of the three
+            // real DW flavours (DW-max, weapon-max, parry-heavy). (`spec` is
+            // ignored — every Mercenary build is dual-wield.)
+            int randVariance = Util.Random(0, 2);
 
-            // Previously cases 0/1/2 were strict duplicates of the same DW
-            // build, so Util.Random produced essentially one variant. Split
-            // into three real DW flavours (DW-max, weapon-max, parry-max)
-            // plus the DualWieldAndShield variant.
             switch (randVariance)
             {
                 case 0:
@@ -60,14 +59,6 @@ namespace DOL.GS.Scripts
                 Add(ObjToSpec(WeaponOneType), 44, 0.8f);
                 Add(Specs.Dual_Wield, 44, 0.8f);
                 Add(Specs.Parry, 39, 0.4f);
-                break;
-
-                case 3:
-                SpecType = eSpecType.DualWieldAndShield;
-                Add(ObjToSpec(WeaponOneType), 39, 0.8f);
-                Add(Specs.Dual_Wield, 50, 0.9f);
-                Add(Specs.Shields, 42, 0.5f);
-                Add(Specs.Parry, 6, 0.1f);
                 break;
             }
         }

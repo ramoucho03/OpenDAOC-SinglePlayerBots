@@ -186,16 +186,19 @@ namespace DOL.GS.Scripts
             if (m.CombatProfile?.HasRole(eMimicCombatRole.Healer) != true)
                 return false;
 
-            // Heretic / Warden carry the Healer role flag as a secondary
-            // capability, but their PRIMARY identity is caster DPS (Heretic)
-            // or tank/support (Warden). Auto-flagging them as IsHealer would
-            // route their cycle through CheckHeals only and suppress their
-            // offensive cast/melee output entirely. Players who want them as
-            // dedicated healers can still toggle via /mset healer.
+            // Heretic / Warden / Valkyrie carry the Healer role flag as a
+            // secondary capability, but their PRIMARY identity is caster DPS
+            // (Heretic), tank/support (Warden) or tank + OdinsWill battlecaster
+            // (Valkyrie). Auto-flagging them as IsHealer would route their cycle
+            // through CheckHeals only and suppress their melee + offensive cast
+            // output entirely (AttackMostWanted returns early for healers). They
+            // still heal opportunistically via CheckSpells/CheckHeals, and a
+            // player who wants a dedicated healer can toggle via /mset healer.
             switch (m.CharacterClass.ID)
             {
                 case (int)eCharacterClass.Heretic:
                 case (int)eCharacterClass.Warden:
+                case (int)eCharacterClass.Valkyrie:
                     return false;
             }
             return true;
