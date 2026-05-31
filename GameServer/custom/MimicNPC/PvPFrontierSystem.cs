@@ -279,6 +279,10 @@ namespace DOL.GS.Scripts
         [ServerProperty("pvpfrontier", "pvp_frontier_tower_catapults",
             "Number of catapults deployed for a real TOWER siege. Towers are quick, so they field lighter artillery (and no trebuchets). Default 1.", 1)]
         public static int PVP_FRONTIER_TOWER_CATAPULTS;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_debug_movement",
+            "Diagnostic: when true, logs each hydrated group leader's movement state every group tick (state, distance to waypoint, IsMoving, speed). Use to diagnose stutter — if the leader logs IsMoving=false with a far waypoint for seconds, it's stalling. Default false.", false)]
+        public static bool PVP_FRONTIER_DEBUG_MOVEMENT;
     }
 
     #endregion
@@ -2819,29 +2823,62 @@ namespace DOL.GS.Scripts
                 string what = isTower ? "tower" : "keep";
                 string name = keep.Name ?? what;
 
+                // keep.Reset is the canonical capture (same call a real lord-death
+                // capture runs). It flips keep.Realm and broadcasts to the war map
+                // EARLY (AbstractGameKeep.Reset ~L1052-1054), then much LATER resets
+                // the guards/banners onto the new realm (~L1087-1103) — but only
+                // AFTER ResetPlayersOfKeep() (~L1084), which does a hookpoint lookup
+                // (component.HookPoints[97] — a Dictionary indexer that THROWS on a
+                // missing key) and a DB SelectObject. In the dormant abstract path
+                // there is no player around, and if that middle step throws, Reset
+                // has ALREADY flipped the realm + lit the war map but NEVER reaches
+                // the guard/banner refresh. Result = the exact reported bug: the
+                // tower/keep shows captured on the map, but ride up to it and the
+                // lord + guards are still the OLD faction. Isolate Reset in its own
+                // try so such a partial failure cannot also skip the reconcile.
                 try
                 {
-                    // Route the abstract (dormant, no-spawn) capture through the
-                    // EXACT same sequence the real lord-death capture uses
-                    // (GameKeepLord.HandleKeepCapture), so a dynamic flip is
-                    // indistinguishable from a live one. keep.Reset alone only
-                    // flips guards/doors/banners/DB — it does NOT touch the war
-                    // map. Without BroadcastCapture, connected players never get
-                    // SendKeepRealmUpdate, so the objective stayed shown at its
-                    // OLD realm even though it had really changed hands; arriving
-                    // on-site you'd find a keep that didn't match. OnKeepCaptured
-                    // clears guild claims and runs keep.OnCaptured (timers/level).
-                    keep.Reset(captor);                                   // guards/doors/banners/DB
-                    Keeps.PlayerMgr.BroadcastCapture(keep);               // war-map refresh + announce
-                    PvPFrontierManager.SiegeCoordinator.NotifyCaptured(keep.KeepID, captor);
-
-                    if (log.IsInfoEnabled)
-                        log.Info($"[PvPFrontier] ABSTRACT CAPTURE: {captor} took {what} '{name}'.");
+                    keep.Reset(captor);
                 }
                 catch (Exception ex)
                 {
-                    log.Error($"[PvPFrontier] abstract capture of '{name}' failed", ex);
+                    log.Error($"[PvPFrontier] abstract capture (Reset) of '{name}' failed", ex);
                 }
+
+                // Reconcile the ON-SITE faction with the war map, OUTSIDE the Reset
+                // try so a partial Reset above can no longer leave stale guards.
+                // Force keep.Realm to the captor (no-op if Reset set it), then
+                // RefreshTemplate every LIVE guard whose realm doesn't match — this
+                // re-derives realm + model + name + emblem from keep.Realm, exactly
+                // what Reset does for the live lord. When Reset fully succeeded the
+                // lord is already the captor (skipped) and the other guards were
+                // killed (not alive, skipped), so this is a clean no-op; only on a
+                // partial-Reset failure does it actually flip the survivors over.
+                try
+                {
+                    if (keep.Realm != captor)
+                        keep.Realm = captor;
+
+                    foreach (var guard in keep.Guards.Values)
+                    {
+                        if (guard == null || !guard.IsAlive) continue;
+                        if (guard.Realm == captor) continue;
+                        try { guard.RefreshTemplate(); }
+                        catch (Exception gex)
+                        {
+                            log.Error($"[PvPFrontier] guard realm refresh on '{name}' failed", gex);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    log.Error($"[PvPFrontier] post-capture realm reconcile of '{name}' failed", ex);
+                }
+
+                PvPFrontierManager.SiegeCoordinator.NotifyCaptured(keep.KeepID, captor);
+
+                if (log.IsInfoEnabled)
+                    log.Info($"[PvPFrontier] ABSTRACT CAPTURE: {captor} took {what} '{name}'.");
 
                 _siegeTargetKeepId = 0;
                 _dormantSiegeStartMs = 0;
@@ -2933,6 +2970,17 @@ namespace DOL.GS.Scripts
         {
             GameLiving leader = FirstAliveMember();
             if (leader == null) return;
+
+            // Movement diagnostic (off by default). Reveals whether the leader is
+            // actually gliding or stalling: if it logs IsMoving=false with a far
+            // waypoint across several ticks, it's the stop-and-wait stutter (and
+            // if the group tick is still 5 s, the new build isn't deployed).
+            if (PvPFrontierProperties.PVP_FRONTIER_DEBUG_MOVEMENT && _currentWaypoint != null)
+            {
+                log.Info($"[FrontierMove] {leader.Name} st={State} dist={leader.GetDistance(_currentWaypoint)} "
+                    + $"moving={leader.IsMoving} spd={leader.CurrentSpeed}/{leader.MaxSpeed} "
+                    + $"wp=({_currentWaypoint.X},{_currentWaypoint.Y})");
+            }
 
             // If we are near our waypoint AND it's a keep, engage the doors/guards.
             TryAttackKeepObjectsNearWaypoint();

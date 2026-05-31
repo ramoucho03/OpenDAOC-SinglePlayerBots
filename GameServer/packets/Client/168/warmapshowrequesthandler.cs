@@ -70,8 +70,16 @@ namespace DOL.GS.PacketHandler.Client.v168
 			if (client == null || client.Player == null)
 				return;
 
-			//hack fix new keep ids
-			else if ((int)client.Version >= (int)GameClient.eClientVersion.Version190 && (int)client.Version < (int)GameClient.eClientVersion.Version1115)
+			// Remap the client's warmap-teleport id to the real KeepID. The modern
+			// 1.1xx clients use the SAME teleport-request id encoding as the 1.9x
+			// clients (CONFIRMED on v1127: the client sends 62 for the Albion
+			// keep whose real KeepID is 50, i.e. 62 - 12 = 50) — NOT the packed
+			// warmap-update byte. The original `< Version1115` upper bound left
+			// every 1.115+ client unable to teleport: the id never resolved to a
+			// real KeepID and the handler silently returned. Apply the remap to
+			// all >= 190 clients. Border keeps (ids 1-6) stay below the thresholds
+			// and pass through unchanged to the border-keep cases below.
+			else if ((int)client.Version >= (int)GameClient.eClientVersion.Version190)
 			{
 				if (keepId >= 82)
 					keepId -= 7;
