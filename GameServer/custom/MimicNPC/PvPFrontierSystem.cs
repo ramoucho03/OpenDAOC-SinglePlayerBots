@@ -322,7 +322,8 @@ namespace DOL.GS.Scripts
         // nested foreach.
         internal static readonly Dictionary<ushort, Dictionary<eRealm, RealmConfig>> _configs = new();
         internal static readonly object _configsLock = new();
-        private static ECSGameTimer _tickTimer;
+        private static ECSGameTimer _tickTimer;       // heavy maintenance (spawn / sieges / snapshot) at TICK_MS
+        private static ECSGameTimer _groupTickTimer;  // light per-group AI (movement / engagement) at GROUP_TICK_MS
         private static bool _running;
         private const int TICK_MS = 5000;            // population/maintenance tick
         private const int GROUP_TICK_MS = 1000;      // per-group AI tick (was 2000 — halved for snappier reactions / waypoint advancement / scan cadence)
@@ -595,6 +596,14 @@ namespace DOL.GS.Scripts
             _tickTimer = new ECSGameTimer(null, MaintenanceTick, TICK_MS);
             _tickTimer.Start();
 
+            // Per-group AI (movement / engagement) runs on its own, much faster
+            // timer so groups travel CONTINUOUSLY instead of advancing one
+            // 5-second maintenance step at a time — the "petit pas après petit
+            // pas" stutter. The expensive population / siege / snapshot work
+            // stays on the 5 s maintenance timer above.
+            _groupTickTimer = new ECSGameTimer(null, GroupAiTick, GROUP_TICK_MS);
+            _groupTickTimer.Start();
+
             log.Info($"PvPFrontierManager started. Target {PvPFrontierProperties.PVP_FRONTIER_POPULATION_PER_REALM} bots per realm.");
             return true;
         }
@@ -607,6 +616,8 @@ namespace DOL.GS.Scripts
             _running = false;
             _tickTimer?.Stop();
             _tickTimer = null;
+            _groupTickTimer?.Stop();
+            _groupTickTimer = null;
             log.Info("PvPFrontierManager stopped. Existing bots remain in world; /pvpfrontier clear to remove them.");
             return true;
         }
@@ -672,47 +683,11 @@ namespace DOL.GS.Scripts
                     {
                         foreach (RealmConfig cfg in byRealm.Values)
                         {
-                            // Step every group; prune disbanded ones.
-                            for (int i = cfg.Groups.Count - 1; i >= 0; i--)
-                            {
-                                PvPFrontierGroup grp = cfg.Groups[i];
-                                grp.Tick();
-
-                                // Defensive corpse sweep. Frontier mimics
-                                // normally die through MimicNPC.ProcessDeath
-                                // → base.ProcessDeath → Delete() (the rez-
-                                // wait branch is gated on OwnerAccount which
-                                // frontier bots never have). However at least
-                                // one death path can leave the GameObject
-                                // Active (visible as grey-name corpses that
-                                // never despawn). Walk every hydrated group's
-                                // roster here and force-delete anything that
-                                // is simultaneously NOT alive and STILL active
-                                // — that's the corpse signature.
-                                if (grp.IsHydrated)
-                                {
-                                    foreach (var member in grp.Members)
-                                    {
-                                        if (member == null) continue;
-                                        if (member.IsAlive) continue;
-                                        if (member.ObjectState != GameObject.eObjectState.Active) continue;
-                                        try { member.Delete(); } catch (Exception delEx)
-                                        {
-                                            log.Warn("PvPFrontier: corpse sweep failed to delete " + member.Name, delEx);
-                                        }
-                                    }
-                                }
-
-                                if (grp.IsDisbanded)
-                                {
-                                    // Tick()'s disband paths only flip the state;
-                                    // any hydrated members are still live world
-                                    // objects (corpses included). Delete them
-                                    // before dropping the group reference.
-                                    grp.DisbandAndDelete();
-                                    cfg.Groups.RemoveAt(i);
-                                }
-                            }
+                            // NOTE: per-group AI (grp.Tick / corpse sweep /
+                            // disband prune) now runs on the faster GroupAiTick
+                            // timer so movement is continuous. This maintenance
+                            // pass only handles per-config work below: encounter
+                            // pacing + population spawn.
 
                             // Encounter-pacing edge detector. Must run every
                             // tick (not gated on missing population) so the
@@ -824,6 +799,72 @@ namespace DOL.GS.Scripts
             catch (Exception cEx) { log.Error("PvPFrontier 3rd-party crash dispatch failed", cEx); }
 
             return TICK_MS;
+        }
+
+        /// <summary>
+        /// Fast per-group AI tick (GROUP_TICK_MS). Steps every group's brain so
+        /// movement / engagement is continuous and responsive instead of jumping
+        /// one 5-second maintenance step at a time, and prunes disbanded groups +
+        /// stray corpses. The expensive population / siege / snapshot work stays
+        /// on the slower MaintenanceTick. The heavy scans inside grp.Tick()
+        /// (ScanForEnemyPlayer/Group) self-throttle via their own _nextScanMs /
+        /// dormant-step gates, so the higher tick rate adds little CPU.
+        /// </summary>
+        private static int GroupAiTick(ECSGameTimer timer)
+        {
+            if (!_running)
+                return 0;
+
+            try
+            {
+                lock (_configsLock)
+                {
+                    foreach (var byRealm in _configs.Values)
+                    {
+                        foreach (RealmConfig cfg in byRealm.Values)
+                        {
+                            for (int i = cfg.Groups.Count - 1; i >= 0; i--)
+                            {
+                                PvPFrontierGroup grp = cfg.Groups[i];
+                                grp.Tick();
+
+                                // Defensive corpse sweep: a death path can leave
+                                // a member NOT alive yet STILL Active (grey-name
+                                // corpse that never despawns) — force-delete it.
+                                if (grp.IsHydrated)
+                                {
+                                    foreach (var member in grp.Members)
+                                    {
+                                        if (member == null) continue;
+                                        if (member.IsAlive) continue;
+                                        if (member.ObjectState != GameObject.eObjectState.Active) continue;
+                                        try { member.Delete(); }
+                                        catch (Exception delEx)
+                                        {
+                                            log.Warn("PvPFrontier: corpse sweep failed to delete " + member.Name, delEx);
+                                        }
+                                    }
+                                }
+
+                                if (grp.IsDisbanded)
+                                {
+                                    // Disband paths only flip state; hydrated
+                                    // members are still live objects — delete
+                                    // them before dropping the group reference.
+                                    grp.DisbandAndDelete();
+                                    cfg.Groups.RemoveAt(i);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                log.Error("PvPFrontier group AI tick failed", e);
+            }
+
+            return GROUP_TICK_MS;
         }
 
         // Per-(region, realm) spawn timestamp. Used by IsRealmOnSpawnCooldown
@@ -2780,7 +2821,18 @@ namespace DOL.GS.Scripts
 
                 try
                 {
-                    keep.Reset(captor); // flips realm, broadcasts capture, resets doors/guards, saves to DB
+                    // Route the abstract (dormant, no-spawn) capture through the
+                    // EXACT same sequence the real lord-death capture uses
+                    // (GameKeepLord.HandleKeepCapture), so a dynamic flip is
+                    // indistinguishable from a live one. keep.Reset alone only
+                    // flips guards/doors/banners/DB — it does NOT touch the war
+                    // map. Without BroadcastCapture, connected players never get
+                    // SendKeepRealmUpdate, so the objective stayed shown at its
+                    // OLD realm even though it had really changed hands; arriving
+                    // on-site you'd find a keep that didn't match. OnKeepCaptured
+                    // clears guild claims and runs keep.OnCaptured (timers/level).
+                    keep.Reset(captor);                                   // guards/doors/banners/DB
+                    Keeps.PlayerMgr.BroadcastCapture(keep);               // war-map refresh + announce
                     PvPFrontierManager.SiegeCoordinator.NotifyCaptured(keep.KeepID, captor);
 
                     if (log.IsInfoEnabled)
@@ -3609,7 +3661,15 @@ namespace DOL.GS.Scripts
             // staging point just determines THE ANGLE of approach.
             int hash = (Roster.Count * 7919) ^ Region ^ (int)Config.Realm;
             double angle = (hash & 0xFFFF) / 65536.0 * Math.PI * 2;
-            int offset = 1500 + Util.Random(0, 1000);
+            // Deterministic radius too. The old `1500 + Util.Random(0,1000)`
+            // re-rolled the staging point up to 1000u EVERY time the waypoint was
+            // re-picked, so the leader re-vectored on each pick and the whole
+            // group advanced in stutter-steps ("petit pas après petit pas").
+            // Deriving the radius from the same per-group hash keeps the staging
+            // point STABLE for a stationary target (the WalkTo no-op guard then
+            // keeps the leader gliding smoothly) and tracks cleanly when the
+            // target moves.
+            int offset = 1500 + ((hash >> 16) & 0x3FF); // 1500..2523, stable per group
             int ox = (int)Math.Round(Math.Cos(angle) * offset);
             int oy = (int)Math.Round(Math.Sin(angle) * offset);
             return new Point3D(bestPos.Value.X + ox, bestPos.Value.Y + oy, bestPos.Value.Z);
@@ -4545,6 +4605,13 @@ namespace DOL.GS.Scripts
         {
             if (m == null || m.CharacterClass == null) return;
 
+            // Mark the bot pre-buffed so its AI buff cycle skips re-casting the
+            // buffs granted below (they're stat bonuses, not spell effects, so
+            // LivingHasEffect would otherwise see "unbuffed" and re-buff the
+            // whole group on every hydration — the "re-buff each time I cross
+            // them" bug).
+            m.FrontierPreBuffed = true;
+
             // Base buffs (Cleric / Druid / Shaman / Bard / Paladin level 50)
             const int BASE_STAT = 47;
             const int BASE_AF = 175;
@@ -4554,6 +4621,9 @@ namespace DOL.GS.Scripts
             const int SPEC_AF = 75;
             const int SPEC_RESIST = 18;
             const int SPEC_DAMAGE_ADD = 6;
+            // Combat-speed haste (% attack-interval reduction). Conservative
+            // spec-celerity value; less = faster swings.
+            const int SPEC_COMBAT_SPEED = 15;
 
             void BumpBase(eProperty p, int v) => m.BaseBuffBonusCategory[p] = v;
             void BumpSpec(eProperty p, int v) => m.SpecBuffBonusCategory[p] = v;
@@ -4583,6 +4653,14 @@ namespace DOL.GS.Scripts
                 BumpBase(eProperty.Quickness, BASE_STAT);
                 BumpSpec(eProperty.Strength, SPEC_STAT);
                 BumpSpec(eProperty.Quickness, SPEC_STAT);
+
+                // Combat speed (celerity/haste). MeleeSpeed bonus is a percent
+                // attack-interval reduction (less = faster) — see
+                // MeleeSpeedPercentCalculator, which routes mimics through the
+                // player branch. Granting it here means a frontier melee bot
+                // pops already hasted (a real support group always celerity-
+                // chants the front line) instead of casting it on encounter.
+                BumpBase(eProperty.MeleeSpeed, SPEC_COMBAT_SPEED);
             }
 
             // Casting stat. ManaStat resolves to Int / Pie / Emp / Cha

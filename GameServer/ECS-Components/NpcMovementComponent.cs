@@ -750,9 +750,17 @@ namespace DOL.GS
             // When the followed leader is itself moving fast enough that the
             // smoothing would let it pull away, drop the smoothing and run at
             // full MaxSpeed so the bot can actually keep pace.
-            if (Owner is Scripts.MimicNPC && FollowTarget != null && FollowTarget.IsMoving)
+            if (Owner is Scripts.MimicNPC && FollowTarget != null)
             {
-                short leaderSpeed = FollowTarget.CurrentSpeed;
+                // Use the leader's live speed while it's moving, otherwise its
+                // full travel speed. Keying only off CurrentSpeed/IsMoving made
+                // the follower collapse back to the distance-smoothed crawl
+                // during the leader's brief stops (waypoint hand-offs, 1-tick
+                // gaps) — the "petit pas après petit pas" stutter. Running at the
+                // leader's MaxSpeed until we're inside MinFollowDistance keeps the
+                // group marching in formation; the stop check above still
+                // prevents overrunning the leader.
+                short leaderSpeed = FollowTarget.IsMoving ? FollowTarget.CurrentSpeed : FollowTarget.MaxSpeed;
                 if (leaderSpeed > speed)
                     speed = (short) Math.Min(MaxSpeed, leaderSpeed);
             }

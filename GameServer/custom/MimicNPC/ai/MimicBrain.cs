@@ -3971,28 +3971,39 @@ namespace DOL.AI.Brain
                 return;
             }
 
-            // Demezz is a shared group duty, NOT a healer-only one. Any class
-            // that carries a cure-mez spell but isn't flagged as THE group
-            // healer — Mentalist, a Bard/Warden/Shaman acting as CC/support,
-            // a secondary Cleric/Druid — should still pop a mez off the
-            // highest-value mezzed member promptly. Dedicated healers already
-            // do this through their own cycle (the IsHealer early-return at the
-            // top of this method); everyone reaching here is a non-IsHealer, so
-            // without this they'd only stumble into a cure via the incidental
-            // CheckSpells path, which a no-target tick skips entirely. Gated to
-            // "a member is actually mezzed and nobody is already curing them" so
-            // it never turns a DPS/CC bot into a heal-bot; CheckHeals returns
-            // true only when it actually casts (in range, off cooldown), else we
-            // fall through to normal combat. MemberToCureMezz is already role-
-            // prioritised (healer > CC > caster/support > other) in MimicGroup.
-            if (MimicBody.CureMezz != null
-                && Body.Group?.MimicGroup is MimicGroup cureMezzGroup
-                && cureMezzGroup.MemberToCureMezz != null
-                && cureMezzGroup.MemberToCureMezz.IsMezzed
-                && !cureMezzGroup.AlreadyCastingCureMezz
-                && CheckHeals())
+            // Curing (mezz / disease / poison) is the group's SECOND priority
+            // after a life-saving heal — and it is a SHARED duty, not healer-
+            // only. Any class that carries a cure spell but isn't flagged as THE
+            // group healer (Mentalist, a CC/support Bard/Warden/Shaman, a
+            // secondary Cleric/Druid) drops what it's doing to cure the highest-
+            // value afflicted member before resuming combat. Dedicated healers
+            // already do this through their own cycle (the IsHealer early-return
+            // at the top of this method); everyone reaching here is a non-
+            // IsHealer, so without this they'd only stumble into a cure via the
+            // incidental CheckSpells path, which a no-target tick skips entirely.
+            // Gated to "a member actually needs a cure THIS bot can cast and
+            // nobody is already casting it", so a DPS/CC bot never turns into a
+            // heal-bot; CheckHeals returns true only when it actually casts (in
+            // range, off cooldown), else we fall through to normal combat. The
+            // Member* cure targets are role-prioritised (healer > CC >
+            // caster/support > other) in MimicGroup.
+            if (Body.Group?.MimicGroup is MimicGroup cureGroup)
             {
-                return;
+                bool needMezzCure = MimicBody.CureMezz != null
+                    && cureGroup.MemberToCureMezz != null
+                    && cureGroup.MemberToCureMezz.IsMezzed
+                    && !cureGroup.AlreadyCastingCureMezz;
+
+                bool needDiseaseCure = (MimicBody.CureDisease != null || MimicBody.CureDiseaseGroup != null)
+                    && cureGroup.MemberToCureDisease != null
+                    && !cureGroup.AlreadyCastingCureDisease;
+
+                bool needPoisonCure = (MimicBody.CurePoison != null || MimicBody.CurePoisonGroup != null)
+                    && cureGroup.MemberToCurePoison != null
+                    && !cureGroup.AlreadyCastingCurePoison;
+
+                if ((needMezzCure || needDiseaseCure || needPoisonCure) && CheckHeals())
+                    return;
             }
 
             // Tank RvR support the legacy FSM never ran. Both behaviours were
@@ -7120,6 +7131,26 @@ namespace DOL.AI.Brain
                 && PickPvpCcTarget() != null;
         }
 
+        // "Casser" — interrupt-priority bonus for the CC picker. An enemy
+        // mid-cast on a real (cast-time) spell is the highest-leverage CC /
+        // interrupt target: landing CC on it both locks it down AND eats the
+        // cast (a nuke, a heal, an enemy mez). Returns a score reduction
+        // (lower score = higher priority) so a Minstrel / Sorcerer / Bard
+        // actually interrupts a free-casting enemy instead of only following
+        // role priority. Mirrors the tank's casting-enemy peel bias in
+        // SelectProtectedMemberThreat. Magnitude (150) bumps a casting caster
+        // ahead of a non-casting one and makes a casting healer the outright
+        // top pick, without fully overriding the standard healer-first order.
+        private static int CastingInterruptBonus(GameLiving candidate)
+        {
+            return candidate != null
+                && candidate.IsCasting
+                && candidate.CurrentSpellHandler?.Spell != null
+                && candidate.CurrentSpellHandler.Spell.CastTime > 0
+                ? 150
+                : 0;
+        }
+
         private GameLiving PickPvpCcTarget()
         {
             if (!MimicBody.CanCastCrowdControlSpells)
@@ -7172,6 +7203,8 @@ namespace DOL.AI.Brain
                     player.IsCrowdControlled,
                     dist);
 
+                score -= CastingInterruptBonus(player);
+
                 if (score < bestScore || (score == bestScore && dist < bestDist))
                 {
                     best = player;
@@ -7204,6 +7237,8 @@ namespace DOL.AI.Brain
                     mimic.HealthPercent <= 35,
                     mimic.IsCrowdControlled,
                     dist);
+
+                score -= CastingInterruptBonus(mimic);
 
                 if (score < bestScore || (score == bestScore && dist < bestDist))
                 {
@@ -7564,6 +7599,47 @@ namespace DOL.AI.Brain
             return speedSpell.Value > cur.Value; // override only a strictly slower speed
         }
 
+        // Spell types that ApplyFrontierPreBuffs (PvPFrontierSystem) already
+        // grants a pre-buffed frontier mimic as permanent stat bonuses, so the
+        // buff cycle must NOT re-cast them. Keep in sync with the BumpBase /
+        // BumpSpec set there: stats, AF, resists, damage-add and combat speed.
+        // Effect-only buffs (bladeturn, damage shield, procs, regen) have no
+        // stat equivalent and are deliberately absent — they still cast.
+        private static bool IsStaticPreBuffCovered(eSpellType type)
+        {
+            switch (type)
+            {
+                case eSpellType.StrengthBuff:
+                case eSpellType.ConstitutionBuff:
+                case eSpellType.DexterityBuff:
+                case eSpellType.QuicknessBuff:
+                case eSpellType.DexterityQuicknessBuff:
+                case eSpellType.StrengthConstitutionBuff:
+                case eSpellType.AcuityBuff:
+                case eSpellType.AFHitsBuff:
+                case eSpellType.BaseArmorFactorBuff:
+                case eSpellType.SpecArmorFactorBuff:
+                case eSpellType.PaladinArmorFactorBuff:
+                case eSpellType.AllMagicResistBuff:
+                case eSpellType.MagicResistBuff:
+                case eSpellType.BodyResistBuff:
+                case eSpellType.ColdResistBuff:
+                case eSpellType.HeatResistBuff:
+                case eSpellType.MatterResistBuff:
+                case eSpellType.EnergyResistBuff:
+                case eSpellType.SpiritResistBuff:
+                case eSpellType.BodySpiritEnergyBuff:
+                case eSpellType.HeatColdMatterBuff:
+                case eSpellType.DamageAdd:
+                case eSpellType.CelerityBuff:
+                case eSpellType.CombatSpeedBuff:
+                case eSpellType.HasteBuff:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         protected virtual GameLiving FindTargetForDefensiveSpell(Spell spell)
         {
             GameLiving target = null;
@@ -7724,6 +7800,20 @@ namespace DOL.AI.Brain
                 case eSpellType.DamageShield:
                 case eSpellType.Bladeturn:
                 {
+                    // Frontier groups spawn already statted via
+                    // ApplyFrontierPreBuffs (Str/Con/Dex/Qui/Acuity, AF, resists,
+                    // damage-add and combat speed granted as permanent bonuses,
+                    // not spell effects). LivingHasEffect only sees real effects,
+                    // so the AI used to re-cast every one of these the moment a
+                    // player got close and the group hydrated — the "they re-buff
+                    // each time I cross them" bug. Skip the buffs the static
+                    // pre-buff already covers so a pre-buffed group reads as
+                    // full-buffed at pop. Effect-only buffs with no stat
+                    // equivalent (bladeturn, damage shield, procs, regen) fall
+                    // through and still cast.
+                    if (MimicBody.FrontierPreBuffed && IsStaticPreBuffCovered(spell.SpellType))
+                        break;
+
                     if (spell.IsConcentration)
                     {
                         if (spell.Concentration > Body.Concentration)
@@ -7793,6 +7883,44 @@ namespace DOL.AI.Brain
                                         break;
                                     }
                                 }
+                            }
+                        }
+                    }
+
+                    break;
+                }
+
+                // Minstrel / Bard water-breathing song. A genuine group-utility
+                // buff that previously fell through to `default` and was never
+                // cast — the bot ignored its own water-breathing entirely. Only
+                // bother while submerged or diving (casting it on dry land just
+                // wastes the song + GCD); buff self first, then any group member
+                // in range still missing the effect. The cast path
+                // (CheckDefensiveSpells) auto-switches to the instrument for the
+                // NeedInstrument song, same as the speed/mez songs.
+                case eSpellType.WaterBreathing:
+                {
+                    if (!MimicBody.IsUnderwater && !MimicBody.IsDiving)
+                        break;
+
+                    if (!LivingHasEffect(Body, spell))
+                    {
+                        target = Body;
+                        break;
+                    }
+
+                    if (Body.Group != null
+                        && (spell.Target == eSpellTarget.GROUP || spell.Target == eSpellTarget.REALM))
+                    {
+                        foreach (GameLiving groupMember in Body.Group.GetMembersInTheGroup())
+                        {
+                            if (groupMember != Body
+                                && groupMember.IsAlive
+                                && Body.IsWithinRadius(groupMember, spell.Range)
+                                && !LivingHasEffect(groupMember, spell))
+                            {
+                                target = groupMember;
+                                break;
                             }
                         }
                     }

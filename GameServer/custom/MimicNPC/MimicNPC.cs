@@ -60,6 +60,17 @@ namespace DOL.GS.Scripts
         public bool CanCastCrowdControlSpells { get { return CrowdControlSpells != null && CrowdControlSpells.Count > 0; } }
         public bool CanCastBolts { get { return BoltSpells != null && BoltSpells.Count > 0; } }
 
+        /// <summary>
+        /// True once ApplyFrontierPreBuffs has granted this bot its permanent
+        /// stat / AF / resist / damage-add / combat-speed bonuses. The brain's
+        /// buff cycle reads it to SKIP re-casting those buffs — they are applied
+        /// as bonus-category stats, not real spell effects, so without this the
+        /// AI's LivingHasEffect check thinks the bot is unbuffed and re-buffs the
+        /// whole group every time it hydrates next to a player ("they re-buff
+        /// each time I cross them").
+        /// </summary>
+        public bool FrontierPreBuffed { get; set; }
+
         public List<Style> StylesTaunt { get; protected set; } = null;
         public List<Style> StylesDetaunt { get; protected set; } = null;
         public List<Style> StylesShield { get; protected set; } = null;

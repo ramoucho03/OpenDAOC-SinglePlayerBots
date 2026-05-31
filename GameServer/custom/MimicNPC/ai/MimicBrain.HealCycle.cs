@@ -421,6 +421,91 @@ namespace DOL.AI.Brain
 
                 #endregion
 
+                #region Cure Mess/Disease/Poison
+                // Curing (mezz / disease / poison) is the SECOND priority after
+                // an emergency (life-saving) heal — ahead of proactive HoT and
+                // non-emergency top-ups, for healers AND non-healers. A disease
+                // halves incoming healing + regen, poison ticks damage, and a
+                // mez takes a body out of the fight, so removing the affliction
+                // beats stacking a HoT or topping minor damage. Placed here,
+                // right below the Emergency Heal block, to enforce that order.
+
+                if (spellToCast == null)
+                {
+                    if (mGroup != null && mGroup.MemberToCureMezz != null && !mGroup.AlreadyCastingCureMezz
+                        && !MimicBody.IsCasting && CheckHealSpell(MimicBody.CureMezz))
+                    {
+                        spellToCast = MimicBody.CureMezz;
+                        spellTarget = mGroup.MemberToCureMezz;
+                    }
+                    else if (mGroup == null)
+                    {
+                        if (MimicBody.IsDiseased && nextCureTime < GameLoop.GameLoopTime)
+                        {
+                            if (CanCastCureDisease() && (!MimicBody.IsCasting || CanCastCureDiseaseInstant()))
+                            {
+                                spellToCast = MimicBody.CureDisease;
+                                spellTarget = MimicBody;
+                            }
+                            else if (CanCastCureDiseaseGroup() && (!MimicBody.IsCasting || CanCastCureDiseaseGroupInstant()))
+                            {
+                                spellToCast = MimicBody.CureDiseaseGroup;
+                                spellTarget = MimicBody;
+                            }
+                        }
+                        else if (MimicBody.IsPoisoned && nextCureTime < GameLoop.GameLoopTime)
+                        {
+                            if (CanCastCurePoison() && (!MimicBody.IsCasting || CanCastCurePoisonInstant()))
+                            {
+                                spellToCast = MimicBody.CurePoison;
+                                spellTarget = MimicBody;
+                            }
+                            else if (CanCastCurePoisonGroup() && (!MimicBody.IsCasting || CanCastCurePoisonGroupInstant()))
+                            {
+                                spellToCast = MimicBody.CurePoisonGroup;
+                                spellTarget = MimicBody;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (mGroup.MemberToCureDisease != null && nextCureTime < GameLoop.GameLoopTime)
+                        {
+                            if (CanCastCureDiseaseGroup()
+                                && (mGroup.NumNeedCureDisease > 1 || !CanCastCureDisease())
+                                && (!MimicBody.IsCasting || CanCastCureDiseaseGroupInstant()))
+                            {
+                                spellToCast = MimicBody.CureDiseaseGroup;
+                                spellTarget = mGroup.MemberToCureDisease;
+                            }
+                            else if (CanCastCureDisease()
+                                && (!MimicBody.IsCasting || CanCastCureDiseaseInstant()))
+                            {
+                                spellToCast = MimicBody.CureDisease;
+                                spellTarget = mGroup.MemberToCureDisease;
+                            }
+                        }
+                        else if (mGroup.MemberToCurePoison != null && nextCureTime < GameLoop.GameLoopTime)
+                        {
+                            if (CanCastCurePoisonGroup()
+                                && (mGroup.NumNeedCurePoison > 1 || !CanCastCurePoison())
+                                && (!MimicBody.IsCasting || CanCastCurePoisonGroupInstant()))
+                            {
+                                spellToCast = MimicBody.CurePoisonGroup;
+                                spellTarget = mGroup.MemberToCurePoison;
+                            }
+                            else if (CanCastCurePoison()
+                                && (!MimicBody.IsCasting || CanCastCurePoisonInstant()))
+                            {
+                                spellToCast = MimicBody.CurePoison;
+                                spellTarget = mGroup.MemberToCurePoison;
+                            }
+                        }
+                    }
+                }
+
+                #endregion
+
                 #region Proactive Tank HoT
                 // Keep the MainTank topped with a HoT/regen whenever an
                 // encounter is starting or already underway, even if the tank
@@ -519,84 +604,6 @@ namespace DOL.AI.Brain
                 }
                 #endregion
 
-                #region Cure Mess/Disease/Poison
-
-                if (spellToCast == null)
-                {
-                    if (mGroup != null && mGroup.MemberToCureMezz != null && !mGroup.AlreadyCastingCureMezz
-                        && !MimicBody.IsCasting && CheckHealSpell(MimicBody.CureMezz))
-                    {
-                        spellToCast = MimicBody.CureMezz;
-                        spellTarget = mGroup.MemberToCureMezz;
-                    }
-                    else if (mGroup == null)
-                    {
-                        if (MimicBody.IsDiseased && nextCureTime < GameLoop.GameLoopTime)
-                        {
-                            if (CanCastCureDisease() && (!MimicBody.IsCasting || CanCastCureDiseaseInstant()))
-                            {
-                                spellToCast = MimicBody.CureDisease;
-                                spellTarget = MimicBody;
-                            }
-                            else if (CanCastCureDiseaseGroup() && (!MimicBody.IsCasting || CanCastCureDiseaseGroupInstant()))
-                            {
-                                spellToCast = MimicBody.CureDiseaseGroup;
-                                spellTarget = MimicBody;
-                            }
-                        }
-                        else if (MimicBody.IsPoisoned && nextCureTime < GameLoop.GameLoopTime)
-                        {
-                            if (CanCastCurePoison() && (!MimicBody.IsCasting || CanCastCurePoisonInstant()))
-                            {
-                                spellToCast = MimicBody.CurePoison;
-                                spellTarget = MimicBody;
-                            }
-                            else if (CanCastCurePoisonGroup() && (!MimicBody.IsCasting || CanCastCurePoisonGroupInstant()))
-                            {
-                                spellToCast = MimicBody.CurePoisonGroup;
-                                spellTarget = MimicBody;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        if (mGroup.MemberToCureDisease != null && nextCureTime < GameLoop.GameLoopTime)
-                        {
-                            if (CanCastCureDiseaseGroup()
-                                && (mGroup.NumNeedCureDisease > 1 || !CanCastCureDisease())
-                                && (!MimicBody.IsCasting || CanCastCureDiseaseGroupInstant()))
-                            {
-                                spellToCast = MimicBody.CureDiseaseGroup;
-                                spellTarget = mGroup.MemberToCureDisease;
-                            }
-                            else if (CanCastCureDisease()
-                                && (!MimicBody.IsCasting || CanCastCureDiseaseInstant()))
-                            {
-                                spellToCast = MimicBody.CureDisease;
-                                spellTarget = mGroup.MemberToCureDisease;
-                            }
-                        }
-                        else if (mGroup.MemberToCurePoison != null && nextCureTime < GameLoop.GameLoopTime)
-                        {
-                            if (CanCastCurePoisonGroup()
-                                && (mGroup.NumNeedCurePoison > 1 || !CanCastCurePoison())
-                                && (!MimicBody.IsCasting || CanCastCurePoisonGroupInstant()))
-                            {
-                                spellToCast = MimicBody.CurePoisonGroup;
-                                spellTarget = mGroup.MemberToCurePoison;
-                            }
-                            else if (CanCastCurePoison()
-                                && (!MimicBody.IsCasting || CanCastCurePoisonInstant()))
-                            {
-                                spellToCast = MimicBody.CurePoison;
-                                spellTarget = mGroup.MemberToCurePoison;
-                            }
-                        }
-                    }
-                }
-
-                #endregion
- 
                 #region Non-Emergency Heal
 
                 // Mana conservation: when below the stop threshold, suppress
