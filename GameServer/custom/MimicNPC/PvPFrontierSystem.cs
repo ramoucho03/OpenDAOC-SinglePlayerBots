@@ -213,9 +213,13 @@ namespace DOL.GS.Scripts
             "Minutes between rare KEEP SIEGE events: a full BG of mimics targets a random enemy-realm keep, breaks the door, kills the lord, and flips ownership. Independent of the BG patrol event. Default 90 — a once-an-evening 'a keep is under attack' moment. 0 disables.", 90)]
         public static int PVP_FRONTIER_KEEP_SIEGE_INTERVAL_MIN;
 
-        [ServerProperty("pvpfrontier", "pvp_frontier_keep_siege_groups",
-            "Number of 8-man groups co-spawned for a keep siege event. Default 3 → 24 mimics dedicated to the siege.", 3)]
-        public static int PVP_FRONTIER_KEEP_SIEGE_GROUPS;
+        [ServerProperty("pvpfrontier", "pvp_frontier_keep_siege_groups_min",
+            "Minimum number of 8-man groups co-spawned for a keep siege event. A keep is a big objective: it always fields a full assault force. Default 3 → 24 mimics. The actual count rolls uniformly in [min, max].", 3)]
+        public static int PVP_FRONTIER_KEEP_SIEGE_GROUPS_MIN;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_keep_siege_groups_max",
+            "Maximum number of 8-man groups co-spawned for a keep siege event. Default 5 → up to 40 mimics. Combined with the min, a keep siege brings 3-5 full groups plus a full siege line (a ram per group + the keep artillery).", 5)]
+        public static int PVP_FRONTIER_KEEP_SIEGE_GROUPS_MAX;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_realtime_siege",
             "When true, roaming frontier groups continuously besiege and CAPTURE enemy towers (and, less often, keeps) as part of normal patrols — a live, shifting map instead of only the rare scripted siege event. Capture uses the normal keep mechanics (break door, kill lord, ResetKeep). Default true.", true)]
@@ -228,6 +232,10 @@ namespace DOL.GS.Scripts
         [ServerProperty("pvpfrontier", "pvp_frontier_siege_recapture_cooldown_min",
             "Minutes a tower/keep is left alone by the mimic siege director after it flips ownership, so objectives don't ping-pong every few seconds. Real players are never restricted. Default 8 — objectives change hands more often without machine-gun flips.", 8)]
         public static int PVP_FRONTIER_SIEGE_RECAPTURE_COOLDOWN_MIN;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_keep_min_siege_groups",
+            "Minimum number of mimic groups the real-time siege director rallies onto an ENEMY KEEP front before it considers the keep adequately besieged. While a realm holds an open keep front with fewer than this many groups committed, its other roaming groups are steered to JOIN that keep (overriding the usual tower preference) instead of scattering — so a castle assault is a 3-5 group affair, not a lone group poking the gate. Towers are unaffected (one group takes a tower). Default 3.", 3)]
+        public static int PVP_FRONTIER_KEEP_MIN_SIEGE_GROUPS;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_abstract_siege",
             "When true, a frontier group that reaches an enemy objective while DORMANT (no player nearby to watch the fight) resolves the capture abstractly after a timer — flipping the tower/keep via the normal capture path WITHOUT spawning bots. This is what makes the war map actually live and change hands across the frontier at near-zero CPU; when a player IS nearby the group hydrates and fights for real instead. Default true.", true)]
@@ -1355,7 +1363,9 @@ namespace DOL.GS.Scripts
             // up to the door themselves (no teleport-into-keep hack). 1500u
             // back along the X axis gives a clear approach for the patrol AI.
             Point3D keepPos = new(targetKeep.X, targetKeep.Y, targetKeep.Z);
-            int groupCount = Math.Max(1, PvPFrontierProperties.PVP_FRONTIER_KEEP_SIEGE_GROUPS);
+            int minGroups = Math.Max(1, PvPFrontierProperties.PVP_FRONTIER_KEEP_SIEGE_GROUPS_MIN);
+            int maxGroups = Math.Max(minGroups, PvPFrontierProperties.PVP_FRONTIER_KEEP_SIEGE_GROUPS_MAX);
+            int groupCount = Util.Random(minGroups, maxGroups);
 
             int spawned = 0;
             for (int i = 0; i < groupCount; i++)
@@ -1557,6 +1567,112 @@ namespace DOL.GS.Scripts
             {
                 lock (_lock)
                     _assignments[keepId] = (realm, GameLoop.GameLoopTime + CLAIM_TTL_MS);
+            }
+
+            /// <summary>
+            /// Counts how many of <paramref name="realm"/>'s live groups are
+            /// currently committed to assaulting <paramref name="keepId"/> (i.e.
+            /// have it as their <see cref="PvPFrontierGroup.SiegeTargetKeepId"/>).
+            /// Walks the realm's group list under the configs lock. Must NOT be
+            /// called while holding <see cref="_lock"/> (it takes _configsLock —
+            /// keep the two locks un-nested to avoid any ordering inversion).
+            /// </summary>
+            internal static int CountGroupsCommittedToKeep(eRealm realm, ushort region, ushort keepId)
+            {
+                int count = 0;
+                lock (_configsLock)
+                {
+                    if (_configs.TryGetValue(region, out var byRealm)
+                        && byRealm.TryGetValue(realm, out var cfg))
+                    {
+                        foreach (PvPFrontierGroup g in cfg.Groups)
+                        {
+                            if (g == null || g.IsDisbanded) continue;
+                            if (g.SiegeTargetKeepId == keepId)
+                                count++;
+                        }
+                    }
+                }
+                return count;
+            }
+
+            /// <summary>
+            /// Reinforcement steering for KEEP sieges. A castle needs a real
+            /// assault force, not one group poking the gate, so when this realm
+            /// already has an OPEN keep front that hasn't yet reached
+            /// <see cref="PvPFrontierProperties.PVP_FRONTIER_KEEP_MIN_SIEGE_GROUPS"/>
+            /// committed groups, the next roaming group is routed to JOIN that
+            /// keep (nearest such under-strength keep) instead of scattering to a
+            /// tower. Returns null when there's no under-strength friendly keep
+            /// front to reinforce (then the normal PickObjective runs). Towers are
+            /// never reinforced this way — one group is enough to take a tower.
+            /// </summary>
+            internal static Keeps.AbstractGameKeep PickKeepReinforcement(eRealm realm, ushort region, int anchorX, int anchorY)
+            {
+                if (!PvPFrontierProperties.PVP_FRONTIER_REALTIME_SIEGE)
+                    return null;
+
+                int minGroups = Math.Max(1, PvPFrontierProperties.PVP_FRONTIER_KEEP_MIN_SIEGE_GROUPS);
+                if (minGroups <= 1)
+                    return null; // feature off — one group per keep is fine
+
+                var keeps = GameServer.KeepManager.GetKeepsOfRegion(region);
+                if (keeps == null || keeps.Count == 0)
+                    return null;
+
+                long now = GameLoop.GameLoopTime;
+
+                // Phase 1: collect this realm's OPEN keep fronts under _lock only.
+                // We do NOT count groups here — CountGroupsCommittedToKeep takes
+                // _configsLock, and nesting the two locks risks an ordering
+                // inversion. Snapshot the candidates, release _lock, then count.
+                List<Keeps.AbstractGameKeep> openFronts = null;
+                lock (_lock)
+                {
+                    foreach (var k in keeps)
+                    {
+                        if (k == null) continue;
+                        if (k is Keeps.GameKeepTower) continue;          // keeps only
+                        if (k.Realm == realm || k.Realm == eRealm.None) continue; // enemy only
+
+                        ushort id = k.KeepID;
+                        if (_cooldownUntil.TryGetValue(id, out long cd) && cd > now)
+                            continue; // just flipped — leave it alone
+                        if (!_assignments.TryGetValue(id, out var asg)
+                            || asg.expireTick <= now || asg.realm != realm)
+                            continue; // not an open front for our realm
+
+                        (openFronts ??= new List<Keeps.AbstractGameKeep>()).Add(k);
+                    }
+                }
+
+                if (openFronts == null)
+                    return null;
+
+                // Phase 2: pick the nearest under-strength front (counting groups
+                // outside _lock), then warm its claim under _lock.
+                Keeps.AbstractGameKeep best = null;
+                long bestDistSq = long.MaxValue;
+                foreach (var k in openFronts)
+                {
+                    if (CountGroupsCommittedToKeep(realm, region, k.KeepID) >= minGroups)
+                        continue; // already has a full assault force
+
+                    long dx = k.X - anchorX, dy = k.Y - anchorY;
+                    long distSq = dx * dx + dy * dy;
+                    if (distSq < bestDistSq)
+                    {
+                        bestDistSq = distSq;
+                        best = k;
+                    }
+                }
+
+                if (best != null)
+                {
+                    lock (_lock)
+                        _assignments[best.KeepID] = (realm, now + CLAIM_TTL_MS); // keep the front warm
+                }
+                return best;
             }
 
             /// <summary>
@@ -2062,6 +2178,14 @@ namespace DOL.GS.Scripts
 
         public bool IsDisbanded => State == eFrontierState.Disbanded;
 
+        /// <summary>
+        /// KeepID this group is currently committed to assault (0 = none). Read
+        /// by the siege director to count how many groups have rallied onto a
+        /// keep front so it can steer reinforcements until the keep has a full
+        /// assault force. See <see cref="SiegeCoordinator.CountGroupsCommittedToKeep"/>.
+        /// </summary>
+        internal ushort SiegeTargetKeepId => _siegeTargetKeepId;
+
         // ----- Logical roster / dormant simulation -----
         //
         // A LogicalMember is a persistent identity (class, level, name, gender,
@@ -2174,6 +2298,13 @@ namespace DOL.GS.Scripts
         private readonly List<GameSiegeWeapon> _siegeArtillery = new();
         private long _nextArtilleryHitMs;
         private const int SIEGE_ARTILLERY_HIT_INTERVAL_MS = 6000;
+
+        // A siege engine only fires while a live CREW member (a group mimic, or
+        // any allied player) is stationed within this distance of it — engines
+        // are never autonomous turrets. Matches the human siege rule
+        // (GameSiegeWeapon.SIEGE_WEAPON_CONTROLE_DISTANCE = 256) with a little
+        // slack so a crew that takes a step to dodge doesn't drop the engine.
+        private const int SIEGE_CREW_RANGE = 350;
         private long _retreatUntilMs;
         private long _dehydrateAfterMs;   // 0 = no pending dehydration
         private long _nextDormantStepMs;
@@ -3606,6 +3737,26 @@ namespace DOL.GS.Scripts
                 }
             }
 
+            // (3b) Keep-siege reinforcement (checked BEFORE the keep-attack roll
+            // so an under-strength castle front reliably fills to its full 3-5
+            // group assault force instead of leaving one lonely group at the
+            // gate). If our realm already has an open keep front short of
+            // PVP_FRONTIER_KEEP_MIN_SIEGE_GROUPS committed groups, rally there.
+            if (PvPFrontierProperties.PVP_FRONTIER_REALTIME_SIEGE)
+            {
+                MimicNPC rld = FirstAliveMember();
+                int rax = rld != null ? rld.X : VirtualPosition.X;
+                int ray = rld != null ? rld.Y : VirtualPosition.Y;
+                Keeps.AbstractGameKeep reinforce =
+                    PvPFrontierManager.SiegeCoordinator.PickKeepReinforcement(Config.Realm, Region, rax, ray);
+                if (reinforce != null)
+                {
+                    _siegeTargetKeepId = reinforce.KeepID;
+                    _currentWaypoint = new Point3D(reinforce.X, reinforce.Y, reinforce.Z);
+                    return;
+                }
+            }
+
             // (4) Offensive siege intent. With the real-time director enabled,
             // route to a director-approved objective (tower preferred; per-realm
             // cap, recapture cooldown and anti-snowball applied) and remember it
@@ -3935,9 +4086,12 @@ namespace DOL.GS.Scripts
                 else
                     RemoveSiegeRam(); // door already breached / rams disabled
 
-                // Artillery: catapults + trebuchets bombarding the lord from range.
+                // Artillery: catapults + trebuchets bombarding the defenders.
+                // Anchored at the door the group is assaulting (where the crew
+                // gathers) so the pieces stay manned; falls back to the keep
+                // centre if no specific door was matched.
                 if (PvPFrontierProperties.PVP_FRONTIER_SIEGE_ARTILLERY)
-                    DriveArtillery(now, keep);
+                    DriveArtillery(now, keep, door);
                 else
                     RemoveSiegeArtillery();
             }
@@ -3957,6 +4111,14 @@ namespace DOL.GS.Scripts
 
             if (now < _nextRamHitMs)
                 return;
+
+            // A ram is crewed, not autonomous: it only batters the door while a
+            // live group member (or an allied player) stands at it. With the
+            // crew dead / pushed off, the ram sits idle until re-manned — so a
+            // wiped assault can't keep auto-breaching an unattended gate.
+            if (!IsEngineManned(_siegeRam))
+                return;
+
             _nextRamHitMs = now + SIEGE_RAM_HIT_INTERVAL_MS;
 
             int targetSeconds = keep is Keeps.GameKeepTower
@@ -4032,6 +4194,39 @@ namespace DOL.GS.Scripts
                 if (d < best) best = d;
             }
             return best;
+        }
+
+        /// <summary>
+        /// True when <paramref name="engine"/> is currently MANNED: a live crew
+        /// member — a group mimic OR any allied (same-realm) player — stands
+        /// within <see cref="SIEGE_CREW_RANGE"/> of it. Siege engines never fire
+        /// on their own; they need an operator, exactly like a player-built
+        /// engine needs its owner in control range. The allied-player branch lets
+        /// a human walk up to a mimic-deployed engine and have it keep firing
+        /// (the engine reads as crewed by the realm), while an engine left alone
+        /// (whole group wiped / pushed off) goes silent until re-crewed.
+        /// </summary>
+        private bool IsEngineManned(GameObject engine)
+        {
+            if (engine == null)
+                return false;
+
+            foreach (var m in Members)
+            {
+                if (m == null || !m.IsAlive || m.ObjectState != GameObject.eObjectState.Active)
+                    continue;
+                if (m.GetDistanceTo(engine) <= SIEGE_CREW_RANGE)
+                    return true;
+            }
+
+            // An allied player standing at the engine also counts as crew.
+            foreach (GamePlayer p in engine.GetPlayersInRadius(SIEGE_CREW_RANGE))
+            {
+                if (p != null && p.IsAlive && p.Realm == Config.Realm)
+                    return true;
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -4130,7 +4325,7 @@ namespace DOL.GS.Scripts
         /// the lord (not the door) so they suppress defenders without undercutting
         /// the ram's tower-fast/keep-slow door pacing.
         /// </summary>
-        private void DriveArtillery(long now, Keeps.AbstractGameKeep keep)
+        private void DriveArtillery(long now, Keeps.AbstractGameKeep keep, GameLiving door)
         {
             bool isTower = keep is Keeps.GameKeepTower;
             int wantCat = Math.Max(0, isTower
@@ -4138,7 +4333,7 @@ namespace DOL.GS.Scripts
                 : PvPFrontierProperties.PVP_FRONTIER_KEEP_CATAPULTS);
             int wantTreb = isTower ? 0 : Math.Max(0, PvPFrontierProperties.PVP_FRONTIER_KEEP_TREBUCHETS);
 
-            EnsureSiegeArtillery(keep, wantCat, wantTreb);
+            EnsureSiegeArtillery(keep, door, wantCat, wantTreb);
             if (_siegeArtillery.Count == 0)
                 return;
 
@@ -4159,6 +4354,15 @@ namespace DOL.GS.Scripts
             {
                 if (w == null || !w.IsAlive || w.ObjectState != GameObject.eObjectState.Active)
                     continue;
+
+                // Each piece is crewed individually: a catapult/trebuchet only
+                // looses while a live group member (or allied player) mans it.
+                // An engine whose crew died falls silent — it stays deployed as
+                // part of the visible siege line but deals no damage until a new
+                // operator reaches it. No autonomous turrets.
+                if (!IsEngineManned(w))
+                    continue;
+
                 try
                 {
                     w.SetGroundTarget(aim.X, aim.Y, aim.Z);
@@ -4174,7 +4378,7 @@ namespace DOL.GS.Scripts
         /// counts, reusing engines still alive and pruning any that were
         /// destroyed/removed.
         /// </summary>
-        private void EnsureSiegeArtillery(Keeps.AbstractGameKeep keep, int wantCat, int wantTreb)
+        private void EnsureSiegeArtillery(Keeps.AbstractGameKeep keep, GameLiving door, int wantCat, int wantTreb)
         {
             _siegeArtillery.RemoveAll(w => w == null
                 || !w.IsAlive
@@ -4192,43 +4396,66 @@ namespace DOL.GS.Scripts
 
             for (int i = haveCat; i < wantCat; i++)
             {
-                GameSiegeWeapon engine = SpawnArtilleryEngine(false, keep, placed, total);
+                GameSiegeWeapon engine = SpawnArtilleryEngine(false, keep, door, placed, total);
                 if (engine != null) { _siegeArtillery.Add(engine); placed++; }
             }
             for (int i = haveTreb; i < wantTreb; i++)
             {
-                GameSiegeWeapon engine = SpawnArtilleryEngine(true, keep, placed, total);
+                GameSiegeWeapon engine = SpawnArtilleryEngine(true, keep, door, placed, total);
                 if (engine != null) { _siegeArtillery.Add(engine); placed++; }
             }
         }
 
         /// <summary>
-        /// Spawns one catapult/trebuchet on the attackers' side of the keep, at a
-        /// distance inside its own range band, with a small lateral spread so
-        /// engines don't stack on a single tile.
+        /// Spawns one catapult/trebuchet just behind the breach point, with a
+        /// small lateral spread so engines don't stack on a single tile.
+        ///
+        /// Placement is anchored at the DOOR the group is assaulting (where the
+        /// crew actually gathers during a breach), stepped back toward the group,
+        /// NOT deep in the field: the engines are crewed by the same mimics that
+        /// rush the gate, and <see cref="IsEngineManned"/> only lets an engine
+        /// fire while a live crew member stands within <see cref="SIEGE_CREW_RANGE"/>.
+        /// Parking artillery 1800-3200u back (the old behaviour) left it
+        /// permanently un-crewed under the manned-fire rule, so it would sit
+        /// silent. The autonomous fire path drives damage off the engine's
+        /// GroundTarget + blast radius, not its own min/max range, so sitting at
+        /// the wall with the assault is fine. Falls back to the group leader, then
+        /// the keep centre, when no specific door was matched.
         /// </summary>
-        private GameSiegeWeapon SpawnArtilleryEngine(bool trebuchet, Keeps.AbstractGameKeep keep, int index, int total)
+        private GameSiegeWeapon SpawnArtilleryEngine(bool trebuchet, Keeps.AbstractGameKeep keep, GameLiving door, int index, int total)
         {
             try
             {
                 MimicNPC anchor = FirstAliveMember();
                 int kx = keep.X, ky = keep.Y, kz = keep.Z;
 
-                // Base bearing = keep -> attacking group, so engines sit behind
-                // the line and lob over it at the keep.
-                double dirx = (anchor?.X ?? (kx + 1)) - kx;
-                double diry = (anchor?.Y ?? ky) - ky;
+                // Crew gathers at the door during a breach; anchor the engines
+                // there so they stay within SIEGE_CREW_RANGE of the assault.
+                // Fall back to the group leader, then the keep centre.
+                int axp = door?.X ?? anchor?.X ?? kx;
+                int ayp = door?.Y ?? anchor?.Y ?? ky;
+                int azp = door?.Z ?? anchor?.Z ?? kz;
+
+                // Bearing keep -> anchor, so the engine sits just behind the line
+                // facing the wall (and reads as bombarding it). When the anchor is
+                // the door itself, bias toward the group so we step outward.
+                double dirx = (anchor?.X ?? axp) - kx;
+                double diry = (anchor?.Y ?? ayp) - ky;
                 double len = Math.Sqrt(dirx * dirx + diry * diry);
                 if (len < 1) { dirx = 1; diry = 0; len = 1; }
                 dirx /= len; diry /= len;
 
-                double spread = (index - (total - 1) / 2.0) * 14.0 * Math.PI / 180.0;
+                double spread = (index - (total - 1) / 2.0) * 18.0 * Math.PI / 180.0;
                 double rx = dirx * Math.Cos(spread) - diry * Math.Sin(spread);
                 double ry = dirx * Math.Sin(spread) + diry * Math.Cos(spread);
 
-                int dist = trebuchet ? 3200 : 1800; // inside the engine's range band
-                int ex = kx + (int)(rx * dist);
-                int ey = ky + (int)(ry * dist);
+                // A short step out from the breach anchor toward the group,
+                // staggered per engine, keeping every piece inside SIEGE_CREW_RANGE
+                // of the assaulting mimics so it stays manned.
+                int dist = 150 + index * 60;
+                int ex = axp + (int)(rx * dist);
+                int ey = ayp + (int)(ry * dist);
+                kz = azp;
 
                 GameSiegeWeapon engine = trebuchet ? new GameSiegeTrebuchet() : new GameSiegeCatapult();
                 engine.Level = 1;

@@ -23,20 +23,24 @@ namespace DOL.GS
             207156901, 207156902
         ];
 
-        // The 12 Agramon central "porte grille" barriers (NF region 163, zone
-        // 163). They are neutral passage grilles (Realm=Door) inserted by
-        // nf_live.sql. Per operator request these are kept PERMANENTLY OPEN —
-        // simpler and more reliable than tuning the interaction distance so the
-        // grilles can be hand-opened. Door IDs come straight from nf_live.sql.
-        private static HashSet<int> _agramonBarrierDoorIds =
-        [
-            163000401, 163000402,
-            163000501, 163000502,
-            163005901, 163005902,
-            163006001, 163006002,
-            163054801, 163054802,
-            163055001, 163055002
-        ];
+        // Region 163 = New Frontiers / Agramon. Its neutral "porte grille"
+        // barriers (Realm=Door) are inserted by nf_live.sql and, per operator
+        // request, kept PERMANENTLY OPEN — simpler and more reliable than tuning
+        // the interaction distance so each grille can be hand-opened.
+        //
+        // There are 30 of them: 12 in the central zone 163, plus 18 realm-approach
+        // grilles spread across zones 169/170 (Midgard side), 173/174 (Hibernia
+        // side) and 175/176 (Albion side). The barrier test below is STRUCTURAL
+        // (neutral realm + region 163) rather than a hardcoded ID list: the old
+        // list only held the 12 central zone-163 IDs, which silently left the
+        // realm-approach grilles — notably Midgard's — shut while Albion's and
+        // Hibernia's happened to be open. A structural test covers all 30 and is
+        // immune to any ID drift between the SQL fixture and the live DB.
+        //
+        // Safe scoping: keep doors are GameKeepDoor (a different class, and they
+        // carry a real realm, not Door), and border-keep doors live in other
+        // regions (11/12/102/111/206/207), so neither is caught here.
+        private const ushort AGRAMON_REGION_ID = 163;
 
         private bool _openDead = false;
         private CloseDoorAction _closeDoorAction;
@@ -215,14 +219,13 @@ namespace DOL.GS
             return _borderKeepDoorIds.Contains(doorId);
         }
 
+        // A barrier grille = a neutral (Realm.Door) door in the Agramon/NF region.
+        // Both pieces of state are set from the DB row in GameDoorBase.LoadFromDatabase
+        // BEFORE GameDoor.LoadFromDatabase (the override that consults this) runs,
+        // so the test is valid at load time as well as at runtime.
         public bool IsAgramonBarrierDoor()
         {
-            return IsAgramonBarrierDoor(DoorId);
-        }
-
-        public static bool IsAgramonBarrierDoor(int doorId)
-        {
-            return _agramonBarrierDoorIds.Contains(doorId);
+            return Realm == eRealm.Door && CurrentRegionID == AGRAMON_REGION_ID;
         }
 
         private class CloseDoorAction : ECSGameTimerWrapperBase

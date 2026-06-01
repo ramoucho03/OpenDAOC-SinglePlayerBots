@@ -154,6 +154,13 @@ namespace DOL.AI.Brain
         internal GamePlayer CachedPlayerLeader;
         internal long CachedPlayerLeaderExpireTick;
 
+        // Hysteresis latch for autonomous travel-sprint (MirrorLeaderSprint):
+        // true while the bot is self-sprinting to keep travel pace. Cleared when
+        // endurance falls to the stop threshold so the bot rests, and re-armed
+        // once endurance recovers past the resume threshold — prevents an
+        // on/off flicker right at a single endurance boundary.
+        internal bool TravelSprinting;
+
         /// <summary>
         /// Constructs a new MimicBrain
         /// </summary>
@@ -7567,16 +7574,30 @@ namespace DOL.AI.Brain
 
         /// <summary>
         /// True when this speeder should (re)apply its OWN movement-speed buff
-        /// (Minstrel/Bard speed song, Skald instant speed): it has no movement-
-        /// speed effect, OR the one on it comes from a SLOWER source. The base
-        /// <see cref="LivingHasEffect"/> only matches the effect TYPE
-        /// (MovementSpeedBuff), so ANY speed on the bot — even a weaker one from
-        /// another class (a lesser speed buff, a charge, a group-mate's speed) —
-        /// made it return true and the Minstrel/Skald/Bard never applied its
-        /// superior Speed-of-the-Realm. We compare <see cref="Spell.Value"/> so
-        /// the fastest speed wins, while an equal/stronger speed (our own song
-        /// already up, or a peer speeder already covering us) is left untouched
-        /// — no spam-recast, no two speeders fighting over the buff.
+        /// (Minstrel/Bard speed song, Skald instant speed): it has no ACTIVE
+        /// movement-speed effect of equal/greater value, and isn't currently
+        /// blocked from receiving one.
+        ///
+        /// History / why this is subtle (the "Minstrel/Skald recasts speed
+        /// non-stop while moving" bug):
+        ///  1. <see cref="EffectListService.GetEffectOnTarget"/> returns
+        ///     <c>FirstOrDefault()</c> = the OLDEST effect by StartTick, NOT the
+        ///     best/active one. When two speed effects coexist on the bot — two
+        ///     speeders in the group, or different speed tiers — the engine keeps
+        ///     the strongest ACTIVE and the rest DISABLED in the same list. The
+        ///     old code could pick up the weaker/disabled entry, see
+        ///     <c>ourValue &gt; theirValue</c>, and recast every single tick even
+        ///     though a faster speed was already live. That is the cross-class
+        ///     "interference" the operator saw. Fixed by scanning for the best
+        ///     ACTIVE (non-disabled) speed value instead of the first one.
+        ///  2. <see cref="SpeedEnhancementSpellHandler.ApplyEffectOnTarget"/>
+        ///     REFUSES to apply a song / cast-time speed while the target
+        ///     <see cref="GameLiving.InCombat"/> (and while Charge / SpeedOfSound
+        ///     / riding). The cast "succeeds" but no effect lands, so a naive
+        ///     "no effect → recast" loops forever during the InCombat tail. We
+        ///     therefore don't ask for speed at all while it can't take hold.
+        /// Net effect: cast only when it will actually stick AND no equal-or-
+        /// faster speed already covers us — no spam, no two speeders fighting.
         /// </summary>
         private bool ShouldApplyOwnSpeed(Spell speedSpell)
         {
@@ -7588,15 +7609,48 @@ namespace DOL.AI.Brain
             if (sh != null && sh.Spell?.ID == speedSpell.ID && sh.Target == Body)
                 return false;
 
-            var current = EffectListService.GetEffectOnTarget(Body, eEffect.MovementSpeedBuff);
-            if (current == null)
-                return true; // no speed at all → apply ours
+            // The speed effect can't take hold right now (song/cast-time speed
+            // is refused while InCombat, and while Charge / SpeedOfSound is up,
+            // mirroring SpeedEnhancementSpellHandler.ApplyEffectOnTarget). Asking
+            // for it anyway would "cast" with no effect and loop next tick.
+            bool isSongOrCast = speedSpell.Pulse != 0 || speedSpell.CastTime != 0;
+            if (isSongOrCast && Body.InCombat)
+                return false;
+            if (Body.effectListComponent != null
+                && (Body.effectListComponent.ContainsEffectForEffectType(eEffect.Charge)
+                    || Body.effectListComponent.ContainsEffectForEffectType(eEffect.SpeedOfSound)))
+                return false;
 
-            Spell cur = current.SpellHandler?.Spell;
-            if (cur == null || cur.ID == speedSpell.ID)
-                return false; // unknown, or our own speed already up → leave it
+            // Compare against the best ACTIVE speed currently on us. A disabled
+            // (suppressed-because-weaker) speed must NOT count as coverage, or we
+            // would never overwrite it; conversely any active speed at least as
+            // fast as ours means we add nothing — leave it and don't recast.
+            double bestActiveValue = -1;
+            bool ourSpeedActive = false;
 
-            return speedSpell.Value > cur.Value; // override only a strictly slower speed
+            foreach (ECSGameSpellEffect eff in Body.effectListComponent.GetSpellEffects(eEffect.MovementSpeedBuff))
+            {
+                if (eff.IsDisabled)
+                    continue;
+
+                Spell s = eff.SpellHandler?.Spell;
+                if (s == null)
+                    continue;
+
+                if (s.ID == speedSpell.ID)
+                    ourSpeedActive = true;
+
+                if (s.Value > bestActiveValue)
+                    bestActiveValue = s.Value;
+            }
+
+            if (bestActiveValue < 0)
+                return true; // no active speed at all → apply ours
+
+            if (ourSpeedActive)
+                return false; // our own speed already live → leave it
+
+            return speedSpell.Value > bestActiveValue; // override only a strictly slower active speed
         }
 
         // Spell types that ApplyFrontierPreBuffs (PvPFrontierSystem) already

@@ -118,15 +118,11 @@ namespace DOL.AI.Brain
                 }
             }
 
-            if (playerLeader == null)
-            {
-                if (body.IsSprinting)
-                    body.Sprint(false);
-                return;
-            }
-
-            bool leaderSprinting = playerLeader.IsSprinting;
-            bool botSprinting = body.IsSprinting;
+            // No human reference to mirror (all-bot group, or owner out of
+            // range). Sprint is then driven purely by the autonomous travel
+            // logic below — don't force it off here, or a bot-only frontier
+            // patrol could never sprint to its objective.
+            bool leaderSprinting = playerLeader != null && playerLeader.IsSprinting;
 
             if (leaderSprinting)
             {
@@ -141,12 +137,83 @@ namespace DOL.AI.Brain
                 // bot now drains realistically and eventually falls behind,
                 // exactly like a real human groupmate would.
 
-                if (!botSprinting)
+                if (!body.IsSprinting)
                     body.Sprint(true); // checks alive/stealth internally
+
+                brain.TravelSprinting = false; // mirror takes over from autosprint
+                return;
             }
-            else if (botSprinting)
+
+            // Autonomous travel-sprint: keep up the travel pace without waiting
+            // for a human to hold Sprint.
+            MaintainTravelSprint(brain, body);
+        }
+
+        /// <summary>
+        /// Lets a travelling bot sprint on its own initiative so a group (or a
+        /// bot-only frontier patrol) moves at a believable pace instead of a
+        /// plodding walk. Deliberately conservative:
+        ///   * only out of combat and while actually travelling (the bot or its
+        ///     leader is moving) — never burns endurance standing in camp;
+        ///   * defers to a group movement-speed buff: while a speed song already
+        ///     covers the bot, sprint adds nothing, so it's left off and the
+        ///     endurance is saved;
+        ///   * endurance hysteresis (stop at the low pct, resume at the higher
+        ///     pct) so the bot rests and recovers instead of flickering on/off.
+        /// </summary>
+        private static void MaintainTravelSprint(MimicBrain brain, MimicNPC body)
+        {
+            bool botSprinting = body.IsSprinting;
+
+            if (!MimicConfig.MIMIC_TRAVEL_AUTOSPRINT)
             {
-                body.Sprint(false);
+                if (botSprinting)
+                    body.Sprint(false);
+                brain.TravelSprinting = false;
+                return;
+            }
+
+            // Stop conditions: in combat, not travelling, stealthed, or already
+            // covered by a (≥ sprint) movement-speed buff. In any of these the
+            // autosprint must release so endurance regenerates.
+            bool traveling = body.IsMoving
+                || (body.Group?.LivingLeader is GameLiving gl && gl != body && gl.IsMoving);
+
+            bool speedBuffed = body.effectListComponent != null
+                && body.effectListComponent.ContainsEffectForEffectType(eEffect.MovementSpeedBuff);
+
+            if (body.InCombat || !traveling || body.IsStealthed || speedBuffed)
+            {
+                if (botSprinting)
+                    body.Sprint(false);
+                brain.TravelSprinting = false;
+                return;
+            }
+
+            int endPct = body.EndurancePercent;
+            int stopPct = MimicConfig.MIMIC_TRAVEL_AUTOSPRINT_STOP_PCT;
+            int resumePct = Math.Max(stopPct + 1, MimicConfig.MIMIC_TRAVEL_AUTOSPRINT_RESUME_PCT);
+
+            if (brain.TravelSprinting)
+            {
+                // Currently sprinting: keep going until endurance runs low.
+                if (endPct <= stopPct)
+                {
+                    if (botSprinting)
+                        body.Sprint(false);
+                    brain.TravelSprinting = false;
+                }
+                else if (!botSprinting)
+                {
+                    // Re-assert if something external dropped the effect.
+                    body.Sprint(true);
+                }
+            }
+            else
+            {
+                // Rested enough to (re)start travel-sprinting.
+                if (endPct >= resumePct && body.Sprint(true))
+                    brain.TravelSprinting = true;
             }
         }
     }

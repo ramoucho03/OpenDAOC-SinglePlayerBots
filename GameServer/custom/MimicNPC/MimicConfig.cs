@@ -121,6 +121,18 @@ namespace DOL.GS.Scripts
             "When true (default), grouped mimics join the assault when their human group leader attacks an enemy keep/tower door — they help break the door, but always prioritise live enemies that show up (PvP) and resume the door once clear. Movement/target only.", true)]
         public static bool MIMIC_GROUP_PLAYER_SIEGE;
 
+        [ServerProperty("npc", "mimic_travel_autosprint",
+            "When true (default), a mimic that is travelling (following a moving leader / roaming / patrolling, out of combat) sprints on its own to keep up the pace — even when no human in the group is holding Sprint. It still defers to a group movement-speed buff (Minstrel/Bard/Skald speed song): while a speed song is covering the bot, sprint is unnecessary and is left off. Sprint stops automatically when endurance drops to mimic_travel_autosprint_stop_pct so the bot recovers, and resumes once endurance climbs back to mimic_travel_autosprint_resume_pct.", true)]
+        public static bool MIMIC_TRAVEL_AUTOSPRINT;
+
+        [ServerProperty("npc", "mimic_travel_autosprint_stop_pct",
+            "Endurance percent at or below which a travel-sprinting mimic stops sprinting to recover. Default 25.", 25)]
+        public static int MIMIC_TRAVEL_AUTOSPRINT_STOP_PCT;
+
+        [ServerProperty("npc", "mimic_travel_autosprint_resume_pct",
+            "Endurance percent at or above which a rested mimic may begin travel-sprinting again (hysteresis against the stop threshold so it doesn't flicker on/off). Default 50.", 50)]
+        public static int MIMIC_TRAVEL_AUTOSPRINT_RESUME_PCT;
+
         [ServerProperty("npc", "mimic_group_chat_dedup_ms",
             "Cooldown (ms) during which the same chat topic stays silent for the rest of the group after one bot says it. Default 8000.", 8000)]
         public static int MIMIC_GROUP_CHAT_DEDUP_MS;

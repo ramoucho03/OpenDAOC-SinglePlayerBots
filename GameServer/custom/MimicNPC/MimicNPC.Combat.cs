@@ -1105,7 +1105,7 @@ namespace DOL.GS.Scripts
             // the clear. Pull it forward to here while XPGainers is still
             // populated.
             if (killingBlowByEnemyRealm)
-                AwardPvpKillRewards();
+                AwardPvpKillRewards(killer);
 
             TargetObject = null;
 
@@ -1307,9 +1307,23 @@ namespace DOL.GS.Scripts
         /// human felt cheated. With group-share, the human gets the full
         /// share whenever their group dropped the target — exactly how real
         /// PvP kill credit works.
+        ///
+        /// Kill / deathblow stats: besides the RP, this also feeds the same
+        /// per-player kill counters a real PvP kill updates
+        /// (UpdateKillStatsOnPlayerKill → KillsXxxPlayers / KillsXxxDeathBlows /
+        /// statistics). The DEATHBLOW goes to the human who struck the killing
+        /// blow (<paramref name="killer"/>, resolved to the owning player when a
+        /// mimic / pet lands it), exactly like AbstractServerRules does for a
+        /// player corpse. Without this, dropping a frontier mimic gave RP but
+        /// never registered as a kill or a deathblow on the player's record.
         /// </summary>
-        private void AwardPvpKillRewards()
+        private void AwardPvpKillRewards(GameObject killer)
         {
+            // Resolve the human credited with the killing blow. A mimic or a
+            // controlled pet maps to its owning player; a real player is used
+            // as-is. Anything else (or a same-realm killer) yields no deathblow.
+            GamePlayer killingBlowPlayer = ResolveKillCreditPlayer(killer);
+
             double totalDamage = 0;
             foreach (var pair in XPGainers)
                 totalDamage += pair.Value;
@@ -1404,7 +1418,11 @@ namespace DOL.GS.Scripts
                 foreach (GamePlayer pm in eligible)
                 {
                     pm.GainRealmPoints(perHead);
-                    pm.Statistics?.AddToRealmPointsEarnedFromKills((uint)perHead);
+                    // Kill + deathblow counters (and the RP-from-kills stat) via
+                    // the same path a real PvP kill uses. The deathblow flag is
+                    // true only for the human who landed the killing blow; a
+                    // group kill is never counted as solo.
+                    pm.UpdateKillStatsOnPlayerKill(Realm, pm == killingBlowPlayer, false, (int)perHead);
                     pm.Out.SendMessage($"Your group killed {GetName(0, false)}!",
                         eChatType.CT_KilledByAlb, eChatLoc.CL_SystemWindow);
                 }
@@ -1424,9 +1442,44 @@ namespace DOL.GS.Scripts
                 if (reward <= 0) continue;
 
                 solo.GainRealmPoints(reward);
-                solo.Statistics?.AddToRealmPointsEarnedFromKills((uint)reward);
+                // Solo kill: deathblow goes to this player when they struck the
+                // killing blow, and it counts as a solo kill (no group helped).
+                solo.UpdateKillStatsOnPlayerKill(Realm, solo == killingBlowPlayer, true, (int)reward);
                 solo.Out.SendMessage($"You just killed {GetName(0, false)}!",
                     eChatType.CT_KilledByAlb, eChatLoc.CL_SystemWindow);
+            }
+        }
+
+        /// <summary>
+        /// Resolves the human player credited with a kill on this mimic from the
+        /// killing-blow object: a real player is returned directly, a mimic or a
+        /// controlled pet maps to its owning player. Returns null for an unowned
+        /// NPC, a same-realm killer, or no killer — i.e. no deathblow is awarded.
+        /// </summary>
+        private GamePlayer ResolveKillCreditPlayer(GameObject killer)
+        {
+            switch (killer)
+            {
+                case GamePlayer player:
+                    return player.Realm != Realm ? player : null;
+                case MimicNPC mimic:
+                {
+                    // A grouped mimic's killing blow credits the group's human
+                    // leader (the player commanding the bots).
+                    if (mimic.Realm == Realm)
+                        return null;
+                    foreach (GameLiving member in mimic.Group?.GetMembersInTheGroup() ?? Enumerable.Empty<GameLiving>())
+                        if (member is GamePlayer leaderPlayer)
+                            return leaderPlayer.Realm != Realm ? leaderPlayer : null;
+                    return null;
+                }
+                case GameNPC npc when npc.Brain is IControlledBrain ctrl:
+                {
+                    GamePlayer owner = ctrl.GetPlayerOwner();
+                    return owner != null && owner.Realm != Realm ? owner : null;
+                }
+                default:
+                    return null;
             }
         }
 
