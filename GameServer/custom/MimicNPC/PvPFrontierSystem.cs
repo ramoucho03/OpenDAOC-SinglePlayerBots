@@ -237,6 +237,41 @@ namespace DOL.GS.Scripts
             "Minimum number of mimic groups the real-time siege director rallies onto an ENEMY KEEP front before it considers the keep adequately besieged. While a realm holds an open keep front with fewer than this many groups committed, its other roaming groups are steered to JOIN that keep (overriding the usual tower preference) instead of scattering — so a castle assault is a 3-5 group affair, not a lone group poking the gate. Towers are unaffected (one group takes a tower). Default 3.", 3)]
         public static int PVP_FRONTIER_KEEP_MIN_SIEGE_GROUPS;
 
+        // ===== Dynamic war ecosystem (RealmWarDirector) =====
+        // A per-realm strategic brain that turns the frontier from "each group
+        // grabs the nearest free tower forever" into a living DAoC campaign:
+        // realms pick a target keep, soften it by taking its towers first, then
+        // storm the keep itself, and dominance rotates over the day (sometimes
+        // Hib pushes hard, sometimes Mid, sometimes Alb).
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_war_director",
+            "Master switch for the dynamic war ecosystem. When true (default), a per-realm strategic director picks a target enemy KEEP per realm, has its groups soften the keep by taking the keep's own towers first, then storms the keep — a real tower→keep campaign — and rotates which realm is dominant over time (momentum + day-phase + anti-snowball + underdog support). When false, falls back to the legacy nearest-free-objective picker (which, with towers always preferred, effectively never takes keeps).", true)]
+        public static bool PVP_FRONTIER_WAR_DIRECTOR;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_war_campaign_towers_pct",
+            "Percent of a target keep's OWN towers a realm should hold before the director opens the keep itself (the classic 'take the towers to weaken the keep, then storm it' flow). Default 50 — half the keep's towers down before the gate assault. Lower = storm sooner, higher = soften longer.", 50)]
+        public static int PVP_FRONTIER_WAR_CAMPAIGN_TOWERS_PCT;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_war_max_attack_fronts",
+            "Maximum number of DISTINCT enemy objectives (towers + the focus keep) a realm's mimic groups will besiege at once under the war director. Higher = the realm spreads its pressure across more of the map; lower = a tighter, more focused push. Default 4. This supersedes pvp_frontier_siege_max_per_realm when the war director is on.", 4)]
+        public static int PVP_FRONTIER_WAR_MAX_ATTACK_FRONTS;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_war_day_phase_minutes",
+            "Length (minutes) of one full dominance rotation through the three realms. Each realm gets a 'prime time' slice where its momentum (and concurrent-front cap) is boosted, so over a session you see Alb-dominant, then Mid, then Hib stretches — the ebb and flow of a real frontier instead of a static balance. Default 90 (≈30 min of spotlight each). 0 disables day-phase weighting (pure momentum + anti-snowball).", 90)]
+        public static int PVP_FRONTIER_WAR_DAY_PHASE_MINUTES;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_war_momentum_per_capture",
+            "Momentum a realm gains each time it captures an objective. Momentum decays over time (pvp_frontier_war_momentum_decay_per_min) and grants extra concurrent siege fronts while high, so a realm on a winning streak presses its advantage — then cools off, letting another realm surge. Default 20.", 20)]
+        public static int PVP_FRONTIER_WAR_MOMENTUM_PER_CAPTURE;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_war_momentum_decay_per_min",
+            "How much war momentum a realm loses per minute (linear decay toward 0). Combined with momentum_per_capture this sets how long a 'hot streak' lasts. Default 6 — a capture's boost fades over a few minutes. Higher = streaks are shorter/cooler.", 6)]
+        public static int PVP_FRONTIER_WAR_MOMENTUM_DECAY_PER_MIN;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_war_underdog_keeps",
+            "A realm holding this many objectives OR FEWER is treated as an 'underdog' and gets an extra concurrent siege front + a momentum floor, so a realm that's been steamrolled can claw back instead of being farmed forever. Default 6 (≈ its starting home keeps). Set to 0 to disable underdog support.", 6)]
+        public static int PVP_FRONTIER_WAR_UNDERDOG_KEEPS;
+
         [ServerProperty("pvpfrontier", "pvp_frontier_abstract_siege",
             "When true, a frontier group that reaches an enemy objective while DORMANT (no player nearby to watch the fight) resolves the capture abstractly after a timer — flipping the tower/keep via the normal capture path WITHOUT spawning bots. This is what makes the war map actually live and change hands across the frontier at near-zero CPU; when a player IS nearby the group hydrates and fights for real instead. Default true.", true)]
         public static bool PVP_FRONTIER_ABSTRACT_SIEGE;
@@ -246,7 +281,7 @@ namespace DOL.GS.Scripts
         public static int PVP_FRONTIER_TOWER_SIEGE_MINUTES;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_keep_siege_minutes",
-            "Minutes a dormant frontier group must hold an enemy KEEP before the abstract siege flips it. Default 10 — keeps are slower/harder than towers. Keeps are also only targeted when no enemy tower is available.", 10)]
+            "Minutes a FULL assault force (pvp_frontier_keep_min_siege_groups groups) takes to breach an enemy KEEP via the coordinator's abstract progress meter. FEWER groups take proportionally longer, MORE go faster (capped at 2x). The meter survives passing players and pauses only while an owner-realm defender is physically at the keep. Default 8 — a castle changes hands a few times an hour when a realm commits an army, but a lone group barely dents it.", 8)]
         public static int PVP_FRONTIER_KEEP_SIEGE_MINUTES;
 
         // ---- Siege engines (visible rams) for the REAL (hydrated) siege ----
@@ -1420,6 +1455,44 @@ namespace DOL.GS.Scripts
 
             private const long CLAIM_TTL_MS = 180_000; // 3 min — covers travel; refreshed while assaulting.
 
+            // ===== War director state (per realm) =====
+            // The strategic brain. All access is on the single maintenance-tick
+            // thread (Sweep + waypoint picks), so a tiny lock is plenty.
+            private sealed class RealmWarState
+            {
+                public double Momentum;          // decays over time; capture spikes it
+                public ushort FocusKeepId;       // the enemy KEEP this realm is campaigning
+                public long FocusChosenTick;     // when the current focus was picked
+                public long LastDecayTick;       // for linear momentum decay
+            }
+            private static readonly Dictionary<eRealm, RealmWarState> _war = new()
+            {
+                [eRealm.Albion] = new RealmWarState(),
+                [eRealm.Midgard] = new RealmWarState(),
+                [eRealm.Hibernia] = new RealmWarState(),
+            };
+
+            // Re-pick a realm's focus keep at most this often (unless it's
+            // captured/neutralised sooner) so a realm commits to a campaign
+            // instead of dithering between targets every tick.
+            private const long FOCUS_MIN_HOLD_MS = 120_000; // 2 min
+
+            private static RealmWarState War(eRealm r)
+                => _war.TryGetValue(r, out var s) ? s : (_war[r] = new RealmWarState());
+
+            // ===== Abstract KEEP-siege progress meter (coordinator-driven) =====
+            // The old abstract keep capture required ONE dormant group to hold the
+            // gate for 10 uninterrupted minutes, and DormantTick reset that timer
+            // the instant any player wandered past — so keeps were never taken.
+            // Instead the coordinator accumulates a per-keep progress bar from the
+            // number of same-realm groups committed to it (PickWarObjective claims
+            // + the keep_min_siege_groups rally), advancing once per sweep. The
+            // bar survives passers-by, and MORE groups capture FASTER (a 5-group
+            // assault breaches far quicker than a lone group) — exactly the
+            // "bring a real army to take a castle" feel.
+            private struct KeepSiegeProgress { public eRealm Realm; public double Pct; public long LastTick; }
+            private static readonly Dictionary<ushort, KeepSiegeProgress> _keepProgress = new();
+
             /// <summary>
             /// Per-maintenance-tick housekeeping: detect objective flips (arm the
             /// recapture cooldown + drop the siege claim) and expire stale claims.
@@ -1446,6 +1519,13 @@ namespace DOL.GS.Scripts
                                 if (cooldownMs > 0)
                                     _cooldownUntil[id] = now + cooldownMs;
                                 _assignments.Remove(id);
+
+                                // War momentum: the new owner gets a streak spike
+                                // (presses its advantage); the loser's focus on
+                                // this keep is cleared if it just lost it.
+                                if (k.Realm is eRealm.Albion or eRealm.Midgard or eRealm.Hibernia)
+                                    War(k.Realm).Momentum += Math.Max(0, PvPFrontierProperties.PVP_FRONTIER_WAR_MOMENTUM_PER_CAPTURE);
+
                                 if (log.IsInfoEnabled)
                                     log.Info($"[PvPFrontier] objective '{k.Name}' flipped {prev} -> {k.Realm}; siege recapture cooldown {PvPFrontierProperties.PVP_FRONTIER_SIEGE_RECAPTURE_COOLDOWN_MIN}m.");
                             }
@@ -1463,7 +1543,548 @@ namespace DOL.GS.Scripts
                             foreach (ushort id in stale)
                                 _assignments.Remove(id);
                     }
+
+                    // Linear momentum decay toward 0 (or toward the underdog
+                    // floor) so a hot streak cools and another realm can surge.
+                    DecayMomentum(now, keeps);
                 }
+
+                // Advance the abstract KEEP-siege meters. Done OUTSIDE _lock
+                // because it counts committed groups (CountGroupsCommittedToKeep
+                // takes _configsLock) — never nest the two locks. Self-guards on
+                // the war-director + abstract-siege switches.
+                if (keeps != null
+                    && PvPFrontierProperties.PVP_FRONTIER_WAR_DIRECTOR
+                    && PvPFrontierProperties.PVP_FRONTIER_ABSTRACT_SIEGE)
+                {
+                    try { TickKeepSiegeProgress(region, keeps, now); }
+                    catch (Exception ex) { log.Error("PvPFrontier keep-progress tick failed", ex); }
+                }
+            }
+
+            /// <summary>
+            /// Per-sweep advance of every enemy KEEP's abstract-siege progress bar.
+            /// A keep accrues progress proportional to how many same-realm groups
+            /// are committed to it (PickWarObjective claim + reinforcement rally):
+            /// more groups → faster breach, so a 3-5 group army takes a castle in
+            /// a fraction of the lone-group time, while a single poking group barely
+            /// moves the bar. The bar is resilient to passing players (unlike the
+            /// old per-group hold timer that reset on every passer-by) and only
+            /// fills while NO defender (enemy of the besiegers... i.e. an owner-realm
+            /// player) is actually present to contest it — when a defender shows up
+            /// the assault must be won for real (hydrated combat), so the abstract
+            /// bar pauses. On reaching 100% the keep is captured via the shared
+            /// AbstractCaptureKeep path. Towers are NOT handled here (their fast
+            /// per-group hold already works well).
+            /// </summary>
+            private static void TickKeepSiegeProgress(ushort region,
+                ICollection<Keeps.AbstractGameKeep> keeps, long now)
+            {
+                int keepMinutes = Math.Max(1, PvPFrontierProperties.PVP_FRONTIER_KEEP_SIEGE_MINUTES);
+                int minGroups = Math.Max(1, PvPFrontierProperties.PVP_FRONTIER_KEEP_MIN_SIEGE_GROUPS);
+
+                foreach (var k in keeps)
+                {
+                    if (k is not Keeps.GameKeep keep) continue;          // real keeps only
+                    if (keep.Realm == eRealm.None) continue;
+
+                    ushort id = keep.KeepID;
+
+                    // Which realm is besieging this keep (has the open claim)?
+                    eRealm besieger;
+                    lock (_lock)
+                    {
+                        if (!_assignments.TryGetValue(id, out var asg) || asg.expireTick <= now)
+                        {
+                            _keepProgress.Remove(id); // no active front → cool the bar
+                            continue;
+                        }
+                        besieger = asg.realm;
+                    }
+                    if (besieger == keep.Realm) { lock (_lock) _keepProgress.Remove(id); continue; }
+
+                    int groups = CountGroupsCommittedToKeep(besieger, region, id);
+                    if (groups <= 0)
+                    {
+                        lock (_lock) _keepProgress.Remove(id);
+                        continue;
+                    }
+
+                    // A defender (owner-realm human) physically at the keep pauses
+                    // the abstract bar — the keep must then be taken in real
+                    // combat. Advance LastTick while paused so the paused interval
+                    // is NOT retro-credited when the defender leaves (otherwise the
+                    // bar would jump forward by the whole defended duration).
+                    if (DefenderPresentAt(region, keep))
+                    {
+                        lock (_lock)
+                        {
+                            if (_keepProgress.TryGetValue(id, out var paused) && paused.Realm == besieger)
+                            {
+                                paused.LastTick = now;
+                                _keepProgress[id] = paused;
+                            }
+                        }
+                        continue;
+                    }
+
+                    // Progress rate: a full keep_min_siege_groups army fills the
+                    // bar in keep_siege_minutes; more groups go faster, fewer go
+                    // proportionally slower (a lone group ≈ 1/minGroups speed).
+                    double fullMs = keepMinutes * 60_000.0;
+                    double groupFactor = Math.Min(2.0, groups / (double)minGroups); // cap 2x
+                    double perMsPct = 100.0 / fullMs * groupFactor;
+
+                    lock (_lock)
+                    {
+                        if (!_keepProgress.TryGetValue(id, out var prog) || prog.Realm != besieger)
+                            prog = new KeepSiegeProgress { Realm = besieger, Pct = 0, LastTick = now };
+
+                        double elapsed = prog.LastTick == 0 ? 0 : now - prog.LastTick;
+                        prog.Pct += perMsPct * elapsed;
+                        prog.LastTick = now;
+                        _keepProgress[id] = prog;
+
+                        if (prog.Pct < 100.0)
+                            continue;
+                    }
+
+                    // Breached! Capture abstractly (no spawn) and reset the bar.
+                    AbstractCaptureKeep(keep, besieger);
+                    lock (_lock) _keepProgress.Remove(id);
+                }
+            }
+
+            /// <summary>True if any owner-realm human player is within ~4000u of the keep (a live defender).</summary>
+            private static bool DefenderPresentAt(ushort region, Keeps.AbstractGameKeep keep)
+            {
+                PlayerSnapshot snap = GetPlayerSnapshot(region);
+                if (snap == null || snap.Sampled.Count == 0)
+                    return false;
+
+                const long R = 4000;
+                long rSq = R * R;
+                foreach (PlayerSampledPos p in snap.Sampled)
+                {
+                    if (p.Realm != keep.Realm) continue; // defender = owner realm
+                    long dx = p.X - keep.X, dy = p.Y - keep.Y;
+                    if (dx * dx + dy * dy <= rSq) return true;
+                }
+                return false;
+            }
+
+            // ---- War director helpers (all called under _lock) ----
+
+            /// <summary>Bleeds every realm's momentum toward 0 (or the underdog floor) over time.</summary>
+            private static void DecayMomentum(long now, ICollection<Keeps.AbstractGameKeep> keeps)
+            {
+                double perMin = Math.Max(0, PvPFrontierProperties.PVP_FRONTIER_WAR_MOMENTUM_DECAY_PER_MIN);
+
+                foreach (var kv in _war)
+                {
+                    RealmWarState s = kv.Value;
+                    if (s.LastDecayTick == 0) { s.LastDecayTick = now; continue; }
+
+                    double minutes = (now - s.LastDecayTick) / 60_000.0;
+                    if (minutes <= 0) continue;
+                    s.LastDecayTick = now;
+
+                    s.Momentum = Math.Max(0, s.Momentum - perMin * minutes);
+
+                    // Underdog floor: a steamrolled realm keeps a little momentum
+                    // so it can mount a comeback instead of being farmed to zero.
+                    int underdogAt = PvPFrontierProperties.PVP_FRONTIER_WAR_UNDERDOG_KEEPS;
+                    if (underdogAt > 0 && CountOwned(kv.Key, keeps) <= underdogAt)
+                        s.Momentum = Math.Max(s.Momentum, PvPFrontierProperties.PVP_FRONTIER_WAR_MOMENTUM_PER_CAPTURE);
+                }
+            }
+
+            /// <summary>Objectives (towers + keeps) a realm currently owns in the region.</summary>
+            private static int CountOwned(eRealm realm, ICollection<Keeps.AbstractGameKeep> keeps)
+            {
+                if (keeps == null) return 0;
+                int n = 0;
+                foreach (var k in keeps)
+                    if (k != null && k.Realm == realm) n++;
+                return n;
+            }
+
+            /// <summary>
+            /// Day-phase bonus [0..1] for a realm: each realm gets a rotating
+            /// "prime time" slice of the configured cycle where it pushes harder.
+            /// Smooth (raised-cosine) so dominance ramps in and out instead of
+            /// snapping. Peaks (=1) at the centre of this realm's third of the
+            /// cycle and falls to 0 at the neighbours' peaks. 0 when day-phase
+            /// weighting is disabled.
+            /// </summary>
+            private static double DayPhaseBonus(eRealm realm)
+            {
+                int cycleMin = PvPFrontierProperties.PVP_FRONTIER_WAR_DAY_PHASE_MINUTES;
+                if (cycleMin <= 0) return 0;
+
+                int idx = realm == eRealm.Albion ? 0 : realm == eRealm.Midgard ? 1 : 2;
+                double cycleMs = cycleMin * 60_000.0;
+                double t = (GameLoop.GameLoopTime % (long)cycleMs) / cycleMs; // 0..1 around the cycle
+
+                // Signed distance from this realm's slice centre (idx/3), wrapped
+                // to [-0.5, 0.5]. At distance 0 → peak; at ±1/3 (a neighbour's
+                // centre) → 0.
+                double d = t - (idx + 0.5) / 3.0;
+                d -= Math.Floor(d + 0.5); // wrap to [-0.5, 0.5)
+                double dist = Math.Abs(d); // 0..0.5
+
+                if (dist >= 1.0 / 3.0) return 0;
+                // Raised cosine over [0, 1/3]: 1 at centre, 0 at 1/3.
+                return 0.5 * (1 + Math.Cos(dist * 3.0 * Math.PI));
+            }
+
+            /// <summary>Concurrent siege-front cap for a realm = base + momentum/underdog/day-phase, minus anti-snowball.</summary>
+            private static int FrontCapFor(eRealm realm, ICollection<Keeps.AbstractGameKeep> keeps)
+            {
+                int baseCap = Math.Max(1, PvPFrontierProperties.PVP_FRONTIER_WAR_MAX_ATTACK_FRONTS);
+
+                // Anti-snowball: the realm owning the most objectives loses a slot
+                // (unless everyone's tied).
+                int alb = CountOwned(eRealm.Albion, keeps);
+                int mid = CountOwned(eRealm.Midgard, keeps);
+                int hib = CountOwned(eRealm.Hibernia, keeps);
+                int mine = realm == eRealm.Albion ? alb : realm == eRealm.Midgard ? mid : hib;
+                bool leading = mine >= alb && mine >= mid && mine >= hib && !(alb == mid && mid == hib);
+
+                int cap = baseCap;
+                if (leading) cap -= 1;
+
+                // Underdog: a steamrolled realm gets an extra front to claw back.
+                int underdogAt = PvPFrontierProperties.PVP_FRONTIER_WAR_UNDERDOG_KEEPS;
+                if (underdogAt > 0 && mine <= underdogAt) cap += 1;
+
+                // Momentum + day-phase: a realm on a hot streak / in its prime
+                // time presses with one more concurrent front.
+                if (War(realm).Momentum >= PvPFrontierProperties.PVP_FRONTIER_WAR_MOMENTUM_PER_CAPTURE) cap += 1;
+                if (DayPhaseBonus(realm) > 0.66) cap += 1;
+
+                return Math.Max(1, cap);
+            }
+
+            /// <summary>
+            /// Selects (and caches) the enemy KEEP a realm is currently
+            /// campaigning. A focus is kept for at least FOCUS_MIN_HOLD_MS unless
+            /// it's captured / lost / neutral, so the realm commits to a target
+            /// instead of dithering. Scoring favours a keep that is:
+            ///   * reachable (enemy-owned, not on recapture cooldown),
+            ///   * already softened (we hold some of its towers — keep the push),
+            ///   * close to the realm's home corner (campaign outward, like live),
+            ///   * weighted by momentum / day-phase so the hot realm pushes deeper.
+            /// Must be called under <see cref="_lock"/>. Returns null when the
+            /// realm has no reachable enemy keep (e.g. it owns everything).
+            /// </summary>
+            private static Keeps.AbstractGameKeep ChooseFocusKeep(eRealm realm, ushort region,
+                ICollection<Keeps.AbstractGameKeep> keeps, long now)
+            {
+                RealmWarState st = War(realm);
+
+                // Keep the current focus if it's still a valid enemy keep and the
+                // min-hold window hasn't elapsed.
+                if (st.FocusKeepId != 0 && now - st.FocusChosenTick < FOCUS_MIN_HOLD_MS)
+                {
+                    Keeps.AbstractGameKeep cur = FindKeepById(keeps, st.FocusKeepId);
+                    if (cur is Keeps.GameKeep && cur.Realm != realm && cur.Realm != eRealm.None
+                        && !(_cooldownUntil.TryGetValue(cur.KeepID, out long cd) && cd > now))
+                        return cur;
+                }
+
+                // Home corner for "campaign outward" distance scoring.
+                (int hx, int hy) = RealmHomeAnchor(realm);
+
+                Keeps.AbstractGameKeep best = null;
+                double bestScore = double.NegativeInfinity;
+
+                foreach (var k in keeps)
+                {
+                    if (k is not Keeps.GameKeep keep) continue;       // real keeps only
+                    if (keep.Realm == realm || keep.Realm == eRealm.None) continue;
+                    if (_cooldownUntil.TryGetValue(keep.KeepID, out long cd2) && cd2 > now) continue;
+
+                    int ownTowers = CountOwnedTowersOf(keep, realm);
+                    int totTowers = TotalTowersOf(keep);
+
+                    double score = 0;
+                    // Softening progress: the more of its towers we already hold,
+                    // the more attractive finishing this keep is.
+                    if (totTowers > 0)
+                        score += 100.0 * ownTowers / totTowers;
+
+                    // Distance from our home corner: nearer = higher (campaign
+                    // pushes from home outward, not random teleports across map).
+                    double dx = keep.X - hx, dy = keep.Y - hy;
+                    double dist = Math.Sqrt(dx * dx + dy * dy);
+                    score += Math.Max(0, 60.0 - dist / 1500.0);
+
+                    // Hot realm / prime time reaches for deeper, tougher keeps too.
+                    double aggression = st.Momentum / 100.0 + DayPhaseBonus(realm);
+                    score += aggression * 15.0;
+
+                    // Small jitter so two realms don't deterministically collide
+                    // on the exact same keep every cycle.
+                    score += Util.Random(0, 8);
+
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        best = keep;
+                    }
+                }
+
+                if (best != null)
+                {
+                    st.FocusKeepId = best.KeepID;
+                    st.FocusChosenTick = now;
+                }
+                return best;
+            }
+
+            /// <summary>
+            /// War-director objective picker (replaces the legacy tower-always
+            /// PickObjective when PVP_FRONTIER_WAR_DIRECTOR is on). Implements the
+            /// DAoC campaign flow:
+            ///   1. Determine the realm's FOCUS enemy keep (ChooseFocusKeep).
+            ///   2. SOFTEN it: while we hold fewer than campaign_towers_pct of the
+            ///      focus keep's OWN towers, send groups to take those towers.
+            ///   3. STORM it: once softened, open the keep itself (multiple groups
+            ///      rally via PickKeepReinforcement / the keep_min_siege_groups).
+            ///   4. If the focus keep is unreachable or the campaign is paused,
+            ///      fall back to the nearest free enemy tower so groups always
+            ///      have something useful to do.
+            /// Honours the dynamic front cap (FrontCapFor). Claims the chosen
+            /// objective. Must NOT be called holding _configsLock.
+            /// </summary>
+            internal static Keeps.AbstractGameKeep PickWarObjective(eRealm realm, ushort region, int anchorX, int anchorY)
+            {
+                var keeps = GameServer.KeepManager.GetKeepsOfRegion(region);
+                if (keeps == null || keeps.Count == 0)
+                    return null;
+
+                long now = GameLoop.GameLoopTime;
+
+                lock (_lock)
+                {
+                    int cap = FrontCapFor(realm, keeps);
+                    int active = 0;
+                    foreach (var kv in _assignments)
+                        if (kv.Value.realm == realm && kv.Value.expireTick > now)
+                            active++;
+                    bool atCap = active >= cap;
+
+                    Keeps.GameKeep focus = ChooseFocusKeep(realm, region, keeps, now) as Keeps.GameKeep;
+
+                    // ---- Campaign on the focus keep ----
+                    if (focus != null)
+                    {
+                        bool focusOpen = IsOpenFrontFor(realm, focus.KeepID, now);
+                        int ownTowers = CountOwnedTowersOf(focus, realm);
+                        int totTowers = TotalTowersOf(focus);
+                        int pct = Math.Clamp(PvPFrontierProperties.PVP_FRONTIER_WAR_CAMPAIGN_TOWERS_PCT, 0, 100);
+                        bool softened = totTowers == 0 || (ownTowers * 100) >= (totTowers * pct);
+
+                        // (2) SOFTEN: grab an un-owned, free tower of the focus keep.
+                        if (!softened)
+                        {
+                            Keeps.AbstractGameKeep tower = NearestClaimableTowerOf(focus, realm, anchorX, anchorY, now,
+                                blockIfAtCap: atCap);
+                            if (tower != null)
+                            {
+                                _assignments[tower.KeepID] = (realm, now + CLAIM_TTL_MS);
+                                return tower;
+                            }
+                            // No free tower (all owned by us already / all claimed)
+                            // → fall through to storming the keep.
+                        }
+
+                        // (3) STORM: open / join the keep itself. A keep may be
+                        // JOINED even at cap (it needs numbers); a NEW front is
+                        // gated by the cap.
+                        if (focusOpen || !atCap)
+                        {
+                            _assignments[focus.KeepID] = (realm, now + CLAIM_TTL_MS);
+                            return focus;
+                        }
+                    }
+
+                    // (4) Fallback: nearest free enemy tower so groups stay useful
+                    // even when the focus keep is on cooldown / capped out.
+                    if (!atCap)
+                    {
+                        Keeps.AbstractGameKeep anyTower = NearestFreeEnemyTower(realm, keeps, anchorX, anchorY, now);
+                        if (anyTower != null)
+                        {
+                            _assignments[anyTower.KeepID] = (realm, now + CLAIM_TTL_MS);
+                            return anyTower;
+                        }
+                    }
+
+                    return null;
+                }
+            }
+
+            // ---- War-director geometry / counting helpers (under _lock) ----
+
+            private static Keeps.AbstractGameKeep FindKeepById(ICollection<Keeps.AbstractGameKeep> keeps, ushort id)
+            {
+                foreach (var k in keeps)
+                    if (k != null && k.KeepID == id) return k;
+                return null;
+            }
+
+            private static int TotalTowersOf(Keeps.GameKeep keep)
+                => keep?.Towers == null ? 0 : keep.Towers.Count;
+
+            private static int CountOwnedTowersOf(Keeps.GameKeep keep, eRealm realm)
+            {
+                if (keep?.Towers == null) return 0;
+                int n = 0;
+                foreach (Keeps.GameKeepTower t in keep.Towers)
+                    if (t != null && t.Realm == realm) n++;
+                return n;
+            }
+
+            private static bool IsOpenFrontFor(eRealm realm, ushort keepId, long now)
+                => _assignments.TryGetValue(keepId, out var a) && a.expireTick > now && a.realm == realm;
+
+            /// <summary>Nearest tower OF a keep that is enemy-owned, off cooldown, and not already claimed by us (or, if not at cap, claimable).</summary>
+            private static Keeps.AbstractGameKeep NearestClaimableTowerOf(Keeps.GameKeep keep, eRealm realm,
+                int ax, int ay, long now, bool blockIfAtCap)
+            {
+                if (keep?.Towers == null) return null;
+
+                Keeps.AbstractGameKeep best = null;
+                long bestSq = long.MaxValue;
+                foreach (Keeps.GameKeepTower t in keep.Towers)
+                {
+                    if (t == null) continue;
+                    if (t.Realm == realm || t.Realm == eRealm.None) continue;
+                    if (_cooldownUntil.TryGetValue(t.KeepID, out long cd) && cd > now) continue;
+
+                    bool ours = IsOpenFrontFor(realm, t.KeepID, now);
+                    if (ours) continue;          // we already hold this tower front
+                    if (blockIfAtCap) continue;  // opening a new front but capped
+
+                    long dx = t.X - ax, dy = t.Y - ay;
+                    long sq = dx * dx + dy * dy;
+                    if (sq < bestSq) { bestSq = sq; best = t; }
+                }
+                return best;
+            }
+
+            /// <summary>Nearest enemy tower anywhere in the region that is free to open (off cooldown, unclaimed by us).</summary>
+            private static Keeps.AbstractGameKeep NearestFreeEnemyTower(eRealm realm,
+                ICollection<Keeps.AbstractGameKeep> keeps, int ax, int ay, long now)
+            {
+                Keeps.AbstractGameKeep best = null;
+                long bestSq = long.MaxValue;
+                foreach (var k in keeps)
+                {
+                    if (k is not Keeps.GameKeepTower) continue;
+                    if (k.Realm == realm || k.Realm == eRealm.None) continue;
+                    if (_cooldownUntil.TryGetValue(k.KeepID, out long cd) && cd > now) continue;
+                    if (IsOpenFrontFor(realm, k.KeepID, now)) continue;
+
+                    long dx = k.X - ax, dy = k.Y - ay;
+                    long sq = dx * dx + dy * dy;
+                    if (sq < bestSq) { bestSq = sq; best = k; }
+                }
+                return best;
+            }
+
+            /// <summary>Approx home-corner anchor per realm (NF), for campaign-outward distance scoring.</summary>
+            private static (int, int) RealmHomeAnchor(eRealm realm) => realm switch
+            {
+                eRealm.Albion => (653811, 616998),   // Castle Sauvage approach
+                eRealm.Midgard => (651460, 313758),  // Svasud Faste approach
+                eRealm.Hibernia => (396519, 618017), // Druim Ligen approach
+                _ => (525000, 515000),
+            };
+
+            /// <summary>
+            /// Captures a keep/tower abstractly (no bots) onto <paramref name="captor"/>,
+            /// then arms the recapture cooldown. Shared by the coordinator keep
+            /// meter (TickKeepSiegeProgress) and the per-group tower hold
+            /// (TryAdvanceDormantSiege). Runs the canonical keep.Reset, then
+            /// reconciles the on-site faction OUTSIDE the Reset try so a partial
+            /// Reset (e.g. ResetPlayersOfKeep's hookpoint lookup throwing with no
+            /// player around) can't leave stale old-realm guards while the war map
+            /// already shows the capture. See the long-form rationale on the
+            /// instance path. Must NOT be called holding _lock.
+            /// </summary>
+            internal static void AbstractCaptureKeep(Keeps.AbstractGameKeep keep, eRealm captor)
+            {
+                if (keep == null) return;
+                string what = keep is Keeps.GameKeepTower ? "tower" : "keep";
+                string name = keep.Name ?? what;
+
+                try { keep.Reset(captor); }
+                catch (Exception ex) { log.Error($"[PvPFrontier] abstract capture (Reset) of '{name}' failed", ex); }
+
+                try
+                {
+                    if (keep.Realm != captor)
+                        keep.Realm = captor;
+
+                    foreach (var guard in keep.Guards.Values)
+                    {
+                        if (guard == null || !guard.IsAlive) continue;
+                        if (guard.Realm == captor) continue;
+                        try { guard.RefreshTemplate(); }
+                        catch (Exception gex) { log.Error($"[PvPFrontier] guard realm refresh on '{name}' failed", gex); }
+                    }
+                }
+                catch (Exception ex) { log.Error($"[PvPFrontier] post-capture realm reconcile of '{name}' failed", ex); }
+
+                NotifyCaptured(keep.KeepID, captor);
+
+                if (log.IsInfoEnabled)
+                    log.Info($"[PvPFrontier] ABSTRACT CAPTURE: {captor} took {what} '{name}'.");
+            }
+
+            /// <summary>Admin-facing war snapshot: per-realm objectives held / momentum / prime-time / focus keep + active keep siege bars.</summary>
+            internal static string BuildWarReport(ushort region)
+            {
+                var keeps = GameServer.KeepManager.GetKeepsOfRegion(region);
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine();
+                sb.AppendLine($"=== War ecosystem (director={PvPFrontierProperties.PVP_FRONTIER_WAR_DIRECTOR}) ===");
+
+                if (keeps == null) { sb.AppendLine("(no keeps in region)"); return sb.ToString(); }
+
+                lock (_lock)
+                {
+                    foreach (eRealm r in new[] { eRealm.Albion, eRealm.Midgard, eRealm.Hibernia })
+                    {
+                        int towers = 0, castles = 0;
+                        foreach (var k in keeps)
+                            if (k != null && k.Realm == r) { if (k is Keeps.GameKeepTower) towers++; else castles++; }
+
+                        RealmWarState st = War(r);
+                        string focusName = "-";
+                        if (st.FocusKeepId != 0)
+                        {
+                            var fk = FindKeepById(keeps, st.FocusKeepId);
+                            focusName = fk?.Name ?? st.FocusKeepId.ToString();
+                        }
+                        sb.AppendLine($"{r,-9} keeps={castles} towers={towers} momentum={st.Momentum:F0} " +
+                            $"prime={DayPhaseBonus(r):F2} cap={FrontCapFor(r, keeps)} focus='{focusName}'");
+                    }
+
+                    if (_keepProgress.Count > 0)
+                    {
+                        sb.AppendLine("Keep sieges in progress:");
+                        foreach (var kv in _keepProgress)
+                        {
+                            var k = FindKeepById(keeps, kv.Key);
+                            sb.AppendLine($"  '{k?.Name ?? kv.Key.ToString()}' {kv.Value.Realm} {kv.Value.Pct:F0}%");
+                        }
+                    }
+                }
+                return sb.ToString();
             }
 
             /// <summary>
@@ -2150,6 +2771,12 @@ namespace DOL.GS.Scripts
             sb.AppendLine("Hydrated groups have actual MimicNPCs running combat AI.");
             sb.AppendLine();
             sb.AppendLine($"Engagement aggression: {PvPFrontierProperties.PVP_FRONTIER_ENGAGE_AGGRESSION} (0=adv only, 1=parity, 2=always)");
+
+            // War ecosystem snapshot (objectives owned / momentum / focus / keep
+            // siege bars), so an admin can watch the campaign breathe.
+            try { sb.Append(SiegeCoordinator.BuildWarReport(REGION_NEW_FRONTIERS)); }
+            catch (Exception ex) { sb.AppendLine($"(war report unavailable: {ex.Message})"); }
+
             return sb.ToString();
         }
     }
@@ -2944,73 +3571,27 @@ namespace DOL.GS.Scripts
             }
 
             bool isTower = keep is Keeps.GameKeepTower;
-            int minutes = isTower
-                ? Math.Max(1, PvPFrontierProperties.PVP_FRONTIER_TOWER_SIEGE_MINUTES)
-                : Math.Max(1, PvPFrontierProperties.PVP_FRONTIER_KEEP_SIEGE_MINUTES);
 
+            // KEEPS are resolved by the coordinator's multi-group progress meter
+            // (TickKeepSiegeProgress) — NOT by a single group's hold timer. The
+            // old per-group 10-min hold could never complete: DormantTick resets
+            // _dormantSiegeStartMs whenever any player passes, and a lone group
+            // can't realistically hold a castle. The coordinator bar instead
+            // accrues from ALL same-realm groups committed to the keep (so a 3-5
+            // group army breaches fast) and survives passers-by. Here we just
+            // keep latched at the gate (hold position, stay lit) and let the
+            // coordinator flip it. The capture, when it lands, clears our claim
+            // (NotifyCaptured) → keep.Realm becomes ours → the guard at the top of
+            // this method drops _siegeTargetKeepId on the next tick.
+            if (!isTower)
+                return true;
+
+            // TOWERS keep the fast per-group hold (it already works well): one
+            // group, short timer, captured via the shared abstract path.
+            int minutes = Math.Max(1, PvPFrontierProperties.PVP_FRONTIER_TOWER_SIEGE_MINUTES);
             if (now - _dormantSiegeStartMs >= minutes * 60_000L)
             {
-                eRealm captor = Config.Realm;
-                string what = isTower ? "tower" : "keep";
-                string name = keep.Name ?? what;
-
-                // keep.Reset is the canonical capture (same call a real lord-death
-                // capture runs). It flips keep.Realm and broadcasts to the war map
-                // EARLY (AbstractGameKeep.Reset ~L1052-1054), then much LATER resets
-                // the guards/banners onto the new realm (~L1087-1103) — but only
-                // AFTER ResetPlayersOfKeep() (~L1084), which does a hookpoint lookup
-                // (component.HookPoints[97] — a Dictionary indexer that THROWS on a
-                // missing key) and a DB SelectObject. In the dormant abstract path
-                // there is no player around, and if that middle step throws, Reset
-                // has ALREADY flipped the realm + lit the war map but NEVER reaches
-                // the guard/banner refresh. Result = the exact reported bug: the
-                // tower/keep shows captured on the map, but ride up to it and the
-                // lord + guards are still the OLD faction. Isolate Reset in its own
-                // try so such a partial failure cannot also skip the reconcile.
-                try
-                {
-                    keep.Reset(captor);
-                }
-                catch (Exception ex)
-                {
-                    log.Error($"[PvPFrontier] abstract capture (Reset) of '{name}' failed", ex);
-                }
-
-                // Reconcile the ON-SITE faction with the war map, OUTSIDE the Reset
-                // try so a partial Reset above can no longer leave stale guards.
-                // Force keep.Realm to the captor (no-op if Reset set it), then
-                // RefreshTemplate every LIVE guard whose realm doesn't match — this
-                // re-derives realm + model + name + emblem from keep.Realm, exactly
-                // what Reset does for the live lord. When Reset fully succeeded the
-                // lord is already the captor (skipped) and the other guards were
-                // killed (not alive, skipped), so this is a clean no-op; only on a
-                // partial-Reset failure does it actually flip the survivors over.
-                try
-                {
-                    if (keep.Realm != captor)
-                        keep.Realm = captor;
-
-                    foreach (var guard in keep.Guards.Values)
-                    {
-                        if (guard == null || !guard.IsAlive) continue;
-                        if (guard.Realm == captor) continue;
-                        try { guard.RefreshTemplate(); }
-                        catch (Exception gex)
-                        {
-                            log.Error($"[PvPFrontier] guard realm refresh on '{name}' failed", gex);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    log.Error($"[PvPFrontier] post-capture realm reconcile of '{name}' failed", ex);
-                }
-
-                PvPFrontierManager.SiegeCoordinator.NotifyCaptured(keep.KeepID, captor);
-
-                if (log.IsInfoEnabled)
-                    log.Info($"[PvPFrontier] ABSTRACT CAPTURE: {captor} took {what} '{name}'.");
-
+                PvPFrontierManager.SiegeCoordinator.AbstractCaptureKeep(keep, Config.Realm);
                 _siegeTargetKeepId = 0;
                 _dormantSiegeStartMs = 0;
             }
@@ -3758,11 +4339,29 @@ namespace DOL.GS.Scripts
             }
 
             // (4) Offensive siege intent. With the real-time director enabled,
-            // route to a director-approved objective (tower preferred; per-realm
-            // cap, recapture cooldown and anti-snowball applied) and remember it
-            // so the assault logic can refresh the claim on arrival. Falls back to
-            // the legacy closest-enemy-keep pick when the director is disabled.
-            if (Util.Chance(PvPFrontierProperties.PVP_FRONTIER_KEEP_ATTACK_CHANCE))
+            // route to a director-approved objective. The WAR DIRECTOR (default)
+            // runs a real DAoC campaign — focus an enemy keep, take its towers to
+            // soften it, then storm the keep — and is checked WITHOUT the
+            // keep-attack-chance gate so the campaign actually progresses (the old
+            // gate + absolute tower-preference is exactly why keeps were never
+            // taken). The legacy PickObjective (tower-preferred) and the pre-
+            // director closest-keep pick remain as fallbacks.
+            if (PvPFrontierProperties.PVP_FRONTIER_REALTIME_SIEGE
+                && PvPFrontierProperties.PVP_FRONTIER_WAR_DIRECTOR)
+            {
+                MimicNPC wld = FirstAliveMember();
+                int wax = wld != null ? wld.X : VirtualPosition.X;
+                int way = wld != null ? wld.Y : VirtualPosition.Y;
+                Keeps.AbstractGameKeep wobj =
+                    PvPFrontierManager.SiegeCoordinator.PickWarObjective(Config.Realm, Region, wax, way);
+                if (wobj != null)
+                {
+                    _siegeTargetKeepId = wobj.KeepID;
+                    _currentWaypoint = new Point3D(wobj.X, wobj.Y, wobj.Z);
+                    return;
+                }
+            }
+            else if (Util.Chance(PvPFrontierProperties.PVP_FRONTIER_KEEP_ATTACK_CHANCE))
             {
                 if (PvPFrontierProperties.PVP_FRONTIER_REALTIME_SIEGE)
                 {
