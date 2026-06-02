@@ -272,6 +272,26 @@ namespace DOL.GS.Scripts
             "A realm holding this many objectives OR FEWER is treated as an 'underdog' and gets an extra concurrent siege front + a momentum floor, so a realm that's been steamrolled can claw back instead of being farmed forever. Default 6 (≈ its starting home keeps). Set to 0 to disable underdog support.", 6)]
         public static int PVP_FRONTIER_WAR_UNDERDOG_KEEPS;
 
+        [ServerProperty("pvpfrontier", "pvp_frontier_war_momentum_max",
+            "Hard ceiling on a realm's war momentum. Caps how far ahead a hot realm can snowball — combined with diminishing capture returns (a capture is worth less the more objectives you already own) it keeps the three realms trading the map instead of one running away with it. Default 60 (=3 captures' worth). Lower = tighter balance.", 60)]
+        public static int PVP_FRONTIER_WAR_MOMENTUM_MAX;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_war_defense_pct",
+            "Percent (0-100) of a realm's roaming groups the war director will peel off to DEFEND its own keeps that are currently under siege, instead of all of them pushing offence. Default 35 — about a third of the realm answers the 'keep under attack' call, so a besieged castle gets real defenders at the gate (an actual fight) rather than falling uncontested. 0 disables auto-defense (offence only).", 35)]
+        public static int PVP_FRONTIER_WAR_DEFENSE_PCT;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_war_defense_per_keep",
+            "Maximum number of mimic groups the war director rallies to defend ONE besieged friendly keep. Caps the defensive commitment so a single threatened keep doesn't drain the whole realm off the map. Default 3.", 3)]
+        public static int PVP_FRONTIER_WAR_DEFENSE_PER_KEEP;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_war_siege_tug_of_war",
+            "When true (default), an abstract keep siege is a TUG-OF-WAR: the progress bar rises with the attackers' committed strength but FALLS with the defenders' (defending mimic groups rallied to the keep + owner-realm players present). A well-defended keep stalls or even pushes the besiegers back to 0 (siege broken), so defending is genuinely meaningful. When false, the bar only ever rises while no defender stands on the keep (the simpler model).", true)]
+        public static bool PVP_FRONTIER_WAR_SIEGE_TUG_OF_WAR;
+
+        [ServerProperty("pvpfrontier", "pvp_frontier_war_defender_strength",
+            "How much each defending mimic group subtracts from the besiegers' effective attacking strength in the tug-of-war meter, as a percent of one attacking group. Default 80 (=0.8 group each) — defense slows a siege HARD (a matched defense stretches it ~5x) but a tie still resolves so a fully-defended keep doesn't deadlock forever at low population. Owner-realm PLAYERS at the keep count double (1.6 each), so a couple of humans can flat-out break a mimic siege (bar pushed to 0). Raise toward/above 100 to make defense dominant, lower for offence-favoured.", 80)]
+        public static int PVP_FRONTIER_WAR_DEFENDER_STRENGTH;
+
         [ServerProperty("pvpfrontier", "pvp_frontier_abstract_siege",
             "When true, a frontier group that reaches an enemy objective while DORMANT (no player nearby to watch the fight) resolves the capture abstractly after a timer — flipping the tower/keep via the normal capture path WITHOUT spawning bots. This is what makes the war map actually live and change hands across the frontier at near-zero CPU; when a player IS nearby the group hydrates and fights for real instead. Default true.", true)]
         public static bool PVP_FRONTIER_ABSTRACT_SIEGE;
@@ -1521,10 +1541,24 @@ namespace DOL.GS.Scripts
                                 _assignments.Remove(id);
 
                                 // War momentum: the new owner gets a streak spike
-                                // (presses its advantage); the loser's focus on
-                                // this keep is cleared if it just lost it.
+                                // (presses its advantage), but with DIMINISHING
+                                // RETURNS + a hard CAP so a dominant realm can't
+                                // snowball — the more objectives you already hold,
+                                // the less a fresh capture is worth, which keeps
+                                // the three realms trading the map.
                                 if (k.Realm is eRealm.Albion or eRealm.Midgard or eRealm.Hibernia)
-                                    War(k.Realm).Momentum += Math.Max(0, PvPFrontierProperties.PVP_FRONTIER_WAR_MOMENTUM_PER_CAPTURE);
+                                {
+                                    double baseGain = Math.Max(0, PvPFrontierProperties.PVP_FRONTIER_WAR_MOMENTUM_PER_CAPTURE);
+                                    int owned = CountOwned(k.Realm, keeps);
+                                    int total = keeps.Count;
+                                    // Held fraction 0..1 → gain scales from full
+                                    // (own little) down to ~25% (own most). Linear.
+                                    double held = total > 0 ? owned / (double)total : 0;
+                                    double gain = baseGain * (1.0 - 0.75 * held);
+                                    double cap = Math.Max(baseGain, PvPFrontierProperties.PVP_FRONTIER_WAR_MOMENTUM_MAX);
+                                    var ws = War(k.Realm);
+                                    ws.Momentum = Math.Min(cap, ws.Momentum + gain);
+                                }
 
                                 if (log.IsInfoEnabled)
                                     log.Info($"[PvPFrontier] objective '{k.Name}' flipped {prev} -> {k.Realm}; siege recapture cooldown {PvPFrontierProperties.PVP_FRONTIER_SIEGE_RECAPTURE_COOLDOWN_MIN}m.");
@@ -1603,20 +1637,52 @@ namespace DOL.GS.Scripts
                     }
                     if (besieger == keep.Realm) { lock (_lock) _keepProgress.Remove(id); continue; }
 
-                    int groups = CountGroupsCommittedToKeep(besieger, region, id);
-                    if (groups <= 0)
+                    // Only attackers physically AT the keep (≤ siege-arrival range)
+                    // fill the bar — a group still en route doesn't besiege yet.
+                    const long ATK_RANGE_SQ = 4000L * 4000L;
+                    double attackers = CountGroupsCommittedToKeep(besieger, region, id,
+                        nearOnly: true, kx: keep.X, ky: keep.Y, nearRangeSq: ATK_RANGE_SQ);
+                    if (attackers <= 0)
                     {
-                        lock (_lock) _keepProgress.Remove(id);
+                        // No attacker on site yet: don't fill, but DON'T drop the
+                        // claim either (the army may still be marching in). Just
+                        // hold the bar where it is.
+                        lock (_lock)
+                        {
+                            if (_keepProgress.TryGetValue(id, out var idle) && idle.Realm == besieger)
+                            {
+                                idle.LastTick = now;
+                                _keepProgress[id] = idle;
+                            }
+                        }
                         continue;
                     }
 
-                    // A defender (owner-realm human) physically at the keep pauses
-                    // the abstract bar — the keep must then be taken in real
-                    // combat. Advance LastTick while paused so the paused interval
-                    // is NOT retro-credited when the defender leaves (otherwise the
-                    // bar would jump forward by the whole defended duration).
-                    if (DefenderPresentAt(region, keep))
+                    // ---- TUG-OF-WAR: net = attackers − defenders ----
+                    // The bar rises with the besiegers' committed strength and
+                    // FALLS with the defenders' (rallied friendly mimic groups +
+                    // owner-realm players at the keep), so a well-defended castle
+                    // can stall the siege or break it (bar pushed back to 0). This
+                    // is what makes defending matter. When the tug-of-war is off,
+                    // defenders merely PAUSE the bar (the simpler legacy model).
+                    double defenders = 0;
+                    bool tug = PvPFrontierProperties.PVP_FRONTIER_WAR_SIEGE_TUG_OF_WAR;
+                    double defStrength = Math.Max(0, PvPFrontierProperties.PVP_FRONTIER_WAR_DEFENDER_STRENGTH) / 100.0;
+
+                    if (tug)
                     {
+                        // Only defenders physically AT the keep (≤4000u) count —
+                        // a group still marching in doesn't push the bar back yet.
+                        const long DEF_RANGE_SQ = 4000L * 4000L;
+                        int defGroups = CountGroupsDefendingKeep(keep.Realm, region, id,
+                            nearOnly: true, kx: keep.X, ky: keep.Y, nearRangeSq: DEF_RANGE_SQ);
+                        int defPlayers = CountOwnerPlayersAt(region, keep);
+                        // Players defend twice as hard as a mimic group.
+                        defenders = (defGroups + 2.0 * defPlayers) * defStrength;
+                    }
+                    else if (DefenderPresentAt(region, keep))
+                    {
+                        // Legacy pause model: a defender present freezes the bar.
                         lock (_lock)
                         {
                             if (_keepProgress.TryGetValue(id, out var paused) && paused.Realm == besieger)
@@ -1628,12 +1694,13 @@ namespace DOL.GS.Scripts
                         continue;
                     }
 
-                    // Progress rate: a full keep_min_siege_groups army fills the
-                    // bar in keep_siege_minutes; more groups go faster, fewer go
-                    // proportionally slower (a lone group ≈ 1/minGroups speed).
+                    // Net rate: a full keep_min_siege_groups army (minus defenders)
+                    // fills the bar in keep_siege_minutes; surplus attackers go
+                    // faster (capped 2x), a defended siege goes slower or reverses.
+                    double net = attackers - defenders;
                     double fullMs = keepMinutes * 60_000.0;
-                    double groupFactor = Math.Min(2.0, groups / (double)minGroups); // cap 2x
-                    double perMsPct = 100.0 / fullMs * groupFactor;
+                    double netFactor = Math.Clamp(net / minGroups, -1.0, 2.0);
+                    double perMsPct = 100.0 / fullMs * netFactor;
 
                     lock (_lock)
                     {
@@ -1643,8 +1710,25 @@ namespace DOL.GS.Scripts
                         double elapsed = prog.LastTick == 0 ? 0 : now - prog.LastTick;
                         prog.Pct += perMsPct * elapsed;
                         prog.LastTick = now;
-                        _keepProgress[id] = prog;
 
+                        // Siege broken: defenders pushed the bar back to 0. Drop
+                        // the meter AND the offensive claim so the besiegers move
+                        // on instead of grinding a hopeless front forever, and arm
+                        // a short cooldown so they don't immediately re-open it.
+                        if (prog.Pct <= 0)
+                        {
+                            _keepProgress.Remove(id);
+                            if (net < 0)
+                            {
+                                _assignments.Remove(id);
+                                _cooldownUntil[id] = now + 60_000L; // 1 min breather
+                                if (log.IsInfoEnabled)
+                                    log.Info($"[PvPFrontier] siege of '{keep.Name ?? id.ToString()}' BROKEN by defenders ({besieger} pushed off).");
+                            }
+                            continue;
+                        }
+
+                        _keepProgress[id] = prog;
                         if (prog.Pct < 100.0)
                             continue;
                     }
@@ -1653,6 +1737,25 @@ namespace DOL.GS.Scripts
                     AbstractCaptureKeep(keep, besieger);
                     lock (_lock) _keepProgress.Remove(id);
                 }
+            }
+
+            /// <summary>Counts owner-realm human players within ~4000u of the keep (live defenders).</summary>
+            private static int CountOwnerPlayersAt(ushort region, Keeps.AbstractGameKeep keep)
+            {
+                PlayerSnapshot snap = GetPlayerSnapshot(region);
+                if (snap == null || snap.Sampled.Count == 0)
+                    return 0;
+
+                const long R = 4000;
+                long rSq = R * R;
+                int n = 0;
+                foreach (PlayerSampledPos p in snap.Sampled)
+                {
+                    if (p.Realm != keep.Realm) continue;
+                    long dx = p.X - keep.X, dy = p.Y - keep.Y;
+                    if (dx * dx + dy * dy <= rSq) n++;
+                }
+                return n;
             }
 
             /// <summary>True if any owner-realm human player is within ~4000u of the keep (a live defender).</summary>
@@ -1690,6 +1793,12 @@ namespace DOL.GS.Scripts
                     s.LastDecayTick = now;
 
                     s.Momentum = Math.Max(0, s.Momentum - perMin * minutes);
+
+                    // Hard cap (defensive — capture spikes already clamp, but a
+                    // config change shouldn't strand a realm above the ceiling).
+                    double cap = Math.Max(PvPFrontierProperties.PVP_FRONTIER_WAR_MOMENTUM_PER_CAPTURE,
+                                          PvPFrontierProperties.PVP_FRONTIER_WAR_MOMENTUM_MAX);
+                    if (s.Momentum > cap) s.Momentum = cap;
 
                     // Underdog floor: a steamrolled realm keeps a little momentum
                     // so it can mount a comeback instead of being farmed to zero.
@@ -1752,11 +1861,26 @@ namespace DOL.GS.Scripts
                 bool leading = mine >= alb && mine >= mid && mine >= hib && !(alb == mid && mid == hib);
 
                 int cap = baseCap;
-                if (leading) cap -= 1;
 
-                // Underdog: a steamrolled realm gets an extra front to claw back.
+                // Anti-snowball, scaled by the size of the lead. A small lead
+                // loses 1 front; a BLOWOUT lead (owning a big chunk more than the
+                // runner-up) loses 2, so a runaway realm self-limits harder and
+                // the other two get room to fight back.
+                if (leading)
+                {
+                    int second = Math.Max(realm == eRealm.Albion ? Math.Max(mid, hib)
+                                        : realm == eRealm.Midgard ? Math.Max(alb, hib)
+                                        : Math.Max(alb, mid), 0);
+                    int leadGap = mine - second;
+                    cap -= (leadGap >= 8) ? 2 : 1; // 8 objectives ≈ two keeps + towers
+                }
+
+                // Underdog: a steamrolled realm gets extra fronts to claw back —
+                // one normally, two when it's REALLY behind (≤ half the underdog
+                // threshold), so a near-wiped realm can mount a real comeback.
                 int underdogAt = PvPFrontierProperties.PVP_FRONTIER_WAR_UNDERDOG_KEEPS;
-                if (underdogAt > 0 && mine <= underdogAt) cap += 1;
+                if (underdogAt > 0 && mine <= underdogAt)
+                    cap += (mine <= underdogAt / 2) ? 2 : 1;
 
                 // Momentum + day-phase: a realm on a hot streak / in its prime
                 // time presses with one more concurrent front.
@@ -2076,12 +2200,18 @@ namespace DOL.GS.Scripts
 
                     if (_keepProgress.Count > 0)
                     {
-                        sb.AppendLine("Keep sieges in progress:");
+                        sb.AppendLine("Keep sieges in progress (tug-of-war %):");
                         foreach (var kv in _keepProgress)
                         {
                             var k = FindKeepById(keeps, kv.Key);
-                            sb.AppendLine($"  '{k?.Name ?? kv.Key.ToString()}' {kv.Value.Realm} {kv.Value.Pct:F0}%");
+                            bool contested = false;
+                            try { contested = k != null && k.InCombat; } catch { }
+                            sb.AppendLine($"  '{k?.Name ?? kv.Key.ToString()}' attacker={kv.Value.Realm} {kv.Value.Pct:F0}%{(contested ? " [contested]" : "")}");
                         }
+                    }
+                    else
+                    {
+                        sb.AppendLine("No keep sieges in progress.");
                     }
                 }
                 return sb.ToString();
@@ -2198,7 +2328,8 @@ namespace DOL.GS.Scripts
             /// called while holding <see cref="_lock"/> (it takes _configsLock —
             /// keep the two locks un-nested to avoid any ordering inversion).
             /// </summary>
-            internal static int CountGroupsCommittedToKeep(eRealm realm, ushort region, ushort keepId)
+            internal static int CountGroupsCommittedToKeep(eRealm realm, ushort region, ushort keepId,
+                bool nearOnly = false, int kx = 0, int ky = 0, long nearRangeSq = 0)
             {
                 int count = 0;
                 lock (_configsLock)
@@ -2209,8 +2340,50 @@ namespace DOL.GS.Scripts
                         foreach (PvPFrontierGroup g in cfg.Groups)
                         {
                             if (g == null || g.IsDisbanded) continue;
-                            if (g.SiegeTargetKeepId == keepId)
-                                count++;
+                            if (g.SiegeTargetKeepId != keepId) continue;
+                            if (nearOnly)
+                            {
+                                var (gx, gy) = g.RepresentativeXY();
+                                long dx = gx - kx, dy = gy - ky;
+                                if (dx * dx + dy * dy > nearRangeSq) continue;
+                            }
+                            count++;
+                        }
+                    }
+                }
+                return count;
+            }
+
+            /// <summary>
+            /// Counts <paramref name="realm"/>'s live groups currently rallying to
+            /// DEFEND <paramref name="keepId"/> (DefenseTargetKeepId). When
+            /// <paramref name="nearOnly"/> is set, only groups physically WITHIN
+            /// <paramref name="nearRangeSq"/> of (<paramref name="kx"/>,<paramref name="ky"/>)
+            /// count — so a group still marching to the keep doesn't inflate the
+            /// tug-of-war defender total before it actually arrives. Same lock
+            /// discipline as <see cref="CountGroupsCommittedToKeep"/> (takes
+            /// _configsLock; must NOT be called holding _lock).
+            /// </summary>
+            internal static int CountGroupsDefendingKeep(eRealm realm, ushort region, ushort keepId,
+                bool nearOnly = false, int kx = 0, int ky = 0, long nearRangeSq = 0)
+            {
+                int count = 0;
+                lock (_configsLock)
+                {
+                    if (_configs.TryGetValue(region, out var byRealm)
+                        && byRealm.TryGetValue(realm, out var cfg))
+                    {
+                        foreach (PvPFrontierGroup g in cfg.Groups)
+                        {
+                            if (g == null || g.IsDisbanded) continue;
+                            if (g.DefenseTargetKeepId != keepId) continue;
+                            if (nearOnly)
+                            {
+                                var (gx, gy) = g.RepresentativeXY();
+                                long dx = gx - kx, dy = gy - ky;
+                                if (dx * dx + dy * dy > nearRangeSq) continue;
+                            }
+                            count++;
                         }
                     }
                 }
@@ -2292,6 +2465,70 @@ namespace DOL.GS.Scripts
                 {
                     lock (_lock)
                         _assignments[best.KeepID] = (realm, now + CLAIM_TTL_MS); // keep the front warm
+                }
+                return best;
+            }
+
+            /// <summary>
+            /// Defensive steering. Picks a FRIENDLY keep under siege for this group
+            /// to rally to, so a realm peels part of its force off offence to make
+            /// a besieged castle an actual fight instead of a free flip. A keep is
+            /// "threatened" when an enemy holds an open siege front on it (its
+            /// progress meter is live) or it is otherwise InCombat. Honours
+            /// PVP_FRONTIER_WAR_DEFENSE_PER_KEEP (max defenders per keep) so one
+            /// keep can't drain the whole realm. Returns the nearest threatened,
+            /// under-defended friendly keep, or null. The CALLER decides (via the
+            /// defense-share roll) whether this group is one of the defenders.
+            /// </summary>
+            internal static Keeps.AbstractGameKeep PickDefenseObjective(eRealm realm, ushort region, int anchorX, int anchorY)
+            {
+                if (!PvPFrontierProperties.PVP_FRONTIER_WAR_DIRECTOR)
+                    return null;
+                int perKeep = Math.Max(0, PvPFrontierProperties.PVP_FRONTIER_WAR_DEFENSE_PER_KEEP);
+                if (perKeep <= 0)
+                    return null;
+
+                var keeps = GameServer.KeepManager.GetKeepsOfRegion(region);
+                if (keeps == null || keeps.Count == 0)
+                    return null;
+
+                long now = GameLoop.GameLoopTime;
+
+                // Phase 1: collect our threatened keeps under _lock (read claims +
+                // progress meters). Don't count defenders here (that needs
+                // _configsLock) — snapshot, release, then count outside.
+                List<Keeps.AbstractGameKeep> threatened = null;
+                lock (_lock)
+                {
+                    foreach (var k in keeps)
+                    {
+                        if (k is not Keeps.GameKeep keep) continue;   // defend real keeps
+                        if (keep.Realm != realm) continue;            // ours only
+
+                        bool enemyFront = _assignments.TryGetValue(keep.KeepID, out var asg)
+                                          && asg.expireTick > now && asg.realm != realm;
+                        bool besieged = _keepProgress.ContainsKey(keep.KeepID);
+                        bool inCombat = false;
+                        try { inCombat = keep.InCombat; } catch { /* region not ready */ }
+
+                        if (enemyFront || besieged || inCombat)
+                            (threatened ??= new List<Keeps.AbstractGameKeep>()).Add(keep);
+                    }
+                }
+
+                if (threatened == null)
+                    return null;
+
+                // Phase 2: nearest threatened keep still short of its defender cap.
+                Keeps.AbstractGameKeep best = null;
+                long bestDistSq = long.MaxValue;
+                foreach (var k in threatened)
+                {
+                    if (CountGroupsDefendingKeep(realm, region, k.KeepID) >= perKeep)
+                        continue; // already has enough defenders
+                    long dx = k.X - anchorX, dy = k.Y - anchorY;
+                    long distSq = dx * dx + dy * dy;
+                    if (distSq < bestDistSq) { bestDistSq = distSq; best = k; }
                 }
                 return best;
             }
@@ -2813,6 +3050,21 @@ namespace DOL.GS.Scripts
         /// </summary>
         internal ushort SiegeTargetKeepId => _siegeTargetKeepId;
 
+        /// <summary>
+        /// KeepID of a FRIENDLY keep this group is currently rallying to DEFEND
+        /// (0 = none). Set when the war director peels the group off offence to
+        /// answer a 'keep under attack' call; read by the tug-of-war meter to
+        /// count defenders. Distinct from <see cref="SiegeTargetKeepId"/> (offence).
+        /// </summary>
+        internal ushort DefenseTargetKeepId => _defenseTargetKeepId;
+
+        /// <summary>Representative map position: the live leader while hydrated, else the dormant VirtualPosition.</summary>
+        internal (int X, int Y) RepresentativeXY()
+        {
+            MimicNPC ldr = IsHydrated ? FirstAliveMember() : null;
+            return ldr != null ? (ldr.X, ldr.Y) : (VirtualPosition.X, VirtualPosition.Y);
+        }
+
         // ----- Logical roster / dormant simulation -----
         //
         // A LogicalMember is a persistent identity (class, level, name, gender,
@@ -2906,6 +3158,9 @@ namespace DOL.GS.Scripts
         // assaulting under the SiegeCoordinator's direction (0 = none). Lets the
         // assault logic refresh its siege claim so the slot isn't freed mid-fight.
         private ushort _siegeTargetKeepId;
+        // KeepID of a FRIENDLY keep this group is rallying to defend (0 = none),
+        // set by the war director's defensive peel. Counted by the tug-of-war meter.
+        private ushort _defenseTargetKeepId;
         // GameLoopTime at which this group, while DORMANT, arrived at its siege
         // objective and began the abstract (no-spawn) assault (0 = not besieging).
         private long _dormantSiegeStartMs;
@@ -3469,13 +3724,26 @@ namespace DOL.GS.Scripts
             // running (≈191), let alone sprinting (≈248). When a player is in
             // track range we both steer at them AND use the faster
             // DORMANT_PURSUIT_DISTANCE catch-up step; otherwise we patrol normally.
+            // Campaign commitment inertia: a group that has ALREADY latched onto
+            // a siege objective (arrived, clock running) does NOT abandon the
+            // assault just because a player wanders into track range. Real RvR
+            // siege groups commit — they don't peel off to chase every passing
+            // scout. (A player who comes truly close still hydrates the group via
+            // HYDRATE_RANGE, turning it into a real fight; and an active defense
+            // assignment likewise holds.) Only a NOT-yet-besieging group chases.
+            bool committedToSiege = (_siegeTargetKeepId != 0 && _dormantSiegeStartMs != 0)
+                                    || _defenseTargetKeepId != 0;
+
             bool pursuing = false;
-            Point3D pursue = PickClosestEnemyPlayerWaypoint();
-            if (pursue != null)
+            if (!committedToSiege)
             {
-                _currentWaypoint = pursue;
-                pursuing = true;
-                _dormantSiegeStartMs = 0; // chasing a player takes priority over a siege
+                Point3D pursue = PickClosestEnemyPlayerWaypoint();
+                if (pursue != null)
+                {
+                    _currentWaypoint = pursue;
+                    pursuing = true;
+                    _dormantSiegeStartMs = 0; // chasing a player takes priority over a siege
+                }
             }
 
             // Abstract siege: with no player nearby to observe a real fight, a
@@ -4277,11 +4545,37 @@ namespace DOL.GS.Scripts
             //   5. Random patrol waypoint.
             //   6. Fall back to spawn anchor.
 
-            // Reset any prior offensive-siege intent; only the offensive branch
-            // (4) below re-sets it when this group commits to an objective.
+            // Reset any prior offensive-siege / defense intent; the branches
+            // below re-set them when this group commits to an objective.
             _siegeTargetKeepId = 0;
+            _defenseTargetKeepId = 0;
 
-            // (1) Defend a friendly keep under siege.
+            // (1) DEFENSE. With the war director on, a SHARE of the realm's groups
+            // (pvp_frontier_war_defense_pct) answer the 'keep under attack' call so
+            // a besieged castle gets real defenders at the gate (tug-of-war) rather
+            // than falling uncontested — while the rest keep pushing offence, so
+            // the realm doesn't abandon the map. The defense-share roll is per
+            // waypoint-pick, so the defending fraction naturally rotates.
+            if (PvPFrontierProperties.PVP_FRONTIER_WAR_DIRECTOR
+                && PvPFrontierProperties.PVP_FRONTIER_REALTIME_SIEGE
+                && Util.Chance(PvPFrontierProperties.PVP_FRONTIER_WAR_DEFENSE_PCT))
+            {
+                MimicNPC dld = FirstAliveMember();
+                int dax = dld != null ? dld.X : VirtualPosition.X;
+                int day = dld != null ? dld.Y : VirtualPosition.Y;
+                Keeps.AbstractGameKeep defKeep =
+                    PvPFrontierManager.SiegeCoordinator.PickDefenseObjective(Config.Realm, Region, dax, day);
+                if (defKeep != null)
+                {
+                    _defenseTargetKeepId = defKeep.KeepID;
+                    _currentWaypoint = new Point3D(defKeep.X, defKeep.Y, defKeep.Z);
+                    return;
+                }
+            }
+
+            // (1b) Legacy/fallback defense: any friendly keep in combat, nearest
+            // (covers the non-war-director path and InCombat keeps that aren't a
+            // tracked siege front yet).
             Point3D defendTarget = PickFriendlyKeepUnderAttack();
             if (defendTarget != null)
             {
