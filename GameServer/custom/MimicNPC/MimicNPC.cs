@@ -231,6 +231,13 @@ namespace DOL.GS.Scripts
             SetArmor();
             SetJewelry();
             RefreshItemBonuses();
+
+            // Spend the bot's RealmLevel (set in SetLevel above) on an
+            // archetype-appropriate passive realm-ability loadout. Done before
+            // the Health/Mana top-up below so Toughness / Augmented Con / etc.
+            // are already folded into MaxHealth/MaxMana when we fill the bars.
+            ApplyRealmAbilities();
+
             IsCloakHoodUp = Util.Random(1) > 0;
 
             Health = MaxHealth;

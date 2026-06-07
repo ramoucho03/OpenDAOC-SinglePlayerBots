@@ -223,6 +223,13 @@ namespace DOL.GS.Scripts
 
                     if (RealmLevel % 10 == 0)
                     {
+                        // Crossed into a new realm rank — re-spend the larger
+                        // realm-point budget on the passive RA loadout so an
+                        // earned RR actually translates into combat presence.
+                        // (Re-application wipes and rebuilds; it never tops up
+                        // current Health, so no free mid-combat heal.)
+                        ApplyRealmAbilities();
+
                         foreach (GamePlayer plr in GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
                             plr.Out.SendLivingDataUpdate(this, true);
 

@@ -15,7 +15,7 @@ namespace DOL.GS.Scripts
 
         public static readonly bool LFG_CLASS_BIAS = true;     // Not implemented
         public static readonly bool LFG_LEVEL_BIAS = true;     // Should bots take level difference into account when trying to group
-        public static readonly bool WEAPON_ROG = false;        // Not implemented
+        public static readonly bool WEAPON_ROG = true;         // Should bots receive class-adapted ROG weapons (stats matched to their spec), or random DB-template weapons
         public static readonly bool ARMOR_ROG = true;          // Should bots recieve ROG items based on class, or random items from the DB
         public static readonly bool PLAYER_LOOTMASTER = false; // Should all loot go to the player leader or distribute to bots as normal
 

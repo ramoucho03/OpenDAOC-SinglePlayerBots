@@ -988,6 +988,17 @@ namespace DOL.GS.Scripts
 
         public static void SetMeleeWeapon(IGamePlayer player, eObjectType weapType, eHand hand, eWeaponDamageType damageType = 0)
         {
+            // Class-adapted weapons: when WEAPON_ROG is on, every mimic gets a
+            // Generated Unique weapon itemised for its class (stats matched to
+            // the spec) instead of a random DB template whose bonuses may be
+            // irrelevant to the build. Mirrors the ARMOR_ROG / jewelry path so
+            // the whole loadout reads as "adapté à la spé".
+            if (MimicConfig.WEAPON_ROG)
+            {
+                SetMeleeWeaponRog(player, weapType, hand, damageType);
+                return;
+            }
+
             int min = Math.Max(1, player.Level - 6);
             int max = Math.Min(51, player.Level + 4);
 
@@ -1045,6 +1056,16 @@ namespace DOL.GS.Scripts
             if (log.IsWarnEnabled)
                 log.Warn($"No melee weapon found in DB for {player.Name} ({weapType}/{hand} L{player.Level}/{player.Realm}); generating ROG fallback");
 
+            SetMeleeWeaponRog(player, weapType, hand, damageType);
+        }
+
+        /// <summary>
+        /// Generates a class-adapted Generated Unique melee weapon and equips
+        /// it in the slot implied by <paramref name="hand"/>. Shared by the
+        /// WEAPON_ROG path and the "no DB weapon found" fallback.
+        /// </summary>
+        private static void SetMeleeWeaponRog(IGamePlayer player, eObjectType weapType, eHand hand, eWeaponDamageType damageType)
+        {
             eInventorySlot fallbackSlot = hand switch
             {
                 eHand.twoHand => eInventorySlot.TwoHandWeapon,
@@ -1063,6 +1084,20 @@ namespace DOL.GS.Scripts
 
         public static void SetRangedWeapon(IGamePlayer player, eObjectType weapType)
         {
+            // Class-adapted ranged weapon (see SetMeleeWeapon for the rationale).
+            if (MimicConfig.WEAPON_ROG)
+            {
+                SetWeaponROG((GameLiving)player,
+                    player.Realm,
+                    (eCharacterClass)player.CharacterClass.ID,
+                    GetRogItemLevel(player.Level),
+                    weapType,
+                    eInventorySlot.DistanceWeapon,
+                    eDamageType.Slash,
+                    GetRogUtilityFloor(player.Level));
+                return;
+            }
+
             int min = Math.Max(1, player.Level - 6);
             int max = Math.Min(51, player.Level + 3);
 
@@ -1901,8 +1936,9 @@ namespace DOL.GS.Scripts
         // into a live PvP population, so ~half the time GetName hands out one
         // of these instead of a lore first name. Roughly half of each list is
         // realm-flavoured (Arthurian / Celtic / Norse cores dressed up with
-        // gamer affixes) and half is generic modern gamer tags. 200 unique
-        // entries per realm. Generated via gen_gamer_names.py.
+        // gamer affixes) and half is generic modern gamer tags. ~700 unique
+        // entries per realm (an original ~200 plus a 500-strong digit-free
+        // batch appended below each array). Generated via gen_gamer_names.py.
 
         private static readonly string[] _albGamer =
         {
@@ -1940,6 +1976,91 @@ namespace DOL.GS.Scripts
             "Crusader", "Crawler64", "Percival", "VoidHydra1337", "WildCrawler12", "Ghost256",
             "Ozone99", "iLogres", "Lone9000", "ItsBriton", "xXTalonXx", "Sorcerer",
             "RealLion", "JustRage",
+            // 500 additional digit-free gamer handles (gen_gamer_names.py, 2026-06)
+            "LunarBedivere", "LethalViperOG", "MistyEclipse", "LethalPaladin", "LethalLion", "ShadowHawk",
+            "BigEdge", "RabidSerpent", "SacredWispTTV", "SurgePro", "VileRazor", "UltraBriton",
+            "VoidHelixOG", "MossyFlameGG", "FrozenArmsmanZ", "MegaAssassin", "FeralEclipseX", "SilentThrone",
+            "SaxonPlasma", "MordredHunter", "VerdantWardenZ", "KnightSaber", "UltraBeastOG", "HyperNova",
+            "FrozenFox", "CrimsonHawkPro", "xKnight", "UltraHunterHD", "ItsHelix", "FatalGolem",
+            "TheHelixHD", "BigTiger", "IronFury", "SaxonCobra", "ObsidianTitanGG", "SolarPlasmaZ",
+            "ExcaliburHD", "MistyBriton", "SableNovaKing", "GoldenWolfKing", "TristanOP", "iTigerPro",
+            "SkullOP", "DaRazor", "AlbionCyber", "BigReaver", "xCamelot", "AbyssYT",
+            "ArmsmanRiptide", "BigVortexTTV", "FriarRender", "ArthurGolem", "TheEmber", "GoldenFluxKing",
+            "MrShark", "SavageTiger", "StormSerpentGG", "SniperX", "LogresCyber", "FatalBreakerGod",
+            "CrusaderSurge", "AvalonGG", "FangPro", "SilentWardenPro", "OnyxAvalon", "ReaverTTV",
+            "OnlyCyberPro", "VoidSaber", "MegaVortex", "xXCamlannXx", "RealBoltLord", "HolyTigerGod",
+            "FrostSpecter", "MordredEdge", "RabidAssassin", "FangOP", "SilentFang", "SaxonWraith",
+            "TheCamelot", "CamlannSkull", "AvalonGhost", "PaladinOP", "EpicCobraHD", "AlbionRiptide",
+            "LionheartMauler", "CamelotWraith", "DaFox", "SorcererCyber", "BrutalTalonX", "LethalSaxon",
+            "FatalPhoenixOP", "HelixOG", "ShadowCamlannX", "DaWraithOP", "VoidNinjaOP", "BedivereNova",
+            "MerlinDragon", "LunarPlasma", "NumbKnightTTV", "TristanWraith", "CamelotGlitch", "SaxonTempest",
+            "LionheartBlaze", "FrostBlaze", "OnyxHawkGG", "FeralTiger", "FluxX", "VoidTheurg",
+            "SacredDoomLord", "ItsNinja", "NobleDrifter", "FatalLancelot", "SolarBreaker", "NumbLancer",
+            "ToxicMaelstrom", "HyperLionheart", "IronTitan", "SolarPulseKing", "NumbMaulerGod", "xMerlin",
+            "TristanRazor", "CrimsonEclipse", "CamlannCyber", "VileTigerGod", "FatalDrifter", "VoidBreakerGod",
+            "WildHavocLord", "VoidViperKing", "FrostPhoenix", "BrutalViper", "VileRazorX", "SavagePhoenix",
+            "BrutalMaulerGG", "FeralBriton", "SurgeKing", "SavageFox", "NobleSorcererGG", "GawainOP",
+            "MegaMaulerYT", "BrutalCobra", "FrozenHydra", "ColdLogres", "EpicLancelotPro", "ToxicVortex",
+            "HolyLogres", "NobleCometGod", "RabidPlasma", "MossyTitanX", "xXSpecterXx", "SavagePlasmaPro",
+            "StrikerX", "ItsRogueLord", "MordredReaper", "AlbionPulse", "AshenShark", "PercivalLion",
+            "IronCinderGod", "IronTheurg", "SavageHydraHD", "WildHydraOG", "RazorKing", "LethalGalahad",
+            "SolarRazor", "FrostCyberZ", "FuryOG", "RapidRaven", "HyperDrifter", "OnyxSlayer",
+            "AshenSaxon", "CometGG", "GoldenSlayer", "SavageWardenYT", "LilSpecter", "ShadowFoxOG",
+            "NoblePulse", "WraithTTV", "SavageBedivere", "WardenGG", "FeralLogres", "TheCobraHD",
+            "PercivalMauler", "ColdRogue", "LogresBane", "LancelotLion", "CrusaderHydra", "SolarAbyss",
+            "VileGalahadTTV", "MistyReaverHD", "iStalkerOG", "NobleEclipse", "ItsRage", "TheFlameGG",
+            "DarkVortexHD", "CyberOG", "DaAssassinX", "StormNinja", "FluxGG", "FeralReaper",
+            "CrusaderTiger", "OnlyGawainYT", "GrimMauler", "FrozenTiger", "BrutalHydraOP", "LunarZenithKing",
+            "AshenFlameHD", "RapidWisp", "LethalBedivere", "PellinoreEcho", "RabidWolf", "MordredSkull",
+            "VoidGrailGod", "TristanEmber", "VileWolf", "OnlySniper", "ArthurBane", "ExcaliburVortex",
+            "RapidAssassin", "MegaNovaPro", "SilentGrailZ", "WildCrusaderGG", "KnightCobra", "MossyRenderOP",
+            "MaulerGod", "FriarZenith", "ReaverHelix", "IronStriker", "MrAvalon", "FriarPulse",
+            "DarkCrawlerTTV", "FrostGlitch", "IronVortex", "OnyxBlazeZ", "PulsePro", "DarkFlux",
+            "FeralPhantomTTV", "VoidSaberX", "RealSmasher", "PaladinHunter", "EpicMaelstrom", "DaTemplarOP",
+            "StalkerKing", "VoidFlame", "FrostSorcerer", "BedivereLord", "NumbTempestKing", "GalahadPulse",
+            "FriarSlayer", "MistyKraken", "VileArmsman", "VerdantCamlann", "RealCometZ", "OnyxMaelstromOP",
+            "ToxicPercival", "HolyHawk", "SilentRazor", "ShadowSaber", "SacredNova", "NobleAvalonOG",
+            "xTempest", "TemplarSmasher", "GawainPulse", "LancelotYT", "ShadowFoxGod", "SableKnightLord",
+            "xXVortexXx", "CamelotKraken", "BrutalRenderHD", "PercivalFox", "MossyEcho", "OnyxBreakerX",
+            "SilentMerlinYT", "LunarBriton", "SmasherPro", "RealPellinore", "GrimGlitchGG", "MossyRaven",
+            "TheurgGolem", "FeralBaneZ", "TemplarGlitch", "MistyEclipseOP", "GoldenGolemKing", "FoxHD",
+            "HolyEclipse", "RapidMaelstrom", "FeralFoxGG", "GrimCleric", "IronKnightOP", "ColdThroneOG",
+            "SaxonAbyss", "NumbSorcerer", "FuryOP", "HyperLionheartZ", "MordredGG", "ColdAvalon",
+            "CamelotMauler", "DarkRogueOG", "RabidStrikerTTV", "ViperGG", "JustBeastKing", "BigRazor",
+            "HolyMordredYT", "FeralBlade", "FrostTheurg", "RiptideKing", "ColdCamlann", "ColdDoomGG",
+            "ToxicRaven", "WildPaladin", "FrozenAbyssZ", "FrozenLionZ", "CamelotFang", "DarkBlazeKing",
+            "DrifterOG", "ArmsmanTiger", "UltraRazor", "UltraViperZ", "FatalDoomTTV", "GrimReaver",
+            "GrimMerlinZ", "xTheurgX", "HyperRazor", "GrailSurge", "CrimsonBolt", "AvalonHelix",
+            "ItsSaber", "JustHelixGG", "RapidLancelot", "FeralSaxonHD", "SolarPellinore", "MossyPhoenix",
+            "ShadowPercival", "TheGhost", "IronClericX", "ToxicEmber", "ObsidianMerlin", "RapidSmasher",
+            "EmberTTV", "FatalSmasher", "SilentRaven", "RealReaper", "AshenSlayer", "HolyCinder",
+            "ColdCrown", "ToxicWolfOG", "BigWardenYT", "HydraZ", "CrimsonFlameGG", "ColdCrusader",
+            "SavageCamlannZ", "MegaBladeYT", "BritonMaelstrom", "GoldenSkullGod", "xFlameOP", "ClericPhoenix",
+            "DarkBlaze", "VileFox", "LunarSorcerer", "MistySorcerer", "HawkX", "ReaperOP",
+            "DarkCamlann", "SolarSpecter", "CrimsonTemplar", "iRazor", "HydraOP", "BritonFlame",
+            "ItsBladeOG", "EclipseTTV", "TheSurge", "ColdPulse", "VileGrailPro", "ShadeZ",
+            "GrimFlux", "FrostCyber", "RabidSaber", "BedivereRazor", "SorcererBlaze", "ClericBreaker",
+            "iLancelot", "FrostTitanPro", "PendragonTiger", "CobraGG", "GrimSniperLord", "OnlyBlade",
+            "FeralDrifterOP", "OnlyRavenOG", "FriarFang", "SaxonPulse", "UltraLogresZ", "VilePhantom",
+            "EpicRage", "SorcererReaver", "ColdMaelstrom", "BigSmasher", "BigSniperX", "TristanTempest",
+            "ArthurHelix", "VoidDrifter", "BritonStalker", "CrownHD", "WildStalkerTTV", "ArthurGG",
+            "GalahadTitan", "SacredWraith", "RapidCamelot", "MossyPendragon", "SaberGod", "ItsAlbion",
+            "RabidAlbion", "ClericFury", "GrimAlbion", "xBladeGG", "IronAlbion", "IronArthur",
+            "EpicBriton", "SorcererSlayer", "OnyxPhoenixLord", "VileBaneKing", "xXAlbionXx", "LethalFriar",
+            "ObsidianTitan", "OnyxGolemPro", "ShadowTigerOP", "OnlyHelixHD", "KnightFlux", "ClericHunter",
+            "TheCleric", "GrimWardenX", "ThroneSlayer", "RealTitan", "EpicSurgeOP", "BrutalCyber",
+            "FrozenShadeOP", "xStalker", "ArmsmanShark", "iSaber", "DarkWraithKing", "LancelotFang",
+            "VoidWraith", "SolarBlade", "SaxonStriker", "HolyEmber", "TristanFlame", "PaladinGhost",
+            "HelixLord", "MerlinWraith", "JustGolemGod", "AshenHawkZ", "MrGhostOG", "SacredZenith",
+            "WildThrone", "TemplarSniper", "NobleCyberPro", "AvalonBeast", "CrimsonLion", "RabidCrawler",
+            "PendragonShade", "ArmsmanEdge", "RapidBritonGG", "VerdantLancer", "ShadowCyberOG", "ItsTitan",
+            "SolarTitan", "CrownBeast", "MrPhoenix", "OnlySurge", "GrailFlux", "MistySaxon",
+            "GrimShade", "OnyxCobraKing", "ColdSurgeOG", "FeralCyber", "SacredSharkYT", "PaladinBeast",
+            "SablePulseTTV", "JustCrownKing", "OnyxAlbionHD", "ItsSpecterPro", "AvalonHydra", "TheWolf",
+            "TheurgEclipse", "RapidThrone", "DarkSmasherX", "RabidLion", "SacredSmasher", "JustSaberGod",
+            "SavageSaxonKing", "RapidSmasherGG", "ReaverX", "TemplarLancer", "VortexTTV", "MistyCobra",
+            "WildGalahad", "AshenComet", "MaulerYT", "LancelotOP", "DarkWispX", "GoldenStalker",
+            "NumbDoomZ", "ToxicLionZ",
         };
 
         private static readonly string[] _hibGamer =
@@ -1978,6 +2099,91 @@ namespace DOL.GS.Scripts
             "DaBlade", "Celt", "Tuatha808", "xXDanuXx", "MistyLugh", "KillerZ",
             "DaBriar", "Lord1337", "Krypt13", "xXMirageXx", "Bard13", "xXNiamhXx",
             "Plasma256", "WildFaerie",
+            // 500 additional digit-free gamer handles (gen_gamer_names.py, 2026-06)
+            "ForestStalker", "HolyBeastLord", "MossyTiger", "FeralLughGG", "RageGod", "PlasmaZ",
+            "IronLeaf", "LancerPro", "SacredRavenHD", "MistralMauler", "IronCyber", "ToxicTuathaKing",
+            "MrTempest", "RavenOP", "AshenHawk", "MentalistKing", "VoidHawkTTV", "ShamrockTempest",
+            "MistralStalker", "StormWarden", "DrifterZ", "ErinFlame", "GaelDrifter", "WildSurge",
+            "DagdaWolf", "RealOak", "FaePro", "LethalViper", "ToxicDagda", "FatalWispGod",
+            "BreakerOP", "GoldenDragonGG", "TheFangKing", "LilEmeraldOG", "ErinSerpent", "SolarCloverGG",
+            "SilentZenithZ", "ReaperOP", "VerdantCobraX", "TheFluxTTV", "SidheRogue", "StormWisp",
+            "DanuTempest", "ZenithHD", "HolyEldritch", "iFaerie", "UltraMistral", "OnlyEmerald",
+            "xShark", "GhostOG", "FatalZenithLord", "SolarFlux", "PhantomKing", "DagdaAssassin",
+            "JustHawkOG", "BigSaber", "IronViperOP", "TaraFlux", "ShamrockSmasher", "WillowStriker",
+            "OnlySurge", "RabidLion", "BigClover", "FrostBansheeHD", "LethalBreaker", "EmberYT",
+            "FaeRender", "UltraComet", "HyperSidhe", "SolarHawkZ", "StormBansheeX", "FeralCobraOG",
+            "GroveStriker", "VoidFlux", "SolarWraithKing", "MistralFang", "StagYT", "OakZ",
+            "SlayerKing", "ShadowCeltKing", "LunarCelt", "ColdWarden", "DaClover", "iGlitchGod",
+            "LilCloverLord", "DarkShamrock", "BlazeLord", "CloverEdge", "DarkBane", "LunarGolemOG",
+            "BardNova", "LilComet", "OakVortex", "FrostSniper", "VileMistralGod", "TuathaBeast",
+            "ColdWraith", "OnyxFaerieLord", "ShadowFangTTV", "DaShade", "OnyxDagda", "ToxicEldritchOP",
+            "FrozenGlitch", "TaraRaven", "BansheeSaber", "MistyLancer", "SablePulse", "MistralWarden",
+            "EpicTempestTTV", "BreakerTTV", "VileVortex", "EpicOak", "VerdantBlaze", "TitanOG",
+            "xXVortexXx", "AshenHydraGod", "CuchuHunter", "ItsTigerZ", "CloverZ", "SilentRenderTTV",
+            "ThornKing", "UltraReaper", "RealBansheePro", "DanuReaver", "OakViper", "CrimsonSlayer",
+            "FaerieHawk", "RabidFox", "LunarCuchuGod", "DaEmber", "NumbFae", "FrostBriar",
+            "MegaSniper", "BansheeGhost", "LunarLionHD", "RapidDagdaGG", "IronFuryX", "FatalWolf",
+            "GrimHydra", "SniperZ", "xXDoomXx", "IronMistral", "FrostDagda", "OakBolt",
+            "DanuRaven", "FrozenCinderPro", "ForestHunter", "ShadowFiannaTTV", "IronBeast", "ItsHavoc",
+            "SavageCyberX", "ForestCobra", "iMentalistPro", "ItsWarden", "HyperKraken", "CeltTTV",
+            "RabidTempestTTV", "ForestViper", "iGrove", "RealSidhe", "xComet", "DruidWarden",
+            "ToxicEclipse", "ShamrockVortex", "DruidRiptide", "RabidWolfGG", "RabidEclipse", "UltraSaber",
+            "ErinGod", "GroveTitan", "DarkSniper", "AnimistFlame", "FaeGod", "xXHavocXx",
+            "FiannaSlayer", "ShamrockTitan", "MentalistLion", "WispYT", "CrawlerHD", "LilDragon",
+            "RapidSniperYT", "LethalTuathaPro", "LunarSmasher", "EpicNinjaOP", "BardAssassin", "ColdFlame",
+            "xDragonGod", "DruidLion", "xXZenithXx", "BigBladeOG", "AshenDrifterOP", "NobleHydraHD",
+            "BansheeGod", "xXCuchuXx", "VoidRiptide", "GroveHD", "IronEclipseX", "VerdantBriar",
+            "xDoom", "ColdBansheeGG", "ErinComet", "AshenLeaf", "RageOG", "TitanTTV",
+            "BrutalErinGod", "BardCinder", "RabidBolt", "VileHelix", "SharkHD", "LeafRazor",
+            "IronWillow", "GrovePhantom", "IronRiptide", "OnlyErin", "StrikerLord", "iCrawler",
+            "OakOG", "SacredSaberTTV", "ColdOak", "SilentEclipseGG", "LethalSmasherOG", "AshenStriker",
+            "LethalMaulerOG", "WildGolem", "FaerieOP", "TheDrifterX", "SidheSpecter", "FiannaTTV",
+            "FrostEclipse", "RogueOG", "UltraHavoc", "iBane", "OakShade", "NobleWardenTTV",
+            "CuchuEclipse", "NightshadeRazor", "ItsPulseOG", "TheFang", "MegaBladeHD", "ThornComet",
+            "WildCrawlerYT", "DarkGrove", "EmeraldLancer", "CrimsonSniper", "AnimistPulse", "LethalFaeOG",
+            "GroveSlayer", "ForestYT", "OnlyFaerieX", "MistyHawkGG", "VileCobra", "StormMauler",
+            "OnyxSharkX", "WildRazorGG", "LilSniper", "EpicTara", "DaFury", "OakBlade",
+            "LughHD", "OnlyCometGG", "GoldenVerdant", "HunterOG", "TheGlitch", "OnyxEcho",
+            "iBeastOP", "VerdantBolt", "MossyDrifterX", "TheFlame", "CloverRender", "EchoX",
+            "TuathaPhantom", "SolarMaelstrom", "xSaberGG", "RealReaver", "UltraSidhe", "BardKraken",
+            "RealHawk", "BardPhoenix", "SilentSkull", "SableHunter", "FrozenNova", "WildTara",
+            "AshenBrehonZ", "ColdGlitchPro", "EmeraldSkull", "CloverShark", "ToxicCyber", "VileDoomLord",
+            "ToxicTigerLord", "LethalViperGG", "BardX", "GoldenFaerie", "xTalon", "BrutalMistralX",
+            "HolyMaelstrom", "HyperCinder", "EpicFaeGG", "ErinZ", "LilTiger", "FrozenRaven",
+            "DarkCrawlerPro", "DanuSurge", "iWillow", "LunarGolem", "SolarCuchu", "ForestEdge",
+            "SilentEmerald", "FrozenShark", "ItsSaberGG", "JustEcho", "VortexTTV", "UltraMaelstromX",
+            "MrTalon", "ItsCuchu", "TheDoomOG", "BaneLord", "HolyWillow", "DarkSkull",
+            "StormCuchuOG", "UltraCuchu", "CeltAbyss", "MentalistShade", "FaerieGhost", "SableSmasher",
+            "PlasmaKing", "ReaverOG", "StagTiger", "AnimistWisp", "ObsidianFianna", "FatalDragonHD",
+            "iBlaze", "CrimsonRazor", "SidheReaver", "RealSpecter", "JustPlasma", "AnimistHunter",
+            "SableSerpent", "JustSlayer", "TaraStalker", "ObsidianRaven", "MrCelt", "BrutalReaverOP",
+            "ForestEclipse", "MrGroveOP", "LethalLugh", "LughMaelstrom", "ShamrockBane", "FeralFaerie",
+            "BigNinjaOG", "FrostCobraX", "SacredDanu", "MossyZenithOG", "ShadowRiptide", "iStagZ",
+            "FatalWisp", "ShamrockBeast", "VileFang", "SolarPhoenix", "LunarEdge", "BansheeHelix",
+            "NiamhRogue", "DarkBanshee", "VerdantTiger", "HyperStalkerYT", "LunarRage", "FiannaFox",
+            "DanuTitan", "BaneX", "FrozenWolf", "DruidX", "VerdantFangGod", "ShadeKing",
+            "FrozenSerpentOP", "BigStriker", "RageYT", "CloverSaber", "ColdSmasher", "ShadowOak",
+            "LethalCobraGG", "MrVortexYT", "HelixOP", "CrimsonBlade", "OnlySidhePro", "DarkAssassin",
+            "NobleHavocHD", "SaberLord", "MistyThornGod", "FrostComet", "VerdantWraith", "FrozenRageKing",
+            "SidheCrawler", "MrWraith", "OnlyEdge", "GrimEclipseOP", "ShadowSurge", "RapidBane",
+            "iLughOG", "MegaFlux", "ErinLord", "GaelFang", "HyperHunterKing", "JustFaerie",
+            "SavageRiptide", "ObsidianHavocX", "StagStalker", "StagBreaker", "JustSidheYT", "AshenGaelX",
+            "BrutalZenith", "GaelHawk", "SacredFoxKing", "SolarMistral", "SableStagX", "SilentWolfOG",
+            "BigLancerYT", "WispLord", "ShadowDanu", "GoldenGrove", "BigDruid", "CinderGG",
+            "LunarSpecter", "SavageFiannaHD", "BriarFlame", "xXLionXx", "RabidSniperGG", "xVortexX",
+            "ColdBardPro", "DaComet", "BardMaelstrom", "SableDanu", "JustSharkX", "RabidDagdaGod",
+            "StormAnimist", "SolarNiamh", "DarkHawk", "OnyxVerdantTTV", "DarkEmerald", "OnlyCelt",
+            "VerdantCuchuGG", "FeralEcho", "ForestSniper", "LunarCrawler", "LughSerpent", "EpicBladeYT",
+            "RabidWraith", "HolyNinja", "MrReaper", "EpicDrifter", "ShadowSharkGod", "OnlyKrakenGod",
+            "MegaBrehonX", "BrutalGlitch", "SableEmberOP", "GrimBlade", "ErinCinder", "NumbBane",
+            "BrehonTTV", "xHavoc", "ErinBane", "ThornCinder", "MegaTara", "LunarFlux",
+            "EmberZ", "SilentSerpentGG", "OnlyWarden", "BriarAssassin", "LilTaraYT", "DagdaPhoenix",
+            "ToxicWolfOP", "LilOakOG", "OnlyShamrock", "VoidNova", "LunarPhoenix", "BardFox",
+            "ThePhoenixLord", "MegaHavocKing", "xXTuathaXx", "MegaShark", "ErinTitan", "ForestMauler",
+            "RapidPlasmaYT", "HolyFuryGG", "DarkCelt", "OnlyEclipse", "iSidheGG", "MegaVortex",
+            "MegaStriker", "SidheBane", "MistyTempestGG", "IronRogueZ", "GrimSurge", "StormTuatha",
+            "LunarBreaker", "GoldenStalker", "VileEmberZ", "ShamrockSpecter", "EmeraldTempest", "ItsWispLord",
+            "MegaKraken", "MegaFiannaOP",
         };
 
         private static readonly string[] _midGamer =
@@ -2016,6 +2222,91 @@ namespace DOL.GS.Scripts
             "xValkyr", "xXVortexXx", "BrutalPhoenix", "SkullX", "xXBonedancerXx", "LilMidgard",
             "Odin21", "Sleipnir42", "RunemasterPro", "xXRagnarXx", "Haze9000", "HexKnight23",
             "xXVikingXx", "MrPulsar",
+            // 500 additional digit-free gamer handles (gen_gamer_names.py, 2026-06)
+            "DarkGhostYT", "BigValhalla", "FenrirBane", "NorseKraken", "DaMjolnirZ", "ColdDrifter",
+            "MossyCyberGG", "ItsSlayerOP", "FeralFluxTTV", "SolarFlame", "NobleDragonZ", "RabidBane",
+            "VoidThorZ", "RabidRageLord", "NobleSmasher", "GarmDragon", "TheNorseLord", "BerserkFox",
+            "xShadeGod", "JustAssassinYT", "xWispGG", "RapidSaber", "MegaWardenZ", "BonedancerLord",
+            "JustOdinGod", "FatalGarmGG", "SkaldFang", "StormSkald", "HolyFluxYT", "EpicMaulerGG",
+            "DaSpecter", "ValkyrStriker", "ValkyrFox", "AshenTitan", "BifrostDoom", "VerdantPulse",
+            "SavageViper", "CrimsonBane", "SavageGhost", "iZenithYT", "BigRogue", "LilStriker",
+            "StormGolemGod", "SableSurtrX", "LokiGhost", "ItsDrifterGG", "SolarViper", "RapidWraith",
+            "VerdantSharkGod", "VileHydra", "WildAssassin", "LilMjolnir", "HolyRazor", "EpicBolt",
+            "OnyxHawk", "MossyGarmOG", "WarriorNova", "FangKing", "NumbViking", "MistyHawk",
+            "RagnarBreaker", "UltraDrifter", "NumbStriker", "FatalFlameLord", "SkaldShark", "OnyxFlux",
+            "SleipnirRage", "OdinFox", "BrutalSaberYT", "GoldenStalker", "ShadowDraugr", "FeralBeastGod",
+            "LokiSlayer", "StormPulseGG", "SacredEchoOG", "FrozenFang", "StormGolem", "StormFrostbite",
+            "TheNorseKing", "NumbSkull", "TitanZ", "RabidHavoc", "GrimCyberKing", "GrimEcho",
+            "xCinder", "RealHunter", "FatalAbyss", "xStalkerGG", "SilentLancer", "IronLancer",
+            "JustGlitch", "VileDragonGG", "VerdantZenithHD", "JustSpecterOP", "OnyxZenithGod", "TyrWraith",
+            "MossyDrifter", "SilentEcho", "LilRage", "VidarBlade", "SolarFrostbite", "SavageCinderX",
+            "EinherjarLancer", "RealLokiGG", "OnlyTitan", "RapidJotun", "VileFoxGod", "LancerPro",
+            "ValhallaSlayer", "RealBladeLord", "SolarBolt", "FatalStalker", "UltraSurge", "OnyxAesir",
+            "ColdAsgard", "BigBonedancerOG", "MegaEinherjar", "OnlySniperX", "OnlyAsgardKing", "NobleSkullGG",
+            "VileAssassin", "DraugrSerpent", "BrutalBane", "HyperLionX", "xHelix", "DaSurgeZ",
+            "ShadowNorse", "HyperValhalla", "VikingEclipse", "SniperGG", "JustSkaldOG", "ValhallaAbyss",
+            "ObsidianEdge", "TheThor", "AbyssYT", "EclipseGG", "VerdantSaberGG", "SavageCrawler",
+            "FrostAesir", "GarmEdge", "VoidTigerOP", "OnyxZenith", "NumbEclipseKing", "ShadowNorseOP",
+            "RabidBonedancer", "FeralNiflheim", "SpecterLord", "ColdBreaker", "ThaneComet", "LunarEclipse",
+            "BigRagnarKing", "iDoom", "MistyEclipse", "OnyxRogue", "WarriorCyber", "MossySurgeLord",
+            "AshenLion", "UltraShade", "ThanePhantom", "MegaEdge", "WildStalkerOP", "RabidNinja",
+            "OnyxPhoenix", "iOdinTTV", "BrutalThane", "MegaBaneKing", "ShadowHunter", "FatalHydraLord",
+            "EpicSpecter", "RogueGod", "FeralFlame", "RapidDraugrTTV", "BrutalSkull", "OdinDragon",
+            "NobleNorse", "GrimMaelstrom", "ThorSlayer", "MistyCobraX", "VileCyber", "RapidRage",
+            "BigCyberHD", "FrostbiteTiger", "SleipnirGG", "OdinBlade", "FenrirVortex", "StalkerGod",
+            "NobleHavoc", "DraugrKing", "IronEchoLord", "OnyxSlayer", "FrostWraith", "MjolnirOP",
+            "FatalBoltHD", "LilMauler", "xOdinOP", "SolarAsgard", "TheCobra", "FatalStriker",
+            "BigSkald", "FeralJotunOG", "SavageValhalla", "VidarWraith", "WildBerserk", "VileRagnarGod",
+            "WardenPro", "GoldenCometGod", "VoidAsgardPro", "VileEclipse", "MossyAsgard", "RuneGG",
+            "iGlitchHD", "FangZ", "SavageBeast", "VileCobra", "VerdantDoomPro", "MaulerHD",
+            "ValkyrHawk", "ToxicThorOG", "UltraHydraX", "LilFrostbite", "CrimsonRogue", "DarkDrifter",
+            "IronEdge", "GoldenPhoenix", "VoidTalonGod", "BonedancerHavoc", "BrutalCobra", "HyperEcho",
+            "ColdZenith", "SacredSmasher", "VileSlayerOG", "RunemasterBeast", "HyperBifrost", "TalonPro",
+            "SableEclipseTTV", "HeimdallOG", "BerserkOP", "OdinPulse", "VileWraithOP", "HunterX",
+            "RealWolfZ", "xFoxHD", "FrostbiteDragon", "BerserkCobra", "NorseFlux", "FrostRogue",
+            "HeimdallVortex", "WildLancer", "StormSaber", "RuneReaper", "AesirWarden", "StalkerHD",
+            "EinherjarHelix", "iSleipnir", "NumbGarm", "HyperRogue", "DarkSurge", "ValhallaSurge",
+            "BrutalAsgard", "RapidGolemKing", "WildFenrir", "SacredYmir", "FlameKing", "CrimsonRageTTV",
+            "GrimEclipse", "BrutalTigerZ", "EpicMaulerTTV", "StormWardenZ", "ObsidianLionGod", "LunarViper",
+            "DarkPulseX", "RabidBlade", "RabidRiptide", "SurtrBane", "HolyGhostGG", "VidarWolf",
+            "LethalKrakenHD", "DarkWarden", "RabidFuryGG", "HolyZenith", "BanePro", "SableEmber",
+            "MistyCrawlerZ", "VoidGlitch", "BrutalFangKing", "MrSpecter", "UltraDoomHD", "NumbComet",
+            "EpicRagnar", "IronYmirGG", "iBifrost", "MossyEmber", "SilentWisp", "FrostRenderLord",
+            "FrozenRaven", "SacredEcho", "TheJotun", "ItsRunemaster", "JustCobra", "ValkyrOP",
+            "RapidSlayer", "iSaberLord", "UltraThaneTTV", "VileRender", "MegaWispGG", "iMauler",
+            "FrostBlaze", "DaVortex", "TheRage", "HydraPro", "BerserkHelix", "ItsAbyssX",
+            "SableSkald", "SolarSerpentYT", "MossyEchoGG", "LilOdinGG", "DraugrOP", "ObsidianWarden",
+            "StormThorLord", "CrimsonViperYT", "SkaldSpecter", "ShadeHD", "LethalThaneOP", "UltraMaelstrom",
+            "RapidBreakerYT", "BigWarrior", "BigShadeHD", "SacredEmberGod", "MjolnirBolt", "MegaReaverKing",
+            "ItsSerpent", "VortexPro", "HeimdallLion", "AshenHeimdallGG", "TitanX", "EpicSpecterOG",
+            "GrimPulse", "UltraRune", "JustMauler", "OnyxFenrir", "FrostLion", "VerdantFenrir",
+            "HolyBaneKing", "FatalYmirX", "SurtrHawk", "HolyDoom", "FenrirShark", "SacredAesirTTV",
+            "UltraFuryX", "EpicGarm", "xAbyss", "BigShade", "AshenAbyss", "NumbBladeKing",
+            "RapidKrakenHD", "EinherjarEcho", "RunemasterFlame", "LilHydra", "VoidNiflheim", "HyperFenrirGod",
+            "RapidRaven", "RabidAbyss", "WarriorRazor", "MrMidgard", "IronVidar", "CrimsonEdgeLord",
+            "MegaGarm", "AshenTyrGod", "RogueOG", "EmberOP", "UltraDragonYT", "ValkyrDrifter",
+            "HyperComet", "ItsFoxOG", "TyrShade", "BerserkMauler", "LunarRagnar", "SurgeYT",
+            "ThorHunter", "StormFury", "RagnarX", "VoidBifrostZ", "AshenViking", "NobleAssassinHD",
+            "ShadowFury", "UltraSharkPro", "EpicSurge", "SolarRenderTTV", "FeralLionGG", "JotunSlayer",
+            "MrJotun", "IronSaber", "SleipnirGod", "MegaBreakerGod", "RabidCinderGG", "VoidWarriorZ",
+            "RapidSurtr", "FatalAsgard", "FeralSpecter", "SacredNorse", "DarkDragon", "JustRage",
+            "FrostLoki", "MegaAssassin", "SacredSaber", "SilentSleipnir", "ItsFuryPro", "MrBane",
+            "UltraSleipnir", "DraugrEcho", "JustValhalla", "WildSurtrX", "FenrirOP", "ValkyrHavoc",
+            "EpicDragon", "WarriorReaver", "GarmEmber", "HolyTyrPro", "SolarHawk", "xLion",
+            "xXYmirXx", "VoidHawk", "SableReaper", "BonedancerOP", "FeralThor", "FeralTempest",
+            "WildStrikerPro", "AesirRender", "JustSurge", "TyrWisp", "DraugrWolf", "VidarEmber",
+            "LionZ", "SkaldFlux", "UltraDraugr", "ObsidianSkullOG", "SolarRunemaster", "BifrostGlitch",
+            "DoomGod", "FenrirReaver", "iTigerZ", "NobleTempest", "MidgardShade", "FenrirAssassin",
+            "EpicSharkGod", "MrCyberYT", "SavageRageTTV", "JustBlazeLord", "RealValkyr", "BigFuryOG",
+            "ShadowEmber", "RagnarBeast", "LunarFluxLord", "HyperFluxKing", "ValhallaTempest", "HyperRaven",
+            "EpicTyr", "LunarBifrostHD", "FrostbiteEdge", "RabidWraithGG", "IronRenderGod", "MossyStriker",
+            "YmirLancer", "ValhallaPro", "FrozenSleipnir", "WolfX", "HyperValkyrLord", "AshenSlayer",
+            "MrEmber", "JustSaberKing", "ObsidianThorZ", "CobraX", "ShadowWolf", "FenrirSlayer",
+            "GoldenBlazeKing", "AesirFang", "TheCyber", "OnyxRagnar", "xViper", "DarkLionOG",
+            "iBane", "RuneDoom", "EinherjarGG", "iComet", "GrimEclipseYT", "TyrAbyss",
+            "BrutalWraith", "SavageHawk", "VidarGlitch", "IronAsgard", "RapidBane", "ToxicCrawler",
+            "UltraHydra", "BrutalAssassin", "MegaSlayer", "MossyBaneYT", "SilentSkaldLord", "GoldenAesir",
+            "VikingCyber", "SleipnirReaver",
         };
 
         public static string GetName(eGender gender, eRealm realm)

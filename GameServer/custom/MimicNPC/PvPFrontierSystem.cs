@@ -3500,6 +3500,10 @@ namespace DOL.GS.Scripts
                 //   * Top up Health / Mana / Endurance once the bonuses are
                 //     applied (Max* changes with the buff stat bonus).
                 ApplyFrontierRealmRank(m);
+                // Re-spend realm points for the boosted frontier RealmLevel
+                // (the constructor already applied RAs at the bot's spawn RR,
+                // but ApplyFrontierRealmRank overrides RealmLevel to RR3..RR12).
+                m.ApplyRealmAbilities();
                 ApplyFrontierPreBuffs(m);
                 ApplyFrontierGearUpgrade(m);
                 m.Health = m.MaxHealth;
