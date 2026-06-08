@@ -245,16 +245,16 @@ namespace DOL.GS.Scripts
         // ----------------------------------------------------------------
 
         [ServerProperty("npc", "bot_rez_wait_seconds",
-            "Seconds a dead bot lingers as a rez-able corpse when a group rezzer is alive (default 60).", 60)]
+            "Seconds a dead bot lies as a rez-able corpse (waiting for a group rezzer) before its rez timeout fires. Default 300 (5 min) — a dead bot behaves like a dead player: it stays on the ground waiting for a rez, then releases.", 300)]
         public static int BOT_REZ_WAIT_SECONDS;
 
         [ServerProperty("npc", "bot_rez_wait_no_healer_seconds",
-            "Seconds a dead bot lingers as a corpse when no group rezzer is available (default 30, was 15 — too short for distant rezzer).", 30)]
+            "Seconds a dead bot lies as a corpse when no group rezzer is available. Default 300 (5 min) — same as with a rezzer so the bot always honours the full wait the operator expects; the owner can release at any time to pull all their dead bots back instantly.", 300)]
         public static int BOT_REZ_WAIT_NO_HEALER_SECONDS;
 
         [ServerProperty("npc", "bot_rez_timeout_behavior",
-            "What happens to a bot whose rez timeout expired: 'release' (leave the group and despawn, like a player without a bind — default) or 'revive' (return at 50% next to the owner, pre-existing behaviour).",
-            "release")]
+            "What happens to a bot whose rez timeout expired (or whose owner pressed /release): 'revive' (DEFAULT — the bot returns to the owner's side at 50% vitals and STAYS in the group, so releasing never breaks the party) or 'release' (leave the group and despawn, like a player with no bind). 'revive' is the recommended player-like behaviour.",
+            "revive")]
         public static string BOT_REZ_TIMEOUT_BEHAVIOR;
 
         public static bool IsHealerClass(int classId)    => MatchesCsv(BOT_AI_V2_HEALER_CLASSES, classId);

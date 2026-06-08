@@ -834,10 +834,82 @@ namespace DOL.GS.Scripts
         // Auto-release window when no group member can rez. Same tuning model.
         private static int REZ_WAIT_NO_HEALER_MS => Math.Max(1, MimicConfig.BOT_REZ_WAIT_NO_HEALER_SECONDS) * 1000;
 
+        // How often to re-check, while a bot's corpse is past its rez timeout
+        // but the owner is still ONLINE-but-dead (e.g. the whole group wiped and
+        // the player hasn't released yet). We keep the corpse — and thus the
+        // group — alive and just poll for the owner to come back, instead of
+        // despawning (which would break the party the operator wants kept).
+        private const int REZ_WAIT_RECHECK_MS = 15000;
+
         private ECSGameTimer _rezWaitTimer;
         private bool _inRezWait;
 
         public bool InRezWait => _inRezWait;
+
+        /// <summary>
+        /// Shows this bot as a lying corpse on every nearby client, exactly like
+        /// a dead player (same PlayerDeath packet). Without it a dead bot keeps
+        /// its last standing pose — it looks alive-but-frozen. Best-effort.
+        /// </summary>
+        private void BroadcastDeathPose(GameObject killer)
+        {
+            foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
+                player.Out.SendPlayerDied(this, killer);
+        }
+
+        /// <summary>
+        /// Stands this bot back up on every nearby client (clears the corpse
+        /// pose set by <see cref="BroadcastDeathPose"/>) when it is rezzed or
+        /// returns to its owner. Mirrors a player's revive packet.
+        /// </summary>
+        private void BroadcastRevivePose()
+        {
+            foreach (GamePlayer player in GetPlayersInRadius(WorldMgr.VISIBILITY_DISTANCE))
+                player.Out.SendPlayerRevive(this);
+        }
+
+        /// <summary>
+        /// True if the owning account is connected and in-world right now,
+        /// REGARDLESS of whether the avatar is currently alive. Lets a dead
+        /// corpse distinguish "owner wiped but still here" (keep waiting / keep
+        /// the group) from "owner logged off" (clean up the corpse).
+        /// </summary>
+        private bool IsOwnerOnline()
+        {
+            if (!string.IsNullOrEmpty(OwnerAccount))
+            {
+                foreach (GameClient c in ClientService.Instance.GetClients())
+                {
+                    if (c?.Account != null
+                        && string.Equals(c.Account.Name, OwnerAccount, StringComparison.Ordinal)
+                        && c.Player != null
+                        && c.Player.ObjectState == eObjectState.Active)
+                        return true;
+                }
+            }
+
+            return Group?.LivingLeader is GamePlayer leader
+                && leader.ObjectState == eObjectState.Active;
+        }
+
+        /// <summary>
+        /// Pulls a dead, rez-waiting bot back to its owner's side immediately and
+        /// keeps it in the group. Called when the OWNER presses /release: a player
+        /// releasing should bring their fallen bots back rather than orphan them
+        /// (which would break the party). No-op if the bot isn't actually a
+        /// waiting corpse. See <see cref="MimicManager.OnPlayerReleased"/>.
+        /// </summary>
+        public void ReleaseToOwnerNow(GamePlayer owner)
+        {
+            if (!_inRezWait || IsAlive || owner == null || !owner.IsAlive)
+                return;
+
+            _rezWaitTimer?.Stop();
+            _rezWaitTimer = null;
+            _inRezWait = false;
+
+            ReviveAtOwner(owner);
+        }
 
         /// <summary>
         /// True if any living member of the bot's current group has a Resurrect-type spell
@@ -903,6 +975,9 @@ namespace DOL.GS.Scripts
             Mana = MaxMana * manaPct / 100;
             Endurance = MaxEndurance * manaPct / 100;
 
+            // Stand the corpse back up on every client before we move/regen.
+            BroadcastRevivePose();
+
             // Move next to the rezzer so we don't revive in the middle of mobs.
             if (rezzer != null && rezzer.CurrentRegionID == CurrentRegionID)
                 MoveTo(rezzer.CurrentRegionID, rezzer.X, rezzer.Y, rezzer.Z, rezzer.Heading);
@@ -937,34 +1012,44 @@ namespace DOL.GS.Scripts
             if (!_inRezWait || IsAlive || ObjectState != eObjectState.Active)
                 return 0;
 
-            _inRezWait = false;
-            _rezWaitTimer = null;
-
             // What happens when no rez arrived in time is controlled by the
             // BOT_REZ_TIMEOUT_BEHAVIOR server property:
-            //   - "release" (default): act like a player who has no bind to
-            //     return to — leave the group and despawn the corpse. The
-            //     player can /mlfg or /mcreate a fresh bot afterwards. This
-            //     is the realistic option asked for by operators who want
-            //     bots to feel like real party members.
-            //   - "revive": teleport the bot back to its owner at half
-            //     vitals, keep it in the group. Less realistic but
-            //     friendlier on long PvE runs. This was the pre-existing
-            //     behaviour, kept for backwards compatibility.
-            string mode = (MimicConfig.BOT_REZ_TIMEOUT_BEHAVIOR ?? "release").Trim().ToLowerInvariant();
+            //   - "revive" (DEFAULT): the bot returns to its owner's side at half
+            //     vitals and STAYS in the group — releasing/timing-out never
+            //     breaks the party. This is the player-like behaviour operators
+            //     asked for ("the bots reappear next to me").
+            //   - "release": act like a player with no bind — leave the group and
+            //     despawn the corpse. The player can re-create a bot afterwards.
+            string mode = (MimicConfig.BOT_REZ_TIMEOUT_BEHAVIOR ?? "revive").Trim().ToLowerInvariant();
 
-            if (mode == "revive")
+            if (mode != "release")
             {
                 GamePlayer owner = FindLiveOwnerOrLeader();
 
                 if (owner != null && owner.IsAlive && owner.CurrentRegionID > 0)
                 {
+                    _inRezWait = false;
+                    _rezWaitTimer = null;
                     ReviveAtOwner(owner);
                     return 0;
                 }
-                // No live owner: fall through to release semantics so the
-                // corpse doesn't linger forever.
+
+                // No LIVE owner yet, but if they're still online (a full-group
+                // wipe where the player hasn't released) keep the corpse — and
+                // thus the group — and poll again shortly rather than despawning.
+                // The player's /release also recalls us instantly via
+                // MimicManager.OnPlayerReleased.
+                if (IsOwnerOnline())
+                {
+                    _rezWaitTimer = new ECSGameTimer(this, OnRezWaitExpired);
+                    _rezWaitTimer.Start(REZ_WAIT_RECHECK_MS);
+                    return 0;
+                }
+                // Owner offline/gone → fall through to despawn cleanup.
             }
+
+            _inRezWait = false;
+            _rezWaitTimer = null;
 
             // "release" path. Announce to the group via chat (best-effort,
             // localized per recipient) then leave + delete the corpse.
@@ -1055,6 +1140,10 @@ namespace DOL.GS.Scripts
             Health = Math.Max(1, MaxHealth / 2);
             Mana = MaxMana / 2;
             Endurance = MaxEndurance / 2;
+
+            // Stand the corpse back up on nearby clients, then teleport to the
+            // owner's side so the bot reappears next to the player.
+            BroadcastRevivePose();
 
             MoveTo(owner.CurrentRegionID, owner.X, owner.Y, owner.Z, owner.Heading);
 
@@ -1234,6 +1323,12 @@ namespace DOL.GS.Scripts
 
                 Notify(GameLivingEvent.Dying, this, new DyingEventArgs(killer));
 
+                // Drop to the ground as a corpse on every nearby client — without
+                // this the bot keeps its standing pose and just looks frozen. This
+                // is the same packet a dying player sends, so a bot lies dead and
+                // can be targeted for a rez exactly like a real party member.
+                BroadcastDeathPose(killer);
+
                 // Role takeovers: if the dying bot held a critical role, promote
                 // the best surviving candidate immediately so the group doesn't
                 // spiral while the corpse waits for rez.
@@ -1241,8 +1336,10 @@ namespace DOL.GS.Scripts
                 Group?.MimicGroup?.TryPromoteSecondaryCC(this);
                 Group?.MimicGroup?.TryPromoteHealer(this);
 
-                // Choose the rez window length. With a rezzer present we wait the full
-                // minute; otherwise release the corpse fast so the group can /assist again.
+                // Choose the rez window length. With a rezzer present we wait the
+                // full window; otherwise we still hold the corpse the configured
+                // time (default 5 min for both) — the owner can release to recall
+                // their dead bots sooner.
                 int waitMs = GroupHasRezzer() ? REZ_WAIT_MS : REZ_WAIT_NO_HEALER_MS;
 
                 _inRezWait = true;

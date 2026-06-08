@@ -540,12 +540,30 @@ namespace DOL.GS
 
             List<GamePlayer> eligibleMembers = new(8);
 
-            // Members must be in visible range.
-            foreach (GamePlayer member in GetPlayersInTheGroup())
+            // MimicNPC bots can't bank coins, but they DO count toward the split:
+            // the bag is divided across the FULL in-range group (real players +
+            // mimics), then handed out only to the real players. This mirrors XP,
+            // which is divided across the whole group including mimics (see
+            // AbstractServerRules.ProcessXpGainers, where each mimic bumps the
+            // group's member Count). Without counting the mimics here, a player
+            // soloing with a mimic squad pockets the ENTIRE coin bag from every
+            // kill (divided by 1) instead of a fair group share — far too much money.
+            int shareCount = 0;
+
+            // Members must be in visible range (same VISIBILITY_DISTANCE that
+            // GamePlayer/MimicNPC.CanSeeObject uses), so distant members don't
+            // receive or dilute a share.
+            foreach (GameLiving member in GetMembersInTheGroup())
             {
-                // Ignores `GamePlayer.AutoSplitLoot`.
-                if (member.ObjectState is eObjectState.Active && member.CanSeeObject(money))
-                    eligibleMembers.Add(member);
+                if (member.ObjectState is not eObjectState.Active || !member.IsWithinRadius(money, WorldMgr.VISIBILITY_DISTANCE))
+                    continue;
+
+                shareCount++;
+
+                // Only real players actually receive a share (mimics dilute but
+                // hold nothing). Ignores `GamePlayer.AutoSplitLoot`.
+                if (member is GamePlayer player)
+                    eligibleMembers.Add(player);
             }
 
             if (eligibleMembers.Count == 0)
@@ -554,13 +572,13 @@ namespace DOL.GS
                 return TryPickUpResult.Blocked;
             }
 
-            SplitMoneyBetweenEligibleMembers(eligibleMembers, money);
+            SplitMoneyBetweenEligibleMembers(eligibleMembers, shareCount, money);
             _ = money.RemoveFromWorld();
             return TryPickUpResult.Success;
 
-            static void SplitMoneyBetweenEligibleMembers(List<GamePlayer> eligibleMembers, GameMoney money)
+            static void SplitMoneyBetweenEligibleMembers(List<GamePlayer> eligibleMembers, int shareCount, GameMoney money)
             {
-                long splitMoney = (long) Math.Ceiling((double) money.Value / eligibleMembers.Count);
+                long splitMoney = (long) Math.Ceiling((double) money.Value / shareCount);
                 long moneyToPlayer;
 
                 foreach (GamePlayer eligibleMember in eligibleMembers)
@@ -569,7 +587,7 @@ namespace DOL.GS
 
                     if (moneyToPlayer > 0)
                     {
-                        eligibleMember.AddMoney(moneyToPlayer, LanguageMgr.GetTranslation(eligibleMember.Client.Account.Language, eligibleMembers.Count > 1 ? "GamePlayer.PickupObject.YourLootShare" : "GamePlayer.PickupObject.YouPickUp", Money.GetString(splitMoney)));
+                        eligibleMember.AddMoney(moneyToPlayer, LanguageMgr.GetTranslation(eligibleMember.Client.Account.Language, shareCount > 1 ? "GamePlayer.PickupObject.YourLootShare" : "GamePlayer.PickupObject.YouPickUp", Money.GetString(splitMoney)));
                         InventoryLogging.LogInventoryAction("(ground)", eligibleMember, eInventoryActionType.Loot, splitMoney);
                     }
                 }

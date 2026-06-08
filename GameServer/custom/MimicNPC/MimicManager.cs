@@ -693,6 +693,32 @@ namespace DOL.GS.Scripts
             }
         }
 
+        /// <summary>
+        /// The owner pressed /release (or auto-released). A player going to their
+        /// bind point should bring their FALLEN bots back with them rather than
+        /// leave them as orphaned corpses, so every owned bot still lying in its
+        /// rez-wait window is recalled to the (now alive, relocated) player's side
+        /// and kept in the group. Living bots are untouched — they regroup via the
+        /// normal follow AI. Fires for both same-region and cross-region releases
+        /// (the latter re-fires after the destination region finishes loading, so
+        /// the player is already at their bind when we teleport the bots in).
+        /// </summary>
+        private static void OnPlayerReleased(DOLEvent e, object sender, EventArgs args)
+        {
+            if (sender is not GamePlayer player || player.Client?.Account == null || !player.IsAlive)
+                return;
+
+            IReadOnlyList<MimicNPC> owned = GetLiveOwnedBy(player.Client.Account.Name);
+            if (owned.Count == 0)
+                return;
+
+            foreach (MimicNPC mimic in owned)
+            {
+                if (mimic != null && mimic.InRezWait)
+                    mimic.ReleaseToOwnerNow(player);
+            }
+        }
+
         private static void DeleteOwnedBy(GamePlayer player, string reason)
         {
             if (player?.Client?.Account == null)
@@ -751,6 +777,7 @@ namespace DOL.GS.Scripts
         {
             GameEventMgr.AddHandler(GamePlayerEvent.Quit, OnPlayerQuit);
             GameEventMgr.AddHandler(GamePlayerEvent.Linkdeath, OnPlayerLinkdeath);
+            GameEventMgr.AddHandler(GamePlayerEvent.Released, OnPlayerReleased);
             GameEventMgr.AddHandler(GroupEvent.MemberDisbanded, OnGroupMemberDisbanded);
             // GroupEvent.MemberJoined is registered separately in the
             // OnScriptsCompiled bootstrap class because its handler

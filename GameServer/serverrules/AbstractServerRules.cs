@@ -1086,6 +1086,15 @@ namespace DOL.GS.ServerRules
                 killedNpc.Faction?.OnMemberKilled(player);
             }
 
+            // MimicNPC bots in the involved group(s) gain XP from the kill too, so
+            // a player power-leveling with a mimic squad sees the bots level up
+            // alongside them. The player award loop above skips mimics (they aren't
+            // GamePlayers and aren't loot owners); they're only counted to DIVIDE
+            // the share. Without this they'd never level from a pex. Awarded from
+            // the same per-group base XP, capped on each bot's OWN level so leveling
+            // stays gradual.
+            AwardMimicsOnNpcKill(killedNpc, totalDamage, groupCountAndDamage);
+
             // Camp bonus drops by 2% per kill.
             if (killedNpc.CampBonus > 0)
                 killedNpc.CampBonus -= 0.02;
@@ -1274,6 +1283,74 @@ namespace DOL.GS.ServerRules
 
                         mostDamagingEntity.Damage = totalDamage;
                     }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Awards kill XP to the MimicNPC bots of every group credited for the
+        /// kill. The standard player award (<see cref="AwardPlayerOnNpcKill"/>)
+        /// only handles real GamePlayers, so without this a grouped mimic squad
+        /// never levels up during a pex even though it does the fighting. Each
+        /// mimic receives the same per-member base share the human members get
+        /// (mob XP value divided by the full group size, scaled by the group's
+        /// damage fraction), clamped to a cap based on the BOT's own level so a
+        /// low-level mimic power-leveled on high mobs levels gradually instead of
+        /// jumping many levels per kill. The bot's own <c>GainExperience</c>
+        /// applies the XP rate / zone bonus and triggers the level-up; it also
+        /// honors the per-bot <c>GainXP</c> flag and the MAX_LEVEL ceiling.
+        /// </summary>
+        private static void AwardMimicsOnNpcKill(GameNPC killedNpc, double npcTotalDamageReceived,
+            Dictionary<Group, EntityCountTotalDamagePair> groupCountAndDamage)
+        {
+            if (groupCountAndDamage == null || npcTotalDamageReceived <= 0)
+                return;
+
+            foreach (var kv in groupCountAndDamage)
+            {
+                Group group = kv.Key;
+                EntityCountTotalDamagePair pair = kv.Value;
+
+                if (group == null || pair == null || pair.HighestLevelPlayer == null)
+                    continue;
+
+                int memberCount = Math.Max(1, pair.Count);
+
+                // Per-member base share of the mob's XP — the even split used by
+                // the group award when the kill is a challenge (the common pex
+                // case). The per-bot level cap below handles the over-share when
+                // the mimic is far below the mob's level.
+                long baseShare = memberCount <= 1
+                    ? killedNpc.ExperienceValue
+                    : (long) Math.Ceiling((double) killedNpc.ExperienceValue / memberCount);
+
+                // The group's fraction of the total damage dealt to the mob.
+                double damagePercent = Math.Min(1.0, pair.Damage / npcTotalDamageReceived);
+
+                foreach (GameLiving member in group.GetMembersInTheGroup())
+                {
+                    if (member is not DOL.GS.Scripts.MimicNPC mimic)
+                        continue;
+                    if (mimic.ObjectState is not GameObject.eObjectState.Active || !mimic.IsAlive)
+                        continue;
+                    if (!mimic.IsWithinRadius(killedNpc, WorldMgr.MAX_EXPFORKILL_DISTANCE))
+                        continue;
+                    // Don't sip XP off a mob that cons grey to the bot itself.
+                    if (ConLevels.GetConColor(mimic.GetConLevel(killedNpc)) is ConColor.GREY)
+                        continue;
+
+                    // Cap on the bot's OWN level (mirrors the player solo XP cap in
+                    // CalculateXpCap) so leveling stays gradual.
+                    long xpCap = (long) (GameServer.ServerRules.GetExperienceForLiving(mimic.Level)
+                        * Properties.XP_CAP_PERCENT / 100.0 * killedNpc.ExceedXPCapAmount);
+                    long xp = (long) (Math.Min(baseShare, xpCap) * damagePercent);
+
+                    if (xp <= 0)
+                        continue;
+
+                    // GainExperience applies the XP rate / zone bonus and triggers
+                    // the level-up. sendMessage:false — a bot has no real client.
+                    mimic.GainExperience(new GainedExperienceEventArgs(xp, 0, 0, 0, 0, 0, false, true, eXPSource.NPC));
                 }
             }
         }

@@ -1707,15 +1707,26 @@ namespace DOL.GS.Scripts
                         if (!_keepProgress.TryGetValue(id, out var prog) || prog.Realm != besieger)
                             prog = new KeepSiegeProgress { Realm = besieger, Pct = 0, LastTick = now };
 
-                        double elapsed = prog.LastTick == 0 ? 0 : now - prog.LastTick;
+                        // elapsed is 0 on the bar's very FIRST (creation) tick —
+                        // LastTick was seeded to `now` just above — so a fresh bar
+                        // rests at exactly 0 this sweep and only begins accruing on
+                        // the next one. This is why the "broken" test below MUST be
+                        // a strict < 0, not <= 0: a bar sitting AT 0 (just created,
+                        // or a dead-even tug) has not been pushed back, it simply
+                        // hasn't moved yet. With <= 0 the meter was wiped on its own
+                        // creation tick every sweep and could never accumulate — so
+                        // keeps were eternally attacked (lit on fire) but NEVER
+                        // captured (towers use a separate per-group hold, hence they
+                        // still flipped).
+                        double elapsed = now - prog.LastTick;
                         prog.Pct += perMsPct * elapsed;
                         prog.LastTick = now;
 
-                        // Siege broken: defenders pushed the bar back to 0. Drop
-                        // the meter AND the offensive claim so the besiegers move
-                        // on instead of grinding a hopeless front forever, and arm
-                        // a short cooldown so they don't immediately re-open it.
-                        if (prog.Pct <= 0)
+                        // Siege broken: defenders pushed the bar BELOW 0 (net < 0).
+                        // Drop the meter AND the offensive claim so the besiegers
+                        // move on instead of grinding a hopeless front forever, and
+                        // arm a short cooldown so they don't immediately re-open it.
+                        if (prog.Pct < 0)
                         {
                             _keepProgress.Remove(id);
                             if (net < 0)

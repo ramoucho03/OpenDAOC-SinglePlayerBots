@@ -696,8 +696,11 @@ namespace DOL.GS.PacketHandler
         void SendMerchantWindow(MerchantTradeItems itemlist, eMerchantWindowType windowType);
         void SendTradeWindow();
         void SendCloseTradeWindow();
-        void SendPlayerDied(GamePlayer killedPlayer, GameObject killer);
-        void SendPlayerRevive(GamePlayer revivedPlayer);
+        // Widened from GamePlayer to GameLiving so player-like NPCs (MimicNPC
+        // bots) can be shown as a lying corpse / stood back up on the client,
+        // exactly like a real player. The packet body only needs the object id.
+        void SendPlayerDied(GameLiving killedPlayer, GameObject killer);
+        void SendPlayerRevive(GameLiving revivedPlayer);
         void SendUpdatePlayer();
         void SendUpdatePlayerSkills(bool updateInternalCache);
         void SendNonHybridSpellLines(bool updateInternalCache);
