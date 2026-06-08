@@ -3187,6 +3187,19 @@ namespace DOL.GS.Scripts
         private const int ZERG_DIVE_PCT = 15;
         private const int ISOLATION_PENALTY_PER_ALLY = 1200;
 
+        // Ground-Z alignment. NF has NO navmesh, so hydrated bots can't follow
+        // terrain height and drift at the nominal waypoint Z (~3500). Combat range
+        // is checked in 3D (IsWithinRadius includes Z), so a player standing right
+        // next to a Z-drifted bot reads as "out of range" — they can't hit it.
+        //  SCAN — 3D radius to FIND a nearby player despite the Z gap (must be big
+        //         enough that a player at melee X/Y but a large Z gap is still found).
+        //  XY   — only re-seat a bot to a player within this 2D distance (so the
+        //         player's Z is a valid local-ground reference).
+        //  TOL  — don't bother re-seating if already within this of the ground.
+        private const int Z_ALIGN_SCAN_RANGE = 3500;
+        private const int Z_ALIGN_XY_RANGE = 700;
+        private const int Z_ALIGN_TOLERANCE = 40;
+
         private Point3D _currentWaypoint;
         // Index into Config.PatrolWaypoints for the SEQUENTIAL patrol fallback, so
         // a group with no objective walks its realm's route in order (home →
@@ -3874,6 +3887,12 @@ namespace DOL.GS.Scripts
                 State = eFrontierState.Disbanded;
                 return;
             }
+
+            // Keep hydrated bots at the players' GROUND Z so they can actually be
+            // hit (and hit) in melee — NF has no navmesh, so bots drift at the
+            // nominal waypoint Z and the 3D attack-range check (IsWithinRadius
+            // includes Z) sees a player standing next to them as "out of range".
+            AlignHydratedMembersToGroundZ();
 
             // ---- Hydrated state machine ----
             switch (State)
@@ -5829,6 +5848,65 @@ namespace DOL.GS.Scripts
         /// (MimicBrain.Think) still covers everyone as the fallback before/without
         /// a song. Only runs while the group isn't fighting.
         /// </summary>
+        /// <summary>
+        /// Keeps stationary hydrated bots at the GROUND Z of a nearby player so
+        /// they can be hit (and hit back) in melee. Needed because NF has no
+        /// navmesh: bots can't track terrain height, so they sit at the nominal
+        /// waypoint Z while the player stands on real terrain, and the 3D
+        /// attack-range check then reports them out of range. Only re-seats bots
+        /// that are standing still (a moving bot already converges its Z toward
+        /// its player-derived destination). Re-seat keeps X/Y, only fixes Z, and
+        /// uses no remove/recreate so there's no flicker.
+        /// </summary>
+        private void AlignHydratedMembersToGroundZ()
+        {
+            long xyRangeSq = (long)Z_ALIGN_XY_RANGE * Z_ALIGN_XY_RANGE;
+
+            foreach (var m in Members)
+            {
+                if (m == null || !m.IsAlive || m.ObjectState != GameObject.eObjectState.Active)
+                    continue;
+                if (m.IsMoving)
+                    continue;
+
+                // Nearest player by 2D distance (Z is exactly what's unreliable,
+                // so it must not filter the search — the 3D scan radius is wide
+                // enough to still find a player next to a Z-drifted bot).
+                GamePlayer ground = null;
+                long bestSq = xyRangeSq;
+                foreach (GamePlayer p in m.GetPlayersInRadius(Z_ALIGN_SCAN_RANGE))
+                {
+                    if (p == null || !p.IsAlive)
+                        continue;
+
+                    long dx = p.X - m.X;
+                    long dy = p.Y - m.Y;
+                    long sq = dx * dx + dy * dy;
+                    if (sq <= bestSq)
+                    {
+                        bestSq = sq;
+                        ground = p;
+                    }
+                }
+
+                if (ground == null || Math.Abs(m.Z - ground.Z) <= Z_ALIGN_TOLERANCE)
+                    continue;
+
+                // Re-seat at the player's ground Z. Capture the LIVE X/Y (the
+                // movement component's interpolated position) back into Real X/Y,
+                // set Real Z to the ground, then push Real into the movement
+                // component (which is what the 3D range check reads). No move in
+                // X/Y, no teleport flicker; refresh the client so it sees the fix.
+                int liveX = m.X;
+                int liveY = m.Y;
+                m.X = liveX;
+                m.Y = liveY;
+                m.Z = ground.Z;
+                m.movementComponent.ForceUpdatePosition();
+                ClientService.UpdateNpcForPlayers(m);
+            }
+        }
+
         private void MaintainTravelSpeed()
         {
             foreach (var m in Members)
