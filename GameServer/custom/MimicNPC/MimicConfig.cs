@@ -102,7 +102,7 @@ namespace DOL.GS.Scripts
         // ----------------------------------------------------------------
 
         [ServerProperty("npc", "mimic_assist_error_pct",
-            "Chance (0-100) that a DPS mimic does NOT follow a freshly called assist target and instead keeps working its own best-scored target. Models real players who don't assist perfectly. 0 = a perfect (strong) assist train; higher = looser. Default 18.", 18)]
+            "Chance (0-100) that a DPS mimic does NOT follow a freshly called assist target and instead keeps working its own best-scored target. Models real players who don't assist perfectly. 0 = a perfect (strong) assist train; higher = looser. Default 15 (slightly tighter than the old 18 for a bit more focus-fire pressure while still fraying).", 15)]
         public static int MIMIC_ASSIST_ERROR_PCT;
 
         [ServerProperty("npc", "mimic_assist_reaction_min_ms",
@@ -110,8 +110,24 @@ namespace DOL.GS.Scripts
         public static int MIMIC_ASSIST_REACTION_MIN_MS;
 
         [ServerProperty("npc", "mimic_assist_reaction_max_ms",
-            "Maximum reaction delay (ms) before a DPS mimic swaps onto a newly called assist target; the actual delay rolls uniformly in [min, max]. Higher = looser/slower train. Default 1200.", 1200)]
+            "Maximum reaction delay (ms) before a DPS mimic swaps onto a newly called assist target; the actual delay rolls uniformly in [min, max]. Higher = looser/slower train. Default 1000 (slightly snappier than the old 1200).", 1000)]
         public static int MIMIC_ASSIST_REACTION_MAX_MS;
+
+        [ServerProperty("npc", "mimic_priority_healer_pct",
+            "Chance (0-100) that a group's tank/MainAssist, when it has no one to peel, CALLS the enemy healer as the kill target (the whole DPS assist train then follows it) instead of just hitting whatever is on the tank. Models a real group leader spotting and calling the back-line. Below 100 the group sometimes tunnels the wrong target — human error that keeps fights winnable. The downstream assist train still applies its own reaction delay + mimic_assist_error_pct miss. Default 70.", 70)]
+        public static int MIMIC_PRIORITY_HEALER_PCT;
+
+        [ServerProperty("npc", "mimic_interrupt_pct",
+            "Chance (0-100) that a mimic NOTICES and reacts to a given enemy spell cast to interrupt it — the tank with a stun style, ranged DPS (casters/archers) by snapping a nuke/shot onto the caster. Rolled once PER enemy cast. Below 100 the bots let some casts (clutch heals) land — the human error that keeps the interrupt game fair. 0 disables proactive interrupts. Default 65.", 65)]
+        public static int MIMIC_INTERRUPT_PCT;
+
+        [ServerProperty("npc", "mimic_interrupt_reaction_min_ms",
+            "Minimum reaction delay (ms) before a mimic acts on an enemy cast it decided to interrupt. Default 250.", 250)]
+        public static int MIMIC_INTERRUPT_REACTION_MIN_MS;
+
+        [ServerProperty("npc", "mimic_interrupt_reaction_max_ms",
+            "Maximum reaction delay (ms) before a mimic acts on an enemy cast it decided to interrupt; actual delay rolls uniformly in [min, max]. Higher = more casts slip through. Default 700.", 700)]
+        public static int MIMIC_INTERRUPT_REACTION_MAX_MS;
 
         [ServerProperty("npc", "mimic_healer_danger_radius",
             "If a hostile comes within this many units of a healer, the healer steps back to its safe seat even when otherwise idle. Default 350.", 350)]
@@ -136,6 +152,21 @@ namespace DOL.GS.Scripts
         [ServerProperty("npc", "mimic_group_chat_dedup_ms",
             "Cooldown (ms) during which the same chat topic stays silent for the rest of the group after one bot says it. Default 8000.", 8000)]
         public static int MIMIC_GROUP_CHAT_DEDUP_MS;
+
+        // ----------------------------------------------------------------
+        // Raid (mimic battlegroup) tuning. /mraid fields several full 8-man
+        // mimic groups under one human raid leader for large PvE content
+        // (dragons, ML/epic encounters) that a single group can't clear.
+        // Raids are PvE-only by design — raid bots never auto-enable PvP.
+        // ----------------------------------------------------------------
+
+        [ServerProperty("npc", "mimic_raid_max_groups",
+            "Maximum number of 8-man mimic groups a single /mraid can field (the human raid leader's group counts as one). Default 8 (up to ~64 bots). Lower this on weaker hardware.", 8)]
+        public static int MIMIC_RAID_MAX_GROUPS;
+
+        [ServerProperty("npc", "mimic_raid_default_groups",
+            "Default number of mimic groups /mraid creates when the player doesn't pass a count. Default 3 (~24 bots).", 3)]
+        public static int MIMIC_RAID_DEFAULT_GROUPS;
 
         [ServerProperty("npc", "mimic_linkdeath_grace_seconds",
             "Seconds an owner-bot is hibernated (kept alive but inactive) after the owner link-deaths before being deleted. 0 to delete immediately. Default 60.", 60)]

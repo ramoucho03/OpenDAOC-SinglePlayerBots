@@ -137,6 +137,56 @@ namespace DOL.AI.Brain
         public bool IsPulling;
         public bool Debug;
 
+        // ----------------------------------------------------------------
+        // Raid (mimic battlegroup) membership.
+        //
+        // A raid is a player-led force larger than a single 8-man group: the
+        // human raid leader plus one or more full mimic groups, all created by
+        // /mraid. Each secondary group has its OWN mimic leader, so its members
+        // follow that leader normally — but the leader itself has nobody above
+        // it inside its group. RaidAnchor records the human raid leader so a
+        // secondary-group leader trails the player and drags its whole group
+        // along, keeping the raid travelling as one body.
+        //
+        // RaidAnchor is set on EVERY bot in the raid (not just the secondary
+        // leaders) so IsRaidMember can gate raid-wide policy — most importantly
+        // the PvE-only rule: raid bots never auto-flip to PvP mode, so a
+        // battlegroup stays a PvE tool even if the leader wanders into RvR.
+        public GameLiving RaidAnchor;
+
+        /// <summary>True when this bot belongs to a player /mraid raid.</summary>
+        public bool IsRaidMember => RaidAnchor != null;
+
+        /// <summary>
+        /// Resolves who this bot should follow in FOLLOW_THE_LEADER. Normally
+        /// the bot's group leader. When the bot IS its own group's leader (a
+        /// secondary raid group), it instead trails the <see cref="RaidAnchor"/>
+        /// (the human raid leader) so the whole raid moves together. Returns
+        /// null when the bot is genuinely leaderless (no group, or its own
+        /// leader with no raid anchor) — the caller then drops back to
+        /// WAKING_UP.
+        /// </summary>
+        public GameLiving GetEffectiveFollowLeader()
+        {
+            Group group = Body?.Group;
+            if (group == null)
+                return null;
+
+            GameLiving leader = group.LivingLeader;
+
+            if (leader != Body)
+                return leader; // ordinary member — follow the group leader
+
+            // We ARE the group leader. In a raid, follow the anchor instead of
+            // standing still; otherwise there is nothing to follow.
+            GameLiving anchor = RaidAnchor;
+            if (anchor != null && anchor != Body
+                && anchor.ObjectState == GameObject.eObjectState.Active && anchor.IsAlive)
+                return anchor;
+
+            return null;
+        }
+
         public GameObject LastTargetObject;
         public bool IsFlanking;
         public Point2D TargetFlankPosition;
@@ -772,7 +822,7 @@ namespace DOL.AI.Brain
                     {
                         for (int i = 0; i < ordered.Count; i++)
                         {
-                            GameLiving aggroed = ordered[i].Living;
+                            GameLiving aggroed = ordered[i]?.Living;
                             // Skip self. Without this exclusion, the loop here
                             // turned ScanGroupCombat into an auto-engage cycle:
                             // the mob's own proximity-aggro scan added Body
@@ -3033,7 +3083,27 @@ namespace DOL.AI.Brain
                 }
             }
 
-            GameLiving target = peelBest ?? fallbackOnTank;
+            // No one to peel → CALL the kill target. The DPS assist train follows
+            // the tank/MainAssist's target, so making the tank focus the enemy
+            // healer pulls the whole group's damage onto the back-line — the single
+            // biggest swing in an RvR fight, and exactly what a real group leader
+            // calls. Gated by a "right call" roll (MIMIC_PRIORITY_HEALER_PCT) so the
+            // group sometimes tunnels the wrong target (human error); the roll is
+            // held stable per healer-candidate (not re-rolled every 500 ms tick) so
+            // the tank's target — and thus the train — doesn't thrash. Peeling a
+            // threatened team-mate still takes priority over the call.
+            GameLiving target = peelBest;
+            if (target == null)
+            {
+                GameLiving healer = FindNearestEnemyHealerInAggro();
+                if (healer != _tankLastHealerCand)
+                {
+                    _tankLastHealerCand = healer;
+                    _tankCallsHealer = healer != null && Util.Chance(MimicConfig.MIMIC_PRIORITY_HEALER_PCT);
+                }
+
+                target = (_tankCallsHealer && healer != null) ? healer : fallbackOnTank;
+            }
 
             if (target != null)
             {
@@ -3042,6 +3112,49 @@ namespace DOL.AI.Brain
             }
 
             return false;
+        }
+
+        // Tank "call the enemy healer" state. Held so the right-call roll is taken
+        // once per healer-candidate change rather than every combat tick (which
+        // would flip-flop the tank's target — and the whole assist train with it).
+        private GameLiving _tankLastHealerCand;
+        private bool _tankCallsHealer;
+
+        /// <summary>
+        /// Nearest living, non-CC'd enemy in this bot's aggro list whose class
+        /// profile is a Healer (works for real players and enemy mimics alike via
+        /// <see cref="MimicCombatProfileRegistry.GetForLiving"/>). Used by the tank
+        /// to call the back-line kill target. Null when no enemy healer is engaged.
+        /// </summary>
+        private GameLiving FindNearestEnemyHealerInAggro()
+        {
+            GameLiving best = null;
+            int bestDist = int.MaxValue;
+
+            foreach (var kv in AggroList)
+            {
+                GameLiving mob = kv.Key;
+
+                if (mob == null || !mob.IsAlive || mob.ObjectState != GameObject.eObjectState.Active)
+                    continue;
+                if (mob.IsMezzed || mob.IsRooted)
+                    continue;
+                if (!CanAggroTarget(mob))
+                    continue;
+
+                MimicCombatProfile prof = MimicCombatProfileRegistry.GetForLiving(mob);
+                if (prof == null || !prof.HasRole(eMimicCombatRole.Healer))
+                    continue;
+
+                int dist = Body.GetDistanceTo(mob);
+                if (dist < bestDist)
+                {
+                    best = mob;
+                    bestDist = dist;
+                }
+            }
+
+            return best;
         }
 
         // Last living the tank applied Guard to. Tracked so we can call
@@ -3294,6 +3407,28 @@ namespace DOL.AI.Brain
             }
 
             if (castingEnemy == null)
+            {
+                _slamLastCaster = null;
+                return false;
+            }
+
+            // Human imperfection: a real tank doesn't catch EVERY cast. Decide once
+            // per enemy cast (keyed on the caster + its current spell handler) whether
+            // we notice it (MIMIC_INTERRUPT_PCT) and add a short reaction delay before
+            // the slam lands — so clutch heals occasionally get through.
+            long now = GameLoop.GameLoopTime;
+            object handler = castingEnemy.CurrentSpellHandler;
+            if (castingEnemy != _slamLastCaster || !ReferenceEquals(handler, _slamLastHandler))
+            {
+                _slamLastCaster = castingEnemy;
+                _slamLastHandler = handler;
+                _slamWillCatch = Util.Chance(MimicConfig.MIMIC_INTERRUPT_PCT);
+                int min = Math.Max(0, MimicConfig.MIMIC_INTERRUPT_REACTION_MIN_MS);
+                int max = Math.Max(min, MimicConfig.MIMIC_INTERRUPT_REACTION_MAX_MS);
+                _slamReadyTime = now + Util.Random(min, max);
+            }
+
+            if (!_slamWillCatch || now < _slamReadyTime)
                 return false;
 
             // Swap target + queue the style. StartAttack covers the case where
@@ -3305,6 +3440,129 @@ namespace DOL.AI.Brain
                 Body.StartAttack(castingEnemy);
 
             return true;
+        }
+
+        // Per-cast interrupt decision state (tank slam). Keyed on caster + spell
+        // handler so the catch roll / reaction delay is taken once per enemy cast.
+        private GameLiving _slamLastCaster;
+        private object _slamLastHandler;
+        private bool _slamWillCatch;
+        private long _slamReadyTime;
+
+        // Same, for the ranged-DPS snap-interrupt below.
+        private GameLiving _interruptLastCaster;
+        private object _interruptLastHandler;
+        private bool _interruptWillCatch;
+        private long _interruptReadyTime;
+
+        // Generous nuke/shot range used as the "can I reach to interrupt" gate.
+        private const int INTERRUPT_REACH = 1875;
+
+        /// <summary>
+        /// Ranged-DPS proactive interrupt (casters/archers): when an enemy caster
+        /// is mid-cast in reach, snap our target onto it so the next offensive
+        /// nuke/shot lands and interrupts the cast — the rest of the offensive
+        /// loop does the actual casting, so no extra spell plumbing is needed.
+        /// Enemy HEALERS are preferred (stopping a heal is the whole point). Tanks,
+        /// healers and the main CC don't run this (the tank uses Slam; the CC mezzes).
+        /// Human imperfection mirrors the slam: a per-cast notice roll
+        /// (MIMIC_INTERRUPT_PCT) + a short reaction delay, so some casts slip through.
+        /// Returns true when it re-targeted (caller falls through to cast).
+        /// </summary>
+        private bool TryRetargetToInterruptCaster()
+        {
+            if (!PvPMode || Body.Group == null || IsMainTank || IsMainCC || IsHealer)
+                return false;
+            if (Body.IsCasting || AggroList.Count == 0)
+                return false;
+            if (MimicConfig.MIMIC_INTERRUPT_PCT <= 0)
+                return false;
+
+            MimicCombatProfile p = MimicBody?.CombatProfile;
+            if (p == null)
+                return false;
+            bool ranged = p.HasRole(eMimicCombatRole.CasterDps)
+                || p.HasRole(eMimicCombatRole.Archer)
+                || p.HasRole(eMimicCombatRole.PetCaster);
+            if (!ranged)
+                return false;
+
+            GameLiving castingEnemy = FindInterruptibleEnemyCaster();
+            if (castingEnemy == null)
+            {
+                _interruptLastCaster = null;
+                return false;
+            }
+
+            long now = GameLoop.GameLoopTime;
+            object handler = castingEnemy.CurrentSpellHandler;
+            if (castingEnemy != _interruptLastCaster || !ReferenceEquals(handler, _interruptLastHandler))
+            {
+                _interruptLastCaster = castingEnemy;
+                _interruptLastHandler = handler;
+                _interruptWillCatch = Util.Chance(MimicConfig.MIMIC_INTERRUPT_PCT);
+                int min = Math.Max(0, MimicConfig.MIMIC_INTERRUPT_REACTION_MIN_MS);
+                int max = Math.Max(min, MimicConfig.MIMIC_INTERRUPT_REACTION_MAX_MS);
+                _interruptReadyTime = now + Util.Random(min, max);
+            }
+
+            if (!_interruptWillCatch || now < _interruptReadyTime)
+                return false;
+            if (Body.TargetObject == castingEnemy)
+                return false; // already on it — nothing to switch
+
+            Body.TargetObject = castingEnemy;
+            return true;
+        }
+
+        /// <summary>
+        /// Nearest enemy in aggro that is mid-REAL-cast (CastTime &gt; 0), in
+        /// interrupt reach, not already CC'd, preferring HEALER then caster roles.
+        /// </summary>
+        private GameLiving FindInterruptibleEnemyCaster()
+        {
+            GameLiving best = null;
+            int bestRank = int.MaxValue;
+            int bestDist = int.MaxValue;
+
+            foreach (var pair in AggroList)
+            {
+                GameLiving enemy = pair.Key;
+
+                if (enemy == null || !enemy.IsAlive || enemy.ObjectState != GameObject.eObjectState.Active)
+                    continue;
+                if (enemy.IsMezzed || enemy.IsRooted || enemy.IsStunned)
+                    continue;
+                if (!enemy.IsCasting
+                    || enemy.CurrentSpellHandler?.Spell == null
+                    || enemy.CurrentSpellHandler.Spell.CastTime <= 0)
+                    continue;
+                if (!CanAggroTarget(enemy) || !Body.IsWithinRadius(enemy, INTERRUPT_REACH))
+                    continue;
+
+                // Rank: healers first (0), other real casters next (1), anything
+                // else mid-cast last (2). Tiebreak by proximity.
+                MimicCombatProfile prof = MimicCombatProfileRegistry.GetForLiving(enemy);
+                int rank = 2;
+                if (prof != null)
+                {
+                    if (prof.HasRole(eMimicCombatRole.Healer)) rank = 0;
+                    else if (prof.HasRole(eMimicCombatRole.CasterDps)
+                        || prof.HasRole(eMimicCombatRole.PetCaster)
+                        || prof.HasRole(eMimicCombatRole.Debuffer)
+                        || prof.HasRole(eMimicCombatRole.Support)) rank = 1;
+                }
+
+                int dist = Body.GetDistanceTo(enemy);
+                if (rank < bestRank || (rank == bestRank && dist < bestDist))
+                {
+                    best = enemy;
+                    bestRank = rank;
+                    bestDist = dist;
+                }
+            }
+
+            return best;
         }
 
         // Cheap snapshot for trigger gating: count live hostiles in our
@@ -4120,6 +4378,13 @@ namespace DOL.AI.Brain
                 return;
             }
 
+            // Ranged-DPS proactive interrupt: if an enemy caster (healer first) is
+            // mid-cast in reach, snap our target onto it so the offensive nuke/shot
+            // below lands and interrupts the cast. Gated by a per-cast notice roll +
+            // reaction delay (MIMIC_INTERRUPT_*) so clutch casts sometimes get off.
+            if (!IsFleeing)
+                TryRetargetToInterruptCaster();
+
             if (!IsFleeing && CheckSpells(eCheckSpellType.Offensive))
             {
                 Body.StopAttack();
@@ -4191,6 +4456,18 @@ namespace DOL.AI.Brain
                     Body.WalkTo(_kiteCommittedDestination, Body.MaxSpeed);
                     return;
                 }
+
+                // Proactive back-line standoff: a grouped caster shouldn't stand
+                // in melee. If an enemy is right in our face (melee reach) we step
+                // back toward the tank's line BEFORE we start eating hits, instead
+                // of only reacting once a cast is already interrupted. Reuses the
+                // group-aware kite (which tethers to the tank and, crucially,
+                // no-ops while we're mid-cast — so a committed cast still lands;
+                // the imperfection is built in: a cast in progress eats the hit).
+                if (!IsFleeing && Body.Group != null && !IsKiteCommitted
+                    && !Body.IsCasting && EnemyInMeleeRange()
+                    && TryShortKiteStep(700))
+                    return;
 
                 // Not being interrupted - cast normally
                 if (!IsFleeing && CheckSpells(eCheckSpellType.Offensive))
@@ -4391,6 +4668,27 @@ namespace DOL.AI.Brain
                     return false;
                 return true;
             }
+        }
+
+        /// <summary>
+        /// True if any non-CC'd hostile in our aggro list is within melee reach —
+        /// i.e. a melee attacker is in our face. Used by the caster back-line
+        /// standoff to step away before taking hits.
+        /// </summary>
+        private bool EnemyInMeleeRange()
+        {
+            int range = Math.Max(200, Body.MeleeAttackRange);
+            foreach (var kv in AggroList)
+            {
+                GameLiving e = kv.Key;
+                if (e == null || !e.IsAlive || e.ObjectState != GameObject.eObjectState.Active)
+                    continue;
+                if (e.IsMezzed || e.IsStunned)
+                    continue;
+                if (Body.IsWithinRadius(e, range))
+                    return true;
+            }
+            return false;
         }
 
         private bool TryShortKiteStep(int distance)
@@ -5661,6 +5959,16 @@ namespace DOL.AI.Brain
             if (target == null || tank == null)
                 return false;
 
+            // NpcService ticks brains across threads, so a living the caller
+            // saw Active a moment ago can be torn down (components / region
+            // nulled, aggro list rebuilt) by the time we get here. Re-check
+            // Active so we never deref a half-removed object — this is the
+            // race behind the SelectProtectedMemberThreat NRE during a bot's
+            // RemoveFromWorld.
+            if (target.ObjectState != GameObject.eObjectState.Active
+                || tank.ObjectState != GameObject.eObjectState.Active)
+                return false;
+
             // Tank already focused / attacking the target — engage.
             if (tank.TargetObject == target && (tank.IsAttacking || tank.IsCasting))
                 return true;
@@ -5680,7 +5988,11 @@ namespace DOL.AI.Brain
                 {
                     for (int i = 0; i < ordered.Count; i++)
                     {
-                        if (ordered[i].Living == tank)
+                        // Null-conditional: the mob's ordered aggro list is
+                        // cached and can be rebuilt on another thread, so an
+                        // individual entry may be transiently null — tolerate
+                        // it rather than NRE on ordered[i].Living.
+                        if (ordered[i]?.Living == tank)
                             return true;
                     }
                 }
@@ -7368,7 +7680,7 @@ namespace DOL.AI.Brain
                 {
                     for (int i = 0; i < ordered.Count; i++)
                     {
-                        GameLiving aggroed = ordered[i].Living;
+                        GameLiving aggroed = ordered[i]?.Living;
                         if (aggroed != null && Body.Group.IsInTheGroup(aggroed))
                             return true;
                     }
@@ -7570,6 +7882,79 @@ namespace DOL.AI.Brain
                 return true;
             GameLiving leader = Body.Group?.LivingLeader;
             return leader != null && leader != Body && leader.IsMoving;
+        }
+
+        /// <summary>
+        /// True for a spell type that INCREASES movement speed (a travel buff we
+        /// keep up while roaming): the group speed song (Minstrel/Skald/Bard) and
+        /// the self/realm run-speed buff (SpeedOfTheRealm — Theurgist and other
+        /// casters). Both resolve through SpeedEnhancementSpellHandler and apply a
+        /// MovementSpeedBuff effect, so ShouldApplyOwnSpeed handles either.
+        /// </summary>
+        private static bool IsMovementSpeedBuffType(eSpellType type)
+            => type is eSpellType.SpeedEnhancement or eSpellType.SpeedOfTheRealm;
+
+        /// <summary>
+        /// This bot's own movement-speed buff (pulsing speed song for Minstrel/
+        /// Bard, instant speed for Skald, SpeedOfTheRealm run-speed for casters
+        /// like the Theurgist), or null if it has none. The pulsing song lives in
+        /// <see cref="GameNPC.Spells"/>; instant / cast versions are routed to
+        /// MiscSpells / InstantMiscSpells.
+        /// </summary>
+        private Spell FindTravelSpeedSpell()
+        {
+            if (Body?.Spells != null)
+                foreach (Spell s in Body.Spells)
+                    if (s != null && IsMovementSpeedBuffType(s.SpellType))
+                        return s;
+
+            if (Body?.MiscSpells != null)
+                foreach (Spell s in Body.MiscSpells)
+                    if (s != null && IsMovementSpeedBuffType(s.SpellType))
+                        return s;
+
+            if (Body?.InstantMiscSpells != null)
+                foreach (Spell s in Body.InstantMiscSpells)
+                    if (s != null && IsMovementSpeedBuffType(s.SpellType))
+                        return s;
+
+            return null;
+        }
+
+        /// <summary>True if this bot can carry a group movement-speed song.</summary>
+        public bool IsSpeedSongCarrier() => FindTravelSpeedSpell() != null;
+
+        /// <summary>
+        /// Keeps this speeder's movement-speed song up WHILE THE GROUP TRAVELS, so
+        /// the whole group (in range of the song) moves at run-speed instead of a
+        /// walk. Driven explicitly by the frontier group (PvPFrontierGroup.
+        /// MaintainTravelSpeed) because the group LEADER — which carries the song
+        /// in many comps — does NOT run the follower travel-buff cycle that the
+        /// rest of the group does, so its song would otherwise never get cast.
+        /// Reuses the exact same guards as the per-bot cycle (already sped → skip,
+        /// live instrument song → leave it, can't-take-hold InCombat → skip), so
+        /// it never spams or double-casts. Returns true when it (re)cast the song.
+        /// </summary>
+        public bool EnsureTravelSpeedSong()
+        {
+            if (Body == null || !Body.IsAlive || Body.InCombat || Body.IsCasting)
+                return false;
+            if (!IsTravelingForSpeed())
+                return false;
+
+            Spell speed = FindTravelSpeedSpell();
+            if (speed == null)
+                return false;
+
+            // A live, self-pulsing instrument song re-applies its own effect each
+            // pulse — never restart it (the "recasts non-stop" bug).
+            if (speed.IsPulsing && speed.NeedInstrument && IsAnyPulseSongActive())
+                return false;
+
+            if (!ShouldApplyOwnSpeed(speed))
+                return false;
+
+            return Body.CastSpell(speed, MimicBody.GetSpellLineForSpell(speed));
         }
 
         /// <summary>

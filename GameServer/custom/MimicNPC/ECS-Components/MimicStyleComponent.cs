@@ -280,17 +280,43 @@ namespace DOL.GS
             if (weapon == null)
                 return null;
 
-            if (mimic.StylesTaunt != null && mimic.StylesTaunt.Count > 0)
+            // Primary: the pre-bucketed taunt list.
+            Style s = PickTauntFrom(mimic.StylesTaunt, mimic, weapon, lastAttackData, requireTauntProc: false);
+            if (s != null)
+                return s;
+
+            // Fallback: a taunt-proc style that slipped into the anytime bucket
+            // (data-convention quirk / categorisation gap). Keeps the tank
+            // taunting even when SortStyles didn't file the style under
+            // StylesTaunt. Detaunt styles are excluded so the tank never sheds
+            // its own threat here.
+            return PickTauntFrom(mimic.StylesAnytime, mimic, weapon, lastAttackData, requireTauntProc: true);
+        }
+
+        /// <summary>
+        /// Returns the first usable taunt style from <paramref name="styles"/>
+        /// matching the equipped weapon. When <paramref name="requireTauntProc"/>
+        /// is set the candidate must actually carry a (non-detaunt) taunt proc —
+        /// used when scanning a mixed bucket like StylesAnytime.
+        /// </summary>
+        private Style PickTauntFrom(List<Style> styles, MimicNPC mimic, DbInventoryItem weapon, AttackData lastAttackData, bool requireTauntProc)
+        {
+            if (styles == null || styles.Count == 0)
+                return null;
+
+            foreach (Style s in styles)
             {
-                foreach (Style s in mimic.StylesTaunt)
+                if (requireTauntProc)
                 {
-                    // WeaponTypeRequirement 0 means "any weapon" — those styles
-                    // were silently skipped by the strict equality check.
-                    // CanUseStyle does the authoritative weapon validation.
-                    if (s.WeaponTypeRequirement == 0 || s.WeaponTypeRequirement == weapon.Object_Type)
-                        if (StyleProcessor.CanUseStyle(lastAttackData, mimic, s, weapon))
-                            return s;
+                    if (!MimicNPC.StyleHasTauntProc(s, out bool isDetaunt) || isDetaunt)
+                        continue;
                 }
+
+                // WeaponTypeRequirement 0 means "any weapon"; CanUseStyle does
+                // the authoritative weapon + endurance validation.
+                if (s.WeaponTypeRequirement == 0 || s.WeaponTypeRequirement == weapon.Object_Type)
+                    if (StyleProcessor.CanUseStyle(lastAttackData, mimic, s, weapon))
+                        return s;
             }
 
             return null;

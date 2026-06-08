@@ -547,7 +547,13 @@ namespace DOL.AI.Brain
             // Clear cached ordered aggro list.
             // It isn't built here because ordering all entities in the aggro list can be expensive, and we typically don't need it.
             // It's built on demand, when `GetOrderedAggroList` is called.
-            OrderedAggroList.Clear();
+            // Must hold the lock: another brain's tick can be inside
+            // GetOrderedAggroList doing OrderedAggroList.ToList() on a different
+            // thread, and an unlocked Clear() here nulls the backing-array slots
+            // mid-copy — the reader then gets null elements and NREs on
+            // ordered[i].Living (e.g. MimicBrain.TargetHasAggroOnTank).
+            lock (_orderedAggroListLock)
+                OrderedAggroList.Clear();
             int attackRange = Body.attackComponent.AttackRange;
             GameLiving highestThreat = null;
             KeyValuePair<GameLiving, AggroAmount> currentTarget = default;

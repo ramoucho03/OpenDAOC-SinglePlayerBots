@@ -2365,6 +2365,43 @@ namespace DOL.GS.Scripts
 
         #endregion
 
+        /// <summary>
+        /// True when the style carries a taunt or detaunt proc. The sign of the
+        /// proc spell's Value distinguishes taunt (&gt; 0, <paramref name="isDetaunt"/>
+        /// false) from detaunt (&lt; 0, <paramref name="isDetaunt"/> true) — exactly
+        /// how the engine's StyleTaunt/Taunt handlers read it. Both the dedicated
+        /// StyleTaunt proc and the generic Taunt spell (used as a style proc by
+        /// some data sets) are recognised so a tank's taunt is never missed
+        /// because of a data-convention difference.
+        /// </summary>
+        public static bool StyleHasTauntProc(Style s, out bool isDetaunt)
+        {
+            isDetaunt = false;
+
+            if (s?.Procs == null || s.Procs.Count == 0)
+                return false;
+
+            foreach (StyleProcInfo proc in s.Procs)
+            {
+                var sp = proc?.Spell;
+                if (sp == null)
+                    continue;
+                if (sp.SpellType != eSpellType.StyleTaunt && sp.SpellType != eSpellType.Taunt)
+                    continue;
+
+                if (sp.Value > 0)
+                    return true;            // taunt
+
+                if (sp.Value < 0)
+                {
+                    isDetaunt = true;       // detaunt
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         public override void SortStyles()
         {
             StylesChain?.Clear();
@@ -2439,40 +2476,22 @@ namespace DOL.GS.Scripts
                         {
                             bool added = false;
 
-                            if (s.Procs.Count > 0)
+                            // Taunt vs detaunt is decided by the SIGN of the proc
+                            // spell's Value — exactly how the engine's StyleTaunt/
+                            // Taunt handlers read it (Value > 0 adds threat, < 0
+                            // sheds it). ID-independent, and tolerant of either
+                            // proc spell type, so a tank's taunt style is never
+                            // misfiled into StylesAnytime (where the damage-ranked
+                            // GetBestStyle would never pick the low-damage taunt —
+                            // the old cause of "the tank never taunts").
+                            if (StyleHasTauntProc(s, out bool isDetaunt))
                             {
-                                foreach (StyleProcInfo proc in s.Procs)
-                                {
-                                    if (proc.Spell.SpellType == eSpellType.StyleTaunt)
-                                    {
-                                        // Taunt vs detaunt is decided by the SIGN of the
-                                        // proc spell's Value — exactly how the engine's
-                                        // own StyleTaunt handler reads it (Value > 0 adds
-                                        // threat, < 0 sheds it). The previous check keyed
-                                        // off hardcoded spell IDs 20000/20001 which do not
-                                        // match this server's spell data, so every taunt
-                                        // style fell through to StylesAnytime — where
-                                        // GetBestStyle (damage-ranked) never picks the
-                                        // low-damage taunt. Net result: the tank never
-                                        // taunted. Sign-based detection is ID-independent.
-                                        if (proc.Spell.Value > 0)
-                                        {
-                                            if (StylesTaunt == null)
-                                                StylesTaunt = new List<Style>(1);
+                                if (isDetaunt)
+                                    (StylesDetaunt ??= new List<Style>(1)).Add(s);
+                                else
+                                    (StylesTaunt ??= new List<Style>(1)).Add(s);
 
-                                            StylesTaunt.Add(s);
-                                            added = true;
-                                        }
-                                        else if (proc.Spell.Value < 0)
-                                        {
-                                            if (StylesDetaunt == null)
-                                                StylesDetaunt = new List<Style>(1);
-
-                                            StylesDetaunt.Add(s);
-                                            added = true;
-                                        }
-                                    }
-                                }
+                                added = true;
                             }
 
                             if (!added)
@@ -5238,7 +5257,13 @@ namespace DOL.GS.Scripts
                     // check for new Styles
                     foreach (Style st in spec.GetStylesForLiving(this))
                     {
-                        if (st.SpecLevelRequirement == 2 && Level > 5)
+                        // Higher-level mimics drop the weak spec-level-2 "base"
+                        // style of each line (it's superseded by better openers).
+                        // BUT a taunt style must never be pruned: in DAoC the
+                        // per-line anytime Taunt sits in this low bracket, and
+                        // dropping it left high-level tank mimics with an empty
+                        // StylesTaunt — the root cause of "the tank never taunts".
+                        if (st.SpecLevelRequirement == 2 && Level > 5 && !StyleHasTauntProc(st, out _))
                         {
                             if (Styles.Contains(st))
                             {

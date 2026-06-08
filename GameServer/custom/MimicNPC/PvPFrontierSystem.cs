@@ -60,6 +60,10 @@ namespace DOL.GS.Scripts
             "Engagement aggression for group-vs-group fights: 0=cautious (engage only with a clear edge, patrol past uncertain matchups), 1=AGGRESSIVE default (commit to anything that isn't a clear loss — no patrol-past band; an outnumbered-but-not-hopeless group still takes the fight, only a heavy ~2x disadvantage retreats), 2=reckless (always engage regardless of odds).", 1)]
         public static int PVP_FRONTIER_ENGAGE_AGGRESSION;
 
+        [ServerProperty("pvpfrontier", "pvp_frontier_avoid_zerg_pct",
+            "Anti-suicide gate for engaging a real PLAYER: a group backs off instead of committing when the number of enemy-realm players around the target is at least this PERCENT of its own alive size (and at least +2 bodies). Default 200 (=2x: a group won't dive a force twice its size). Like a real roamer, they still take even and slightly-unfair fights — only clear blobs are avoided, and even then they sometimes dive anyway (bravado). Set 0 to disable (always engage any player, the old behaviour).", 200)]
+        public static int PVP_FRONTIER_AVOID_ZERG_PCT;
+
         [ServerProperty("pvpfrontier", "pvp_frontier_keep_attack_chance",
             "Chance (0-100) per patrol waypoint pick that a frontier group targets a nearby enemy keep/tower instead of a random waypoint. Default 50 — raised so the war map actively changes hands (more conquests).", 50)]
         public static int PVP_FRONTIER_KEEP_ATTACK_CHANCE;
@@ -118,7 +122,7 @@ namespace DOL.GS.Scripts
         public static int PVP_FRONTIER_PLAYER_TRACK_RADIUS;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_player_track_chance",
-            "Chance (0-100) per next-waypoint pick that a frontier group routes toward the closest enemy-realm player in the region instead of a random patrol waypoint. Default 65 — groups aggressively pursue moving players (~2 waypoints in 3 aim at the closest enemy). Drop to 20 for ambient patrols, raise to 80+ for relentless hot-pursuit.", 65)]
+            "Chance (0-100) per next-waypoint pick that a frontier group routes toward the closest (now isolation-weighted) enemy-realm player in the region instead of a random patrol waypoint. Default 70 — groups proactively pursue moving players. Drop to 20 for ambient patrols, raise to 80+ for relentless hot-pursuit.", 70)]
         public static int PVP_FRONTIER_PLAYER_TRACK_CHANCE;
 
         [ServerProperty("pvpfrontier", "pvp_frontier_max_groups_near_player_per_realm",
@@ -3119,19 +3123,24 @@ namespace DOL.GS.Scripts
         }
 
         // Group-level detection range for spotting enemy players / enemy groups.
-        // MUST be >= HYDRATE_RANGE (below): a group only materialises when a
-        // player is within HYDRATE_RANGE, so if detection were smaller the freshly
-        // hydrated group would sit PASSIVE in the 3500-4500u dead zone and only
-        // engage (and sprint) once the player walked closer — i.e. the player had
-        // to stop for groups to commit. Matching hydrate range makes a group that
-        // pops near you engage immediately, even while you keep moving.
-        private const int DETECTION_RANGE = 4500;
+        // MUST equal HYDRATE_RANGE: a group only materialises when a player is
+        // within HYDRATE_RANGE, so detection has to reach that far or a freshly
+        // hydrated group would sit PASSIVE until the player walked closer.
+        private const int DETECTION_RANGE = HYDRATE_RANGE;
         private const int WAYPOINT_REACHED_RANGE = 400;
 
         // Hydration: player must be within HYDRATE_RANGE of VirtualPosition to
-        // wake the group up. Dehydration uses a wider radius + grace period so
-        // a player jogging past doesn't flap the group on/off.
-        private const int HYDRATE_RANGE = 4500;
+        // wake the group up. CRITICAL FOR INVISIBILITY: this MUST be greater than
+        // WorldMgr.VISIBILITY_DISTANCE (the range at which the server sends object
+        // creates to clients) — otherwise the bots materialise INSIDE the player's
+        // view and visibly "pop into existence". By hydrating ~1000u beyond
+        // visibility the group spawns just out of sight and then ENTERS view by
+        // WALKING toward the player (real motion), which reads as a patrol you ran
+        // into rather than a spawn. (The old hard-coded 4500 was BELOW the 6000
+        // visibility range — the exact cause of the visible pop-in.) Dehydration
+        // uses a far wider radius + grace so a player jogging past doesn't flap the
+        // group on/off, and it only ever happens 40k+ out (never in view).
+        private const int HYDRATE_RANGE = WorldMgr.VISIBILITY_DISTANCE + 1000;
         // Dehydration is suppressed any time a player sits inside this radius.
         // 40_000u (~50 % of a typical NF zone) gives the group plenty of room
         // to roam, patrol, or chase without ever phasing out under the player's
@@ -3164,7 +3173,27 @@ namespace DOL.GS.Scripts
         // re-rolling the waypoint) just before arriving.
         private const int SIEGE_ARRIVAL_RANGE = 700;
 
+        // RvR "play like a roamer, don't feed a zerg" tuning.
+        //  ZERG_RADIUS — how far around a spotted player we count their realm-mates
+        //    to judge whether it's a blob or a fair fight.
+        //  ZERG_DIVE_PCT — chance the group commits to a clearly-outnumbered fight
+        //    anyway (human bravado / misjudgment) so they aren't perfectly cautious
+        //    and still make the occasional heroic mistake.
+        //  ISOLATION_PENALTY_PER_ALLY — when picking WHICH player to hunt, how many
+        //    "virtual extra units of distance" each nearby ally of a candidate adds,
+        //    so the group prefers picking off an isolated player over one buried in
+        //    a group (a real roamer's instinct).
+        private const int ZERG_RADIUS = 2500;
+        private const int ZERG_DIVE_PCT = 15;
+        private const int ISOLATION_PENALTY_PER_ALLY = 1200;
+
         private Point3D _currentWaypoint;
+        // Index into Config.PatrolWaypoints for the SEQUENTIAL patrol fallback, so
+        // a group with no objective walks its realm's route in order (home →
+        // staging → center → enemy push → back) like a roaming warband instead of
+        // teleport-jumping to a random leg each pick. -1 = not started (pick the
+        // nearest leg first so it doesn't backtrack across the map on spawn).
+        private int _patrolIndex = -1;
         // KeepID of the enemy objective this group is currently routing to /
         // assaulting under the SiegeCoordinator's direction (0 = none). Lets the
         // assault logic refresh its siege claim so the slot isn't freed mid-fight.
@@ -3344,6 +3373,9 @@ namespace DOL.GS.Scripts
                 Members.Clear();
                 IsHydrated = false;
             }
+            // Free any parked (dormant-pool) bodies too — closes their sockets so
+            // a disbanded group that was dormant doesn't leak.
+            DisposeDormantPool();
             Roster.Clear();
             _hydrationCursor = 0;
             State = eFrontierState.Disbanded;
@@ -3367,6 +3399,119 @@ namespace DOL.GS.Scripts
         // attempt (success OR skip) so a roster class that fails to build
         // never wedges the cursor and re-tries forever.
         private int _hydrationCursor;
+
+        // Dormant object pool. On Dehydrate the SURVIVING MimicNPC bodies are
+        // taken out of the world (RemoveFromWorld) and parked here instead of
+        // Deleted, so the next Hydrate REUSES them — skipping the heavy rebuild
+        // (new MimicNPC = spec/spells/profile + RR/RA/buff/ROG-gear apply) AND
+        // the per-bot TCP socket alloc/close churn that the old Delete-every-cycle
+        // path paid on every hydration. Keyed by name at reuse time. Disposed
+        // (truly Deleted, closing sockets) only when the whole group disbands.
+        private readonly List<MimicNPC> _dormantPool = new();
+
+        /// <summary>
+        /// Snaps a world point to the nearest navmesh-reachable point in its
+        /// region (correct ground Z, never inside a wall). Falls back to the raw
+        /// point where there's no navmesh / no zone. Same provider call the bot
+        /// movement uses, so a hydrated group's spawn footprint is on the same
+        /// mesh it will then path along.
+        /// </summary>
+        private static Point3D SnapToNavmesh(Point3D p, ushort regionId)
+        {
+            Region region = WorldMgr.GetRegion(regionId);
+            Zone zone = region?.GetZone(p.X, p.Y);
+            if (zone == null || !PathfindingProvider.Instance.HasNavmesh(zone))
+                return p;
+
+            System.Numerics.Vector3? snap = PathfindingProvider.Instance.GetClosestPoint(
+                zone, new System.Numerics.Vector3(p.X, p.Y, p.Z),
+                PathfindingProvider.Instance.DefaultFilters);
+
+            return snap.HasValue
+                ? new Point3D((int)snap.Value.X, (int)snap.Value.Y, (int)snap.Value.Z)
+                : p;
+        }
+
+        /// <summary>
+        /// Resets a pooled bot to a clean, full-health, out-of-combat state and
+        /// drops it back into the world at <paramref name="pos"/> facing
+        /// <paramref name="heading"/>. Re-uses the existing body/brain/gear so none
+        /// of the expensive construction or buff/RA/ROG application is repeated.
+        /// Returns false if the body can't be re-added (caller then builds fresh).
+        /// </summary>
+        private bool RevivePooledMember(MimicNPC m, Point3D pos, ushort heading, LogicalMember lm)
+        {
+            if (m == null) return false;
+
+            // Wipe any stale combat carry-over from the previous hydration.
+            try
+            {
+                m.attackComponent?.StopAttack();
+                m.TargetObject = null;
+                m.EffectList?.CancelAll();
+                m.effectListComponent?.CancelAll();
+                m.MimicBrain?.ClearAggroList();
+                if (m.MimicBrain != null)
+                {
+                    m.MimicBrain.IsFleeing = false;
+                    m.MimicBrain.TargetFleePosition = null;
+                }
+            }
+            catch { /* best-effort cleanup; never block reuse */ }
+
+            if (!MimicManager.AddMimicToWorld(m, pos, Region))
+                return false;
+
+            m.Heading = heading;
+            m.Health = m.MaxHealth;
+            m.Mana = m.MaxMana;
+            m.Endurance = m.MaxEndurance;
+
+            if (m.MimicBrain != null)
+            {
+                m.MimicBrain.PvPMode = true;
+                m.MimicBrain.Roam = false;
+                m.MimicBrain.AggroLevel = 100;
+                m.MimicBrain.AggroRange = HYDRATE_RANGE;
+                m.MimicBrain.IsHealer = lm.IsHealer;
+                m.MimicBrain.FSM.SetCurrentState(eFSMStateType.WAKING_UP);
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Removes and returns the dormant-pool body matching <paramref name="name"/>
+        /// (a roster member that survived the last hydration), or null on a miss.
+        /// </summary>
+        private MimicNPC TakeFromPool(string name)
+        {
+            for (int i = 0; i < _dormantPool.Count; i++)
+            {
+                MimicNPC m = _dormantPool[i];
+                if (m != null && string.Equals(m.Name, name, StringComparison.Ordinal))
+                {
+                    _dormantPool.RemoveAt(i);
+                    return m;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Truly deletes every parked body (closing its TCP socket) — called when
+        /// the whole group disbands so a pooled, never-re-hydrated group doesn't
+        /// leak sockets/objects.
+        /// </summary>
+        private void DisposeDormantPool()
+        {
+            foreach (MimicNPC m in _dormantPool)
+            {
+                if (m == null) continue;
+                try { m._beingDeleted = true; m.Delete(); } catch { }
+            }
+            _dormantPool.Clear();
+        }
 
         /// <summary>
         /// Marching-column slot offsets relative to the group's spawn anchor,
@@ -3449,6 +3594,26 @@ namespace DOL.GS.Scripts
                 Point3D pos = new(VirtualPosition.X + ox + Util.Random(-40, 40),
                                   VirtualPosition.Y + oy + Util.Random(-40, 40),
                                   VirtualPosition.Z);
+                // Keep the spawn footprint ON the navmesh (correct ground Z, never
+                // inside a keep wall / under terrain) — the leader then PATHs from
+                // a valid mesh point and followers path to it.
+                pos = SnapToNavmesh(pos, Region);
+
+                // REUSE: if this roster member's body survived the last hydration
+                // it's parked in the dormant pool — re-drop it into the world
+                // instead of rebuilding. Skips the whole heavy construct + RR/RA/
+                // buff/ROG-gear apply chain below AND the per-bot TCP socket churn.
+                MimicNPC pooled = TakeFromPool(lm.Name);
+                if (pooled != null)
+                {
+                    if (RevivePooledMember(pooled, pos, spawnHeading, lm))
+                    {
+                        Members.Add(pooled);
+                        continue;
+                    }
+                    // Body no longer usable — discard it and build a fresh one.
+                    try { pooled.Delete(); } catch { }
+                }
 
                 // Per-member try/catch: a single roster class that fails to
                 // construct (MimicNPC throws on bad EligibleRaces / missing
@@ -3488,13 +3653,11 @@ namespace DOL.GS.Scripts
                     // following waypoints.
                     m.MimicBrain.Roam = false;
                     m.MimicBrain.AggroLevel = 100;
-                    // Aggro out to the hydration range so a group that pops near a
-                    // moving player aggros them INSTANTLY instead of waiting for
-                    // them to wander within 3000u. Closing the 3000->4500 gap at
-                    // walk speed was impossible against a moving/speed-buffed
-                    // player, which is why encounters only happened when the player
-                    // stopped. Bots hydrate beyond client visibility (~3600u), so
-                    // this is server-side aggro — they become visible as they close.
+                    // Aggro out to the hydration range so a group that materialises
+                    // near a moving player aggros them INSTANTLY (server-side) and
+                    // closes the gap rather than waiting for the player to wander in.
+                    // The group hydrates BEYOND WorldMgr.VISIBILITY_DISTANCE, so this
+                    // is invisible aggro — the bots become visible by WALKING in.
                     m.MimicBrain.AggroRange = HYDRATE_RANGE;
                     m.MimicBrain.IsHealer = lm.IsHealer;
                 }
@@ -3545,9 +3708,11 @@ namespace DOL.GS.Scripts
         }
 
         /// <summary>
-        /// Deletes every MimicNPC. The logical Roster is preserved so the group
-        /// can re-hydrate later. If a member died while hydrated, it's already
-        /// gone from Members — we sync Roster too so it stays accurate.
+        /// Takes the group dormant. Surviving MimicNPC bodies are removed from the
+        /// world and PARKED in the dormant pool (not Deleted) so the next Hydrate
+        /// reuses them — skipping the heavy rebuild + socket churn. The logical
+        /// Roster is preserved (and synced to the survivors) so the group can
+        /// re-hydrate later. Dead members are already gone from Members.
         /// </summary>
         public void Dehydrate()
         {
@@ -3574,8 +3739,26 @@ namespace DOL.GS.Scripts
 
             foreach (var m in Members.ToList())
             {
-                if (m != null && m.ObjectState == GameObject.eObjectState.Active)
-                    m.Delete();
+                if (m == null) continue;
+
+                if (m.IsAlive && m.ObjectState == GameObject.eObjectState.Active)
+                {
+                    // PARK for reuse: detach from the DAoC group (safe — the
+                    // disband handler ignores ownerless frontier bots, so this
+                    // does NOT delete them) then take the body out of the world
+                    // and keep it in memory. Its brain stops ticking (out-of-world
+                    // NPCs aren't serviced), so a parked group costs only a little
+                    // RAM + an idle socket until it re-hydrates.
+                    DolGroup?.RemoveMember(m);
+                    m.RemoveFromWorld();
+                    _dormantPool.Add(m);
+                }
+                else
+                {
+                    // Dead / inactive body — make sure it's fully gone (Delete
+                    // detaches from the group and closes its socket).
+                    try { m._beingDeleted = true; m.Delete(); } catch { }
+                }
             }
             Members.Clear();
             DolGroup = null;
@@ -3966,6 +4149,11 @@ namespace DOL.GS.Scripts
             GameLiving leader = FirstAliveMember();
             if (leader == null) return;
 
+            // Keep the group's speed song up while patrolling so a comp with a
+            // Minstrel / Skald / Bard actually MOVES at run-speed (the carrier is
+            // often the leader, which doesn't run the follower travel-buff cycle).
+            MaintainTravelSpeed();
+
             // Movement diagnostic (off by default). Reveals whether the leader is
             // actually gliding or stalling: if it logs IsMoving=false with a far
             // waypoint across several ticks, it's the stop-and-wait stutter (and
@@ -4030,6 +4218,19 @@ namespace DOL.GS.Scripts
                 GameLiving enemyPlayer = ScanForEnemyPlayer(leader);
                 if (enemyPlayer != null)
                 {
+                    // Don't feed a zerg. A real roamer picks fair-ish fights and
+                    // peels off when a target is buried in a much larger force —
+                    // diving a 2x+ blob is just a free kill for the enemy. They
+                    // still dive sometimes anyway (bravado), so it isn't perfectly
+                    // cautious. When backing off, retreat like a lost pre-engage.
+                    if (ShouldAvoidPlayerZerg(enemyPlayer))
+                    {
+                        OrderGroupToRetreat();
+                        _retreatUntilMs = now + 12_000;
+                        State = eFrontierState.Retreating;
+                        return;
+                    }
+
                     OrderGroupToEngagePlayer(enemyPlayer);
                     State = eFrontierState.Engaging;
                     return;
@@ -4094,6 +4295,52 @@ namespace DOL.GS.Scripts
             }
 
             return best;
+        }
+
+        /// <summary>
+        /// Counts engageable enemy-realm players within <paramref name="radius"/>
+        /// of <paramref name="target"/> (the target itself included). Mirrors the
+        /// ScanForEnemyPlayer filters (alive, not stealthed, not a GM).
+        /// </summary>
+        private int CountEnemyPlayersNear(GameLiving target, int radius)
+        {
+            int n = 0;
+            foreach (GamePlayer p in target.GetPlayersInRadius((ushort)radius))
+            {
+                if (p == null || !p.IsAlive) continue;
+                if (p.Realm == Config.Realm || p.Realm == eRealm.None) continue;
+                if (p.IsStealthed) continue;
+                if (p.Client?.Account != null && p.Client.Account.PrivLevel > 1) continue;
+                n++;
+            }
+            return n;
+        }
+
+        /// <summary>
+        /// True when committing to <paramref name="target"/> would mean diving a
+        /// force clearly larger than ours (a zerg) — in which case a real roamer
+        /// peels off rather than feeding a free kill. Returns false (engage) for
+        /// even / slightly-unfair fights, and occasionally false anyway on a clear
+        /// overmatch (ZERG_DIVE_PCT bravado) so the group still makes the odd brave
+        /// mistake. Disabled when pvp_frontier_avoid_zerg_pct is 0.
+        /// </summary>
+        private bool ShouldAvoidPlayerZerg(GameLiving target)
+        {
+            int ratioPct = PvPFrontierProperties.PVP_FRONTIER_AVOID_ZERG_PCT;
+            if (ratioPct <= 0)
+                return false;
+
+            int myAlive = AliveMemberCount;
+            if (myAlive <= 0)
+                return false;
+
+            int enemyNear = CountEnemyPlayersNear(target, ZERG_RADIUS);
+
+            // Clear overmatch = enemies >= ratio x my size AND at least +2 bodies.
+            if (enemyNear * 100 >= myAlive * ratioPct && enemyNear - myAlive >= 2)
+                return !Util.Chance(ZERG_DIVE_PCT);
+
+            return false;
         }
 
         /// <summary>
@@ -4423,7 +4670,7 @@ namespace DOL.GS.Scripts
                     _retreatStaging = null;
                     if (_retreatDestination != null)
                     {
-                        leader.WalkTo(_retreatDestination, leader.MaxSpeed);
+                        leader.PathTo(_retreatDestination, leader.MaxSpeed);
                         foreach (var m in Members)
                         {
                             if (m == null || !m.IsAlive || m == leader) continue;
@@ -4696,14 +4943,58 @@ namespace DOL.GS.Scripts
                 }
             }
 
-            // (5) Random patrol waypoint.
+            // (5) SEQUENTIAL patrol. With no player / hotspot / siege objective,
+            // walk the realm's route IN ORDER so the group roams with apparent
+            // purpose (home → forward staging → contested center → enemy push →
+            // back) instead of teleport-feel jumping to a random leg every pick —
+            // the old `PatrolWaypoints[Util.Random(...)]` is exactly what read as
+            // "moving without a goal". On first use we start from the NEAREST leg
+            // so a freshly spawned group doesn't immediately trek back across the
+            // map.
             if (Config.PatrolWaypoints.Count == 0)
             {
                 // (6) No waypoints configured: hold position at spawn.
                 _currentWaypoint = Config.SpawnAnchor;
                 return;
             }
-            _currentWaypoint = Config.PatrolWaypoints[Util.Random(Config.PatrolWaypoints.Count - 1)];
+
+            if (_patrolIndex < 0)
+                _patrolIndex = NearestPatrolIndex();
+            else
+                _patrolIndex = (_patrolIndex + 1) % Config.PatrolWaypoints.Count;
+
+            _currentWaypoint = Config.PatrolWaypoints[_patrolIndex];
+        }
+
+        /// <summary>
+        /// Index of the patrol waypoint closest to the group's current position
+        /// (leader if hydrated, else VirtualPosition) — the leg to start the
+        /// sequential patrol on so the group picks up its route nearby instead of
+        /// backtracking. Returns 0 when no position is resolvable.
+        /// </summary>
+        private int NearestPatrolIndex()
+        {
+            var wps = Config.PatrolWaypoints;
+            if (wps.Count == 0) return 0;
+
+            MimicNPC leader = FirstAliveMember();
+            int ax = leader != null ? leader.X : VirtualPosition.X;
+            int ay = leader != null ? leader.Y : VirtualPosition.Y;
+
+            int best = 0;
+            long bestSq = long.MaxValue;
+            for (int i = 0; i < wps.Count; i++)
+            {
+                long dx = wps[i].X - ax;
+                long dy = wps[i].Y - ay;
+                long sq = dx * dx + dy * dy;
+                if (sq < bestSq)
+                {
+                    bestSq = sq;
+                    best = i;
+                }
+            }
+            return best;
         }
 
         /// <summary>
@@ -4736,7 +5027,8 @@ namespace DOL.GS.Scripts
             long trackRadiusSq = (long)trackRadius * trackRadius;
 
             PvPFrontierManager.PlayerSampledPos? bestPos = null;
-            long bestSq = long.MaxValue;
+            double bestScore = double.MaxValue;
+            long zergRsq = (long)ZERG_RADIUS * ZERG_RADIUS;
 
             foreach (PvPFrontierManager.PlayerSampledPos p in snap.Sampled)
             {
@@ -4747,9 +5039,26 @@ namespace DOL.GS.Scripts
                 long dy = p.Y - anchorY;
                 long sq = dx * dx + dy * dy;
                 if (sq > trackRadiusSq) continue;
-                if (sq < bestSq)
+
+                // Prefer ISOLATED targets: a player surrounded by their own
+                // realm-mates is scored as if much further away, so the group
+                // hunts stragglers like a real roamer instead of charging the
+                // densest part of the enemy blob (which also dovetails with the
+                // anti-zerg engage gate — fewer aborted dives).
+                int allies = 0;
+                foreach (PvPFrontierManager.PlayerSampledPos q in snap.Sampled)
                 {
-                    bestSq = sq;
+                    if (q.Realm != p.Realm) continue;
+                    long qdx = q.X - p.X;
+                    long qdy = q.Y - p.Y;
+                    long qsq = qdx * qdx + qdy * qdy;
+                    if (qsq > 0 && qsq <= zergRsq) allies++;
+                }
+
+                double score = Math.Sqrt(sq) + (double)allies * ISOLATION_PENALTY_PER_ALLY;
+                if (score < bestScore)
+                {
+                    bestScore = score;
                     bestPos = p;
                 }
             }
@@ -5509,6 +5818,27 @@ namespace DOL.GS.Scripts
             OrderGroupToWaypoint();
         }
 
+        /// <summary>
+        /// Drives the group's speed-song carrier(s) to keep their movement-speed
+        /// song up while the group is travelling, so a comp with a Minstrel /
+        /// Skald / Bard moves at run-song pace and the whole column rides the
+        /// buff — instead of plodding at walk speed when the carrier happens to be
+        /// the leader (which doesn't run the follower travel-buff cycle). Cheap:
+        /// each carrier's EnsureTravelSpeedSong no-ops unless it's actually
+        /// travelling, out of combat, and not already sped. Auto-sprint
+        /// (MimicBrain.Think) still covers everyone as the fallback before/without
+        /// a song. Only runs while the group isn't fighting.
+        /// </summary>
+        private void MaintainTravelSpeed()
+        {
+            foreach (var m in Members)
+            {
+                if (m == null || !m.IsAlive || m.InCombat) continue;
+                if (m.MimicBrain == null) continue;
+                m.MimicBrain.EnsureTravelSpeedSong();
+            }
+        }
+
         private void OrderGroupToWaypoint()
         {
             MimicNPC leader = FirstAliveMember();
@@ -5519,7 +5849,12 @@ namespace DOL.GS.Scripts
                 if (m == null || !m.IsAlive) continue;
                 if (m == leader)
                 {
-                    m.WalkTo(_currentWaypoint, m.MaxSpeed);
+                    // PathTo (navmesh), not WalkTo (straight line): the leader
+                    // routes AROUND keep walls / terrain instead of ghost-walking
+                    // through them. The followers already path (Follow uses the
+                    // pathfinder), so this is what was making the group clip walls.
+                    // Falls back to a straight walk only where no navmesh exists.
+                    m.PathTo(_currentWaypoint, m.MaxSpeed);
                 }
                 else if (m.MimicBrain != null)
                 {
@@ -5607,8 +5942,9 @@ namespace DOL.GS.Scripts
             // Move the leader explicitly; the rest follow in formation. The
             // previous code sent every member to the same point with no
             // cohesion, so healers and casters got isolated and picked off
-            // by chasers — same fix pattern as OrderGroupToWaypoint.
-            leader.WalkTo(firstLeg, leader.MaxSpeed);
+            // by chasers — same fix pattern as OrderGroupToWaypoint. PathTo so
+            // the retreat routes around walls instead of clipping through them.
+            leader.PathTo(firstLeg, leader.MaxSpeed);
 
             foreach (var m in Members)
             {

@@ -50,8 +50,8 @@ namespace DOL.AI.Brain
             Group group = _brain?.Body?.Group;
             if (group == null)
                 return false;
-            if (group.LivingLeader == _brain.Body)
-                return false; // we ARE the leader — nothing to follow
+            if (_brain.GetEffectiveFollowLeader() == null)
+                return false; // genuinely leaderless (own leader, no raid anchor)
 
             DOL.GS.Scripts.MimicGroup mimicGroup = group.MimicGroup;
             if (mimicGroup?.CampPoint != null
@@ -257,7 +257,11 @@ namespace DOL.AI.Brain
                 // worlds during the same tick — both can be transiently null.
                 Region region = _brain.Body.CurrentRegion;
                 Zone zone = _brain.Body.CurrentZone;
-                _brain.PvPMode = (region != null && region.IsRvR) || (zone != null && zone.IsRvR);
+                // Raids are a PvE-only tool: a raid bot never auto-enables PvP
+                // mode, so a battlegroup stays PvE even if the leader wanders
+                // into an RvR region/zone.
+                _brain.PvPMode = !_brain.IsRaidMember
+                    && ((region != null && region.IsRvR) || (zone != null && zone.IsRvR));
                 _brain.Roam = true;
                 _brain.Defend = false;
 
@@ -276,7 +280,7 @@ namespace DOL.AI.Brain
                     _brain.FSM.SetCurrentState(eFSMStateType.CAMP);
                     return;
                 }
-                else if (_brain.Body.Group.LivingLeader != _brain.Body)
+                else if (_brain.GetEffectiveFollowLeader() != null)
                 {
                     _brain.FSM.SetCurrentState(eFSMStateType.FOLLOW_THE_LEADER);
                     return;
@@ -377,11 +381,12 @@ namespace DOL.AI.Brain
 
         public override void Enter()
         {
-            if (_brain.Body.Group != null)
+            GameLiving followTarget = _brain.GetEffectiveFollowLeader();
+            if (followTarget != null)
             {
-                _leader = _brain.Body.Group.LivingLeader;
+                _leader = followTarget;
                 _followDistance = _targetFollowDistance;
-                _brain.Body.Follow(_brain.Body.Group.LivingLeader, _followDistance, 5000);
+                _brain.Body.Follow(followTarget, _followDistance, 5000);
             }
             else
                 _brain.FSM.SetCurrentState(eFSMStateType.WAKING_UP);
@@ -419,7 +424,9 @@ namespace DOL.AI.Brain
             if (_brain.IsHealer && _brain.MaintainHealerCombatPositioning())
                 return;
 
-            if (_brain.Body.Group == null || _leader == _brain.Body)
+            GameLiving followTarget = _brain.GetEffectiveFollowLeader();
+
+            if (followTarget == null)
             {
                 _brain.Body.StopFollowing();
                 _brain.FSM.SetCurrentState(eFSMStateType.WAKING_UP);
@@ -427,8 +434,10 @@ namespace DOL.AI.Brain
                 return;
             }
 
-            if (_leader == null || (_leader != null && _leader.ObjectState != GameObject.eObjectState.Active || !_brain.Body.Group.IsInTheGroup(_leader)))
-                _leader = _brain.Body.Group.LivingLeader;
+            // Re-resolve every tick so a raid secondary-group leader keeps
+            // trailing the human anchor, and ordinary members keep tracking
+            // their group leader even after a leader change / promotion.
+            _leader = followTarget;
 
             // Region/distance recovery: if the leader zoned or wandered way
             // beyond the visible follow range, teleport on top of them rather
@@ -508,8 +517,29 @@ namespace DOL.AI.Brain
                 return;
             }
 
+            // Raid auto-assist: a secondary-group leader trailing the human
+            // raid anchor joins the anchor's fight so the whole raid engages
+            // together without re-issuing /mraid attack on every pull. Only the
+            // secondary leader needs this hook (its _leader IS the anchor) — its
+            // own group members then cascade in via ScanGroupCombat above once
+            // the leader is in combat. For the player's own group this branch is
+            // never reached because ScanGroupCombat already fired on the player.
+            if (!_brain.IsHealer
+                && _brain.RaidAnchor is GamePlayer raidAnchor
+                && _leader == raidAnchor
+                && raidAnchor.InCombat
+                && raidAnchor.TargetObject is GameLiving raidTarget
+                && raidTarget.IsAlive
+                && GameServer.ServerRules.IsAllowedToAttack(_brain.Body, raidTarget, true))
+            {
+                _brain.AddToAggroList(raidTarget, _brain.GetMaxAggro() + 1);
+                _brain.OnLeaderAggro();
+                _brain.FSM.SetCurrentState(eFSMStateType.AGGRO);
+                return;
+            }
+
             if (_brain.Body.FollowTarget != _leader)
-                _brain.Body.Follow(_brain.Body.Group.LivingLeader, _followDistance, 5000);
+                _brain.Body.Follow(_leader, _followDistance, 5000);
 
             if (!_brain.Body.InCombat)
             {

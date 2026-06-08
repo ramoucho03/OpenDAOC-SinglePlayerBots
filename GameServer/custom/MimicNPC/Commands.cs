@@ -419,6 +419,116 @@ namespace DOL.GS.Scripts
     }
 
     [CmdAttribute(
+        "&mraid",
+        new[] { "&mra" },
+        ePrivLevel.Player,
+        "/mraid [nbGroupes] [niveau] [pc] - Cree un raid PvE (battlegroup) de plusieurs groupes de mimics de votre royaume qui vous suivent.",
+        "/mraid summon - Teleporte tout le raid a votre position.",
+        "/mraid follow - Annule camp/pull et fait suivre tout le raid.",
+        "/mraid attack - Envoie tout le raid sur votre cible.",
+        "/mraid camp - Pose un camp pour tout le raid a votre position.",
+        "/mraid status - Affiche la composition du raid.",
+        "/mraid disband - Dissout le raid (supprime tous les mimics).")]
+    public class MimicRaidCommandHandler : AbstractCommandHandler, ICommandHandler
+    {
+        public void OnCommand(GameClient client, string[] args)
+        {
+            GamePlayer player = client?.Player;
+            if (player == null)
+                return;
+
+            string sub = args.Length >= 2 ? args[1].ToLowerInvariant() : null;
+
+            switch (sub)
+            {
+                case "summon":
+                {
+                    if (!MimicRaid.HasRaid(player)) { NoRaid(player); return; }
+                    int n = MimicRaid.Summon(player);
+                    player.Out.SendMessage($"{n} mimic(s) du raid teleporte(s) a votre position.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    return;
+                }
+                case "follow":
+                {
+                    if (!MimicRaid.HasRaid(player)) { NoRaid(player); return; }
+                    int n = MimicRaid.Follow(player);
+                    player.Out.SendMessage($"Le raid vous suit ({n} mimic(s)).", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    return;
+                }
+                case "attack":
+                case "att":
+                {
+                    if (!MimicRaid.HasRaid(player)) { NoRaid(player); return; }
+                    if (player.TargetObject is not GameLiving target)
+                    {
+                        player.Out.SendMessage("Vous devez cibler un ennemi.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                        return;
+                    }
+                    int n = MimicRaid.AttackTarget(player, target);
+                    player.Out.SendMessage($"{n} mimic(s) du raid attaquent {target.Name}.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    return;
+                }
+                case "camp":
+                {
+                    if (!MimicRaid.HasRaid(player)) { NoRaid(player); return; }
+                    int n = MimicRaid.Camp(player);
+                    player.Out.SendMessage($"Camp du raid pose a votre position ({n} mimic(s)).", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    return;
+                }
+                case "status":
+                case "info":
+                    MimicRaid.Status(player);
+                    return;
+                case "disband":
+                case "clear":
+                {
+                    int n = MimicRaid.Disband(player);
+                    player.Out.SendMessage($"Raid dissous : {n} mimic(s) supprime(s).", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                    return;
+                }
+            }
+
+            // No subcommand -> create a raid. Parse optional numeric args:
+            //   first number  = number of groups
+            //   second number = mimic level
+            // plus a "pc" / "prevent" token to spawn them in PreventCombat.
+            int numGroups = MimicConfig.MIMIC_RAID_DEFAULT_GROUPS > 0 ? MimicConfig.MIMIC_RAID_DEFAULT_GROUPS : 3;
+            byte level = player.Level;
+            bool preventCombat = false;
+
+            List<int> numbers = new();
+            for (int i = 1; i < args.Length; i++)
+            {
+                if (args[i].StartsWith("pc", StringComparison.OrdinalIgnoreCase)
+                    || args[i].StartsWith("prevent", StringComparison.OrdinalIgnoreCase))
+                    preventCombat = true;
+                else if (int.TryParse(args[i], out int v))
+                    numbers.Add(v);
+            }
+
+            if (numbers.Count >= 1)
+                numGroups = numbers[0];
+            if (numbers.Count >= 2)
+                level = (byte) Math.Clamp(numbers[1], 1, 50);
+
+            if (!MimicRaid.CreateRaid(player, player.Realm, numGroups, level, preventCombat, out string error))
+            {
+                player.Out.SendMessage(error, eChatType.CT_System, eChatLoc.CL_SystemWindow);
+                return;
+            }
+
+            player.Out.SendMessage(
+                $"Raid PvE cree (niveau {level}). Le raid vous suit. Commandes : /mraid attack | camp | follow | summon | status | disband.",
+                eChatType.CT_System, eChatLoc.CL_SystemWindow);
+        }
+
+        private static void NoRaid(GamePlayer player)
+        {
+            player.Out.SendMessage("Vous n'avez pas de raid actif. Tapez /mraid pour en creer un.", eChatType.CT_System, eChatLoc.CL_SystemWindow);
+        }
+    }
+
+    [CmdAttribute(
     "&mspawner",
     ePrivLevel.Player,
     "/mspawner royaume niveauMin niveauMax maxAmount - Spawn périodique de mimics à votre position ou au ground target.")]
@@ -1863,6 +1973,7 @@ namespace DOL.GS.Scripts
             sb.AppendLine("[grpHib]                Groupe Hibernia");
             sb.AppendLine("[grpMid]                Groupe Midgard");
             sb.AppendLine("[lfg]                   Liste cliquable des mimics LFG");
+            sb.AppendLine("/mraid <nbGroupes>      Raid PvE multi-groupes (ex: /mraid 3 50)");
             sb.AppendLine("/mcreate <classe>       Cree un mimic (ex: /mcreate armsman 50 inv)");
             sb.AppendLine("/mspawner <args>        Spawn periodique de mimics");
             sb.AppendLine("[clearAll]              Supprime TOUS tes mimics");
@@ -2004,6 +2115,8 @@ namespace DOL.GS.Scripts
                 "/mcreate <classe> [niveau] [spec] [inv]\nEx: /mcreate armsman 50 inv"),
             new Entry("/mgroup",   "Creation",  "Invoque un groupe equilibre (tank/heal/cc/dps).",
                 "/mgroup <royaume> [taille=8] [niveau=ton lvl] [preventCombat=false]\nEx: /mgroup alb 8 50"),
+            new Entry("/mraid",    "Creation",  "Cree un raid PvE (plusieurs groupes) qui vous suit.",
+                "/mraid [nbGroupes] [niveau] [pc]\n/mraid summon|follow|attack|camp|status|disband\nEx: /mraid 3 50"),
             new Entry("/mclear",   "Creation",  "Supprime tous tes mimics.", "/mclear"),
             new Entry("/mlfg",     "Creation",  "Liste les mimics LFG ou en recrute un.",
                 "/mlfg          (liste)\n/mlfg <index>  (recrute le numero affiche)"),
