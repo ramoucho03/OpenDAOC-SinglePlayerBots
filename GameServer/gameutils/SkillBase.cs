@@ -580,7 +580,12 @@ namespace DOL.GS
 
 								try
 								{
-									m_specsSpellLines[spec.KeyName].Add(new Tuple<SpellLine, int>(m_spellLineIndex[line.KeyName], line.ClassIDHint));
+									// De-dupe: a duplicated `specxspellline` table (re-import / migration run twice)
+										// registers the SAME line+hint more than once. GetSpecsSpellLines CLONES each
+										// entry, so dup tuples don't collide on a dictionary key — they STACK, and the
+										// player ends up seeing EVERY spell twice. Register each line+hint only once.
+										if (!m_specsSpellLines[spec.KeyName].Exists(t => t.Item1.KeyName == line.KeyName && t.Item2 == line.ClassIDHint))
+											m_specsSpellLines[spec.KeyName].Add(new Tuple<SpellLine, int>(m_spellLineIndex[line.KeyName], line.ClassIDHint));
 									count++;
 								}
 								catch (Exception e)
